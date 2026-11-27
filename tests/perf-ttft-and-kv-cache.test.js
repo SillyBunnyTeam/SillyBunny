@@ -854,6 +854,7 @@ describe('In-Chat Agents patch interceptors run in sequence', () => {
             generateQuietPrompt,
             setAgents: agents => { enabledAgents = agents; },
             setResponder: fn => { respond = fn; },
+            setSettings: update => { Object.assign(globalSettings, update); },
         };
     }
 
@@ -1001,6 +1002,229 @@ describe('In-Chat Agents patch interceptors run in sequence', () => {
 
         expect(started).toEqual(['replace-1', 'replace-2']);
         expect(textData.prompt).toBe('saw:true');
+    });
+
+    // Runs microtasks only, so a test never waits on a timer to see that a request has started.
+    const settle = async () => {
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+    };
+
+    test.each([
+        ['missing', {}],
+        ['null', { patchAgentsExecutionMode: null }],
+        ['unknown', { patchAgentsExecutionMode: 'legacy' }],
+        ['sequential', { patchAgentsExecutionMode: 'sequential' }],
+    ])('the %s setting runs the second patch agent after the first', async (_, settings) => {
+        const runner = await loadAgentRunner();
+        runner.setSettings(settings);
+        const { respond, gateFirst, gateSecond, started, prompts } = createGatedResponder();
+        runner.setResponder(respond);
+        runner.setAgents([
+            patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+            patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+        ]);
+
+        await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const pendingRun = runner.eventSource.emit(runner.eventTypes.CHAT_COMPLETION_PROMPT_READY, { chat: [{ role: 'user', content: 'Base prompt' }], dryRun: false });
+        await settle();
+        expect(started).toEqual(['first']);
+
+        gateFirst.resolve();
+        await settle();
+        expect(started).toEqual(['first', 'second']);
+        gateSecond.resolve();
+        await pendingRun;
+
+        expect(prompts.second).toContain('first patch note');
+    });
+
+    describe('with Patch Agents Execution set to Parallel', () => {
+        async function loadParallelRunner() {
+            const runner = await loadAgentRunner();
+            runner.setSettings({ patchAgentsExecutionMode: 'parallel' });
+            return runner;
+        }
+
+        test('two independent patch agents overlap, each is shown the original chat, and the patches are applied in list order', async () => {
+            const runner = await loadParallelRunner();
+            const { respond, gateFirst, gateSecond, started, prompts } = createGatedResponder();
+            runner.setResponder(respond);
+            // The list is out of order on purpose: the injection order decides the order of the patches.
+            runner.setAgents([
+                patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+                patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+            ]);
+
+            await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+            const eventData = { chat: [{ role: 'user', content: 'Base prompt' }], dryRun: false };
+            const pendingRun = runner.eventSource.emit(runner.eventTypes.CHAT_COMPLETION_PROMPT_READY, eventData);
+            await settle();
+
+            // Both requests are in flight while both gates are closed.
+            expect(started).toEqual(['first', 'second']);
+
+            // The second agent answers first, and nothing is applied until the first one has answered too.
+            gateSecond.resolve();
+            await settle();
+            expect(eventData.chat).toEqual([{ role: 'user', content: 'Base prompt' }]);
+            gateFirst.resolve();
+            await pendingRun;
+
+            expect(prompts.first).not.toContain('second patch note');
+            expect(prompts.second).not.toContain('first patch note');
+            expect(eventData.chat).toEqual([
+                { role: 'user', content: 'Base prompt' },
+                { role: 'system', content: '<p1>\nfirst patch note\n</p1>' },
+                { role: 'system', content: '<p2>\nsecond patch note\n</p2>' },
+            ]);
+        });
+
+        test('two independent patch agents overlap in a text prompt, and the patches are appended in list order', async () => {
+            const runner = await loadParallelRunner();
+            const { respond, gateFirst, gateSecond, started, prompts } = createGatedResponder();
+            runner.setResponder(respond);
+            runner.setAgents([
+                patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+                patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+            ]);
+
+            await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+            const textData = { prompt: 'Original text', dryRun: false };
+            const pendingRun = runner.eventSource.emit(runner.eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, textData);
+            await settle();
+            expect(started).toEqual(['first', 'second']);
+
+            gateSecond.resolve();
+            gateFirst.resolve();
+            await pendingRun;
+
+            expect(prompts.second).not.toContain('first patch note');
+            expect(textData.prompt).toBe('Original text\n\n<p1>\nfirst patch note\n</p1>\n\n<p2>\nsecond patch note\n</p2>');
+        });
+
+        test('an interceptor that is not a patch ends the batch, and later agents see its result', async () => {
+            const runner = await loadParallelRunner();
+            const { respond, gateFirst, gateSecond, started } = createGatedResponder();
+            runner.setResponder(async quietPrompt => {
+                if (quietPrompt.includes('Replace pass')) {
+                    started.push('replace');
+                    return `rewritten:${quietPrompt.includes('first patch note')}:${quietPrompt.includes('second patch note')}`;
+                }
+                if (quietPrompt.includes('Third patch prompt')) {
+                    started.push('third');
+                    return `third patch note:${quietPrompt.includes('rewritten')}`;
+                }
+                return respond(quietPrompt);
+            });
+            runner.setAgents([
+                patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+                patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+                { id: 'rep', name: 'rep', phase: 'pre', prompt: 'Replace pass', injection: { order: 30, role: 0 }, preProcess: { mode: 'intercept', applyMode: 'replace' }, conditions: {} },
+                patchAgent('patch-third', 40, 'p3', 'Third patch prompt'),
+            ]);
+
+            await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+            const textData = { prompt: 'Original text', dryRun: false };
+            const pendingRun = runner.eventSource.emit(runner.eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, textData);
+            await settle();
+            expect(started).toEqual(['first', 'second']);
+
+            gateFirst.resolve();
+            gateSecond.resolve();
+            await pendingRun;
+
+            expect(started).toEqual(['first', 'second', 'replace', 'third']);
+            expect(textData.prompt).toBe('rewritten:true:true\n\n<p3>\nthird patch note:true\n</p3>');
+        });
+
+        test('one failing agent leaves its patch out and does not stop the others', async () => {
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            const runner = await loadParallelRunner();
+            const { gateFirst, started } = createGatedResponder();
+            runner.setResponder(async quietPrompt => {
+                if (quietPrompt.includes('Second patch prompt')) {
+                    started.push('second');
+                    throw new Error('provider refused');
+                }
+                if (quietPrompt.includes('Third patch prompt')) {
+                    started.push('third');
+                    return 'third patch note';
+                }
+                started.push('first');
+                await gateFirst.promise;
+                return 'first patch note';
+            });
+            runner.setAgents([
+                patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+                patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+                patchAgent('patch-third', 30, 'p3', 'Third patch prompt'),
+            ]);
+
+            await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+            const eventData = { chat: [{ role: 'user', content: 'Base prompt' }], dryRun: false };
+            const pendingRun = runner.eventSource.emit(runner.eventTypes.CHAT_COMPLETION_PROMPT_READY, eventData);
+            await settle();
+            // The failure of the second agent does not wait for the first one.
+            expect(started).toEqual(['first', 'second', 'third']);
+
+            gateFirst.resolve();
+            await pendingRun;
+
+            expect(eventData.chat).toEqual([
+                { role: 'user', content: 'Base prompt' },
+                { role: 'system', content: '<p1>\nfirst patch note\n</p1>' },
+                { role: 'system', content: '<p3>\nthird patch note\n</p3>' },
+            ]);
+            expect(warn.mock.calls.some(([message]) => String(message).includes('"patch-second" failed'))).toBe(true);
+        });
+
+        test('a stop while the batch is in flight applies none of its patches', async () => {
+            const runner = await loadParallelRunner();
+            const { respond, gateFirst, gateSecond, started } = createGatedResponder();
+            runner.setResponder(respond);
+            runner.setAgents([
+                patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+                patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+            ]);
+
+            await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+            const eventData = { chat: [{ role: 'user', content: 'Base prompt' }], dryRun: false };
+            const pendingRun = runner.eventSource.emit(runner.eventTypes.CHAT_COMPLETION_PROMPT_READY, eventData);
+            await settle();
+            expect(started).toEqual(['first', 'second']);
+
+            // The first agent has answered when the stop arrives, and the second answers after it.
+            gateFirst.resolve();
+            await settle();
+            await runner.eventSource.emit(runner.eventTypes.GENERATION_STOPPED);
+            gateSecond.resolve();
+            await pendingRun;
+
+            expect(eventData.chat).toEqual([{ role: 'user', content: 'Base prompt' }]);
+            expect(started).toEqual(['first', 'second']);
+        });
+
+        test('post-main patch agents still run in sequence', async () => {
+            const runner = await loadParallelRunner();
+            const { respond, gateFirst, gateSecond, started, prompts } = createGatedResponder();
+            runner.setResponder(respond);
+            runner.setAgents([
+                patchAgent('patch-first', 10, 'p1', 'First patch prompt', 'post-main-generation'),
+                patchAgent('patch-second', 20, 'p2', 'Second patch prompt', 'post-main-generation'),
+            ]);
+
+            await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+            const data = { text: 'Generated reply' };
+            const pendingRun = runner.eventSource.emit(runner.eventTypes.MAIN_GENERATION_OUTPUT_READY, data);
+            await settle();
+            expect(started).toEqual(['first']);
+            gateFirst.resolve();
+            await settle();
+            gateSecond.resolve();
+            await pendingRun;
+
+            expect(prompts.second).toContain('first patch note');
+        });
     });
 });
 

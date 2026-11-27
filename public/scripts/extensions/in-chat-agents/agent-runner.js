@@ -4673,6 +4673,40 @@ function getGenerationContextSnapshot(generationType = null) {
     return buildActivationSnapshot(normalizedGenerationType);
 }
 
+// With Patch Agents Execution set to Parallel, consecutive patch interceptors of the pre-generation phase run together.
+// Every agent of such a batch is shown the context as it was before the batch, and the results are applied in list order afterwards.
+// Any other interceptor, and every interceptor of the post-main phase, runs alone and in sequence.
+function isParallelizableInterceptAgent(agent) {
+    return String(agent?.preProcess?.applyMode ?? 'replace') === 'patch';
+}
+
+function partitionInterceptAgentBatches(interceptAgents) {
+    if (getGlobalSettings()?.patchAgentsExecutionMode !== 'parallel') {
+        return interceptAgents.map(agent => ({ parallel: false, agents: [agent] }));
+    }
+
+    /** @type {{ parallel: boolean, agents: object[] }[]} */
+    const batches = [];
+    let patchBatch = [];
+    const flushPatchBatch = () => {
+        if (patchBatch.length > 0) {
+            batches.push({ parallel: patchBatch.length > 1, agents: patchBatch });
+            patchBatch = [];
+        }
+    };
+
+    for (const agent of interceptAgents) {
+        if (isParallelizableInterceptAgent(agent)) {
+            patchBatch.push(agent);
+        } else {
+            flushPatchBatch();
+            batches.push({ parallel: false, agents: [agent] });
+        }
+    }
+    flushPatchBatch();
+    return batches;
+}
+
 async function runPreGenerationInterceptorsOnText(initialContextText, generationType, contextFormat) {
     if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled()) {
         return { text: initialContextText, runs: [] };
@@ -4689,12 +4723,66 @@ async function runPreGenerationInterceptorsOnText(initialContextText, generation
         return { text: currentContextText, runs: [] };
     }
 
+    const makeTextErrorRun = (agent, beforeText, error) => ({
+        agentId: agent.id,
+        agentName: agent.name,
+        applyMode: ['wrap', 'patch'].includes(String(agent?.preProcess?.applyMode)) ? String(agent.preProcess.applyMode) : 'replace',
+        timing: PRE_GENERATION_INTERCEPT_TIMING,
+        contextFormat,
+        changed: false,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        beforeText,
+        afterText: beforeText,
+        outputText: '',
+        profileId: '',
+        runner: 'error',
+        timestamp: new Date().toISOString(),
+    });
+
     const runs = [];
-    for (const agent of interceptAgents) {
+    const batches = partitionInterceptAgentBatches(interceptAgents);
+    outer: for (const batch of batches) {
         if (generationStopRequested) {
             break;
         }
 
+        if (batch.parallel) {
+            const batchInputText = currentContextText;
+            const batchResults = await Promise.all(batch.agents.map(async (agent) => {
+                try {
+                    return await runContextInterceptAgent(agent, batchInputText, activationSnapshot.generationType, contextFormat);
+                } catch (error) {
+                    console.warn(`[InChatAgents] Pre-generation intercept agent "${agent.name}" failed. Leaving context unchanged for this agent.`, error);
+                    return makeTextErrorRun(agent, batchInputText, error);
+                }
+            }));
+
+            for (let i = 0; i < batch.agents.length; i++) {
+                const agent = batch.agents[i];
+                const result = batchResults[i];
+                if (generationStopRequested || result.status === 'cancelled') {
+                    runs.push({ ...result, status: 'cancelled', changed: false, beforeText: currentContextText, afterText: currentContextText });
+                    break outer;
+                }
+                if (result.status !== 'changed') {
+                    result.beforeText = currentContextText;
+                    result.afterText = currentContextText;
+                    runs.push(result);
+                    continue;
+                }
+
+                result.beforeText = currentContextText;
+                currentContextText = applyContextInterceptText(currentContextText, result.outputText, agent.preProcess);
+                result.afterText = currentContextText;
+                result.changed = result.afterText !== result.beforeText;
+                result.status = result.changed ? 'changed' : 'unchanged';
+                runs.push(result);
+            }
+            continue;
+        }
+
+        const agent = batch.agents[0];
         try {
             const result = await runContextInterceptAgent(agent, currentContextText, activationSnapshot.generationType, contextFormat);
             if (result.status !== 'changed') {
@@ -4712,22 +4800,7 @@ async function runPreGenerationInterceptorsOnText(initialContextText, generation
             runs.push(result);
         } catch (error) {
             console.warn(`[InChatAgents] Pre-generation intercept agent "${agent.name}" failed. Leaving context unchanged for this agent.`, error);
-            runs.push({
-                agentId: agent.id,
-                agentName: agent.name,
-                applyMode: ['wrap', 'patch'].includes(String(agent?.preProcess?.applyMode)) ? String(agent.preProcess.applyMode) : 'replace',
-                timing: PRE_GENERATION_INTERCEPT_TIMING,
-                contextFormat,
-                changed: false,
-                status: 'error',
-                error: error instanceof Error ? error.message : String(error),
-                beforeText: currentContextText,
-                afterText: currentContextText,
-                outputText: '',
-                profileId: '',
-                runner: 'error',
-                timestamp: new Date().toISOString(),
-            });
+            runs.push(makeTextErrorRun(agent, currentContextText, error));
         }
     }
 
@@ -4774,12 +4847,100 @@ async function runPreGenerationInterceptorsOnChat(initialChatMessages, generatio
         return { chat: currentChatMessages, runs: [] };
     }
 
+    const makeChatErrorRun = (agent, contextText, error, partialResult = null) => ({
+        agentId: agent.id,
+        agentName: agent.name,
+        applyMode: ['wrap', 'patch'].includes(String(agent?.preProcess?.applyMode)) ? String(agent.preProcess.applyMode) : 'replace',
+        timing: PRE_GENERATION_INTERCEPT_TIMING,
+        contextFormat: 'chat',
+        changed: false,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        beforeText: contextText,
+        afterText: contextText,
+        outputText: normalizeContentText(partialResult?.outputText),
+        profileId: partialResult?.profileId ?? '',
+        runner: partialResult?.runner ?? 'error',
+        timestamp: partialResult?.timestamp ?? new Date().toISOString(),
+    });
+
+    const applyChatInterceptResult = (agent, result, beforeText) => {
+        result.beforeText = beforeText;
+        if (agent.preProcess?.applyMode === 'wrap') {
+            insertContextInterceptChatMessage(
+                currentChatMessages,
+                `${String(agent.preProcess?.wrapPrefix ?? '')}${result.outputText}${String(agent.preProcess?.wrapSuffix ?? '')}`,
+                agent,
+            );
+            result.afterText = serializeChatContext(currentChatMessages);
+            result.changed = result.afterText !== result.beforeText;
+            result.status = result.changed ? 'changed' : 'unchanged';
+            result.role = getContextInterceptChatRole(agent);
+            runs.push(result);
+            return;
+        }
+
+        if (agent.preProcess?.applyMode === 'patch') {
+            insertContextInterceptChatMessage(currentChatMessages, buildPatchTaggedText(result.outputText, agent.preProcess), agent);
+            result.afterText = serializeChatContext(currentChatMessages);
+            result.changed = result.afterText !== result.beforeText;
+            result.status = result.changed ? 'changed' : 'unchanged';
+            result.role = getContextInterceptChatRole(agent);
+            runs.push(result);
+            return;
+        }
+
+        currentChatMessages = parseChatContext(result.outputText);
+        result.afterText = serializeChatContext(currentChatMessages);
+        result.changed = result.afterText !== result.beforeText;
+        result.status = result.changed ? 'changed' : 'unchanged';
+        runs.push(result);
+    };
+
     const runs = [];
-    for (const agent of interceptAgents) {
+    const batches = partitionInterceptAgentBatches(interceptAgents);
+    outer: for (const batch of batches) {
         if (generationStopRequested) {
             break;
         }
 
+        if (batch.parallel) {
+            const batchContextText = serializeChatContext(currentChatMessages);
+            const batchResults = await Promise.all(batch.agents.map(async (agent) => {
+                try {
+                    return await runContextInterceptAgent(agent, batchContextText, activationSnapshot.generationType, 'chat');
+                } catch (error) {
+                    console.warn(`[InChatAgents] Pre-generation intercept agent "${agent.name}" failed. Leaving chat context unchanged for this agent.`, error);
+                    return makeChatErrorRun(agent, batchContextText, error);
+                }
+            }));
+
+            for (let i = 0; i < batch.agents.length; i++) {
+                const agent = batch.agents[i];
+                const result = batchResults[i];
+                const currentText = serializeChatContext(currentChatMessages);
+                if (generationStopRequested || result.status === 'cancelled') {
+                    runs.push({ ...result, status: 'cancelled', changed: false, beforeText: currentText, afterText: currentText });
+                    break outer;
+                }
+                if (result.status !== 'changed') {
+                    result.beforeText = currentText;
+                    result.afterText = currentText;
+                    runs.push(result);
+                    continue;
+                }
+
+                try {
+                    applyChatInterceptResult(agent, result, currentText);
+                } catch (error) {
+                    console.warn(`[InChatAgents] Pre-generation intercept agent "${agent.name}" failed. Leaving chat context unchanged for this agent.`, error);
+                    runs.push(makeChatErrorRun(agent, currentText, error, result));
+                }
+            }
+            continue;
+        }
+
+        const agent = batch.agents[0];
         const contextText = serializeChatContext(currentChatMessages);
         let result = null;
 
@@ -4793,53 +4954,10 @@ async function runPreGenerationInterceptorsOnChat(initialChatMessages, generatio
                 continue;
             }
 
-            if (agent.preProcess?.applyMode === 'wrap') {
-                insertContextInterceptChatMessage(
-                    currentChatMessages,
-                    `${String(agent.preProcess?.wrapPrefix ?? '')}${result.outputText}${String(agent.preProcess?.wrapSuffix ?? '')}`,
-                    agent,
-                );
-                result.afterText = serializeChatContext(currentChatMessages);
-                result.changed = result.afterText !== result.beforeText;
-                result.status = result.changed ? 'changed' : 'unchanged';
-                result.role = getContextInterceptChatRole(agent);
-                runs.push(result);
-                continue;
-            }
-
-            if (agent.preProcess?.applyMode === 'patch') {
-                insertContextInterceptChatMessage(currentChatMessages, buildPatchTaggedText(result.outputText, agent.preProcess), agent);
-                result.afterText = serializeChatContext(currentChatMessages);
-                result.changed = result.afterText !== result.beforeText;
-                result.status = result.changed ? 'changed' : 'unchanged';
-                result.role = getContextInterceptChatRole(agent);
-                runs.push(result);
-                continue;
-            }
-
-            currentChatMessages = parseChatContext(result.outputText);
-            result.afterText = serializeChatContext(currentChatMessages);
-            result.changed = result.afterText !== result.beforeText;
-            result.status = result.changed ? 'changed' : 'unchanged';
-            runs.push(result);
+            applyChatInterceptResult(agent, result, contextText);
         } catch (error) {
             console.warn(`[InChatAgents] Pre-generation intercept agent "${agent.name}" failed. Leaving chat context unchanged for this agent.`, error);
-            runs.push({
-                agentId: agent.id,
-                agentName: agent.name,
-                applyMode: ['wrap', 'patch'].includes(String(agent?.preProcess?.applyMode)) ? String(agent.preProcess.applyMode) : 'replace',
-                timing: PRE_GENERATION_INTERCEPT_TIMING,
-                contextFormat: 'chat',
-                changed: false,
-                status: 'error',
-                error: error instanceof Error ? error.message : String(error),
-                beforeText: contextText,
-                afterText: contextText,
-                outputText: normalizeContentText(result?.outputText),
-                profileId: result?.profileId ?? '',
-                runner: result?.runner ?? 'error',
-                timestamp: result?.timestamp ?? new Date().toISOString(),
-            });
+            runs.push(makeChatErrorRun(agent, contextText, error, result));
         }
     }
 
