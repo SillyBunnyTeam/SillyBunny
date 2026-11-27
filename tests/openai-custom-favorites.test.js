@@ -1,79 +1,154 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const openAiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'openai.js'), 'utf8');
+import { getCustomEndpointFavoritesKey } from '../public/scripts/openai-preset-utils.js';
+import { importOpenAiModule } from './util/openai-harness.js';
 
-function getFunctionSource(name) {
-    const marker = `function ${name}(`;
-    const start = openAiSource.indexOf(marker);
+const jquerySource = readFileSync(fileURLToPath(new URL('../public/lib/jquery-3.5.1.min.js', import.meta.url)), 'utf8');
+(0, eval)(jquerySource);
+$.fn.select2 = function () { return this; };
+$.fn.sortable = function () { return this; };
 
-    expect(start).toBeGreaterThanOrEqual(0);
+const { openai, mocks } = await importOpenAiModule();
+const initialDefaults = structuredClone(openai.oai_settings);
 
-    const bodyStart = openAiSource.indexOf(') {', start) + 2;
-    let depth = 0;
-
-    for (let index = bodyStart; index < openAiSource.length; index++) {
-        const char = openAiSource[index];
-        if (char === '{') {
-            depth++;
-        } else if (char === '}') {
-            depth--;
-            if (depth === 0) {
-                return openAiSource.slice(start, index + 1);
-            }
-        }
-    }
-
-    throw new Error(`Unable to find function source for ${name}`);
+function mountCustomModelDom() {
+    document.body.innerHTML = `
+        <select id="chat_completion_source">
+            <option value="custom">Custom</option>
+            <option value="openai">OpenAI</option>
+        </select>
+        <input id="custom_api_url_text" type="text" value="" />
+        <div class="custom-model-row"><input id="custom_model_id" type="text" value="" /></div>
+        <select id="model_custom_select" class="model_custom_select"></select>
+        <datalist id="model_custom_select_fill"></datalist>
+        <select id="custom_endpoint_preset"></select>
+        <input id="custom_endpoint_preset_name" type="text" value="" />
+        <input id="api_key_custom" type="text" value="" />
+        <button id="api_button_openai" type="button"></button>
+    `;
 }
 
-describe('OpenAI custom favorites wiring', () => {
-    test('imports the Custom endpoint favorites key helper', () => {
-        expect(openAiSource).toContain('getCustomEndpointFavoritesKey,');
-        expect(openAiSource).toContain('} from \'./openai-preset-utils.js\';');
+function getFavoriteOptionValues() {
+    return Array.from(document.querySelectorAll('#model_custom_select option[data-favorite="true"]'))
+        .map(option => option.value);
+}
+
+describe('OpenAI custom favorites behaviour', () => {
+    beforeEach(() => {
+        Object.assign(openai.oai_settings, structuredClone(initialDefaults));
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.CUSTOM;
+        openai.model_list.splice(0, openai.model_list.length);
+        mocks.script.saveSettingsDebounced.mockClear();
+        mocks.script.startStatusLoading.mockClear();
+        mountCustomModelDom();
     });
 
-    test('reads model favorites from URL-scoped Custom buckets', () => {
-        const getterSource = getFunctionSource('getModelFavoritesForSource');
-
-        expect(getterSource).toContain('const favoritesKey = getCustomEndpointFavoritesKey(source, settings.custom_url);');
-        expect(getterSource).toContain('source === chat_completion_sources.CUSTOM && favoritesKey !== source && !Object.hasOwn(favoritesStore, favoritesKey)');
-        expect(getterSource).toContain('favoritesStore[favoritesKey] = Array.isArray(favoritesStore[source]) ? [...favoritesStore[source]] : [];');
-        expect(getterSource).toContain('favoritesStore[favoritesKey] = [...new Set(');
-        expect(getterSource).toContain('return favoritesStore[favoritesKey];');
+    afterEach(async () => {
+        document.body.innerHTML = '';
+        await Promise.resolve();
     });
 
-    test('writes model favorites back to the resolved storage bucket', () => {
-        const setterSource = getFunctionSource('setModelFavoritesForSource');
+    test('migrates legacy custom favorites into a URL-scoped bucket and isolates buckets per URL', () => {
+        const urlA = 'https://alpha.example/v1';
+        const urlB = 'https://beta.example/v1';
+        const keyA = getCustomEndpointFavoritesKey(openai.chat_completion_sources.CUSTOM, urlA);
+        const keyB = getCustomEndpointFavoritesKey(openai.chat_completion_sources.CUSTOM, urlB);
 
-        expect(setterSource).toContain('const favoritesKey = getCustomEndpointFavoritesKey(source, settings.custom_url);');
-        expect(setterSource).toContain('favoritesStore[favoritesKey] = [...new Set(');
+        openai.oai_settings.custom_url = urlA;
+        openai.oai_settings.model_favorites = {
+            custom: ['zeta-model', '  alpha-model  ', 'zeta-model', ''],
+            [keyB]: ['beta-only'],
+        };
+        openai.model_list.push({ id: 'zeta-model' }, { id: 'alpha-model' }, { id: 'beta-only' });
+
+        openai.initOpenAI();
+
+        // Legacy custom favorites migrate once to URL A's bucket and deduplicate.
+        expect(openai.oai_settings.model_favorites[keyA]).toEqual(['zeta-model', 'alpha-model']);
+        // DOM displays favorites alphabetically without mutating the stored order.
+        expect(getFavoriteOptionValues()).toEqual(['alpha-model', 'zeta-model']);
+        expect(openai.oai_settings.model_favorites[keyA]).toEqual(['zeta-model', 'alpha-model']);
+
+        // Switching the manual URL swaps the displayed favorites to URL B's isolated bucket.
+        $('#custom_api_url_text').val(urlB).trigger('input').trigger('change');
+        expect(openai.oai_settings.custom_url).toBe(urlB);
+        expect(getFavoriteOptionValues()).toEqual(['beta-only']);
     });
 
-    test('renders DOM model ID favorites alphabetically without mutating the store', () => {
-        const rebuildSource = getFunctionSource('rebuildModelIdSearchControl');
+    test('writes toggled favorites back to the active URL-scoped Custom bucket', () => {
+        const urlA = 'https://alpha.example/v1';
+        const keyA = getCustomEndpointFavoritesKey(openai.chat_completion_sources.CUSTOM, urlA);
 
-        expect(rebuildSource).toContain('const favorites = [...getModelFavoritesForSource(control.source)].sort((left, right) => left.localeCompare(right));');
+        openai.oai_settings.custom_url = urlA;
+        openai.oai_settings.custom_model = 'custom-fav';
+        openai.oai_settings.model_favorites = { [keyA]: [] };
+        openai.model_list.push({ id: 'custom-fav' }, { id: 'other-model' });
+
+        openai.initOpenAI();
+
+        const toggleButton = document.querySelector('[data-sb-model-id-favorite-source="custom"]');
+        expect(toggleButton).not.toBeNull();
+
+        toggleButton.click();
+        expect(openai.oai_settings.model_favorites[keyA]).toEqual(['custom-fav']);
+        expect(getFavoriteOptionValues()).toEqual(['custom-fav']);
+
+        toggleButton.click();
+        expect(openai.oai_settings.model_favorites[keyA]).toEqual([]);
+        expect(getFavoriteOptionValues()).toEqual([]);
     });
 
-    test('refreshes Custom model ID favorites after endpoint profile changes', () => {
-        const setCustomEndpointSource = getFunctionSource('setCustomEndpointPreset');
-        const urlUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_url = normalizedPreset.url;');
-        const modelSelectIndex = setCustomEndpointSource.indexOf('$(\'#model_custom_select\').val(oai_settings.custom_model);');
-        const refreshIndex = setCustomEndpointSource.indexOf('refreshModelIdSearchControlsForSource(chat_completion_sources.CUSTOM);');
-        const reconnectIndex = setCustomEndpointSource.indexOf('reconnectOpenAi();');
+    test('refreshes Custom model favorites and reconnects after selecting a Custom endpoint profile', async () => {
+        const urlA = 'https://alpha.example/v1';
+        const urlB = 'https://beta.example/v1';
+        const keyA = getCustomEndpointFavoritesKey(openai.chat_completion_sources.CUSTOM, urlA);
+        const keyB = getCustomEndpointFavoritesKey(openai.chat_completion_sources.CUSTOM, urlB);
 
-        expect(urlUpdateIndex).toBeGreaterThanOrEqual(0);
-        expect(modelSelectIndex).toBeGreaterThan(urlUpdateIndex);
-        expect(refreshIndex).toBeGreaterThan(modelSelectIndex);
-        expect(reconnectIndex).toBeGreaterThan(refreshIndex);
-    });
+        const originalFetch = global.fetch;
+        global.fetch = jest.fn(async () => ({
+            ok: true,
+            json: async () => ({ data: [{ id: 'beta-model' }, { id: 'alpha-model' }] }),
+        }));
 
-    test('refreshes Custom model ID favorites when manually changing the endpoint URL', () => {
-        expect(openAiSource).toContain('$(\'#custom_api_url_text\').on(\'change\', function () {');
-        expect(openAiSource).toMatch(/\$\('#custom_api_url_text'\)\.on\('change', function \(\) \{[\s\S]*if \(oai_settings\.chat_completion_source === chat_completion_sources\.CUSTOM\) \{[\s\S]*refreshModelIdSearchControlsForSource\(chat_completion_sources\.CUSTOM\);[\s\S]*\}\);/);
+        try {
+            openai.oai_settings.custom_url = urlA;
+            openai.oai_settings.custom_model = 'alpha-model';
+            openai.oai_settings.model_favorites = {
+                [keyA]: ['alpha-model'],
+                [keyB]: ['beta-model'],
+            };
+            openai.model_list.push({ id: 'alpha-model' }, { id: 'beta-model' });
+
+            await openai.loadCustomEndpointPresets({
+                custom_endpoint_presets: [
+                    { name: 'Alpha', url: urlA, model: 'alpha-model', key: '', secretId: 'sec-a' },
+                    { name: 'Beta', url: urlB, model: 'beta-model', key: '', secretId: 'sec-b' },
+                ],
+                selected_custom_endpoint_preset: { name: 'Alpha', url: urlA, model: 'alpha-model', key: '', secretId: 'sec-a' },
+            });
+            openai.initOpenAI();
+
+            expect(getFavoriteOptionValues()).toEqual(['alpha-model']);
+
+            // Switch to Beta profile via the dropdown and confirm favorites update before reconnect.
+            const favoritesAtReconnect = [];
+            mocks.script.startStatusLoading.mockImplementation(() => {
+                favoritesAtReconnect.push(getFavoriteOptionValues());
+            });
+
+            $('#custom_endpoint_preset').val('Beta').trigger('change');
+            await new Promise(resolve => setTimeout(resolve, 20));
+
+            expect(openai.oai_settings.custom_url).toBe(urlB);
+            expect(openai.oai_settings.custom_model).toBe('beta-model');
+            expect(getFavoriteOptionValues()).toEqual(['beta-model']);
+            expect(favoritesAtReconnect[0]).toEqual(['beta-model']);
+        } finally {
+            global.fetch = originalFetch;
+        }
     });
 });

@@ -15,8 +15,8 @@ export function createNoopJQuery() {
         length: 0,
         on: () => chain,
         off: () => chain,
-        val: () => '',
-        prop: () => false,
+        val: (...args) => (args.length > 0 ? chain : ''),
+        prop: (...args) => (args.length > 1 ? chain : false),
         attr: () => chain,
         removeAttr: () => chain,
         text: () => chain,
@@ -73,6 +73,10 @@ export async function importOpenAiModule({
     mockToolCalling = true,
     mockPromptManager = true,
     mockTokenizers = true,
+    mockTextgenModels = true,
+    mockUtils = true,
+    mockModelDetails = true,
+    domPurify = null,
     script: scriptOverrides = {},
     powerUser: powerUserOverrides = {},
     secrets: secretsOverrides = {},
@@ -126,6 +130,7 @@ export async function importOpenAiModule({
         }),
         once: jest.fn(),
         off: jest.fn(),
+        removeListener: jest.fn(),
         emit: jest.fn(async (event, ...args) => {
             for (const listener of eventListeners.get(event) ?? []) {
                 await listener(...args);
@@ -308,8 +313,16 @@ export async function importOpenAiModule({
 
     await jest.unstable_mockModule(pub('lib.js'), () => ({
         Fuse: class Fuse { search() { return []; } },
-        DOMPurify: { sanitize: value => value },
-        localforage: { getItem: async () => null, setItem: async () => {} },
+        DOMPurify: domPurify ?? { sanitize: value => value },
+        localforage: {
+            getItem: async () => null,
+            setItem: async () => {},
+            createInstance: () => ({ getItem: async () => null, setItem: async () => {} }),
+        },
+        moment: () => ({ format: () => '' }),
+        Readability: class Readability {},
+        isProbablyReaderable: () => false,
+        lodash: {},
     }));
     await jest.unstable_mockModule(pub('script.js'), () => scriptMock);
     await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({
@@ -322,57 +335,70 @@ export async function importOpenAiModule({
         await jest.unstable_mockModule(pub('scripts/PromptManager.js'), () => promptManagerMock);
     }
     await jest.unstable_mockModule(pub('scripts/power-user.js'), () => ({
+        collapseNewlines: jest.fn(value => value),
         forceCharacterEditorTokenize: jest.fn(),
         getCustomStoppingStrings: jest.fn(() => []),
+        performFuzzySearch: jest.fn(() => []),
         persona_description_positions: { IN_PROMPT: 0, TOP_AN: 2, BOTTOM_AN: 3, AT_DEPTH: 4, NONE: 9 },
         power_user: powerUser,
         registerDebugFunction: jest.fn(),
     }));
     await jest.unstable_mockModule(pub('scripts/secrets.js'), () => secretsMock);
     await jest.unstable_mockModule(pub('scripts/sse-stream.js'), () => ({
+        default: class EventSourceStream {},
         getEventSourceStream: jest.fn(),
     }));
     await jest.unstable_mockModule(pub('scripts/resumable-generation.js'), () => ({
         fetchResumable: fetchResumableMock,
     }));
-    await jest.unstable_mockModule(pub('scripts/utils.js'), () => ({
-        createThumbnail: jest.fn(),
-        debounce: fn => fn,
-        delay: jest.fn(async () => {}),
-        download: jest.fn(),
-        escapeHtml: value => String(value ?? ''),
-        getAudioDurationFromDataURL: jest.fn(async () => 0),
-        getBase64Async: jest.fn(async () => ''),
-        getFileText: jest.fn(async () => ''),
-        getImageSizeFromDataURL: jest.fn(async () => ({ width: 0, height: 0 })),
-        getSortableDelay: jest.fn(() => 0),
-        getStringHash: jest.fn(value => String(value ?? '')),
-        getVideoDurationFromDataURL: jest.fn(async () => 0),
-        isDataURL: jest.fn(() => false),
-        isFalseBoolean: value => value === false || String(value).toLowerCase() === 'false',
-        isTrueBoolean: value => value === true || String(value).toLowerCase() === 'true',
-        isUuid: jest.fn(() => false),
-        isValidUrl: value => {
-            try {
-                new URL(value);
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        parseJsonFile: jest.fn(async () => ({})),
-        resetScrollHeight: jest.fn(),
-        stringFormat: (str, ...args) => String(str).replace(/\{(\d+)\}/g, (_m, i) => args[i] ?? ''),
-        textValueMatcher: jest.fn(() => true),
-        uuidv4: jest.fn(() => '00000000-0000-4000-8000-000000000000'),
-        waitUntilCondition: jest.fn(async () => true),
-    }));
+    if (mockUtils) {
+        await jest.unstable_mockModule(pub('scripts/utils.js'), () => ({
+            copyText: jest.fn(),
+            createThumbnail: jest.fn(),
+            debounce: fn => fn,
+            delay: jest.fn(async () => {}),
+            download: jest.fn(),
+            escapeHtml: value => String(value ?? ''),
+            escapeRegex: value => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+            getAudioDurationFromDataURL: jest.fn(async () => 0),
+            getBase64Async: jest.fn(async () => ''),
+            getFileText: jest.fn(async () => ''),
+            getImageSizeFromDataURL: jest.fn(async () => ({ width: 0, height: 0 })),
+            getSortableDelay: jest.fn(() => 0),
+            getStringHash: jest.fn(value => String(value ?? '')),
+            getVideoDurationFromDataURL: jest.fn(async () => 0),
+            isDataURL: jest.fn(() => false),
+            isFalseBoolean: value => value === false || String(value).toLowerCase() === 'false',
+            isTrueBoolean: value => value === true || String(value).toLowerCase() === 'true',
+            isUuid: jest.fn(() => false),
+            isValidUrl: value => {
+                try {
+                    new URL(value);
+                    return true;
+                } catch {
+                    return false;
+                }
+            },
+            localizePagination: jest.fn(),
+            PAGINATION_TEMPLATE: '',
+            parseJsonFile: jest.fn(async () => ({})),
+            resetScrollHeight: jest.fn(),
+            setDatasetProperty: jest.fn(),
+            stringFormat: (str, ...args) => String(str).replace(/\{(\d+)\}/g, (_m, i) => args[i] ?? ''),
+            stringToRange: jest.fn(() => []),
+            textValueMatcher: jest.fn(() => true),
+            trimSpaces: value => String(value ?? '').trim(),
+            uuidv4: jest.fn(() => '00000000-0000-4000-8000-000000000000'),
+            waitUntilCondition: jest.fn(async () => true),
+        }));
+    }
     if (mockTokenizers) {
         await jest.unstable_mockModule(pub('scripts/tokenizers.js'), () => ({
             countChatCompletionPayloadTokensOpenAIAsync: jest.fn(async () => 0),
             countTokensOpenAIAsync: jest.fn(async () => 0),
             getTokenizerModel: jest.fn(() => 'gpt-4o'),
             primeOpenAITokenCache: jest.fn(),
+            tokenizers: {},
         }));
     }
     await jest.unstable_mockModule(pub('scripts/RossAscends-mods.js'), () => ({
@@ -400,6 +426,7 @@ export async function importOpenAiModule({
         SlashCommandClosure: class SlashCommandClosure {},
     }));
     await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandCommonEnumsProvider.js'), () => ({
+        commonEnumProviders: {},
         enumIcons: {},
     }));
     await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandEnumValue.js'), () => ({
@@ -415,7 +442,9 @@ export async function importOpenAiModule({
         confirmVerb: jest.fn(() => ({})),
     }));
     await jest.unstable_mockModule(pub('scripts/i18n.js'), () => ({
+        getCurrentLocale: () => 'en',
         t: (strings, ...values) => strings.reduce((out, part, idx) => out + part + (values[idx] ?? ''), ''),
+        translate: value => value,
     }));
     if (mockToolCalling) {
         await jest.unstable_mockModule(pub('scripts/tool-calling.js'), () => ({
@@ -425,34 +454,51 @@ export async function importOpenAiModule({
     await jest.unstable_mockModule(pub('scripts/util/AccountStorage.js'), () => ({
         accountStorage: accountStorageMock,
     }));
-    await jest.unstable_mockModule(pub('scripts/textgen-models.js'), () => ({
-        setOpenRouterProviders: jest.fn(),
-        syncNanoGptProvidersForModel: jest.fn(),
-        syncOpenRouterProvidersForModel: jest.fn(),
-        updateNanoGptProvidersWarning: jest.fn(),
-        updateOpenRouterProvidersWarning: jest.fn(),
-    }));
+    if (mockTextgenModels) {
+        await jest.unstable_mockModule(pub('scripts/textgen-models.js'), () => ({
+            getCurrentDreamGenModelTokenizer: jest.fn(() => null),
+            getCurrentOpenRouterModelTokenizer: jest.fn(() => null),
+            openRouterModels: [],
+            setOpenRouterProviders: jest.fn(),
+            syncNanoGptProvidersForModel: jest.fn(),
+            syncOpenRouterProvidersForModel: jest.fn(),
+            updateNanoGptProvidersWarning: jest.fn(),
+            updateOpenRouterProvidersWarning: jest.fn(),
+        }));
+    }
     await jest.unstable_mockModule(pub('scripts/sillybunny-editor/adapters/window-content-dialogs.js'), () => ({
         customEndpointParametersOptions: jest.fn(() => ({})),
     }));
     await jest.unstable_mockModule(pub('scripts/sillybunny-connection-notices.js'), () => ({
         flagMissingKey: jest.fn(),
     }));
-    await jest.unstable_mockModule(pub('scripts/sillybunny-koboldcpp-models.js'), () => koboldCppMock);
-    await jest.unstable_mockModule(pub('scripts/sillybunny-request-errors.js'), () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-koboldcpp-models.js'), () => ({
+        initKoboldCppModels: jest.fn(),
+        ...koboldCppMock,
+    }));
+    const requestErrorsMock = {
         createFailedResponseError: jest.fn(async () => new Error('Request failed')),
         showRequestError: jest.fn(),
         getFailureStatus: jest.fn(() => 500),
-    }));
-    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/option-details.js'), () => ({
-        registerOptionDetails: jest.fn(),
-    }));
-    await jest.unstable_mockModule(pub('scripts/sillybunny-model-details.js'), () => ({
-        describeAimlapiModel: jest.fn(),
-        describeChutesModel: jest.fn(),
-        describeElectronHubModel: jest.fn(),
-        describeOpenRouterModel: jest.fn(),
-    }));
+    };
+    await jest.unstable_mockModule(pub('scripts/sillybunny-request-errors.js'), () => requestErrorsMock);
+    if (mockModelDetails) {
+        await jest.unstable_mockModule(pub('scripts/sillybunny-editor/option-details.js'), () => ({
+            registerOptionDetails: jest.fn(),
+            icon: jest.fn(),
+            link: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-model-details.js'), () => ({
+            describeAimlapiModel: jest.fn(),
+            describeChutesModel: jest.fn(),
+            describeElectronHubModel: jest.fn(),
+            describeHordeModel: jest.fn(),
+            describeMancerModel: jest.fn(),
+            describeOpenRouterModel: jest.fn(),
+            describeTogetherModel: jest.fn(),
+            plainText: value => String(value ?? ''),
+        }));
+    }
 
     const openai = await import('../../public/scripts/openai.js');
     return {
@@ -469,6 +515,7 @@ export async function importOpenAiModule({
             registeredCommands,
             koboldCpp: koboldCppMock,
             toolManager: toolManagerMock,
+            requestErrors: requestErrorsMock,
         },
     };
 }

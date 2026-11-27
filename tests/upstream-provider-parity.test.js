@@ -1,29 +1,94 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { parse } from 'acorn';
-import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
-import { migrateNanoGptProviderSettings } from '../public/scripts/openai-preset-utils.js';
-import { shouldForwardChatId } from '../public/scripts/local-url-utils.js';
-import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
+/* global globalThis */
+/* eslint-disable playwright/no-standalone-expect -- Jest unit assertions. */
+import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { fileURLToPath } from 'node:url';
 
-const sources = Object.fromEntries(['openai', 'custom-request', 'reasoning', 'tokenizers'].map(name => {
-    const source = readFileSync(new URL(`../public/scripts/${name}.js`, import.meta.url), 'utf8');
-    return [name, { source, ast: parse(source, { ecmaVersion: 'latest', sourceType: 'module' }) }];
+globalThis.document ??= { createElement: () => ({}), querySelector: () => null };
+globalThis.HTMLInputElement ??= class HTMLInputElement {};
+globalThis.HTMLSelectElement ??= class HTMLSelectElement {};
+
+import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
+import { importOpenAiModule } from './util/openai-harness.js';
+
+const pub = relative => fileURLToPath(new URL(`../public/${relative}`, import.meta.url));
+
+// Mock peer modules of custom-request.js, reasoning.js, and tokenizers.js before importing them.
+await jest.unstable_mockModule(pub('scripts/preset-manager.js'), () => ({
+    getPresetManager: jest.fn(() => null),
+}));
+await jest.unstable_mockModule(pub('scripts/textgen-settings.js'), () => ({
+    getTextGenServer: jest.fn(() => ''),
+    getTextGenModel: jest.fn(() => ''),
+    createTextGenGenerationData: jest.fn(() => ({})),
+    setting_names: {},
+    textgen_types: {},
+    textgenerationwebui_settings: {},
+}));
+await jest.unstable_mockModule(pub('scripts/instruct-mode.js'), () => ({
+    formatInstructModeChat: jest.fn(() => ''),
+    formatInstructModePrompt: jest.fn(() => ''),
+    getInstructStoppingSequences: jest.fn(() => []),
+}));
+await jest.unstable_mockModule(pub('scripts/extensions/regex/engine.js'), () => ({
+    getRegexedString: jest.fn(value => value),
+    regex_placement: {},
+}));
+await jest.unstable_mockModule(pub('scripts/macros/macro-system.js'), () => ({
+    macros: { register: jest.fn() },
+    MacroCategory: {},
+}));
+await jest.unstable_mockModule(pub('scripts/mobile-streaming.js'), () => ({
+    getStreamingReasoningRenderInterval: jest.fn(() => 0),
+    shouldReduceStreamingDomWork: jest.fn(() => false),
+    shouldRenderLiveReasoningContent: jest.fn(() => true),
+}));
+await jest.unstable_mockModule(pub('scripts/util/stream-fadein.js'), () => ({
+    applyStreamDomPatch: jest.fn(),
+    applyStreamFadeIn: jest.fn(),
+}));
+await jest.unstable_mockModule(pub('scripts/kai-settings.js'), () => ({
+    kai_flags: {},
+    kai_settings: {},
 }));
 
-function load(context, file, names) {
-    const { source, ast } = sources[file];
-    for (const name of names) {
-        const node = ast.body.map(node => node.declaration ?? node)
-            .find(node => node.id?.name === name || node.declarations?.some(item => item.id.name === name));
-        if (!node) throw new Error(`Missing declaration: ${file}.${name}`);
-        vm.runInContext(source.slice(node.start, node.end), context);
-    }
-}
+let koboldState = null;
 
-function makeRuntime(overrides = {}) {
-    const settings = {
+const { openai, mocks } = await importOpenAiModule({
+    mockTokenizers: false,
+    powerUser: { request_token_probabilities: true },
+    script: {
+        name1: 'User',
+        name2: 'Character',
+        getCurrentChatId: jest.fn(() => 'parity-chat'),
+        substituteParams: jest.fn(value => typeof value === 'string' ? value.replaceAll('{{char}}', 'Character') : value),
+        extractJsonFromData: jest.fn(),
+        extractMessageFromData: jest.fn(),
+        getGenerateUrl: jest.fn(() => '/api/backends/chat-completions/generate'),
+        normalizeContentText: jest.fn(value => value),
+        closeMessageEditor: jest.fn(),
+        messageFormatting: jest.fn(value => value),
+        saveChatDebounced: jest.fn(),
+        syncMesToSwipe: jest.fn(),
+        updateMessageBlock: jest.fn(),
+        updateMessageTokenAccounting: jest.fn(),
+        nai_settings: {},
+    },
+    koboldCpp: {
+        isKoboldCppChatCompletion: jest.fn(() => openai.oai_settings.chat_completion_source === 'koboldcpp'),
+        getKoboldCppChatState: jest.fn(() => koboldState),
+    },
+});
+
+const { ChatCompletionService } = await import('../public/scripts/custom-request.js');
+const { extractReasoningFromData } = await import('../public/scripts/reasoning.js');
+const { getTokenizerModel } = await import('../public/scripts/tokenizers.js');
+
+const initialDefaults = structuredClone(openai.oai_settings);
+
+function configureRuntime(overrides = {}) {
+    koboldState = null;
+    mocks.powerUser.request_token_probabilities = true;
+    Object.assign(openai.oai_settings, structuredClone(initialDefaults), {
         chat_completion_source: 'custom',
         show_thoughts: true,
         reasoning_effort: 'low',
@@ -36,58 +101,38 @@ function makeRuntime(overrides = {}) {
         openai_max_tokens: 120,
         n: 1,
         ...overrides,
-    };
-    const context = vm.createContext({
-        ...samplingParameterPolicy,
-        structuredClone,
-        console,
-        oai_settings: settings,
-        selected_custom_endpoint_preset: null,
-        power_user: { request_token_probabilities: true },
-        name1: 'User',
-        name2: 'Character',
-        model_list: [],
-        main_api: 'openai',
-        ToolManager: { canPerformToolCalls: () => false },
-        getGroupNames: () => [],
-        getCurrentChatId: () => 'parity-chat',
-        shouldForwardChatId,
-        getCustomStoppingStrings: () => [],
-        appendAutoAppendReasoningInstruction: messages => messages,
-        substituteParams: value => typeof value === 'string' ? value.replaceAll('{{char}}', 'Character') : value,
-        applyClaudeModelParameterConstraints,
-        applyKimiK3ModelParameterConstraints,
-        isKimiK3Model,
-        migrateNanoGptProviderSettings,
-        isKoboldCppChatCompletion: () => settings.chat_completion_source === 'koboldcpp',
-        getKoboldCppChatState: () => null,
-        t: strings => strings.join(''),
     });
-    load(context, 'openai', [
-        'chat_completion_sources', 'reasoning_effort_types', 'verbosity_levels',
-        'POLLINATIONS_ENDPOINT', 'REVERSE_PROXY_SUPPORTED_SOURCES', 'openai_max_stop_strings',
-        'getReasoningEffort', 'getVerbosity', 'shouldRequestReasoning', 'getChatCompletionModel',
-        'createGenerationParameters', 'getStreamingReply', 'getChatCompletionErrorMessage', 'settingsToUpdate',
-    ]);
-    load(context, 'custom-request', ['BOOLEAN_CHAT_COMPLETION_FIELDS', 'coerceRequestBoolean', 'normalizeChatCompletionBooleanFields', 'ChatCompletionService']);
-    load(context, 'reasoning', ['extractReasoningFromData']);
-    load(context, 'tokenizers', ['getTokenizerModel']);
     return {
-        context,
-        settings,
-        powerUser: context.power_user,
-        build: (...args) => context.createGenerationParameters(settings, ...args),
-        stream: (...args) => context.getStreamingReply(...args),
-        extract: (...args) => context.extractReasoningFromData(...args),
-        error: (...args) => context.getChatCompletionErrorMessage(...args),
-        tokenizer: () => context.getTokenizerModel(),
-        service: vm.runInContext('ChatCompletionService', context),
+        settings: openai.oai_settings,
+        powerUser: mocks.powerUser,
+        build: (...args) => openai.createGenerationParameters(openai.oai_settings, ...args),
+        stream: (...args) => openai.getStreamingReply(...args),
+        extract: (...args) => extractReasoningFromData(...args),
+        error: (data, response) => {
+            mocks.requestErrors.showRequestError.mockClear();
+            openai.tryParseStreamingError(response, JSON.stringify(data));
+            return mocks.requestErrors.showRequestError.mock.calls.at(-1)?.[0]?.statusText;
+        },
+        tokenizer: () => getTokenizerModel(),
+        service: ChatCompletionService,
     };
 }
 
 describe('upstream provider request integration', () => {
+    beforeEach(async () => {
+        // Clear any selected custom endpoint profile between tests.
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [],
+            selected_custom_endpoint_preset: null,
+        });
+    });
+
     test('a stale custom profile selection does not change the native provider policy target', async () => {
-        const runtime = makeRuntime({
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [{ name: 'Profile A', url: 'https://a.example/v1', model: 'gpt-4o', key: '', secretId: 'profile-a' }],
+            selected_custom_endpoint_preset: { name: 'Profile A', url: 'https://a.example/v1', model: 'gpt-4o', key: '', secretId: 'profile-a' },
+        });
+        const runtime = configureRuntime({
             chat_completion_source: 'openai',
             model_sampling_policies: {
                 version: samplingParameterPolicy.POLICY_SCHEMA_VERSION,
@@ -97,7 +142,6 @@ describe('upstream provider request integration', () => {
                 },
             },
         });
-        runtime.context.selected_custom_endpoint_preset = { secretId: 'profile-a' };
         const { generate_data: nativePayload } = await runtime.build('gpt-4o', 'quiet', []);
         expect(nativePayload).not.toHaveProperty('temperature');
 
@@ -116,7 +160,7 @@ describe('upstream provider request integration', () => {
         ['openrouter', 'openai/gpt-6-astra-2026-09-14'],
     ]) {
         test(`normalizes Astra generation parameters for ${source} model ${model}`, async () => {
-            const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'max' });
+            const runtime = configureRuntime({ chat_completion_source: source, reasoning_effort: 'max' });
             const { generate_data: payload } = await runtime.build(model, 'normal', [{ role: 'user', content: 'Hello' }]);
 
             expect(payload).toMatchObject({ model, max_completion_tokens: 120, reasoning_effort: 'max' });
@@ -139,7 +183,7 @@ describe('upstream provider request integration', () => {
         ['openrouter', 'openai/gpt-6-luna'],
     ]) {
         test(`normalizes Sol and Luna generation parameters at max effort for ${source} model ${model}`, async () => {
-            const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'max' });
+            const runtime = configureRuntime({ chat_completion_source: source, reasoning_effort: 'max' });
             const { generate_data: payload } = await runtime.build(model, 'normal', [{ role: 'user', content: 'Hello' }]);
 
             expect(payload).toMatchObject({ model, max_completion_tokens: 120, reasoning_effort: 'max' });
@@ -160,7 +204,7 @@ describe('upstream provider request integration', () => {
         ['azure_openai', 'gpt-6-luna'],
     ]) {
         test(`keeps Sol and Luna sampling when reasoning is none for ${source} model ${model}`, async () => {
-            const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'none' });
+            const runtime = configureRuntime({ chat_completion_source: source, reasoning_effort: 'none' });
             const { generate_data: payload } = await runtime.build(model, 'normal', [{ role: 'user', content: 'Hello' }]);
 
             expect(payload).toMatchObject({ model, max_completion_tokens: 120, reasoning_effort: 'none', temperature: 1, top_p: 0.9 });
@@ -170,7 +214,7 @@ describe('upstream provider request integration', () => {
 
     for (const source of ['openai', 'openai_responses', 'azure_openai']) {
         test(`drops Astra reasoning effort and sampling when reasoning is none for ${source}`, async () => {
-            const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'none' });
+            const runtime = configureRuntime({ chat_completion_source: source, reasoning_effort: 'none' });
             const { generate_data: payload } = await runtime.build('gpt-6-astra', 'normal', [{ role: 'user', content: 'Hello' }]);
 
             expect(payload.reasoning_effort).toBeUndefined();
@@ -181,7 +225,7 @@ describe('upstream provider request integration', () => {
 
     for (const source of ['openai', 'azure_openai', 'openrouter']) {
         test(`preserves earlier GPT sampling behavior for ${source}`, async () => {
-            const runtime = makeRuntime({ chat_completion_source: source });
+            const runtime = configureRuntime({ chat_completion_source: source });
             const { generate_data: gpt4 } = await runtime.build('gpt-4o', 'normal', []);
             const { generate_data: gpt5 } = await runtime.build('gpt-5.6-sol', 'normal', []);
 
@@ -205,14 +249,14 @@ describe('upstream provider request integration', () => {
         ['unknown-model', 'gpt-3.5-turbo'],
     ]) {
         test(`selects the ElectronHub tokenizer for ${model}`, () => {
-            const runtime = makeRuntime({ chat_completion_source: 'electronhub', electronhub_model: model });
+            const runtime = configureRuntime({ chat_completion_source: 'electronhub', electronhub_model: model });
 
             expect(runtime.tokenizer()).toBe(tokenizer);
         });
     }
 
     test.each(['fireworks', 'openrouter', 'openai', 'openai_responses', 'xai', 'mistralai', 'azure_openai'])('createGenerationParameters sends chat_id for %s unless the request opts out of caching', async (source) => {
-        const runtime = makeRuntime({ chat_completion_source: source });
+        const runtime = configureRuntime({ chat_completion_source: source });
         const messages = [{ role: 'user', content: 'Hello' }];
 
         for (const type of ['normal', 'swipe', 'continue', 'impersonate']) {
@@ -225,12 +269,12 @@ describe('upstream provider request integration', () => {
     });
 
     test.each(['claude', 'custom', 'deepseek', 'makersuite'])('createGenerationParameters never sends chat_id for %s', async (source) => {
-        const runtime = makeRuntime({ chat_completion_source: source });
+        const runtime = configureRuntime({ chat_completion_source: source });
         expect((await runtime.build('model-x', 'normal', [{ role: 'user', content: 'Hello' }])).generate_data).not.toHaveProperty('chat_id');
     });
 
     test('requests and extracts Fireworks reasoning without attaching quiet requests to a chat', async () => {
-        const runtime = makeRuntime({ chat_completion_source: 'fireworks', reasoning_effort: 'min' });
+        const runtime = configureRuntime({ chat_completion_source: 'fireworks', reasoning_effort: 'min' });
         const messages = [{ role: 'user', content: 'Hello' }];
         const { generate_data: interactive } = await runtime.build('accounts/fireworks/models/test', 'normal', messages);
         expect(interactive).toMatchObject({ chat_id: 'parity-chat', include_reasoning: true, reasoning_effort: 'low' });
@@ -250,16 +294,16 @@ describe('upstream provider request integration', () => {
     });
 
     test('keeps OpenRouter logprobs opt-in and preserves DeepSeek low effort', async () => {
-        const openRouter = makeRuntime({ chat_completion_source: 'openrouter' });
+        const openRouter = configureRuntime({ chat_completion_source: 'openrouter' });
         expect((await openRouter.build('provider/model', 'normal', [])).generate_data.logprobs).toBe(5);
         openRouter.powerUser.request_token_probabilities = false;
         expect((await openRouter.build('provider/model', 'normal', [])).generate_data.logprobs).toBeUndefined();
-        const deepseek = makeRuntime({ chat_completion_source: 'deepseek', reasoning_effort: 'low' });
+        const deepseek = configureRuntime({ chat_completion_source: 'deepseek', reasoning_effort: 'low' });
         expect((await deepseek.build('deepseek-v4-flash', 'normal', [])).generate_data.reasoning_effort).toBe('low');
     });
 
     test('filters non-user images for DeepSeek vision without changing the original messages', async () => {
-        const runtime = makeRuntime({ chat_completion_source: 'deepseek' });
+        const runtime = configureRuntime({ chat_completion_source: 'deepseek' });
         const image = { type: 'image_url', image_url: { url: 'https://example.com/image.png' } };
         const messages = [
             { role: 'system', content: [image, { type: 'text', text: 'System' }] },
@@ -284,7 +328,7 @@ describe('upstream provider request integration', () => {
     });
 
     test('expands custom fields on profile requests while preserving the stored preset and custom reasoning controls', async () => {
-        const runtime = makeRuntime();
+        const runtime = configureRuntime();
         const preset = { custom_include_body: 'user: {{char}}' };
         const overrides = {
             messages: [{ role: 'user', content: 'Hello' }],
@@ -308,7 +352,7 @@ describe('upstream provider request integration', () => {
     });
 
     test('routes Pollinations profile endpoints without modifying the active provider settings', async () => {
-        const runtime = makeRuntime({ pollinations_endpoint: 'authenticated', custom_url: 'https://custom.example/v1' });
+        const runtime = configureRuntime({ pollinations_endpoint: 'authenticated', custom_url: 'https://custom.example/v1' });
         const result = await runtime.service.presetToGeneratePayload({}, {}, {
             messages: [],
             model: 'test-model',
@@ -319,12 +363,12 @@ describe('upstream provider request integration', () => {
         expect(result).not.toHaveProperty('custom_url');
         expect(runtime.settings.pollinations_endpoint).toBe('authenticated');
         expect(runtime.settings.chat_completion_source).toBe('custom');
-        const defaultRuntime = makeRuntime({ chat_completion_source: 'pollinations' });
+        const defaultRuntime = configureRuntime({ chat_completion_source: 'pollinations' });
         expect((await defaultRuntime.build('test-model', 'normal', [])).generate_data.pollinations_endpoint).toBe('authenticated');
     });
 
     test('builds KoboldCpp requests with its own URL, samplers and Additional Parameters', async () => {
-        const runtime = makeRuntime({
+        const runtime = configureRuntime({
             chat_completion_source: 'koboldcpp',
             koboldcpp_url: 'http://127.0.0.1:5001',
             koboldcpp_include_body: 'name: {{char}}',
@@ -361,7 +405,7 @@ describe('upstream provider request integration', () => {
     });
 
     test('reads KoboldCpp thinking from reasoning_content', () => {
-        const runtime = makeRuntime({ chat_completion_source: 'koboldcpp' });
+        const runtime = configureRuntime({ chat_completion_source: 'koboldcpp' });
         const state = { reasoning: '' };
 
         const text = runtime.stream({ choices: [{ delta: { content: 'Answer', reasoning_content: 'Thought' } }] }, state, { chatCompletionSource: 'koboldcpp' });
@@ -372,19 +416,19 @@ describe('upstream provider request integration', () => {
     });
 
     test('names the model KoboldCpp has loaded, and none while KoboldCpp reports it inactive', () => {
-        const runtime = makeRuntime({ chat_completion_source: 'koboldcpp' });
+        const runtime = configureRuntime({ chat_completion_source: 'koboldcpp' });
 
-        runtime.context.getKoboldCppChatState = () => ({ loadedModel: 'koboldcpp/Qwen3-0.6B-Q8_0' });
-        expect(runtime.context.getChatCompletionModel()).toBe('koboldcpp/Qwen3-0.6B-Q8_0');
+        koboldState = { loadedModel: 'koboldcpp/Qwen3-0.6B-Q8_0' };
+        expect(openai.getChatCompletionModel()).toBe('koboldcpp/Qwen3-0.6B-Q8_0');
         expect(runtime.tokenizer()).toBe('koboldcpp/Qwen3-0.6B-Q8_0');
 
-        runtime.context.getKoboldCppChatState = () => ({ loadedModel: 'inactive' });
-        expect(runtime.context.getChatCompletionModel()).toBe('');
+        koboldState = { loadedModel: 'inactive' };
+        expect(openai.getChatCompletionModel()).toBe('');
         expect(runtime.tokenizer()).toBe('koboldcpp');
     });
 
     test('routes KoboldCpp profile requests to the profile URL and Additional Parameters', async () => {
-        const runtime = makeRuntime({ koboldcpp_url: 'http://127.0.0.1:5001', koboldcpp_include_body: 'active: true' });
+        const runtime = configureRuntime({ koboldcpp_url: 'http://127.0.0.1:5001', koboldcpp_include_body: 'active: true' });
 
         const result = await runtime.service.presetToGeneratePayload({}, {}, {
             messages: [],
@@ -406,7 +450,7 @@ describe('upstream provider request integration', () => {
     });
 
     test('surfaces provider error details in successful HTTP responses instead of OK', () => {
-        const runtime = makeRuntime();
+        const runtime = configureRuntime();
         const ok = { ok: true, statusText: 'OK' };
         expect(runtime.error({ error: { code: 'quota_exceeded' } }, ok)).toBe('quota_exceeded');
         expect(runtime.error({ error: 'Provider unavailable' }, ok)).toBe('Provider unavailable');
