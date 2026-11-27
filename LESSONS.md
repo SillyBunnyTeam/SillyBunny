@@ -1923,6 +1923,12 @@ This is the largest class by a wide margin.
 - **Not covered:** a same-size edit that keeps its mtime, and, as `_scratch/pr-1037/fp-probe.mjs` showed, files below `public/img`, `public/webfonts` and `public/sounds`, server `src/` without `.git`, and symlinked directories under `public/scripts`. `SB_DEV=1` or `restartCacheClear.mode: always` clears on every start.
 - **Tests:** `tests/perf-caching-compression-markers.test.js` ("sees a change to any file of an extension, global or per-user, and follows symlinked extension folders": edits to each kind of file in a global, a per-user and a symlinked extension, an added and a removed file, and a self-referencing link).
 
+### Group migration marker
+
+- **Breaks:** The marker `<user>/_groups_metadata/.migrated-v1` stored `v1:` plus name, size and mtime of every `groups/*.json`. The prefix never changed, so a later change to `migrateGroupChatsMetadataFormat()` would not have run for a user whose group files were untouched. A group with legacy keys and no `chats` array was skipped but still left the pass clean, so the marker was written and the per-boot warning of the base went away without the group being migrated.
+- **Guards:** `GROUPS_MIGRATION_VERSION` in `src/endpoints/groups.js` is the number after `v` in the signature; raise it whenever the migration gains or changes a step. The skip branch for a missing `chats` array sets `migrationClean = false`, so no marker is written for that user until the group changes or is fixed. The content-manager marker (`.sillybunny-reconcile-marker.json`) already carries `readAppVersionSignature()` and `RECONCILE_MARKER_FORMAT`, and its reconcile passes return `clean: false` for every caught error; an item that is modified, deleted or not installed is left on purpose and its files are part of the signature.
+- **Tests:** `tests/perf-caching-compression-markers.test.js` ("does not write the group marker while a group that needs migration was skipped", "runs the group migration again for groups that an earlier migration version marked as done").
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

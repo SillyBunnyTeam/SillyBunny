@@ -1306,4 +1306,84 @@ describe('5. Cold-boot content & group reconciliation markers', () => {
         expect(migratedChatLines[0].chat_metadata).toEqual({ note: 'imported-legacy-note' });
         expect(fs.readFileSync(markerPath, 'utf8').trim()).toContain('g2.json:');
     });
+
+    test('does not write the group marker while a group that needs migration was skipped, so the next boot retries it', async () => {
+        const userRoot = makeTempDir('sb-groups-skipped-');
+        const userDirs = {
+            root: userRoot,
+            groups: path.join(userRoot, 'groups'),
+            groupChats: path.join(userRoot, 'group chats'),
+            backups: path.join(userRoot, 'backups'),
+        };
+        Object.values(userDirs).forEach(dir => fs.mkdirSync(dir, { recursive: true }));
+        fs.writeFileSync(path.join(userDirs.groups, 'no-chats.json'), JSON.stringify({
+            id: 'no-chats',
+            name: 'Legacy group without a chats list',
+            members: [],
+            chat_id: 'c1',
+            chat_metadata: { note: 'kept for the next attempt' },
+        }));
+        fs.writeFileSync(path.join(userDirs.groupChats, 'c1.jsonl'), '{"name":"Alice","mes":"Hi"}\n');
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        await groupsModule.migrateGroupChatsMetadataFormat([userDirs]);
+
+        const markerPath = groupsModule.getGroupsMigrationMarkerPath(userDirs);
+        expect(fs.existsSync(markerPath)).toBe(false);
+        expect(JSON.parse(fs.readFileSync(path.join(userDirs.groups, 'no-chats.json'), 'utf8')).chat_metadata).toEqual({ note: 'kept for the next attempt' });
+
+        // The group is fixed by hand (it now lists its chat), and the next boot migrates it and records the marker.
+        fs.writeFileSync(path.join(userDirs.groups, 'no-chats.json'), JSON.stringify({
+            id: 'no-chats',
+            name: 'Legacy group without a chats list',
+            members: [],
+            chats: ['c1'],
+            chat_id: 'c1',
+            chat_metadata: { note: 'kept for the next attempt' },
+        }));
+        await groupsModule.migrateGroupChatsMetadataFormat([userDirs]);
+        warnSpy.mockRestore();
+
+        expect(JSON.parse(fs.readFileSync(path.join(userDirs.groups, 'no-chats.json'), 'utf8')).chat_metadata).toBeUndefined();
+        expect(fs.existsSync(markerPath)).toBe(true);
+    });
+
+    test('runs the group migration again for groups that an earlier migration version marked as done', async () => {
+        const userRoot = makeTempDir('sb-groups-version-');
+        const userDirs = {
+            root: userRoot,
+            groups: path.join(userRoot, 'groups'),
+            groupChats: path.join(userRoot, 'group chats'),
+            backups: path.join(userRoot, 'backups'),
+        };
+        Object.values(userDirs).forEach(dir => fs.mkdirSync(dir, { recursive: true }));
+        const groupPath = path.join(userDirs.groups, 'g1.json');
+        fs.writeFileSync(groupPath, JSON.stringify({
+            id: 'g1',
+            name: 'Group 1',
+            members: [],
+            chats: ['c1'],
+            chat_id: 'c1',
+            chat_metadata: { note: 'needs the migration' },
+        }));
+        fs.writeFileSync(path.join(userDirs.groupChats, 'c1.jsonl'), '{"name":"Alice","mes":"Hi"}\n');
+
+        const groupStat = fs.statSync(groupPath);
+        const snapshot = `g1.json:${groupStat.size}:${Math.trunc(groupStat.mtimeMs)}`;
+        const markerPath = groupsModule.getGroupsMigrationMarkerPath(userDirs);
+        fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+        const { GROUPS_MIGRATION_VERSION } = groupsModule;
+        expect(Number.isInteger(GROUPS_MIGRATION_VERSION)).toBe(true);
+
+        // A marker of the current version for this exact snapshot is trusted.
+        fs.writeFileSync(markerPath, `v${GROUPS_MIGRATION_VERSION}:${snapshot}\n`);
+        await groupsModule.migrateGroupChatsMetadataFormat([userDirs]);
+        expect(JSON.parse(fs.readFileSync(groupPath, 'utf8')).chat_metadata).toEqual({ note: 'needs the migration' });
+
+        // The same snapshot marked by an older migration version is migrated again, and the marker moves to the current version.
+        fs.writeFileSync(markerPath, `v${GROUPS_MIGRATION_VERSION - 1}:${snapshot}\n`);
+        await groupsModule.migrateGroupChatsMetadataFormat([userDirs]);
+        expect(JSON.parse(fs.readFileSync(groupPath, 'utf8')).chat_metadata).toBeUndefined();
+        expect(fs.readFileSync(markerPath, 'utf8')).toMatch(new RegExp(`^v${GROUPS_MIGRATION_VERSION}:g1\\.json:`));
+    });
 });

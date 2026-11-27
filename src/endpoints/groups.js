@@ -19,6 +19,8 @@ const getEntityDateAddedRoot = directories => directories.root || path.dirname(d
 // SillyBunny: store a per-user signature of groups/*.json outside groups/ so unchanged boots skip reparsing group files while newly copied legacy groups still trigger migration.
 const GROUPS_METADATA_MARKER_DIR = '_groups_metadata';
 export const GROUPS_MIGRATED_MARKER_FILE = '.migrated-v1';
+// SillyBunny: bump when migrateGroupChatsMetadataFormat gains or changes a step. The marker covers only the file list, so without a new version unchanged groups would never run the new step.
+export const GROUPS_MIGRATION_VERSION = 1;
 
 /**
  * Returns the marker file path indicating legacy group chat metadata migration has completed for a user.
@@ -58,7 +60,7 @@ async function readGroupsDirectoryState(groupsDir) {
     }
     return {
         groupFiles,
-        signature: `v1:${parts.join('|')}`,
+        signature: `v${GROUPS_MIGRATION_VERSION}:${parts.join('|')}`,
     };
 }
 const getGroupDateAddedFallback = stat => [stat.birthtimeMs, stat.ctimeMs, stat.mtimeMs]
@@ -150,6 +152,8 @@ export async function migrateGroupChatsMetadataFormat(userDirectories) {
                         [groupData.chat_id]: (groupData.chat_metadata || {}),
                     };
                     if (!Array.isArray(groupData.chats)) {
+                        // SillyBunny: a skipped group still has its legacy keys, so the marker must not claim this snapshot is migrated.
+                        migrationClean = false;
                         console.warn(color.yellow(`Group ${groupFile.name} has no chats array, skipping migration.`));
                         continue;
                     }
