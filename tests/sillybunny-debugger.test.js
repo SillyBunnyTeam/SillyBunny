@@ -1,9 +1,13 @@
+/* global globalThis */
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
 
 import {
     createRing,
+    disableCapture,
+    getRequests,
+    installCapture,
     makeEntry,
     redactSensitiveText,
     sanitizeMethod,
@@ -11,7 +15,7 @@ import {
     serializeArg,
 } from '../public/scripts/extensions/sillybunny-debugger/src/capture.js';
 import { buildReport } from '../public/scripts/extensions/sillybunny-debugger/src/report.js';
-import { getEnabledThirdPartyExtensions } from '../public/scripts/extensions/sillybunny-debugger/src/ui.js';
+import { destroyEruda, getEnabledThirdPartyExtensions, openDebugger, setActive } from '../public/scripts/extensions/sillybunny-debugger/src/ui.js';
 
 const extensionRoot = new URL('../public/scripts/extensions/sillybunny-debugger/', import.meta.url);
 
@@ -161,10 +165,57 @@ describe('SillyBunny Debugger', () => {
     });
 
     test('sanitizes Fetch URLs before asynchronous callbacks retain them', async () => {
-        const source = await readFile(new URL('src/capture.js', extensionRoot), 'utf8');
+        const originalWindow = globalThis.window;
+        const originalXhr = globalThis.XMLHttpRequest;
+        let resolveFetch;
+        let urlReads = 0;
+        const mutableRequest = {
+            method: 'POST',
+            get url() {
+                urlReads += 1;
+                if (urlReads > 1) {
+                    throw new Error('URL should have been read and sanitized before fetch resolved');
+                }
+                return 'https://alice:secret@example.com/api/run?token=abc#private';
+            },
+        };
+        const fakeWindow = {
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            fetch: jest.fn(() => new Promise((resolve) => {
+                resolveFetch = resolve;
+            })),
+        };
+        class FakeXHR {
+            open() {}
+            send() {}
+        }
 
-        expect(source).toMatch(/const url = sanitizeUrl\(typeof input === 'string'/);
-        expect(source).not.toMatch(/const url = typeof input === 'string'/);
+        globalThis.window = fakeWindow;
+        globalThis.XMLHttpRequest = FakeXHR;
+        try {
+            installCapture();
+            const pending = fakeWindow.fetch(mutableRequest);
+            // URL getter ran synchronously before the async continuation existed.
+            expect(urlReads).toBe(1);
+
+            resolveFetch({ status: 500 });
+            await pending;
+
+            expect(getRequests()).toEqual([
+                expect.objectContaining({
+                    method: 'POST',
+                    url: 'https://example.com/[redacted]?[redacted]',
+                    status: 500,
+                }),
+            ]);
+        } finally {
+            disableCapture();
+            if (originalWindow === undefined) delete globalThis.window;
+            else globalThis.window = originalWindow;
+            if (originalXhr === undefined) delete globalThis.XMLHttpRequest;
+            else globalThis.XMLHttpRequest = originalXhr;
+        }
     });
 
     test('reports only useful events and remain bounded', () => {
@@ -199,7 +250,6 @@ describe('SillyBunny Debugger', () => {
 
     test('is a default-off lifecycle extension with the safe Eruda tool profile', async () => {
         const manifest = JSON.parse(await readFile(new URL('manifest.json', extensionRoot), 'utf8'));
-        const source = await readFile(new URL('src/ui.js', extensionRoot), 'utf8');
 
         expect(manifest).toMatchObject({
             bundled_opt_in: true,
@@ -207,8 +257,52 @@ describe('SillyBunny Debugger', () => {
             optional: [],
             hooks: { activate: 'init', enable: 'init', disable: 'deactivate' },
         });
-        expect(source).toMatch(/const ERUDA_TOOLS = \['console', 'elements', 'network', 'info'];/);
-        expect(source).toMatch(/instance\.get\?\.\('elements'\)\?\.config\?\.set\?\.\('overrideEventTarget', false\);/);
+
+        const originalDocument = globalThis.document;
+        const consoleConfigSet = jest.fn();
+        const elementsConfigSet = jest.fn();
+        const fakeEruda = {
+            sillyBunnyDebuggerBuild: 'eruda-3.4.3-chobitsu-1.8.6-sbdbg',
+            _isInit: false,
+            init: jest.fn(() => { fakeEruda._isInit = true; }),
+            show: jest.fn(),
+            destroy: jest.fn(() => { fakeEruda._isInit = false; }),
+            get: jest.fn((tool) => {
+                if (tool === 'console') return { config: { set: consoleConfigSet } };
+                if (tool === 'elements') return { config: { set: elementsConfigSet } };
+                return null;
+            }),
+        };
+
+        const fakeDocument = {
+            currentScript: null,
+            createElement: () => ({ remove() {} }),
+            body: {
+                appendChild(script) {
+                    fakeDocument.currentScript = script;
+                    globalThis.__sillyBunnyDebuggerEruda = fakeEruda;
+                    fakeDocument.currentScript = null;
+                    return script;
+                },
+            },
+        };
+
+        globalThis.document = fakeDocument;
+        try {
+            setActive(true);
+            await openDebugger();
+
+            expect(fakeEruda.init).toHaveBeenCalledWith({ tool: ['console', 'elements', 'network', 'info'] });
+            expect(consoleConfigSet).toHaveBeenCalledWith('maxLogNum', '250');
+            expect(consoleConfigSet).toHaveBeenCalledWith('displayGetterVal', false);
+            expect(elementsConfigSet).toHaveBeenCalledWith('overrideEventTarget', false);
+            expect(fakeEruda.show).toHaveBeenCalledTimes(1);
+        } finally {
+            setActive(false);
+            destroyEruda();
+            if (originalDocument === undefined) delete globalThis.document;
+            else globalThis.document = originalDocument;
+        }
     });
 
     test('keeps the reviewed Eruda bundle and imports without browser globals', async () => {

@@ -1,13 +1,61 @@
-import { describe, expect, test } from '@jest/globals';
-import vm from 'node:vm';
-import { loadDeclarations } from './util/load-declarations.js';
+/* global globalThis */
+import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { fileURLToPath } from 'node:url';
 
-const names = ['NOT_PRIMARY', 'EventSourceStream', 'getDelay', 'parseStreamData'];
-const context = vm.createContext({ TextDecoderStream, TransformStream, MessageEvent, structuredClone, power_user: { smooth_streaming_speed: 50 } });
-loadDeclarations(context, 'scripts/sse-stream.js', names);
-const [NOT_PRIMARY, EventSourceStream, getDelay, parseStreamData] = names.map(name => vm.runInContext(name, context));
+const powerUser = {
+    smooth_streaming: true,
+    smooth_streaming_speed: 50,
+    smooth_streaming_no_think: false,
+    ios_webkit_disable_smooth_streaming: false,
+    android_disable_smooth_streaming: false,
+};
+
+const delayCalls = [];
+const delayMock = jest.fn(async (ms) => {
+    delayCalls.push(ms);
+});
+
+const resolvePublic = (relativePath) => fileURLToPath(new URL(`../public/${relativePath}`, import.meta.url));
+
+await jest.unstable_mockModule(resolvePublic('scripts/power-user.js'), () => ({
+    power_user: powerUser,
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/mobile-streaming.js'), () => ({
+    isSmoothStreamingEffectivelyEnabled: ({ smoothStreaming }) => Boolean(smoothStreaming),
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/utils.js'), () => ({
+    delay: delayMock,
+}));
+
+const {
+    default: EventSourceStream,
+    SmoothEventSourceStream,
+    getEventSourceStream,
+} = await import('../public/scripts/sse-stream.js');
 
 const encoder = new TextEncoder();
+let originalDocument;
+
+beforeAll(() => {
+    originalDocument = globalThis.document;
+    globalThis.document = { hasFocus: () => true };
+});
+
+afterAll(() => {
+    if (originalDocument === undefined) {
+        delete globalThis.document;
+    } else {
+        globalThis.document = originalDocument;
+    }
+});
+
+beforeEach(() => {
+    powerUser.smooth_streaming = true;
+    powerUser.smooth_streaming_speed = 50;
+    powerUser.smooth_streaming_no_think = false;
+    delayCalls.length = 0;
+    delayMock.mockClear();
+});
 
 function streamOf(chunks) {
     return new ReadableStream({
@@ -32,6 +80,10 @@ async function drain(readable) {
 
 function readEvents(...chunks) {
     return drain(streamOf(chunks).pipeThrough(new EventSourceStream()));
+}
+
+function readSmoothEvents(...chunks) {
+    return drain(streamOf(chunks).pipeThrough(new SmoothEventSourceStream()));
 }
 
 function splitAt(text, ...offsets) {
@@ -65,6 +117,18 @@ function randomChunks(text, random) {
 }
 
 const message = (data, lastEventId = '') => ({ type: 'message', data, lastEventId });
+
+describe('getEventSourceStream', () => {
+    test('returns SmoothEventSourceStream when smooth streaming is enabled and EventSourceStream when disabled', () => {
+        powerUser.smooth_streaming = true;
+        expect(getEventSourceStream()).toBeInstanceOf(SmoothEventSourceStream);
+
+        powerUser.smooth_streaming = false;
+        const stream = getEventSourceStream();
+        expect(stream).toBeInstanceOf(EventSourceStream);
+        expect(stream).not.toBeInstanceOf(SmoothEventSourceStream);
+    });
+});
 
 describe('EventSourceStream', () => {
     describe.each([
@@ -282,47 +346,58 @@ describe('EventSourceStream', () => {
     });
 });
 
-async function collect(json) {
-    const items = [];
-    for await (const item of parseStreamData(json)) {
-        items.push(item);
-    }
-    return items;
-}
-
-async function failureOf(json) {
+/**
+ * Feeds one JSON payload through SmoothEventSourceStream with smooth_streaming_no_think enabled so
+ * reasoning chunks skip delay() while non-reasoning chunks call delay().
+ * @param {unknown} json Parsed payload to stream as one SSE event
+ */
+async function collectSmooth(json) {
+    delayCalls.length = 0;
+    delayMock.mockClear();
+    powerUser.smooth_streaming_no_think = true;
+    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
     try {
-        await collect(json);
-    } catch (error) {
-        return error;
+        const events = await readSmoothEvents(`data: ${JSON.stringify(json)}\n\n`);
+        return {
+            payloads: events.map(event => JSON.parse(event.data)),
+            delays: [...delayCalls],
+            debugCalls: debugSpy.mock.calls.map(call => [...call]),
+        };
+    } finally {
+        debugSpy.mockRestore();
     }
-    throw new Error('parseStreamData finished without an error');
 }
 
-describe('parseStreamData', () => {
+describe('SmoothEventSourceStream parsing', () => {
     test('splits Cohere content deltas into one chunk per character', async () => {
         const json = { type: 'content-delta', index: 0, delta: { message: { content: { text: 'Hé' } } } };
-        expect(await collect(json)).toEqual([
-            { data: { type: 'content-delta', index: 0, delta: { message: { content: { text: 'H' } } } }, chunk: 'H' },
-            { data: { type: 'content-delta', index: 0, delta: { message: { content: { text: 'é' } } } }, chunk: 'é' },
+        const result = await collectSmooth(json);
+        expect(result.payloads).toEqual([
+            { type: 'content-delta', index: 0, delta: { message: { content: { text: 'H' } } } },
+            { type: 'content-delta', index: 0, delta: { message: { content: { text: 'é' } } } },
         ]);
+        expect(result.delays).toEqual([0, 20]);
     });
 
     test('splits text_delta events into one chunk per character and keeps the event fields', async () => {
         const json = { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'Hey' } };
-        expect(await collect(json)).toEqual([
-            { data: { type: 'content_block_delta', index: 2, delta: { text: 'H' } }, chunk: 'H' },
-            { data: { type: 'content_block_delta', index: 2, delta: { text: 'e' } }, chunk: 'e' },
-            { data: { type: 'content_block_delta', index: 2, delta: { text: 'y' } }, chunk: 'y' },
+        const result = await collectSmooth(json);
+        expect(result.payloads).toEqual([
+            { type: 'content_block_delta', index: 2, delta: { text: 'H' } },
+            { type: 'content_block_delta', index: 2, delta: { text: 'e' } },
+            { type: 'content_block_delta', index: 2, delta: { text: 'y' } },
         ]);
+        expect(result.delays).toEqual([0, 20, 20]);
     });
 
-    test('marks thinking_delta characters as reasoning', async () => {
+    test('marks thinking_delta characters as reasoning so smooth_streaming_no_think skips delays', async () => {
         const json = { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Hm' } };
-        expect(await collect(json)).toEqual([
-            { data: { type: 'content_block_delta', index: 0, delta: { thinking: 'H' } }, chunk: 'H', reasoning: true },
-            { data: { type: 'content_block_delta', index: 0, delta: { thinking: 'm' } }, chunk: 'm', reasoning: true },
+        const result = await collectSmooth(json);
+        expect(result.payloads).toEqual([
+            { type: 'content_block_delta', index: 0, delta: { thinking: 'H' } },
+            { type: 'content_block_delta', index: 0, delta: { thinking: 'm' } },
         ]);
+        expect(result.delays).toEqual([]);
     });
 
     describe('Google candidates', () => {
@@ -331,25 +406,31 @@ describe('parseStreamData', () => {
 
         test('splits answer text into one candidate per character and keeps the other fields', async () => {
             const json = { candidates: [candidate([{ text: 'ab' }], { safetyRatings: [] })], usageMetadata };
-            expect(await collect(json)).toEqual([
-                { data: { candidates: [candidate([{ text: 'a' }], { safetyRatings: [] })], usageMetadata }, chunk: 'a', reasoning: false },
-                { data: { candidates: [candidate([{ text: 'b' }], { safetyRatings: [] })], usageMetadata }, chunk: 'b', reasoning: false },
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([
+                { candidates: [candidate([{ text: 'a' }], { safetyRatings: [] })], usageMetadata },
+                { candidates: [candidate([{ text: 'b' }], { safetyRatings: [] })], usageMetadata },
             ]);
+            expect(result.delays).toEqual([0, 20]);
         });
 
         test('marks thought parts as reasoning and separates the parts with a blank line', async () => {
             const json = { candidates: [candidate([{ text: 'ab', thought: true }, { text: 'cd' }])] };
-            expect(await collect(json)).toEqual([
-                { data: { candidates: [candidate([{ text: 'a', thought: true }])] }, chunk: 'a', reasoning: true },
-                { data: { candidates: [candidate([{ text: 'b\n\n', thought: true }])] }, chunk: 'b\n\n', reasoning: true },
-                { data: { candidates: [candidate([{ text: 'c' }])] }, chunk: 'c', reasoning: false },
-                { data: { candidates: [candidate([{ text: 'd' }])] }, chunk: 'd', reasoning: false },
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([
+                { candidates: [candidate([{ text: 'a', thought: true }])] },
+                { candidates: [candidate([{ text: 'b\n\n', thought: true }])] },
+                { candidates: [candidate([{ text: 'c' }])] },
+                { candidates: [candidate([{ text: 'd' }])] },
             ]);
+            // Thought characters skip delay(); answer characters wait after the preceding chunk.
+            expect(result.delays).toEqual([20, 20]);
         });
 
         test('adds no blank line after the last part', async () => {
             const json = { candidates: [candidate([{ text: 'a' }, { text: 'b' }])] };
-            expect((await collect(json)).map(item => item.chunk)).toEqual(['a\n\n', 'b']);
+            const result = await collectSmooth(json);
+            expect(result.payloads.map(item => item.candidates[0].content.parts[0].text)).toEqual(['a\n\n', 'b']);
         });
 
         test.each([
@@ -357,40 +438,50 @@ describe('parseStreamData', () => {
             ['inline data', { inlineData: { mimeType: 'image/png', data: 'AAAA' } }],
         ])('passes %s through as one event with an empty chunk', async (_name, part) => {
             const json = { candidates: [candidate([{ text: 'Look' }, part])], usageMetadata };
-            expect(await collect(json)).toEqual([{ data: json, chunk: '' }]);
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([json]);
+            expect(result.delays).toEqual([0]);
         });
 
         test('yields nothing for a candidate that is not the primary one', async () => {
-            expect(await collect({ candidates: [candidate([{ text: 'ab' }], { index: 1 })] })).toEqual([]);
+            const result = await collectSmooth({ candidates: [candidate([{ text: 'ab' }], { index: 1 })] });
+            expect(result.payloads).toEqual([]);
+            expect(result.debugCalls).toEqual([]);
         });
     });
 
     test('splits NovelAI and KoboldCpp token events into one chunk per character', async () => {
-        expect(await collect({ token: 'Hi', final: false })).toEqual([
-            { data: { token: 'H', final: false }, chunk: 'H' },
-            { data: { token: 'i', final: false }, chunk: 'i' },
+        const result = await collectSmooth({ token: 'Hi', final: false });
+        expect(result.payloads).toEqual([
+            { token: 'H', final: false },
+            { token: 'i', final: false },
         ]);
+        expect(result.delays).toEqual([0, 20]);
     });
 
     describe('llama.cpp content', () => {
         test('splits content into one chunk per character and keeps the other fields', async () => {
-            expect(await collect({ content: 'Hi', stop: false })).toEqual([
-                { data: { content: 'H', stop: false }, chunk: 'H' },
-                { data: { content: 'i', stop: false }, chunk: 'i' },
+            const result = await collectSmooth({ content: 'Hi', stop: false });
+            expect(result.payloads).toEqual([
+                { content: 'H', stop: false },
+                { content: 'i', stop: false },
             ]);
+            expect(result.delays).toEqual([0, 20]);
         });
 
-        test('rejects a secondary swipe with the not-primary cause', async () => {
-            const error = await failureOf({ content: 'Hi', index: 1 });
-            expect(error.message).toBe('Not a primary swipe');
-            expect(error.cause).toBe(NOT_PRIMARY);
+        test('passes a secondary swipe through silently without logging a parsing error', async () => {
+            const json = { content: 'Hi', index: 1 };
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([json]);
+            expect(result.debugCalls).toEqual([]);
         });
 
         test('leaves a top-level content field of a chat completion chunk to the choices', async () => {
             const json = { object: 'chat.completion.chunk', content: 'zz', choices: [{ index: 0, delta: { content: 'ab' } }] };
-            expect(await collect(json)).toEqual([
-                { data: { ...json, choices: [{ index: 0, delta: { content: 'a' } }] }, chunk: 'a' },
-                { data: { ...json, choices: [{ index: 0, delta: { content: 'b' } }] }, chunk: 'b' },
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([
+                { ...json, choices: [{ index: 0, delta: { content: 'a' } }] },
+                { ...json, choices: [{ index: 0, delta: { content: 'b' } }] },
             ]);
         });
     });
@@ -400,72 +491,87 @@ describe('parseStreamData', () => {
 
         test('splits delta content and keeps the other choice fields', async () => {
             const json = { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: 'H日' }, finish_reason: null }] };
-            expect(await collect(json)).toEqual([
-                { data: { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: 'H' }, finish_reason: null }] }, chunk: 'H' },
-                { data: { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: '日' }, finish_reason: null }] }, chunk: '日' },
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([
+                { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: 'H' }, finish_reason: null }] },
+                { ...chunk, choices: [{ index: 0, delta: { role: 'assistant', content: '日' }, finish_reason: null }] },
             ]);
+            expect(result.delays).toEqual([0, 20]);
         });
 
         test('splits completion text', async () => {
-            expect(await collect({ choices: [{ index: 0, text: 'Hi' }] })).toEqual([
-                { data: { choices: [{ index: 0, text: 'H' }] }, chunk: 'H' },
-                { data: { choices: [{ index: 0, text: 'i' }] }, chunk: 'i' },
+            const result = await collectSmooth({ choices: [{ index: 0, text: 'Hi' }] });
+            expect(result.payloads).toEqual([
+                { choices: [{ index: 0, text: 'H' }] },
+                { choices: [{ index: 0, text: 'i' }] },
             ]);
+            expect(result.delays).toEqual([0, 20]);
         });
 
         test('splits delta text', async () => {
-            expect(await collect({ choices: [{ index: 0, delta: { text: 'Hi' } }] })).toEqual([
-                { data: { choices: [{ index: 0, delta: { text: 'H' } }] }, chunk: 'H' },
-                { data: { choices: [{ index: 0, delta: { text: 'i' } }] }, chunk: 'i' },
+            const result = await collectSmooth({ choices: [{ index: 0, delta: { text: 'Hi' } }] });
+            expect(result.payloads).toEqual([
+                { choices: [{ index: 0, delta: { text: 'H' } }] },
+                { choices: [{ index: 0, delta: { text: 'i' } }] },
             ]);
         });
 
         test('splits message content', async () => {
-            expect(await collect({ choices: [{ index: 0, message: { role: 'assistant', content: 'Hi' } }] })).toEqual([
-                { data: { choices: [{ index: 0, message: { role: 'assistant', content: 'H' } }] }, chunk: 'H' },
-                { data: { choices: [{ index: 0, message: { role: 'assistant', content: 'i' } }] }, chunk: 'i' },
+            const result = await collectSmooth({ choices: [{ index: 0, message: { role: 'assistant', content: 'Hi' } }] });
+            expect(result.payloads).toEqual([
+                { choices: [{ index: 0, message: { role: 'assistant', content: 'H' } }] },
+                { choices: [{ index: 0, message: { role: 'assistant', content: 'i' } }] },
             ]);
         });
 
         test('marks thinking text as reasoning', async () => {
-            expect(await collect({ choices: [{ index: 0, thinking: 'Hm' }] })).toEqual([
-                { data: { choices: [{ index: 0, thinking: 'H' }] }, chunk: 'H', reasoning: true },
-                { data: { choices: [{ index: 0, thinking: 'm' }] }, chunk: 'm', reasoning: true },
+            const result = await collectSmooth({ choices: [{ index: 0, thinking: 'Hm' }] });
+            expect(result.payloads).toEqual([
+                { choices: [{ index: 0, thinking: 'H' }] },
+                { choices: [{ index: 0, thinking: 'm' }] },
             ]);
+            expect(result.delays).toEqual([]);
         });
 
         test.each(['reasoning_content', 'reasoning'])('marks delta %s as reasoning and moves the content to its last character', async field => {
             const json = { choices: [{ index: 0, delta: { [field]: 'abc', content: 'Hi' } }] };
-            expect(await collect(json)).toEqual([
-                { data: { choices: [{ index: 0, delta: { [field]: 'a', content: '' } }] }, chunk: 'a', reasoning: true },
-                { data: { choices: [{ index: 0, delta: { [field]: 'b', content: '' } }] }, chunk: 'b', reasoning: true },
-                { data: { choices: [{ index: 0, delta: { [field]: 'c', content: 'Hi' } }] }, chunk: 'c', reasoning: true },
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([
+                { choices: [{ index: 0, delta: { [field]: 'a', content: '' } }] },
+                { choices: [{ index: 0, delta: { [field]: 'b', content: '' } }] },
+                { choices: [{ index: 0, delta: { [field]: 'c', content: 'Hi' } }] },
             ]);
+            expect(result.delays).toEqual([]);
         });
 
         test('prefers delta reasoning_content over delta content', async () => {
-            const items = await collect({ choices: [{ index: 0, delta: { reasoning_content: 'a', content: 'zz' } }] });
-            expect(items).toEqual([{ data: { choices: [{ index: 0, delta: { reasoning_content: 'a', content: 'zz' } }] }, chunk: 'a', reasoning: true }]);
+            const result = await collectSmooth({ choices: [{ index: 0, delta: { reasoning_content: 'a', content: 'zz' } }] });
+            expect(result.payloads).toEqual([{ choices: [{ index: 0, delta: { reasoning_content: 'a', content: 'zz' } }] }]);
+            expect(result.delays).toEqual([]);
         });
 
         test('marks thinking blocks inside a content array as reasoning', async () => {
             const block = text => ({ type: 'thinking', thinking: [{ type: 'text', text }] });
-            expect(await collect({ choices: [{ index: 0, delta: { content: [block('ab')] } }] })).toEqual([
-                { data: { choices: [{ index: 0, delta: { content: [block('a')] } }] }, chunk: 'a', reasoning: true },
-                { data: { choices: [{ index: 0, delta: { content: [block('b')] } }] }, chunk: 'b', reasoning: true },
+            const result = await collectSmooth({ choices: [{ index: 0, delta: { content: [block('ab')] } }] });
+            expect(result.payloads).toEqual([
+                { choices: [{ index: 0, delta: { content: [block('a')] } }] },
+                { choices: [{ index: 0, delta: { content: [block('b')] } }] },
             ]);
+            expect(result.delays).toEqual([]);
         });
 
-        test('rejects a secondary swipe with the not-primary cause', async () => {
-            const error = await failureOf({ choices: [{ index: 1, delta: { content: 'ab' } }] });
-            expect(error.message).toBe('Not a primary swipe');
-            expect(error.cause).toBe(NOT_PRIMARY);
+        test('passes a secondary swipe through silently without logging a parsing error', async () => {
+            const json = { choices: [{ index: 1, delta: { content: 'ab' } }] };
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([json]);
+            expect(result.debugCalls).toEqual([]);
         });
 
-        test('rejects an empty choices list with the not-primary cause', async () => {
-            const error = await failureOf({ choices: [], usage: { total_tokens: 3 } });
-            expect(error.message).toBe('Not a primary swipe');
-            expect(error.cause).toBe(NOT_PRIMARY);
+        test('passes an empty choices list through silently without logging a parsing error', async () => {
+            const json = { choices: [], usage: { total_tokens: 3 } };
+            const result = await collectSmooth(json);
+            expect(result.payloads).toEqual([json]);
+            expect(result.debugCalls).toEqual([]);
         });
     });
 
@@ -481,35 +587,57 @@ describe('parseStreamData', () => {
         ['an error object', { error: { message: 'Rate limit reached', type: 'rate_limit' } }],
         ['a JSON string', 'plain'],
         ['a JSON array', [1, 2]],
-    ])('rejects %s so that the caller can pass the event through', async (_name, json) => {
-        const error = await failureOf(json);
-        expect(error.message).toBe('Unknown event data format');
-        expect(error.cause).toBeUndefined();
+    ])('passes %s through unchanged and logs the unknown-format error', async (_name, json) => {
+        const result = await collectSmooth(json);
+        expect(result.payloads).toEqual([json]);
+        expect(result.debugCalls).toHaveLength(1);
+        expect(result.debugCalls[0][0]).toBe('Smooth Streaming parsing error');
+        expect(result.debugCalls[0][1]).toBeInstanceOf(Error);
+        expect(result.debugCalls[0][1].message).toBe('Unknown event data format');
+        expect(result.debugCalls[0][1].cause).toBeUndefined();
     });
 });
 
-describe('getDelay', () => {
+describe('smooth streaming delays', () => {
+    async function measureDelayAfter(character, speed) {
+        delayCalls.length = 0;
+        powerUser.smooth_streaming_speed = speed;
+        powerUser.smooth_streaming_no_think = false;
+        await readSmoothEvents(`data: ${JSON.stringify({ token: `${character}x` })}\n\n`);
+        return delayCalls;
+    }
+
     test.each([
         [50, 20, 250, 500],
         [0, 40, 500, 1000],
         [100, 0.4, 5, 10],
         [150, 0.4, 5, 10],
         [-100, 80, 1000, 2000],
-    ])('at speed %s waits %s ms for a letter, %s ms after a comma and %s ms after a sentence end', (speed, letter, comma, sentence) => {
-        context.power_user.smooth_streaming_speed = speed;
+    ])('at speed %s waits %s ms for a letter, %s ms after a comma and %s ms after a sentence end', async (speed, letter, comma, sentence) => {
         for (const character of ['a', ' ', '日', '-']) {
-            expect(getDelay(character)).toBeCloseTo(letter, 9);
+            const [first, after] = await measureDelayAfter(character, speed);
+            expect(first).toBe(0);
+            expect(after).toBeCloseTo(letter, 9);
         }
         for (const character of [',', '\n']) {
-            expect(getDelay(character)).toBeCloseTo(comma, 9);
+            const [first, after] = await measureDelayAfter(character, speed);
+            expect(first).toBe(0);
+            expect(after).toBeCloseTo(comma, 9);
         }
         for (const character of ['.', '!', '?']) {
-            expect(getDelay(character)).toBeCloseTo(sentence, 9);
+            const [first, after] = await measureDelayAfter(character, speed);
+            expect(first).toBe(0);
+            expect(after).toBeCloseTo(sentence, 9);
         }
     });
 
-    test('does not wait before the first character', () => {
-        expect(getDelay('')).toBe(0);
-        expect(getDelay(undefined)).toBe(0);
+    test('does not wait before the first character or after [DONE] resets the stream', async () => {
+        delayCalls.length = 0;
+        await readSmoothEvents(
+            `data: ${JSON.stringify({ token: '.' })}\n\n`,
+            'data: [DONE]\n\n',
+            `data: ${JSON.stringify({ token: 'a' })}\n\n`,
+        );
+        expect(delayCalls).toEqual([0, 0]);
     });
 });

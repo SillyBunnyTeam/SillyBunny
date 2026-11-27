@@ -2,8 +2,6 @@
 /* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use parameterized synchronous DOM assertions. */
 import { jest, describe, test, expect, afterEach } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import {
     createRow,
     createSwitchRow,
@@ -123,25 +121,30 @@ describe('moveCaption', () => {
     });
 });
 
-/** Evaluates rows.js as a script, with its motion import replaced by calls that finish at once. */
-function evaluateRows(exposed) {
-    const source = readFileSync(new URL('../../public/scripts/sillybunny-editor/rows.js', import.meta.url), 'utf8').replace(/^import .*$/m, '');
-    const motion = {
-        animateHeightFrom: () => null,
-        stopMotion: () => {},
-        MOTION_SLOW: 250,
-        play: (_element, _keyframes, { onFinish, onEnd } = {}) => {
-            onFinish?.();
-            onEnd?.();
-            return null;
-        },
+/** Imports a fresh rows.js module instance and observes its private ID reservation map without slicing source. */
+async function loadIsolatedRows() {
+    jest.resetModules();
+    const api = await import('../../public/scripts/sillybunny-editor/rows.js');
+    let reservationMap = null;
+    const originalSet = Map.prototype.set;
+    const setSpy = jest.spyOn(Map.prototype, 'set').mockImplementation(function (key, value) {
+        if (key === '__sb-reservation-probe__') {
+            reservationMap = this;
+        }
+        return originalSet.call(this, key, value);
+    });
+    const probe = api.createRow({ label: 'Probe', field: 'probe', id: '__sb-reservation-probe__' });
+    setSpy.mockRestore();
+    probe.destroy();
+    return {
+        ...api,
+        reservationCount: () => reservationMap.size,
     };
-    return runInNewContext(`${source.replaceAll('export ', '')}\n(${exposed});`, { document, ...motion });
 }
 
 describe('shared row behavior', () => {
-    test('destroying nested rows releases generated, explicit, heading and description reservations', () => {
-        const api = evaluateRows('{ createEntryRow, createRow, createPrefGroup, createExpanderRow, reservationCount: () => reservedIds.size }');
+    test('destroying nested rows releases generated, explicit, heading and description reservations', async () => {
+        const api = await loadIsolatedRows();
         for (let index = 0; index < 50; index++) {
             const entry = api.createEntryRow({ label: 'Entry', field: 'entry', subtitle: 'Description' });
             const explicit = api.createRow({ label: 'Row', field: 'row', id: `explicit-${index}`, subtitle: 'Description', activatable: true });
@@ -158,8 +161,8 @@ describe('shared row behavior', () => {
         }
     });
 
-    test('destroying one row cannot release an id still owned by another detached control', () => {
-        const api = evaluateRows('{ createEntryRow, reservationCount: () => reservedIds.size }');
+    test('destroying one row cannot release an id still owned by another detached control', async () => {
+        const api = await loadIsolatedRows();
         const first = api.createEntryRow({ label: 'First', field: 'first', id: 'sb-row-1' });
         const adopted = input('text');
         adopted.id = 'sb-row-1';
@@ -1184,8 +1187,8 @@ describe.each([['floating', true], ['stacked', false]])('createEntryRow error st
         expect(adopted.hasAttribute('aria-describedby')).toBe(false);
     });
 
-    test('the error caption id is released with the row', () => {
-        const api = evaluateRows('{ createEntryRow, reservationCount: () => reservedIds.size }');
+    test('the error caption id is released with the row', async () => {
+        const api = await loadIsolatedRows();
         const entry = api.createEntryRow({ label: 'Name', field: 'name', floating });
         expect(api.reservationCount()).toBe(1);
         entry.setError('Required');
@@ -1494,8 +1497,8 @@ describe('createTextAreaField', () => {
         });
     });
 
-    test('every id the field reserves is released with it', () => {
-        const api = evaluateRows('{ createTextAreaField, reservationCount: () => reservedIds.size }');
+    test('every id the field reserves is released with it', async () => {
+        const api = await loadIsolatedRows();
         const field = api.createTextAreaField({ label: 'Notes', field: 'notes', subtitle: 'Help', expandLabel: 'Expand' });
         expect(api.reservationCount()).toBe(2);
         field.setError('Required');

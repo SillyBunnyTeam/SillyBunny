@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const VIEWER = '../public/scripts/sillybunny-avatar-viewer.js';
@@ -27,9 +28,9 @@ beforeEach(async () => {
     powerUser = { movingUI: false, zoomed_avatar_magnification: false };
     loadMovingUIState = jest.fn();
     dragElement = jest.fn();
-    await jest.unstable_mockModule(SCRIPT, () => ({ animation_duration: 0 }));
+    await jest.unstable_mockModule(SCRIPT, () => ({ animation_duration: 0, characters: [] }));
     await jest.unstable_mockModule(POWER_USER, () => ({ power_user: powerUser, loadMovingUIState }));
-    await jest.unstable_mockModule(MOVING_UI, () => ({ dragElement }));
+    await jest.unstable_mockModule(MOVING_UI, () => ({ dragElement, shouldSendOnEnter: () => true }));
     viewer = await import(VIEWER);
 });
 
@@ -171,13 +172,87 @@ describe('opening a second avatar', () => {
 
 describe('the two modes', () => {
     const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+    const resolvePublic = relativePath => fileURLToPath(new URL(`../public/${relativePath}`, import.meta.url));
 
-    test('share the window: conversation mode has no copy of it and no rule that places it', () => {
-        const chrome = read('../public/scripts/sillybunny-conversation/chrome.js');
+    test('share the window: conversation mode opens the shared viewer and has no rule that places a copy', async () => {
+        const noop = () => {};
+        const noopAsync = async () => {};
+        const mocks = [
+            ['scripts/constants.js', { debounce_timeout: { quick: 0, normal: 0, relaxed: 0 } }],
+            ['scripts/dynamic-styles.js', { loadStylesheetAsync: noopAsync }],
+            ['scripts/mobile-send-button.js', { isIOSWebKitPlatform: () => false }],
+            ['scripts/RossAscends-mods.js', { shouldSendOnEnter: () => true, dragElement }],
+            ['scripts/utils.js', { debounce: fn => fn, flashHighlight: noop }],
+            ['scripts/sillybunny-delete-confirm.js', { confirmMessageDeletion: noopAsync }],
+            ['scripts/sillybunny-action-menu.js', { closeActionMenu: noop, openActionMenu: noop }],
+            ['scripts/sillybunny-conversation/attachments.js', { addConversationFilesToInput: noop, clearConversationAttachmentInput: noop, submitConversationInput: noopAsync, updateConversationAttachmentPreview: noop }],
+            ['scripts/sillybunny-conversation/composer-draft.js', { stashComposerDraft: noop }],
+            ['scripts/sillybunny-conversation/constants.js', { CHROME_IDS: {}, CONVERSATION_OPENED_EVENT: 'opened' }],
+            ['scripts/sillybunny-conversation/dialogs.js', { confirmConversationAction: noopAsync, promptConversationText: noopAsync }],
+            ['scripts/sillybunny-conversation/context.js', {
+                createConversationChat: noop, deleteConversationByAvatar: noopAsync, deleteConversationChat: noopAsync,
+                ensureDirectConversation: noopAsync, getConversationChats: () => [], getConversationGroupIdForAvatar: () => '',
+                getConversationPersonaId: () => '', getConversationKey: () => '', getConversationRecord: () => null,
+                getCurrentCharAvatar: () => '', getRoleplayCurrentCharacter: () => null, isAvatarInConversationGroup: () => false,
+                parsePositiveInt: () => -1, renameConversationChat: noop, setActiveConversationChat: noop,
+            }],
+            ['scripts/sillybunny-conversation/generation.js', { editConversationMessage: noop }],
+            ['scripts/sillybunny-conversation/interface.js', { getConversationListEntries: () => [], handleCharacterMessagePolish: noopAsync, updateConversationHeader: noop }],
+            ['scripts/sillybunny-conversation/conversation-list-controls.js', { bindConversationListControls: noop }],
+            ['scripts/sillybunny-conversation/conversation-folders-browser.js', { conversationFolders: {}, installConversationFoldersHooks: noop }],
+            ['scripts/sillybunny-conversation/conversation-menus.js', { buildComposerMenuSections: () => [], buildHeaderMenuSections: () => [], buildMainMenuSections: () => [], buildNewMenuSections: () => [] }],
+            ['scripts/sillybunny-conversation/conversation-list-view.js', { announceInList: noop, setConversationListQuery: noop }],
+            ['scripts/sillybunny-conversation/conversation-list-folders.js', { openNewFolderPopover: noop }],
+            ['scripts/sillybunny-conversation/media.js', { getCharacterForAvatar: () => null, getConversationDisplayName: () => '' }],
+            ['scripts/sillybunny-conversation/notifications.js', { clearAllConversationUnreadCounts: noopAsync, isConversationActive: () => false }],
+            ['scripts/sillybunny-conversation/conversation-list.js', { getDirectConversations: () => [] }],
+            ['scripts/sillybunny-conversation/persona-switch.js', { switchConversationPersona: noopAsync }],
+            ['scripts/sillybunny-conversation/personas.js', { getUserStatus: () => 'online', setActiveConversationPersonaAppendixIds: noop, setUserStatus: noop }],
+            ['scripts/sillybunny-conversation/pickers.js', { editUserPersonaStatus: noop, hideConversationPickers: noop, renderConversationPersonaPicker: noop, toggleStartDirectConversationPicker: noop, toggleConversationGroupPicker: noop, togglePersonaPicker: noop, toggleUserStatusPicker: noop, updateUserFooter: noop }],
+            ['scripts/sillybunny-conversation/render-scheduler.js', { afterConversationRender: noop, scheduleInterfaceRefresh: noop, scheduleConversationListRender: noop, scheduleTimelineRender: noop }],
+            ['scripts/sillybunny-conversation/conversation-pages.js', { closeConversationList: noop, observeConversationLayout: noop, openConversationList: noop, syncConversationPage: noop, toggleConversationList: noop }],
+            ['scripts/sillybunny-conversation/settings-store.js', { getGlobalConversationSettings: () => ({}), getSettings: () => ({}) }],
+            ['scripts/sillybunny-conversation/screen-target.js', { isComposerHeld: () => false, withConversationSwitch: fn => fn() }],
+            ['scripts/sillybunny-conversation/state.js', { conversationState: {}, sendQueue: [] }],
+            ['scripts/sillybunny-conversation/send-queue.js', { processSendQueue: noopAsync }],
+            ['scripts/sillybunny-conversation/send-queue-utils.js', { createForcedConversationQueueItem: () => ({}) }],
+            ['scripts/sillybunny-conversation/conversation-store.js', { getConversationMessageCount: () => 0, getConversationMessages: () => [], updateLastUserActivity: noop }],
+            ['scripts/sillybunny-conversation/pin-events-ui.js', { PIN_EVENT_ACTIONS: { show: 'show', openPinned: 'open' }, findMessageNode: () => null }],
+            ['scripts/sillybunny-conversation/pin-model.js', { hasPinnedMessage: () => false }],
+            ['scripts/sillybunny-conversation/conversation-data-browser.js', { conversationData: {} }],
+            ['scripts/sillybunny-conversation/conversation-list-actions.js', { setConversationMuted: noop }],
+            ['scripts/sillybunny-conversation/selection.js', { enterConversationSelection: noop }],
+            ['scripts/sillybunny-conversation/message-long-press.js', { bindMessageLongPress: noop }],
+            ['scripts/sillybunny-conversation/message-menu.js', { openConversationMessageMenuAt: noop }],
+            ['scripts/sillybunny-conversation/timeline-render.js', {
+                branchConversationFromMessage: noopAsync, clearConversationReplyTarget: noop, copyConversationMessage: noopAsync,
+                deleteConversationMessage: noop, generateConversationSelfieFromMessageCommand: noopAsync, ensureConversationChrome: noop,
+                quickConversationReminder: noopAsync, quickConversationSelfie: noopAsync, quickConversationSummarize: noopAsync,
+                regenerateConversationMessage: noopAsync, replyToConversationMessage: noop, toggleConversationSearchBar: noop,
+                speakConversationMessage: noopAsync, toggleConversationMessagePin: noop, updateConversationSearchQuery: noop,
+            }],
+            ['scripts/sillybunny-conversation/reactions-ui.js', { openReactionChooser: noopAsync, reactConversationMessage: noop }],
+            ['scripts/sillybunny-conversation/details/styles.js', { ensureDetailsStyles: noopAsync }],
+            ['scripts/sillybunny-conversation/emoji/emoji-font.js', { applyEmojiFont: noop }],
+            ['scripts/sillybunny-conversation/emoji/emoji-insert.js', { insertEmojiAtCaret: () => 0 }],
+            ['scripts/sillybunny-conversation/emoji/emoji-shortcut.js', { hasNativeEmojiPicker: () => false, isEmojiShortcut: () => false }],
+        ];
+        await jest.unstable_mockModule(SCRIPT, () => ({ animation_duration: 0, characters: [] }));
+        for (const [relativePath, exports] of mocks) {
+            await jest.unstable_mockModule(resolvePublic(relativePath), () => exports);
+        }
+
+        const { runConversationAction } = await import('../public/scripts/sillybunny-conversation/chrome.js');
+        await runConversationAction('zoom-avatar', { avatarFile: 'Seraphina.png' });
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(zoomed().map(element => element.id)).toEqual(['zoomFor_Seraphina']);
+
+        // Calling toggleZoomedAvatar from roleplay closes the exact same window opened by conversation mode.
+        viewer.toggleZoomedAvatar({ file: 'Seraphina.png' });
+        expect(zoomed()).toHaveLength(0);
+
         const conversationCss = read('../public/css/sillybunny-conversation.css');
-
-        expect(chrome).toContain('import(\'../sillybunny-avatar-viewer.js\')');
-        expect(chrome).not.toContain('zoomed_avatar');
         expect(conversationCss).not.toMatch(/zoomed[-_]avatar/);
         expect(read('../public/css/sillybunny-theme.css')).not.toContain('sb-conversation-zoomed-avatar');
     });
