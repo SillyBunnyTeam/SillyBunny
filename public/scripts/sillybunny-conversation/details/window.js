@@ -11,6 +11,7 @@ import { openDialog } from '../../sillybunny-editor/dialog.js';
 import { CONVERSATION_DETAILS_CLOSE_EVENT } from '../constants.js';
 import { releaseRowIds } from '../../sillybunny-editor/rows.js';
 import { getView } from './access.js';
+import { toSafeAttachmentUrl } from './details-logic.js';
 import { el } from './page-kit.js';
 import { buildPage, isKnownPage } from './pages/index.js';
 import { ensureDetailsStyles } from './styles.js';
@@ -88,8 +89,16 @@ function pushPage(current, id, args = {}) {
         spec.dispose?.();
         releaseRowIds(spec.content);
         current.pages.splice(current.pages.indexOf(entry), 1);
-        if (committed) {
-            spec.onResponse?.(response);
+        if (committed && spec.onResponse) {
+            try {
+                Promise.resolve(spec.onResponse(response)).catch((error) => {
+                    console.error(`Conversation Mode: the ${id} page response failed`, error);
+                    globalThis.toastr?.error?.('This action could not be completed');
+                });
+            } catch (error) {
+                console.error(`Conversation Mode: the ${id} page response failed`, error);
+                globalThis.toastr?.error?.('This action could not be completed');
+            }
         }
     });
     return handle;
@@ -97,12 +106,13 @@ function pushPage(current, id, args = {}) {
 
 /** A picture opens as a page of the window: the zoomed avatar is a child of `body`, and would sit under the window's inert layer. */
 function pushPicture(current, { title, src, kind = 'image', alt = '' }) {
-    if (!current.dialog.isOpen || !src) {
+    const safeSrc = toSafeAttachmentUrl(src, { allowDataImage: kind !== 'video' });
+    if (!current.dialog.isOpen || !safeSrc) {
         return null;
     }
     const body = el('div', 'sb-details-picture');
     const media = kind === 'video' ? el('video', 'sb-details-picture__media') : el('img', 'sb-details-picture__media');
-    media.src = src;
+    media.src = safeSrc;
     if (kind === 'video') {
         media.controls = true;
     } else {

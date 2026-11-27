@@ -93,8 +93,18 @@ export function openFolderNamePopover({ trigger, bounds = null, title, submitLab
         }
         if (typeof result?.then !== 'function') return finish(result);
         input.disabled = true;
-        return result.then(finish, failure => showError(String(failure?.message ?? failure))).finally(() => {
+        submit.disabled = true;
+        let failed = false;
+        return result.then(finish, (failure) => {
+            failed = true;
+            showError(String(failure?.message ?? failure));
+        }).finally(() => {
             input.disabled = false;
+            if (failed) {
+                submit.disabled = !parse(input.value).ok;
+            } else {
+                updateValidity();
+            }
         });
     };
 

@@ -10,12 +10,14 @@ import {
     getGeneralSignature,
     getMembersPage,
     getPageTitle,
+    isSafeAttachmentUrl,
     listReminders,
     listsMembersInline,
     pickTileAvatars,
     planMemberRemoval,
     routineToText,
     textToRoutine,
+    toSafeAttachmentUrl,
     collectSharedItems,
 } from '../public/scripts/sillybunny-conversation/details/details-logic.js';
 
@@ -157,6 +159,70 @@ describe('details window: what a conversation shares', () => {
         expect(formatFileSize(3.4 * 1024 * 1024)).toBe('3.4 MB');
         expect(formatFileSize(undefined)).toBe('');
         expect(formatFileSize(-1)).toBe('');
+    });
+
+    test('validates attachment URLs against a strict safe-scheme allowlist', () => {
+        expect(toSafeAttachmentUrl('https://example.com/file.txt')).toBe('https://example.com/file.txt');
+        expect(toSafeAttachmentUrl('http://localhost:8000/a.png')).toBe('http://localhost:8000/a.png');
+        expect(toSafeAttachmentUrl('blob:https://example.com/550e8400')).toBe('blob:https://example.com/550e8400');
+        expect(toSafeAttachmentUrl('/user/files/report.pdf')).toBe('/user/files/report.pdf');
+        expect(toSafeAttachmentUrl('  /user/files/trimmed.txt  ')).toBe('/user/files/trimmed.txt');
+        expect(isSafeAttachmentUrl('user/files/doc.txt')).toBe(true);
+
+        const blocked = [
+            'javascript:alert(1)',
+            '  JaVaScRiPt:alert(1)',
+            'java\tscript:alert(1)',
+            'java\nscript:alert(1)',
+            '\x01javascript:alert(1)',
+            'vbscript:msgbox(1)',
+            'data:text/html,<script>alert(1)</script>',
+            'data:image/svg+xml;base64,PHN2Zz4=',
+            'data:image/png;base64,iVBORw0KGgo=',
+            'file:///etc/passwd',
+            'blob:javascript:alert(1)',
+            '   ',
+            '',
+            null,
+            123,
+        ];
+        for (const candidate of blocked) {
+            expect(toSafeAttachmentUrl(candidate)).toBeNull();
+            expect(isSafeAttachmentUrl(candidate)).toBe(false);
+        }
+
+        expect(toSafeAttachmentUrl('data:image/png;base64,iVBORw0KGgo=', { allowDataImage: true })).toBe('data:image/png;base64,iVBORw0KGgo=');
+        expect(toSafeAttachmentUrl('data:image/svg+xml;base64,PHN2Zz4=', { allowDataImage: true })).toBeNull();
+        expect(toSafeAttachmentUrl('data:text/html;base64,PHNjcmlwdD4=', { allowDataImage: true })).toBeNull();
+    });
+
+    test('drops unsafe media and file URLs from shared collections', () => {
+        const malicious = {
+            id: 'm-xss',
+            role: 'character',
+            name: 'Mallory',
+            created_at: 9000,
+            extra: {
+                image_url: 'javascript:alert(1)',
+                media: [
+                    { url: 'javascript:alert(1)', type: 'image', title: 'bad img' },
+                    { url: 'data:image/svg+xml;base64,PHN2Zz4=', type: 'image', title: 'svg' },
+                    { url: 'data:image/png;base64,iVBORw0KGgo=', type: 'image', title: 'inline png' },
+                    { url: 'data:image/png;base64,iVBORw0KGgo=', type: 'audio', title: 'data audio' },
+                    { url: 'vbscript:bad', type: 'video', title: 'bad vid' },
+                    { url: '/u/safe.mp3', type: 'audio', title: 'safe.mp3' },
+                ],
+                files: [
+                    { url: 'javascript:alert(2)', name: 'evil.html', size: 10 },
+                    { url: '  \tjavascript:alert(3)', name: 'tab.html', size: 10 },
+                    { url: 'data:text/html,<script>alert(4)</script>', name: 'data.html', size: 10 },
+                    { url: 'https://example.com/readme.txt', name: 'readme.txt', size: 42 },
+                ],
+            },
+        };
+        const collected = collectSharedItems([malicious]);
+        expect(collected.media.map(item => item.url)).toEqual(['data:image/png;base64,iVBORw0KGgo=']);
+        expect(collected.files.map(item => item.url)).toEqual(['/u/safe.mp3', 'https://example.com/readme.txt']);
     });
 });
 

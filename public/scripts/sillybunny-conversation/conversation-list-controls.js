@@ -18,6 +18,7 @@ import {
     adjacentSectionKey,
     describeSectionMove,
     folderIdOfSection,
+    folderSectionKey,
     getEntrySectionKey,
     getSectionKeys,
     planSectionMove,
@@ -169,6 +170,10 @@ export function bindConversationListControls(list, { getEntries, runAction, open
             return false;
         }
         const home = favorite ? null : getLayout().folders.find(folder => folder.id === entry.folderId);
+        const destKey = favorite ? SECTION_FAVORITES : (home ? folderSectionKey(home.id) : SECTION_CONVERSATIONS);
+        if (!isSectionOpen(destKey)) {
+            storeSectionOpen(destKey, true);
+        }
         highlightMovedRow(list, entry.id);
         announce(favorite ? `${entry.name} added to Favorites` : home ? `${entry.name} moved to ${home.name}` : `${entry.name} removed from Favorites`);
         render();

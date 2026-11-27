@@ -236,13 +236,27 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
         const target = event.target instanceof Element ? event.target : null;
         const row = target?.closest(rowSelector) ?? null;
         // A finger pressing the heading of a folder for a long time opens its menu. A mouse and a pen open it by the secondary click.
-        const menuOnly = !row && event.pointerType === 'touch' && menuOnlySelector ? target?.closest(menuOnlySelector) ?? null : null;
-        const element = menuOnly ?? row;
-        if (!(element instanceof HTMLElement) || !list.contains(element) || (!menuOnly && !canDrag())) {
+        const menuOnlyElement = !row && event.pointerType === 'touch' && menuOnlySelector ? target?.closest(menuOnlySelector) ?? null : null;
+        const element = menuOnlyElement ?? row;
+        const draggable = !menuOnlyElement && canDrag();
+        if (!(element instanceof HTMLElement) || !list.contains(element) || (!menuOnlyElement && !draggable && event.pointerType !== 'touch')) {
             return;
         }
-        const state = { menuOnly: Boolean(menuOnly), pointerId: event.pointerId, row: element, cancelled: false, ghost: null, offsetX: 0, offsetY: 0, lastY: 0, from: menuOnly ? '' : getSectionOfRow(element), holdKey: '', holdTimer: 0, scrollFrame: 0 };
-        session = { ...state, gesture: createRowGesture({ pointerType: event.pointerType, x: event.clientX, y: event.clientY, canDrag: !menuOnly, on: callbacks }) };
+        const state = {
+            menuOnly: Boolean(menuOnlyElement),
+            pointerId: event.pointerId,
+            row: element,
+            cancelled: false,
+            ghost: null,
+            offsetX: 0,
+            offsetY: 0,
+            lastY: 0,
+            from: draggable ? getSectionOfRow(element) : '',
+            holdKey: '',
+            holdTimer: 0,
+            scrollFrame: 0,
+        };
+        session = { ...state, gesture: createRowGesture({ pointerType: event.pointerType, x: event.clientX, y: event.clientY, canDrag: draggable, on: callbacks }) };
         window.addEventListener('pointermove', onPointerMove, true);
         window.addEventListener('pointerup', onPointerUp, true);
         window.addEventListener('pointercancel', onPointerCancel, true);
@@ -250,7 +264,8 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
     }
 
     // A lifted finger must not scroll the list under the row. The browser decides on the first touchmove whether the touch
-    // scrolls, so the listener is registered before any touch starts and is not passive.
+    // scrolls, so the listener is registered before any touch starts and is not passive. Scoped to the list so touch scrolling
+    // elsewhere in the app stays off the main thread.
     function onTouchMove(event) {
         if (session && session.gesture.phase !== 'pressed' && session.gesture.phase !== 'ended' && event.cancelable) {
             event.preventDefault();
@@ -273,9 +288,17 @@ export function bindRowDrag(list, { rowSelector, sectionSelector, canDrag, getSe
         }
     }
 
-    // The list lives as long as the page, so nothing unbinds these.
     list.addEventListener('pointerdown', onPointerDown);
     list.addEventListener('dragstart', onDragStart);
-    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    list.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener('click', onClickCapture, true);
+
+    return () => {
+        clearChrome();
+        detach();
+        list.removeEventListener('pointerdown', onPointerDown);
+        list.removeEventListener('dragstart', onDragStart);
+        list.removeEventListener('touchmove', onTouchMove);
+        window.removeEventListener('click', onClickCapture, true);
+    };
 }

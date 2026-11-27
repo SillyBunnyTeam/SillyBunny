@@ -46,6 +46,7 @@ import {
     saveConversationMemorySummary,
 } from './settings-store.js';
 import { memorySummaryBusyAvatars, memorySummaryTimers } from './state.js';
+import { toSafeAttachmentUrl } from './safe-url.js';
 import {
     getConversationAttachmentSummary,
     getConversationFileAttachments,
@@ -85,28 +86,32 @@ export function renderConversationAttachments(container, message) {
     wrapper.className = 'sb-conversation-attachments';
 
     media.forEach((attachment) => {
+        const title = String(attachment.title || '').trim();
+        const type = String(attachment.type || 'image');
+        const safeUrl = toSafeAttachmentUrl(attachment.url, { allowDataImage: type !== 'video' && type !== 'audio' });
+        if (!safeUrl) {
+            return;
+        }
         const figure = document.createElement('figure');
         figure.className = 'sb-conversation-media-attachment';
 
-        const title = String(attachment.title || '').trim();
-        const type = String(attachment.type || 'image');
         if (type === 'video') {
             const video = document.createElement('video');
-            video.src = attachment.url;
+            video.src = safeUrl;
             video.controls = true;
             video.preload = 'metadata';
             video.title = title;
             figure.appendChild(video);
         } else if (type === 'audio') {
             const audio = document.createElement('audio');
-            audio.src = attachment.url;
+            audio.src = safeUrl;
             audio.controls = true;
             audio.preload = 'metadata';
             audio.title = title;
             figure.appendChild(audio);
         } else {
             const img = document.createElement('img');
-            img.src = attachment.url;
+            img.src = safeUrl;
             img.alt = title || 'Uploaded image';
             img.loading = 'lazy';
             figure.appendChild(img);
@@ -122,9 +127,13 @@ export function renderConversationAttachments(container, message) {
     });
 
     files.forEach((file) => {
+        const safeUrl = toSafeAttachmentUrl(file.url);
+        if (!safeUrl) {
+            return;
+        }
         const link = document.createElement('a');
         link.className = 'sb-conversation-file-attachment';
-        link.href = file.url;
+        link.href = safeUrl;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.download = file.name || '';
@@ -147,7 +156,9 @@ export function renderConversationAttachments(container, message) {
         wrapper.appendChild(link);
     });
 
-    container.appendChild(wrapper);
+    if (wrapper.childElementCount > 0) {
+        container.appendChild(wrapper);
+    }
 }
 
 function getConversationLocalTimeContext(now = new Date()) {

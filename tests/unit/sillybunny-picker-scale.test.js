@@ -402,6 +402,40 @@ describe('rows are retained and hidden in a paged list', () => {
         expect(list.querySelectorAll(OPTION)).toHaveLength(50);
     });
 
+    test('resets selection and excluded state cleanly when reordering or evicting retained rows', () => {
+        const items = makeItems(1200);
+        const states = new Map([
+            ['card-0.png', 'selected'],
+            ['card-1.png', 'excluded'],
+        ]);
+        const { picker, list, input } = open({
+            items,
+            multiple: true,
+            getItemState: value => states.get(value) ?? null,
+        });
+
+        // Verify initial selection and excluded indicators on row 0 and row 1.
+        expect(shownOptions(list)[0].getAttribute('aria-selected')).toBe('true');
+        expect(isHidden(shownOptions(list)[0].querySelector('.sb-picker__check'))).toBe(false);
+        expect(shownOptions(list)[1].querySelector('.sb-picker__excluded')).not.toBeNull();
+
+        // Reorder items so retained rows are discarded and rebuilt.
+        picker.refresh([...items].reverse());
+        type(input, 'name 0000');
+        expect(shownOptions(list)[0].getAttribute('aria-selected')).toBe('true');
+        expect(isHidden(shownOptions(list)[0].querySelector('.sb-picker__check'))).toBe(false);
+        type(input, 'name 0001');
+        expect(shownOptions(list)[0].querySelector('.sb-picker__excluded')).not.toBeNull();
+
+        // Restore order, build > 600 rows, evict oldest hidden rows (including card-1.png), then show card-1.png again.
+        type(input, '');
+        picker.refresh(items);
+        for (let batch = 0; batch < 13; batch++) shownMore(list).click();
+        type(input, 'name 0650');
+        type(input, 'name 0001');
+        expect(shownOptions(list)[0].querySelector('.sb-picker__excluded')).not.toBeNull();
+    });
+
     test('keeps the rows that are hidden out of the keyboard order and the screen reader', () => {
         const { list, input } = open();
 

@@ -92,7 +92,7 @@ import {
 } from './timeline-render.js';
 import { openReactionChooser, reactConversationMessage } from './reactions-ui.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
-import { openActionMenu } from '../sillybunny-action-menu.js';
+import { closeActionMenu, openActionMenu } from '../sillybunny-action-menu.js';
 import { ensureDetailsStyles } from './details/styles.js';
 import { applyEmojiFont } from './emoji/emoji-font.js';
 import { insertEmojiAtCaret } from './emoji/emoji-insert.js';
@@ -370,6 +370,51 @@ function isComposerEmojiButtonHidden() {
  * @param {HTMLElement} trigger The Emoji button, or the "+" button when the Emoji button is not drawn.
  * @param {{ fromEntry?: boolean }} [options] `fromEntry`: the shortcut opened it, so a chooser that closes without a pick gives the focus back to the entry and not to the button.
  */
+function isVisibleFocusTarget(element) {
+    if (!(element instanceof HTMLElement) || !element.isConnected || element.hasAttribute('data-sb-menu-only')) {
+        return false;
+    }
+    for (let node = element; node instanceof HTMLElement; node = node.parentElement) {
+        if (node.hidden) {
+            return false;
+        }
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+    }
+    if (document.body?.getClientRects?.().length > 0 && element.getClientRects().length === 0) {
+        return false;
+    }
+    return true;
+}
+
+function resolveSelectionFocusTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+        return null;
+    }
+    if (isVisibleFocusTarget(target)) {
+        return target;
+    }
+    const message = target.closest('.sb-conversation-message');
+    if (message instanceof HTMLElement) {
+        const mobile = message.querySelector('.sb-conversation-mobile-menu-trigger');
+        const desktop = message.querySelector('.sb-conversation-message-menu');
+        const ordered = window.matchMedia?.('(pointer: coarse)')?.matches ? [mobile, desktop] : [desktop, mobile];
+        const visible = ordered.filter(isVisibleFocusTarget);
+        if (visible.length > 1) {
+            const laidOut = visible.find(element => element.getClientRects().length > 0);
+            if (laidOut) {
+                return laidOut;
+            }
+        }
+        if (visible.length) {
+            return visible[0];
+        }
+    }
+    return null;
+}
+
 async function openComposerEmojiChooser(trigger, { fromEntry = false } = {}) {
     const input = document.getElementById(CHROME_IDS.input);
     if (!(input instanceof HTMLTextAreaElement) || input.disabled) {
@@ -377,6 +422,9 @@ async function openComposerEmojiChooser(trigger, { fromEntry = false } = {}) {
     }
     let range = { start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length };
     const { openEmojiChooser } = await import('./emoji/emoji-chooser.js');
+    if (!conversationState.conversationWorkspaceOpen || input.disabled || !trigger?.isConnected) {
+        return;
+    }
     openEmojiChooser({
         trigger,
         kind: 'insert',
@@ -691,7 +739,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             await copyConversationMessage(data.messageId);
             break;
         case 'select-message':
-            enterConversationSelection(data.messageId, target);
+            enterConversationSelection(data.messageId, resolveSelectionFocusTarget(target));
             break;
         case 'select-messages':
             enterConversationSelection(null, target);
@@ -1128,6 +1176,7 @@ export function setConversationInterfaceActive(active) {
 
     if (!active) {
         chrome.sheld.removeAttribute('data-sb-conversation-mode');
+        closeActionMenu({ animate: false, restoreFocus: false });
         closeConversationList();
         hideConversationPickers();
         observeConversationLayout(false);

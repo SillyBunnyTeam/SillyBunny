@@ -34,9 +34,12 @@ function createLorebookSelect(value) {
  * The memory summary of the open chat: a note that the model writes for continuity, and that the user can write, refresh
  * or clear. It is in the header of the chat file, so these actions need the chat loaded.
  */
-function createMemoryRows(conversationId) {
+function createMemoryRows(conversationId, { isStopped = () => false } = {}) {
     const where = () => {
-        const view = requireView(conversationId);
+        const view = conversationData.get(conversationId);
+        if (!view) {
+            return null;
+        }
         const { avatar, groupId } = identityOf(view);
         return { avatar, options: { groupId, personaId: view.personaId }, view };
     };
@@ -52,7 +55,14 @@ function createMemoryRows(conversationId) {
     summary.row.append(caption);
 
     const draw = () => {
-        const { avatar, options, view } = where();
+        if (isStopped()) {
+            return;
+        }
+        const target = where();
+        if (!target) {
+            return;
+        }
+        const { avatar, options, view } = target;
         const chat = view.chats.find(item => item.id === view.activeChatId);
         summary.setValue(avatar ? getConversationMemorySummary(avatar, options) : '');
         const count = chat?.messageCount ?? 0;
@@ -60,13 +70,26 @@ function createMemoryRows(conversationId) {
     };
 
     const withLoadedChat = async (task) => {
-        const { avatar, options } = where();
+        if (isStopped()) {
+            return;
+        }
+        const target = where();
+        if (!target) {
+            return;
+        }
+        const { avatar, options } = target;
         try {
             await ensureConversationChatLoaded(avatar, options);
+            if (isStopped() || !where()) {
+                return;
+            }
             await task(avatar, options);
         } catch (error) {
             console.error('Conversation Mode: the memory could not be changed', error);
             globalThis.toastr?.error?.('The memory could not be changed');
+        }
+        if (isStopped() || !where()) {
+            return;
         }
         draw();
     };
@@ -76,7 +99,7 @@ function createMemoryRows(conversationId) {
         field: 'create-memory',
         onActivate: () => void withLoadedChat(async (avatar, options) => {
             const text = await promptConversationText({ title: 'Memory Summary', text: 'Enter or override the memory summary for this Conversation', defaultValue: getConversationMemorySummary(avatar, options), rows: 6 });
-            if (typeof text === 'string') {
+            if (typeof text === 'string' && !isStopped() && where()) {
                 saveConversationMemorySummary(avatar, text.trim(), getConversationMessages(avatar, options).length, options);
                 globalThis.toastr?.success?.('Conversation memory updated');
             }
@@ -94,7 +117,7 @@ function createMemoryRows(conversationId) {
         danger: true,
         field: 'clear-memory',
         onActivate: () => void withLoadedChat(async (avatar, options) => {
-            if (await confirmConversationAction({ title: 'Clear the memory summary?', text: 'This does not delete chat messages', confirmLabel: 'Clear' }) && clearConversationMemorySummary(avatar, options)) {
+            if (await confirmConversationAction({ title: 'Clear the memory summary?', text: 'This does not delete chat messages', confirmLabel: 'Clear' }) && !isStopped() && where() && clearConversationMemorySummary(avatar, options)) {
                 globalThis.toastr?.success?.('Conversation memory cleared');
             }
         }),
@@ -108,7 +131,13 @@ export function buildAdvanced({ conversationId, nav }) {
     const view = requireView(conversationId);
     const settings = readSettings(view);
     const { page, clamp } = createPage('sb-details-page--settings');
-    const save = (key, value) => writeSetting(requireView(conversationId), key, value);
+    let stopped = false;
+    const save = (key, value) => {
+        const current = conversationData.get(conversationId);
+        if (current) {
+            writeSetting(current, key, value);
+        }
+    };
 
     const prompt = createTextAreaField({
         label: 'System Prompt',
@@ -162,7 +191,7 @@ export function buildAdvanced({ conversationId, nav }) {
         checked: settings.prose_polisher,
         onChange: value => save('prose_polisher', value),
     });
-    const memory = createMemoryRows(conversationId);
+    const memory = createMemoryRows(conversationId, { isStopped: () => stopped });
     memory.draw();
 
     clamp.append(
@@ -174,6 +203,9 @@ export function buildAdvanced({ conversationId, nav }) {
 
     const signature = current => JSON.stringify([current.activeChatId, current.chats.map(chat => [chat.id, chat.name, chat.messageCount])]);
     const stopMemory = conversationData.subscribe((event) => {
+        if (stopped || !conversationData.get(conversationId)) {
+            return;
+        }
         if (event.type === 'chat' && event.address?.conversationId === conversationId) {
             memory.draw();
         }
@@ -183,6 +215,7 @@ export function buildAdvanced({ conversationId, nav }) {
         title: getPageTitle('advanced'),
         content: page,
         dispose() {
+            stopped = true;
             stop();
             stopMemory();
         },

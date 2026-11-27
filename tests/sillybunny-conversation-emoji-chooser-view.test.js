@@ -174,6 +174,30 @@ describe('what the chooser is made of', () => {
         view.setTable(makeTable());
         expect(view.element.dataset.state).toBe('ready');
     });
+
+    test('releases the loading status page aria-busy and aria-labelledby on setTable, showError, and dispose', () => {
+        for (const finish of ['table', 'error', 'dispose']) {
+            document.body.replaceChildren();
+            const view = createChooserView({ kind: 'insert', recents: [], columns: () => 4, schedule, requestClose() {}, recordRecent() {}, onPick() {} });
+            document.body.append(view.element);
+            const scroller = view.element.querySelector('.sb-emoji-scroller');
+
+            view.showLoading();
+            expect(scroller.getAttribute('aria-busy')).toBe('true');
+            expect(scroller.hasAttribute('aria-labelledby')).toBe(true);
+
+            if (finish === 'table') {
+                view.setTable(makeTable());
+            } else if (finish === 'error') {
+                view.showError(() => {});
+            } else {
+                view.dispose();
+            }
+
+            expect(scroller.hasAttribute('aria-busy')).toBe(false);
+            expect(scroller.hasAttribute('aria-labelledby')).toBe(false);
+        }
+    });
 });
 
 describe('building', () => {
@@ -521,6 +545,25 @@ describe('search', () => {
         expect([...root.querySelectorAll('.sb-emoji-cell')].map(cell => cell.dataset.emoji)).toEqual(['🤝', '👋', '🙏']);
     });
 
+    test('ignores an in-flight English answer when the search is cleared from sections mode', async () => {
+        let resolveEnglish;
+        const loadEnglish = () => new Promise((resolve) => {
+            resolveEnglish = resolve;
+        });
+        const { root } = makeView({ loadEnglish });
+        flush();
+        type(root, 'chemistry');
+        expect(root.dataset.mode).toBe('sections');
+        type(root, '');
+        const english = makeTable('en', { rows: [['🧪', 'test tube', 'chemistry', 0, 1]] });
+        english.getIndex = () => buildSearchIndex(english.rows);
+        resolveEnglish(english);
+        await flushPromises();
+        expect(root.dataset.mode).toBe('sections');
+        expect(root.querySelectorAll('[role="group"]')).toHaveLength(3);
+        expect(cellOf(root, '🧪')).toBeUndefined();
+    });
+
     test('caps the results', () => {
         const rows = Array.from({ length: 260 }, (_, index) => ['😀', `smile ${index}`, '', 0, 1]);
         const table = makeTable('de', { rows });
@@ -674,6 +717,50 @@ describe('skin tones', () => {
         flush();
         cellOf(root, '🤝').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
         expect(openVariants(root).dataset.count).toBe('25');
+    });
+
+    test('mark picked variants with aria-selected in react mode and refresh them', () => {
+        const have = new Set(['👋🏽']);
+        const { root, view } = makeView({ kind: 'react', isPicked: emoji => have.has(emoji) });
+        flush();
+        cellOf(root, '👋').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        const options = [...openVariants(root).querySelectorAll('[role="option"]')];
+        expect(options.find(option => option.dataset.emoji === '👋🏽').getAttribute('aria-selected')).toBe('true');
+        expect(options.find(option => option.dataset.emoji === '👋').getAttribute('aria-selected')).toBe('false');
+        have.delete('👋🏽');
+        have.add('👋🏿');
+        view.refreshSelection();
+        expect(options.find(option => option.dataset.emoji === '👋🏽').getAttribute('aria-selected')).toBe('false');
+        expect(options.find(option => option.dataset.emoji === '👋🏿').getAttribute('aria-selected')).toBe('true');
+    });
+
+    test('Tab and Shift+Tab inside the variants panel close it and advance focus inside the chooser', () => {
+        const { root } = makeView();
+        flush();
+        const wave = cellOf(root, '👋');
+        wave.focus();
+        key(wave, 'ContextMenu');
+        const toolbarStop = root.querySelector('.sb-emoji-categories [tabindex="0"]');
+        const forward = key(document.activeElement, 'Tab');
+        expect(forward.defaultPrevented).toBe(true);
+        expect(openVariants(root)).toBeNull();
+        expect(document.activeElement).toBe(toolbarStop);
+
+        wave.focus();
+        key(wave, 'ContextMenu');
+        const backward = key(document.activeElement, 'Tab', { shiftKey: true });
+        expect(backward.defaultPrevented).toBe(true);
+        expect(openVariants(root)).toBeNull();
+        expect(document.activeElement).toBe(search(root));
+    });
+
+    test('close when the scroller scrolls', () => {
+        const { root } = makeView();
+        flush();
+        cellOf(root, '👋').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        expect(openVariants(root)).not.toBeNull();
+        root.querySelector('.sb-emoji-scroller').dispatchEvent(new Event('scroll'));
+        expect(openVariants(root)).toBeNull();
     });
 });
 

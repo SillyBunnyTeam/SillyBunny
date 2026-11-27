@@ -2826,14 +2826,27 @@ body:not(.movingUI) #sheld[data-sb-conversation-layout='pages'] {
     box-shadow: var(--sb-focus-ring-inset);
 }
 
-body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-message, .sb-conversation-picker, .sb-conversation-search-bar) {
+body.reduced-motion #sheld[data-sb-conversation-mode='on'] :is(.sb-conversation-message, .sb-conversation-picker, .sb-conversation-search-bar),
+body.reduced-motion .sb-conversation-typing-dots span,
+body.reduced-motion .sb-conversation-list-item[data-unread='true'] .sb-conversation-list-item-unread {
     animation: none;
+}
+
+body.reduced-motion .sb-conversation-list-row.is-just-moved .sb-conversation-list-item {
+    animation: none;
+    background: color-mix(in srgb, var(--sb-accent) 25%, transparent);
+}
+
+body.reduced-motion .sb-conversation-list-row.is-lifted .sb-conversation-list-item {
+    transform: none;
 }
 
 body.reduced-motion .sb-conversation-flat-button,
 body.reduced-motion .sb-conversation-message-actions,
 body.reduced-motion .sb-conversation-message-action,
 body.reduced-motion .sb-conversation-reaction-button,
-body.reduced-motion .sb-conversation-mobile-menu-trigger {
+body.reduced-motion .sb-conversation-mobile-menu-trigger,
+body.reduced-motion .sb-conversation-list-section,
+body.reduced-motion .sb-conversation-list-heading-button > i {
     transition: none;
 }

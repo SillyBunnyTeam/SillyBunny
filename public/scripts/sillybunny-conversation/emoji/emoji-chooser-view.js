@@ -90,6 +90,7 @@ export function createChooserView({
         searchToken: 0,
         buildScheduled: false,
         variants: null,
+        loadingPage: null,
         pressTimer: 0,
         pressOrigin: null,
         swallowClick: false,
@@ -322,6 +323,11 @@ export function createChooserView({
                 cell.setAttribute('aria-selected', String(Boolean(isPicked(cell.dataset.emoji))));
             }
         }
+        if (state.variants) {
+            for (const option of state.variants.panel.querySelectorAll('[role="option"]')) {
+                option.setAttribute('aria-selected', String(Boolean(isPicked(option.dataset.emoji))));
+            }
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -356,6 +362,9 @@ export function createChooserView({
             const option = el('button', 'sb-emoji-cell', { 'type': 'button', 'role': 'option', 'tabindex': index === 0 ? '0' : '-1', 'aria-label': entry.name });
             option.dataset.emoji = entry.emoji;
             option.textContent = entry.emoji;
+            if (isPicked) {
+                option.setAttribute('aria-selected', String(Boolean(isPicked(entry.emoji))));
+            }
             panel.append(option);
         });
         root.append(panel);
@@ -386,6 +395,12 @@ export function createChooserView({
                 event.stopPropagation();
                 closeVariants({ restoreFocus: true });
                 return;
+            case 'Tab': {
+                const origin = root.querySelector('.sb-emoji-grid [tabindex="0"]') ?? state.variants.source;
+                closeVariants({ restoreFocus: false });
+                onTab(event, origin);
+                return;
+            }
             case 'ArrowRight': next = index + 1; break;
             case 'ArrowLeft': next = index - 1; break;
             case 'ArrowDown': next = index + width; break;
@@ -437,10 +452,10 @@ export function createChooserView({
     }
 
     function leaveResults() {
+        state.searchToken += 1;
         if (state.mode !== 'results') {
             return;
         }
-        state.searchToken += 1;
         state.mode = 'sections';
         root.dataset.mode = 'sections';
         state.results = null;
@@ -507,9 +522,9 @@ export function createChooserView({
      * Tab goes search, grid, toolbar. The shared popover and sheet trap Tab among every button inside them, which would make
      * each of the thousand cells a stop, so the chooser takes the key before they see it.
      */
-    function onTab(event) {
+    function onTab(event, origin = event.target) {
         const stops = tabStops();
-        let index = stops.findIndex(stop => stop === event.target || stop.contains(event.target));
+        let index = stops.findIndex(stop => stop === origin || stop.contains(origin));
         if (index === -1) {
             index = event.shiftKey ? 0 : stops.length - 1;
         }
@@ -704,6 +719,7 @@ export function createChooserView({
     }
 
     function onScroll() {
+        closeVariants();
         if (state.mode !== 'sections' || !state.sections.length) {
             return;
         }
@@ -758,7 +774,13 @@ export function createChooserView({
         }
     }
 
+    function releaseLoadingPage() {
+        state.loadingPage?.release();
+        state.loadingPage = null;
+    }
+
     function showMessage(stateName, content) {
+        releaseLoadingPage();
         root.dataset.state = stateName;
         categories.replaceChildren();
         setListbox(false);
@@ -766,7 +788,11 @@ export function createChooserView({
     }
 
     function showLoading() {
-        showMessage('loading', createStatusPage({ state: 'loading', title: 'Loading Emoji', compact: true, busy: scroller }).element);
+        releaseLoadingPage();
+        setListbox(false);
+        const page = createStatusPage({ state: 'loading', title: 'Loading Emoji', compact: true, busy: scroller });
+        showMessage('loading', page.element);
+        state.loadingPage = page;
     }
 
     /** @param {() => void} retry */
@@ -783,6 +809,7 @@ export function createChooserView({
     }
 
     function setTable(table) {
+        releaseLoadingPage();
         state.table = table;
         indexNames(table);
         state.sections = [];
@@ -835,6 +862,8 @@ export function createChooserView({
 
     function dispose() {
         state.disposed = true;
+        releaseLoadingPage();
+        closeVariants();
         cancelPress();
         clearTimeout(state.swallowTimer);
         resizeObserver?.disconnect();

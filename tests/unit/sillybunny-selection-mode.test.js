@@ -672,6 +672,25 @@ describe('selection mode', () => {
         expect(document.activeElement).toBe(list);
     });
 
+    test('exit falls back to the list when the return trigger is hidden or menu-only', () => {
+        for (const hide of [
+            el => { el.style.display = 'none'; },
+            el => { el.hidden = true; },
+            el => { el.setAttribute('data-sb-menu-only', ''); },
+        ]) {
+            document.body.replaceChildren();
+            const { selection, root, list } = makeSelection();
+            const trigger = document.createElement('button');
+            root.prepend(trigger);
+            hide(trigger);
+
+            selection.enter('a', trigger);
+            selection.exit();
+
+            expect(document.activeElement).toBe(list);
+        }
+    });
+
     test('exit makes a non-tabbable list focusable only as a return target', () => {
         const { selection, list } = makeSelection();
         list.removeAttribute('tabindex');

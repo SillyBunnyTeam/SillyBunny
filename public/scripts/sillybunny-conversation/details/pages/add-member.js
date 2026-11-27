@@ -1,6 +1,6 @@
 import { mountPicker } from '../../../sillybunny-editor/picker.js';
 import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
-import { getCharacterPickerOptions, requireView } from '../access.js';
+import { getCharacterPickerOptions, getView, requireView } from '../access.js';
 import { addMembersTo } from '../actions.js';
 import { getPageTitle } from '../details-logic.js';
 import { createGroup, createPage } from '../page-kit.js';
@@ -54,7 +54,11 @@ export function buildAddMember({ conversationId, nav }) {
         },
         dispose: () => mounted.destroy(),
         async onResponse() {
-            const { switched } = await addMembersTo(requireView(conversationId), [...chosen]);
+            const current = getView(conversationId);
+            if (!current) {
+                return;
+            }
+            const { switched } = await addMembersTo(current, [...chosen]);
             if (switched) {
                 nav.close();
             }

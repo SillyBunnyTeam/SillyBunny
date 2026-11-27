@@ -57,6 +57,7 @@ import {
 import { getActiveTypingParticipants, getPrimaryTypingParticipant, withTypingParticipant } from './typing.js';
 import { getConversationWorldInfo } from './world-info.js';
 import { createStatusPage } from '../sillybunny-editor/status-page.js';
+import { toSafeAttachmentUrl } from './safe-url.js';
 
 export { escapeHtmlAttribute, escapeHtmlText } from './render-utils.js';
 export { getConversationTimelineMessages } from './timeline-search.js';
@@ -144,6 +145,16 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, persona
         speakerStatus,
         index > 8 ? 'lazy' : 'eager',
     ].join('\u001f'));
+}
+
+function buildConversationMessageBaseFingerprint(message, context) {
+    if (!message?.extra || typeof message.extra !== 'object' || !Object.hasOwn(message.extra, 'conversation_reactions')) {
+        return buildConversationMessageFingerprint(message, context);
+    }
+    return buildConversationMessageFingerprint({
+        ...message,
+        extra: { ...message.extra, conversation_reactions: undefined },
+    }, context);
 }
 
 function getConversationSelfieCommandRequests(message) {
@@ -453,13 +464,16 @@ function insertConversationDayDividers(timeline, messages) {
     }
 }
 
-function createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint }) {
+function createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint, baseFingerprint }) {
     const item = document.createElement('article');
     item.className = 'sb-conversation-message';
     item.dataset.role = message.role || 'character';
     item.dataset.messageId = message.id;
     item.dataset.pinned = String(isPinned(message));
     item.dataset.sbConversationMessageFingerprint = fingerprint;
+    if (baseFingerprint) {
+        item.dataset.sbConversationMessageBaseFingerprint = baseFingerprint;
+    }
 
     const avatarWrap = document.createElement('div');
     avatarWrap.className = 'sb-conversation-message-avatar';
@@ -607,8 +621,8 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         'sb-conversation-message-reply-preview',
     );
 
-    const imageUrl = message.extra?.image_url;
-    if (typeof imageUrl === 'string' && imageUrl) {
+    const imageUrl = toSafeAttachmentUrl(message.extra?.image_url, { allowDataImage: true });
+    if (imageUrl) {
         const figure = document.createElement('figure');
         figure.className = 'sb-conversation-image-preview';
         const img = document.createElement('img');
@@ -736,6 +750,127 @@ function anchorConversationTimelineToBottom(timeline, renderConversationKey) {
     setTimeout(applyScroll, 250);
 }
 
+function findPreferredMenuTrigger(node) {
+    const mobile = node.querySelector('.sb-conversation-mobile-menu-trigger');
+    const desktop = node.querySelector('.sb-conversation-message-menu');
+    const ordered = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)')?.matches
+        ? [mobile, desktop]
+        : [desktop, mobile];
+    for (const candidate of ordered) {
+        if (candidate instanceof HTMLElement && getComputedStyle(candidate).display !== 'none') {
+            return candidate;
+        }
+    }
+    return ordered.find(candidate => candidate instanceof HTMLElement) || null;
+}
+
+function findReactionChipFocusTarget(nextNode, reaction, previousIndex) {
+    const chips = [...nextNode.querySelectorAll('.sb-conversation-message-reaction-chip')];
+    const matching = chips.find(chip => chip.dataset.reaction === reaction);
+    if (matching) {
+        return matching;
+    }
+    if (chips.length) {
+        return chips[Math.max(0, Math.min(previousIndex, chips.length - 1))];
+    }
+    return findPreferredMenuTrigger(nextNode);
+}
+
+function findReplacementFocusTarget(currentNode, nextNode) {
+    const active = document.activeElement;
+    const focused = active instanceof HTMLElement && currentNode.contains(active)
+        ? active
+        : currentNode.querySelector(':focus');
+    if (!(focused instanceof HTMLElement)) {
+        return null;
+    }
+    if (focused.hasAttribute('data-sb-conversation-menu')) {
+        const selector = focused.classList.contains('sb-conversation-mobile-menu-trigger')
+            ? '.sb-conversation-mobile-menu-trigger'
+            : '.sb-conversation-message-menu';
+        return nextNode.querySelector(selector);
+    }
+    if (focused.classList.contains('sb-conversation-message-reaction-chip')) {
+        const previousChips = [...currentNode.querySelectorAll('.sb-conversation-message-reaction-chip')];
+        return findReactionChipFocusTarget(nextNode, focused.dataset.reaction || '', previousChips.indexOf(focused));
+    }
+    if (focused.classList.contains('sb-conversation-reaction-more')) {
+        return nextNode.querySelector('.sb-conversation-reaction-more');
+    }
+    if (focused.classList.contains('sb-conversation-reaction-button')) {
+        const reaction = focused.dataset.reaction || '';
+        const nextButtons = [...nextNode.querySelectorAll('.sb-conversation-reaction-button:not(.sb-conversation-reaction-more)')];
+        const matching = nextButtons.find(button => button.dataset.reaction === reaction);
+        if (matching) {
+            return matching;
+        }
+        const previousButtons = [...currentNode.querySelectorAll('.sb-conversation-reaction-button:not(.sb-conversation-reaction-more)')];
+        const index = previousButtons.indexOf(focused);
+        return nextButtons[index] || nextNode.querySelector('.sb-conversation-reaction-more');
+    }
+    const action = focused.dataset.sbConversationAction;
+    if (action) {
+        const selfieIndex = focused.dataset.selfieIndex;
+        const selector = selfieIndex !== undefined
+            ? `[data-sb-conversation-action="${CSS.escape(action)}"][data-selfie-index="${CSS.escape(selfieIndex)}"]`
+            : `[data-sb-conversation-action="${CSS.escape(action)}"]`;
+        return nextNode.querySelector(selector);
+    }
+    return null;
+}
+
+/**
+ * Updates only the reaction chips and toolbar quick-reaction buttons on an existing message node so an open reaction
+ * popover (such as More Reactions with Shift+Click) keeps its trigger connected and its open-menu class intact.
+ */
+function updateMessageReactionsInPlace(node, message, fingerprint) {
+    const active = document.activeElement;
+    const focusedChip = active instanceof HTMLElement && node.contains(active) && active.classList.contains('sb-conversation-message-reaction-chip')
+        ? active
+        : node.querySelector('.sb-conversation-message-reaction-chip:focus');
+    const focusedReaction = focusedChip instanceof HTMLElement ? focusedChip.dataset.reaction || '' : '';
+    const focusedChipIndex = focusedChip instanceof HTMLElement
+        ? [...node.querySelectorAll('.sb-conversation-message-reaction-chip')].indexOf(focusedChip)
+        : -1;
+
+    const body = node.querySelector('.sb-conversation-message-body');
+    if (body) {
+        const oldRow = body.querySelector(':scope > .sb-conversation-message-reactions');
+        const nextRow = createReactionChips(message);
+        if (oldRow && nextRow) {
+            oldRow.replaceWith(nextRow);
+        } else if (oldRow) {
+            oldRow.remove();
+        } else if (nextRow) {
+            const receipt = body.querySelector(':scope > .sb-conversation-message-receipt');
+            if (receipt) {
+                receipt.before(nextRow);
+            } else {
+                body.append(nextRow);
+            }
+        }
+    }
+
+    const freshButtons = createToolbarReactionButtons(message).filter(button => !button.classList.contains('sb-conversation-reaction-more'));
+    const existingButtons = node.querySelectorAll('.sb-conversation-message-actions > .sb-conversation-reaction-button:not(.sb-conversation-reaction-more)');
+    existingButtons.forEach((button, idx) => {
+        const fresh = freshButtons[idx];
+        if (!fresh) {
+            return;
+        }
+        if (button.dataset.reaction !== fresh.dataset.reaction) {
+            button.textContent = fresh.textContent;
+            button.dataset.reaction = fresh.dataset.reaction;
+            button.title = fresh.title;
+            button.setAttribute('aria-label', fresh.getAttribute('aria-label') || '');
+        }
+        button.setAttribute('aria-pressed', fresh.getAttribute('aria-pressed') || 'false');
+    });
+
+    node.dataset.sbConversationMessageFingerprint = fingerprint;
+    return focusedChip ? findReactionChipFocusTarget(node, focusedReaction, focusedChipIndex) : null;
+}
+
 function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter }) {
     const existingNodes = new Map();
     timeline.querySelectorAll('.sb-conversation-message[data-message-id]').forEach((node) => {
@@ -747,22 +882,25 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
     const grouping = getConversationTimelineGroupMeta(messages, { breaksAfter });
     messages.forEach((message, index) => {
         const messageId = String(message?.id || '');
-        const fingerprint = buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index });
+        const fingerprintContext = { avatar, groupId, personaId, settings, index };
+        const fingerprint = buildConversationMessageFingerprint(message, fingerprintContext);
+        const baseFingerprint = buildConversationMessageBaseFingerprint(message, fingerprintContext);
         const currentNode = existingNodes.get(messageId) || null;
         let nextNode = currentNode;
         let focusTarget = null;
         if (!nextNode || nextNode.dataset.sbConversationMessageFingerprint !== fingerprint) {
-            nextNode = createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint });
-            if (currentNode) {
-                const focusedTrigger = currentNode.querySelector('[data-sb-conversation-menu]:focus');
-                if (focusedTrigger) {
-                    // Replacing a message must not discard focus returned by its action menu.
-                    const selector = focusedTrigger.classList.contains('sb-conversation-mobile-menu-trigger')
-                        ? '.sb-conversation-mobile-menu-trigger'
-                        : '.sb-conversation-message-menu';
-                    focusTarget = nextNode.querySelector(selector);
+            if (currentNode && currentNode.dataset.sbConversationMessageBaseFingerprint === baseFingerprint) {
+                focusTarget = updateMessageReactionsInPlace(currentNode, message, fingerprint);
+                nextNode = currentNode;
+            } else {
+                nextNode = createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint, baseFingerprint });
+                if (currentNode) {
+                    if (currentNode.classList.contains('has-open-menu')) {
+                        nextNode.classList.add('has-open-menu');
+                    }
+                    focusTarget = findReplacementFocusTarget(currentNode, nextNode);
+                    currentNode.replaceWith(nextNode);
                 }
-                currentNode.replaceWith(nextNode);
             }
         }
 

@@ -224,7 +224,12 @@ export async function openReactionChooser(messageId, trigger) {
         return;
     }
 
-    const item = trigger.closest(MESSAGE_SELECTOR);
+    if (!trigger?.isConnected) {
+        return;
+    }
+    const getLiveItem = () => (trigger.isConnected ? trigger.closest(MESSAGE_SELECTOR) : null)
+        ?? document.querySelector(`${MESSAGE_SELECTOR}[data-message-id="${CSS.escape(String(messageId))}"]`);
+    const item = getLiveItem();
     // The toolbar shows only while the pointer is over the message, and the chooser takes the pointer away.
     item?.classList.add(OPEN_CLASS);
     chooser.openEmojiChooser({
@@ -233,7 +238,10 @@ export async function openReactionChooser(messageId, trigger) {
         bounds: document.getElementById('sb_conversation_timeline'),
         isPicked: emoji => hasUserReaction(messageId, emoji),
         onPick: (emoji, { name = '' } = {}) => void reactConversationMessage(messageId, emoji, { name }),
-        onClose: () => item?.classList.remove(OPEN_CLASS),
+        onClose: () => {
+            item?.classList.remove(OPEN_CLASS);
+            getLiveItem()?.classList.remove(OPEN_CLASS);
+        },
     });
 }
 

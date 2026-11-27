@@ -33,6 +33,25 @@ function normalizeKeys(keys) {
     return values.map(normalizeKey).filter(key => key !== null);
 }
 
+function isVisibleFocusTarget(element) {
+    if (!(element instanceof HTMLElement) || !element.isConnected || element.hasAttribute('data-sb-menu-only')) {
+        return false;
+    }
+    for (let node = element; node instanceof HTMLElement; node = node.parentElement) {
+        if (node.hidden) {
+            return false;
+        }
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+    }
+    if (document.body?.getClientRects?.().length > 0 && element.getClientRects().length === 0) {
+        return false;
+    }
+    return true;
+}
+
 /**
  * Adds GNOME-style selection mode affordances and interactions to a keyed list.
  * @param {object} options
@@ -340,9 +359,14 @@ export function createSelectionMode({
                 slots.search?.open();
                 slots.search?.setQuery(searchQuery);
             }
-            const focusTarget = focus?.isConnected ? focus : focusReturn;
+            const focusTarget = isVisibleFocusTarget(focus) ? focus : isVisibleFocusTarget(focusReturn) ? focusReturn : list;
             headerState = null;
-            if (restoreFocus && focusTarget instanceof HTMLElement && focusTarget.isConnected) focusTarget.focus({ preventScroll: true });
+            if (restoreFocus && focusTarget instanceof HTMLElement && focusTarget.isConnected) {
+                if (focusTarget === list && !list.hasAttribute('tabindex')) {
+                    list.tabIndex = -1;
+                }
+                focusTarget.focus({ preventScroll: true });
+            }
         } else standaloneHeader?.replaceChildren();
         parts = null;
         actionBar.replaceChildren();
@@ -352,11 +376,11 @@ export function createSelectionMode({
             emitChange();
         }
         if (notify) onExit?.();
-        const target = focusReturn?.isConnected ? focusReturn : list;
+        const target = isVisibleFocusTarget(focusReturn) ? focusReturn : list;
         if (target === list && !list.hasAttribute('tabindex')) {
             list.tabIndex = -1;
         }
-        if (standaloneHeader) target?.focus?.({ preventScroll: true });
+        if (standaloneHeader && restoreFocus) target?.focus?.({ preventScroll: true });
         focusReturn = null;
     }
 

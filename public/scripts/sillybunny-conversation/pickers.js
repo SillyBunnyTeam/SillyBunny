@@ -325,8 +325,7 @@ export async function editUserPersonaStatus() {
     }
 
     setUserPersonaStatus(nextStatus);
-    document.getElementById(CHROME_IDS.personaPicker)?.setAttribute('hidden', '');
-    document.getElementById(CHROME_IDS.userStatusPicker)?.setAttribute('hidden', '');
+    hideConversationPickers();
     updateUserFooter();
 }
 

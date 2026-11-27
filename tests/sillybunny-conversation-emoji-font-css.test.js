@@ -93,6 +93,16 @@ describe('the font on the surfaces of the mode', () => {
         }
     });
 
+    test('keeps the emoji chooser stylesheet deduplicated without dead legacy message classes', () => {
+        const chooserRules = chooserAst.stylesheet.rules.filter(rule => rule.type === 'rule' && rule.selectors.length === 1 && rule.selectors[0] === '.sb-emoji-chooser');
+        const cellRules = chooserAst.stylesheet.rules.filter(rule => rule.type === 'rule' && rule.selectors.includes('.sb-emoji-cell'));
+        const forcedColors = chooserAst.stylesheet.rules.filter(rule => rule.type === 'media' && rule.media === '(forced-colors: active)');
+        expect(chooserRules).toHaveLength(1);
+        expect(cellRules).toHaveLength(1);
+        expect(forcedColors).toHaveLength(1);
+        expect(chooserCss).not.toMatch(/\.sb-emoji-message(?:-title|-description)?\b/);
+    });
+
     test('is named only in the sheet that loads with the mode: no sheet of the start-up carries the face', () => {
         const names = [];
         const visit = (directory) => {

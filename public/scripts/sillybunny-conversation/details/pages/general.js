@@ -1,4 +1,4 @@
-import { createButtonRow } from '../../../sillybunny-editor/rows.js';
+import { createButtonRow, releaseRowIds } from '../../../sillybunny-editor/rows.js';
 import { createToggleRow } from '../../../sillybunny-editor/toggle-row.js';
 import { conversationData, describeCharacterStatus, getCardName, getFullPictureUrl, requireView, writeSetting } from '../access.js';
 import { createConversationAvatar } from '../avatars.js';
@@ -120,6 +120,7 @@ export function buildGeneral({ conversationId, nav }) {
             onChange: muted => writeSetting(requireView(conversationId), 'notifications_muted', muted),
         });
         const links = createPageLinks(view, nav);
+        releaseRowIds(clamp);
         clamp.replaceChildren(
             createHero(view, nav),
             ...[createPeopleGroup(view, nav)].filter(Boolean).map(group => group.section),

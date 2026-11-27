@@ -151,6 +151,15 @@ function itemHaystack(item) {
     return `${item.label} ${item.subtitle ?? (item.details ? detailsToText(item.details) : '')} ${item.group ?? ''}`.toLocaleLowerCase();
 }
 
+function resetEntryOption(entry) {
+    entry.option?.remove();
+    entry.option = null;
+    entry.check = null;
+    entry.excluded = null;
+    entry.stateKey = '';
+    entry.visible = false;
+}
+
 /**
  * Wraps the items in entries that hold what is made once per item: the search key and the row. An item object that was
  * in the list before keeps its entry, so a refresh builds a row only for an item that changed.
@@ -170,8 +179,7 @@ function setItems(state, items) {
     const kept = new Set(entries);
     for (const entry of state.entries ?? []) {
         if (!kept.has(entry) && entry.option) {
-            entry.option.remove();
-            entry.option = null;
+            resetEntryOption(entry);
         }
     }
     state.items = [...items];
@@ -185,8 +193,7 @@ function setItems(state, items) {
     if (state.built.some((entry, position) => position > 0 && state.built[position - 1].index > entry.index)) {
         // The items changed their order, so the rows that are in the list are not in item order any more.
         for (const entry of state.built) {
-            entry.option?.remove();
-            entry.option = null;
+            resetEntryOption(entry);
         }
         state.built = [];
     }
@@ -692,10 +699,7 @@ function evictRetainedRows(state) {
     const hidden = state.built.filter(entry => !entry.visible).sort((a, b) => a.lastShown - b.lastShown);
     const evicted = new Set(hidden.slice(0, state.built.length - RETAINED_ROWS_KEPT));
     for (const entry of evicted) {
-        entry.option.remove();
-        entry.option = null;
-        entry.check = null;
-        entry.stateKey = '';
+        resetEntryOption(entry);
     }
     state.built = state.built.filter(entry => !evicted.has(entry));
     pruneEmptyPages(state);

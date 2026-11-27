@@ -4,7 +4,18 @@
  */
 
 const ACCEPTED_TYPES = Object.freeze(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const ACCEPTED_EXTENSION_RE = /\.(?:png|jpe?g|gif|webp)$/i;
 const AVATAR_SIDE = 512;
+
+function isAcceptedAvatarFile(file) {
+    if (!file) {
+        return false;
+    }
+    if (file.type) {
+        return ACCEPTED_TYPES.includes(file.type.toLowerCase());
+    }
+    return ACCEPTED_EXTENSION_RE.test(String(file.name ?? ''));
+}
 
 function readImage(file) {
     return new Promise((resolve, reject) => {
@@ -28,16 +39,22 @@ function readImage(file) {
  * @throws {Error} For a file that is not one of the accepted picture types, or that the browser cannot read.
  */
 export async function toAvatarDataUrl(file) {
-    if (!ACCEPTED_TYPES.includes(file.type)) {
+    if (!isAcceptedAvatarFile(file)) {
         throw new Error('Choose a PNG, JPEG, GIF or WebP picture.');
     }
     const image = await readImage(file);
     const side = Math.min(image.naturalWidth, image.naturalHeight);
+    if (!(side > 0)) {
+        throw new Error('The picture has no dimensions that the browser can read.');
+    }
     const size = Math.min(AVATAR_SIDE, side);
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('The browser could not prepare a canvas for the picture.');
+    }
     context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, size, size);
     return canvas.toDataURL('image/png');
 }

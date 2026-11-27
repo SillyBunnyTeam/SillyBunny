@@ -1,4 +1,4 @@
-import { createEntryRow, createRow, createSpinRow, createSwitchRow } from '../../../sillybunny-editor/rows.js';
+import { createEntryRow, createRow, createSpinRow, createSwitchRow, releaseRowIds } from '../../../sillybunny-editor/rows.js';
 import { conversationData, readSettings, requireView, writeSetting } from '../access.js';
 import { formatWhen, getPageTitle, listReminders } from '../details-logic.js';
 import { copyPlaceholder, createGroup, createHint, createPage, el, icon, showUndoToast, watchConversation } from '../page-kit.js';
@@ -63,6 +63,7 @@ function createReminderRows(conversationId) {
     const draw = () => {
         const list = listReminders(conversationData.reminders(conversationId));
         const focusedId = document.activeElement instanceof HTMLElement ? document.activeElement.closest('[data-reminder-id]')?.dataset.reminderId : null;
+        releaseRowIds(container);
         container.replaceChildren();
         for (const reminder of list) {
             const button = el('button', 'ds-entity-row__button sb-details-row-button');

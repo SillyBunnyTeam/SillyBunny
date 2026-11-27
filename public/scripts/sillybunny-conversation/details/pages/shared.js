@@ -8,7 +8,7 @@ import { createStatusPage } from '../../../sillybunny-editor/status-page.js';
 import { conversationData, getCardName, requireView } from '../access.js';
 import { showMessageInTimeline } from '../actions.js';
 import { createCharacterAvatar, createAvatar } from '../avatars.js';
-import { collectSharedItems, formatFileSize, formatWhen, getPageTitle } from '../details-logic.js';
+import { collectSharedItems, formatFileSize, formatWhen, getPageTitle, toSafeAttachmentUrl } from '../details-logic.js';
 import { createCollection, createCollectionRow, createMenuItem, createPage, el, icon, redrawKeepingFocus, showUndoToast } from '../page-kit.js';
 import { setMessagePin } from '../../pin-model.js';
 import { scheduleTimelineRender } from '../../render-scheduler.js';
@@ -31,39 +31,78 @@ function createSharedPage({ conversationId, nav, className, title, pick, draw })
     clamp.append(body);
     let keys = '';
     let stopped = false;
+    let loadToken = 0;
+    let loadingChatId = '';
+    let currentChatId = '';
+    let loadingPage = null;
+
+    const releaseLoading = () => {
+        loadingPage?.release();
+        loadingPage = null;
+    };
 
     const address = () => {
         const view = conversationData.get(conversationId);
         return view?.activeChatId ? { conversationId, chatId: view.activeChatId } : null;
     };
+
     const render = () => {
         if (stopped) {
             return;
         }
-        const loaded = conversationData.chat(address());
-        if (!loaded) {
+        const where = address();
+        if (!where) {
+            loadToken += 1;
+            loadingChatId = '';
+            currentChatId = '';
+            keys = '';
+            releaseLoading();
+            body.replaceChildren();
             return;
         }
+        const loaded = conversationData.chat(where);
+        if (!loaded) {
+            if (loadingChatId === where.chatId) {
+                return;
+            }
+            const token = ++loadToken;
+            loadingChatId = where.chatId;
+            currentChatId = where.chatId;
+            keys = '';
+            releaseLoading();
+            loadingPage = createStatusPage({ state: 'loading', title: 'Loading', compact: true });
+            body.replaceChildren(loadingPage.element);
+            conversationData.loadChat(where).then(() => {
+                if (stopped || token !== loadToken) {
+                    return;
+                }
+                loadingChatId = '';
+                render();
+            }, () => {
+                if (stopped || token !== loadToken) {
+                    return;
+                }
+                loadingChatId = '';
+                releaseLoading();
+                body.replaceChildren(createStatusPage({ state: 'error', title: 'Could Not Load the Chat', compact: true }).element);
+            });
+            return;
+        }
+        loadToken += 1;
+        loadingChatId = '';
         const shared = collectSharedItems(loaded.messages);
         const items = pick(shared);
-        const next = JSON.stringify(items.map(item => [item.key, item.text ?? '']));
-        if (next === keys) {
+        const next = JSON.stringify([where.chatId, items.map(item => [item.key, item.text ?? ''])]);
+        if (next === keys && currentChatId === where.chatId) {
             return;
         }
+        currentChatId = where.chatId;
         keys = next;
+        releaseLoading();
         redrawKeepingFocus(body, () => draw(body, items, { nav, conversationId }));
     };
 
-    const loading = createStatusPage({ state: 'loading', title: 'Loading', compact: true });
-    body.append(loading.element);
-    const where = address();
-    if (where && !conversationData.chat(where)) {
-        conversationData.loadChat(where).then(render, () => {
-            body.replaceChildren(createStatusPage({ state: 'error', title: 'Could Not Load the Chat', compact: true }).element);
-        });
-    } else {
-        render();
-    }
+    render();
     const stop = conversationData.subscribe((event) => {
         if ((event.type === 'chat' && event.address?.conversationId === conversationId) || (event.type === 'list' && (!event.id || event.id === conversationId))) {
             if (!conversationData.get(conversationId)) {
@@ -73,12 +112,25 @@ function createSharedPage({ conversationId, nav, className, title, pick, draw })
             render();
         }
     });
-    return { title, content: page, dispose() { stopped = true; stop(); } };
+    return {
+        title,
+        content: page,
+        dispose() {
+            stopped = true;
+            loadToken += 1;
+            releaseLoading();
+            stop();
+        },
+    };
 }
 
 function openInChat(nav, conversationId, item) {
     return async () => {
-        const view = requireView(conversationId);
+        const view = conversationData.get(conversationId);
+        if (!view) {
+            nav.gone();
+            return;
+        }
         const chatId = view.activeChatId;
         await nav.close();
         await showMessageInTimeline(view, chatId, item.messageId);
@@ -129,13 +181,18 @@ export function buildMedia({ conversationId, nav }) {
 }
 
 function downloadFile(item) {
+    const safeUrl = toSafeAttachmentUrl(item?.url);
+    if (!safeUrl) {
+        return false;
+    }
     const link = el('a');
-    link.href = item.url;
+    link.href = safeUrl;
     link.download = item.name || '';
-    link.rel = 'noopener';
+    link.rel = 'noopener noreferrer';
     document.body.append(link);
     link.click();
     link.remove();
+    return true;
 }
 
 export function buildFiles({ conversationId, nav }) {
@@ -176,13 +233,23 @@ export function buildFiles({ conversationId, nav }) {
 }
 
 /**
- * Sets the pin of a message of the open chat. The timeline is drawn again when the conversation is open on screen.
- * @param {{ at?: number }} [options] The time of the pin, which an undo gives back; not given, it is now.
- * @returns {{ pinned: boolean, at: number }} The pin that the message had.
+ * Sets the pin of a message of a loaded chat. The timeline is drawn again when the conversation is open on screen.
+ * @param {{ chatId?: string, at?: number }} [options] The chat and the time of the pin, which an undo gives back; not given, it uses the active chat and now.
+ * @returns {{ pinned: boolean, at: number }|null} The pin that the message had, or null when the conversation or chat is gone.
  */
-function setPinned(conversationId, messageId, pinned, options = {}) {
-    const view = requireView(conversationId);
-    const address = { conversationId, chatId: view.activeChatId };
+function setPinned(conversationId, messageId, pinned, { chatId = '', ...options } = {}) {
+    const view = conversationData.get(conversationId);
+    if (!view) {
+        return null;
+    }
+    const targetChatId = chatId || view.activeChatId;
+    if (!targetChatId) {
+        return null;
+    }
+    const address = { conversationId, chatId: targetChatId };
+    if (!conversationData.chat(address)) {
+        return null;
+    }
     let before = { pinned: false, at: 0 };
     conversationData.commitChat(address, (chat) => {
         before = setMessagePin(chat.messages.find(item => item.id === messageId), pinned, options);
@@ -221,8 +288,29 @@ export function buildPinned({ conversationId, nav }) {
                         sections: () => [
                             { items: [createMenuItem('Show in Chat', 'arrow-up-right-from-square', openInChat(nav, conversationId, item))] },
                             { items: [createMenuItem('Unpin', 'thumbtack-slash', () => {
-                                const before = setPinned(conversationId, item.messageId, false);
-                                showUndoToast('Message unpinned', () => setPinned(conversationId, item.messageId, true, { at: before.at }));
+                                const chatId = conversationData.get(conversationId)?.activeChatId;
+                                if (!chatId) {
+                                    return;
+                                }
+                                const before = setPinned(conversationId, item.messageId, false, { chatId });
+                                if (!before) {
+                                    return;
+                                }
+                                showUndoToast('Message unpinned', async () => {
+                                    const current = conversationData.get(conversationId);
+                                    if (!current || (Array.isArray(current.chats) && !current.chats.some(chat => chat.id === chatId))) {
+                                        return;
+                                    }
+                                    const address = { conversationId, chatId };
+                                    if (!conversationData.chat(address)) {
+                                        try {
+                                            await conversationData.loadChat(address);
+                                        } catch {
+                                            return;
+                                        }
+                                    }
+                                    setPinned(conversationId, item.messageId, true, { chatId, at: before.at });
+                                });
                             })] },
                         ],
                     },

@@ -12,6 +12,9 @@ import {
     MIN_INACTIVITY_THRESHOLD,
 } from '../constants.js';
 import { isPendingServerReply } from '../pending-reply.js';
+import { isSafeAttachmentUrl, toSafeAttachmentUrl } from '../safe-url.js';
+
+export { isSafeAttachmentUrl, toSafeAttachmentUrl };
 
 /** A group of up to this many members lists them on General (Fractal's rule for fewer than five); a bigger one has the Members page. */
 export const INLINE_MEMBER_LIMIT = 4;
@@ -180,8 +183,9 @@ export function collectSharedItems(messages) {
         }
         const from = senderOf(message);
         const extra = message.extra ?? {};
-        if (typeof extra.image_url === 'string' && extra.image_url) {
-            media.push({ ...from, key: `${message.id}:image`, kind: 'image', url: extra.image_url, title: String(extra.image_prompt ?? '') });
+        const safeImageUrl = toSafeAttachmentUrl(extra.image_url, { allowDataImage: true });
+        if (safeImageUrl) {
+            media.push({ ...from, key: `${message.id}:image`, kind: 'image', url: safeImageUrl, title: String(extra.image_prompt ?? '') });
         }
         (Array.isArray(extra.media) ? extra.media : []).forEach((item, index) => {
             if (!item?.url) {
@@ -189,15 +193,20 @@ export function collectSharedItems(messages) {
             }
             const type = String(item.type || MEDIA_TYPE.IMAGE);
             const title = String(item.title ?? '');
+            const safeUrl = toSafeAttachmentUrl(item.url, { allowDataImage: type !== MEDIA_TYPE.AUDIO && type !== MEDIA_TYPE.VIDEO });
+            if (!safeUrl) {
+                return;
+            }
             if (type === MEDIA_TYPE.AUDIO) {
-                files.push({ ...from, key: `${message.id}:media:${index}`, kind: 'audio', url: item.url, name: title, size: undefined });
+                files.push({ ...from, key: `${message.id}:media:${index}`, kind: 'audio', url: safeUrl, name: title, size: undefined });
             } else {
-                media.push({ ...from, key: `${message.id}:media:${index}`, kind: type === MEDIA_TYPE.VIDEO ? 'video' : 'image', url: item.url, title });
+                media.push({ ...from, key: `${message.id}:media:${index}`, kind: type === MEDIA_TYPE.VIDEO ? 'video' : 'image', url: safeUrl, title });
             }
         });
         (Array.isArray(extra.files) ? extra.files : []).forEach((item, index) => {
-            if (item?.url) {
-                files.push({ ...from, key: `${message.id}:file:${index}`, kind: 'file', url: item.url, name: String(item.name ?? ''), size: Number.isFinite(item.size) ? item.size : undefined });
+            const safeUrl = toSafeAttachmentUrl(item?.url);
+            if (safeUrl) {
+                files.push({ ...from, key: `${message.id}:file:${index}`, kind: 'file', url: safeUrl, name: String(item.name ?? ''), size: Number.isFinite(item.size) ? item.size : undefined });
             }
         });
         if (extra.conversation_pinned) {
