@@ -9409,9 +9409,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                             if (!isCurrent()) return;
                             playMessageSound();
                             // SillyBunny: precompute auto-continue token count asynchronously instead of synchronous XHR getTokenCount().
-                            const bufferedAutoContinueTokens = (power_user.auto_continue.enabled && power_user.auto_continue.target_length > 0 && !requestControls?.suppressAutoContinue && chat.length && messageChunk.trim().length > 5)
-                                ? await getTokenCountAsync(chat[chat.length - 1].mes)
-                                : null;
+                            const bufferedAutoContinueTokens = await countLastMessageForAutoContinue(messageChunk, isImpersonate, requestControls);
                             triggerAutoContinue(messageChunk, isImpersonate, requestControls, bufferedAutoContinueTokens);
                             return Object.defineProperties(new String(getMessage), {
                                 'messageChunk': { value: messageChunk },
@@ -9424,9 +9422,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                         if (!isCurrent()) return;
                         clearStreamingProcessorIfCurrent(activeStreamingProcessor);
                         // SillyBunny: precompute auto-continue token count asynchronously instead of synchronous XHR getTokenCount().
-                        const streamedAutoContinueTokens = (power_user.auto_continue.enabled && power_user.auto_continue.target_length > 0 && !requestControls?.suppressAutoContinue && chat.length && messageChunk.trim().length > 5)
-                            ? await getTokenCountAsync(chat[chat.length - 1].mes)
-                            : null;
+                        const streamedAutoContinueTokens = await countLastMessageForAutoContinue(messageChunk, isImpersonate, requestControls);
                         triggerAutoContinue(messageChunk, isImpersonate, requestControls, streamedAutoContinueTokens);
                         return Object.defineProperties(new String(getMessage), {
                             'messageChunk': { value: messageChunk },
@@ -9640,9 +9636,7 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
 
             if (type !== 'quiet') {
                 // SillyBunny: precompute auto-continue token count asynchronously instead of synchronous XHR getTokenCount().
-                const nonStreamAutoContinueTokens = (power_user.auto_continue.enabled && power_user.auto_continue.target_length > 0 && !requestControls?.suppressAutoContinue && chat.length && messageChunk.trim().length > 5)
-                    ? await getTokenCountAsync(chat[chat.length - 1].mes)
-                    : null;
+                const nonStreamAutoContinueTokens = await countLastMessageForAutoContinue(messageChunk, isImpersonate, requestControls);
                 triggerAutoContinue(messageChunk, isImpersonate, requestControls, nonStreamAutoContinueTokens);
             }
 
@@ -9841,14 +9835,16 @@ export function getNextMessageId(type, preserveLastMessage = false) {
     return type == 'swipe' || (type === 'regenerate' && preserveLastMessage) ? chat.length - 1 : chat.length;
 }
 
+// SillyBunny: the checks of shouldAutoContinue() that need no token count, so that Generate() asks before it counts.
 /**
- * Determines if the message should be auto-continued.
+ * Tells whether auto-continue may run for a finished message. It holds every check that needs no token count,
+ * so that a caller can ask before it pays for one.
  * @param {string} messageChunk Current message chunk
  * @param {boolean} isImpersonate Is the user impersonation
  * @param {GenerateOptions} [options] Request-local auto-continue controls
- * @returns {boolean} Whether the message should be auto-continued
+ * @returns {boolean} Whether the length of the last message decides the answer
  */
-export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoContinue = false } = {}, precomputedTokenCount = null) {
+function isAutoContinueAllowed(messageChunk, isImpersonate, { suppressAutoContinue = false } = {}) {
     if (suppressAutoContinue) {
         return false;
     }
@@ -9896,22 +9892,55 @@ export function shouldAutoContinue(messageChunk, isImpersonate, { suppressAutoCo
     }
 
     if (messageChunk.trim().length > USABLE_LENGTH && chat.length) {
-        const lastMessage = chat[chat.length - 1];
-        // SillyBunny: use precomputed async token count from Generate() to avoid blocking sync XHR.
-        const messageLength = (typeof precomputedTokenCount === 'number' && Number.isFinite(precomputedTokenCount))
-            ? precomputedTokenCount
-            : getTokenCount(lastMessage.mes);
-        const shouldAutoContinue = messageLength < power_user.auto_continue.target_length;
+        return true;
+    }
 
-        if (shouldAutoContinue) {
-            console.log(`Triggering auto-continue. Message tokens: ${messageLength}. Target tokens: ${power_user.auto_continue.target_length}. Message chunk: ${messageChunk}`);
-            return true;
-        } else {
-            console.log(`Not triggering auto-continue. Message tokens: ${messageLength}. Target tokens: ${power_user.auto_continue.target_length}`);
-            return false;
-        }
+    console.log('Last generated chunk was empty, not triggering auto-continue');
+    return false;
+}
+
+// SillyBunny: an async count for shouldAutoContinue(), in place of a synchronous request.
+/**
+ * Counts the last message for `shouldAutoContinue` without a synchronous request. It asks for the count only when
+ * auto-continue can run, because a count is a server request on some APIs.
+ * @param {string} messageChunk Current message chunk
+ * @param {boolean} isImpersonate Is the user impersonation
+ * @param {GenerateOptions} [options] Request-local auto-continue controls
+ * @returns {Promise<number|null>} The token count, or null when auto-continue cannot run
+ */
+async function countLastMessageForAutoContinue(messageChunk, isImpersonate, options = {}) {
+    if (selected_group || !isAutoContinueAllowed(messageChunk, isImpersonate, options)) {
+        return null;
+    }
+
+    return await getTokenCountAsync(chat[chat.length - 1].mes);
+}
+
+/**
+ * Determines if the message should be auto-continued.
+ * @param {string} messageChunk Current message chunk
+ * @param {boolean} isImpersonate Is the user impersonation
+ * @param {GenerateOptions} [options] Request-local auto-continue controls
+ * @param {number|null} [precomputedTokenCount] Token count of the last message, when the caller counted it already
+ * @returns {boolean} Whether the message should be auto-continued
+ */
+export function shouldAutoContinue(messageChunk, isImpersonate, options = {}, precomputedTokenCount = null) {
+    if (!isAutoContinueAllowed(messageChunk, isImpersonate, options)) {
+        return false;
+    }
+
+    const lastMessage = chat[chat.length - 1];
+    // SillyBunny: use precomputed async token count from Generate() to avoid blocking sync XHR.
+    const messageLength = (typeof precomputedTokenCount === 'number' && Number.isFinite(precomputedTokenCount))
+        ? precomputedTokenCount
+        : getTokenCount(lastMessage.mes);
+    const shouldAutoContinue = messageLength < power_user.auto_continue.target_length;
+
+    if (shouldAutoContinue) {
+        console.log(`Triggering auto-continue. Message tokens: ${messageLength}. Target tokens: ${power_user.auto_continue.target_length}. Message chunk: ${messageChunk}`);
+        return true;
     } else {
-        console.log('Last generated chunk was empty, not triggering auto-continue');
+        console.log(`Not triggering auto-continue. Message tokens: ${messageLength}. Target tokens: ${power_user.auto_continue.target_length}`);
         return false;
     }
 }

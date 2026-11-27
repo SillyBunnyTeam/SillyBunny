@@ -168,7 +168,7 @@ function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer 
     load(context, 'scripts/reasoning.js', ['ReasoningType', 'ReasoningState', 'PromptReasoning', 'ReasoningHandler', 'parseReasoningFromString', 'extractReasoningFromData']);
     context.getReasoningParseTemplates = () => [context.power_user.reasoning];
     vm.runInContext('ReasoningHandler.prototype.updateDom = () => {};', context);
-    load(context, 'script.js', ['Generate', 'StreamingProcessor', 'sendGenerationRequest', 'sendStreamingRequest', 'getGenerateUrl', 'saveReply', 'getNextMessageId', 'getBiasStrings', 'processCommands', 'extractMessageFromData', 'normalizeContentText', 'stringifyUnknown', 'shouldBufferMainGenerationOutput', 'applyMainGenerationOutputInterceptors', 'unblockGeneration', 'clearStreamingProcessorIfCurrent', 'shouldAutoContinue', 'triggerAutoContinue', 'syncMesToSwipe', 'syncSwipeToMes', 'stopGeneration', 'generateRaw', 'generateRawData', 'generateQuietPrompt', 'TempResponseLength', 'addChatsPreamble', 'addChatsSeparator', 'consumePendingGeneratedMessageExtra']);
+    load(context, 'script.js', ['Generate', 'StreamingProcessor', 'sendGenerationRequest', 'sendStreamingRequest', 'getGenerateUrl', 'saveReply', 'getNextMessageId', 'getBiasStrings', 'processCommands', 'extractMessageFromData', 'normalizeContentText', 'stringifyUnknown', 'shouldBufferMainGenerationOutput', 'applyMainGenerationOutputInterceptors', 'unblockGeneration', 'clearStreamingProcessorIfCurrent', 'isAutoContinueAllowed', 'countLastMessageForAutoContinue', 'shouldAutoContinue', 'triggerAutoContinue', 'syncMesToSwipe', 'syncSwipeToMes', 'stopGeneration', 'generateRaw', 'generateRawData', 'generateQuietPrompt', 'TempResponseLength', 'addChatsPreamble', 'addChatsSeparator', 'consumePendingGeneratedMessageExtra']);
     context.removeReasoningFromString = text => context.parseReasoningFromString(text)?.content ?? text;
 
     const requests = [];
@@ -759,6 +759,56 @@ describe('owned host generation flow', () => {
         expect(dom.trigger).toHaveBeenCalledWith('click', { generationOptions: expect.objectContaining({ suppressUserMessage: true }) });
         expect(result.messageChunk).toBe('New prose. ');
         expect(context.chat[0].mes).toBe('Existing prose. New prose. ');
+    });
+
+    describe.each([
+        ['a whole reply', {}],
+        ['a buffered streamed reply', { api: 'textgenerationwebui', stream: true, buffer: true }],
+        ['an unbuffered streamed reply', { api: 'textgenerationwebui', stream: true }],
+    ])('the token count that auto-continue asks for after %s', (_, options) => {
+        async function generateContinuation(runtimeOptions, prepare = () => {}, type = 'continue') {
+            const { context, dom } = makeRuntime({ ...options, ...runtimeOptions });
+            context.power_user.auto_continue.target_length = 100;
+            context.chunks = [{ text: context.reply }];
+            prepare(context);
+            await context.Generate(type, { suppressUserMessage: true });
+            const countsOfLastMessage = context.getTokenCountAsync.mock.calls.filter(([text]) => text === context.chat.at(-1).mes);
+            return { context, dom, countsOfLastMessage };
+        }
+
+        test('is requested once when auto-continue can run', async () => {
+            const { dom, countsOfLastMessage } = await generateContinuation();
+            expect(countsOfLastMessage).toHaveLength(1);
+            expect(dom.trigger).toHaveBeenCalledWith('click', expect.anything());
+        });
+
+        test('is not requested while the message box holds a draft', async () => {
+            const { dom, countsOfLastMessage } = await generateContinuation({ composer: 'a draft' });
+            expect(countsOfLastMessage).toHaveLength(0);
+            expect(dom.trigger).not.toHaveBeenCalledWith('click', expect.anything());
+        });
+
+        test('is not requested for an impersonation', async () => {
+            const { countsOfLastMessage } = await generateContinuation({}, () => {}, 'impersonate');
+            expect(countsOfLastMessage).toHaveLength(0);
+        });
+
+        test('is not requested when the target length is zero', async () => {
+            const { countsOfLastMessage } = await generateContinuation({}, context => { context.power_user.auto_continue.target_length = 0; });
+            expect(countsOfLastMessage).toHaveLength(0);
+        });
+    });
+
+    test('no token count is requested for a Chat Completion reply while auto-continue is off for Chat Completion', async () => {
+        const { context, dom } = makeRuntime({ api: 'openai' });
+        context.power_user.auto_continue.target_length = 100;
+        context.power_user.auto_continue.allow_chat_completions = false;
+        context.chunks = [{ text: context.reply }];
+
+        await context.Generate('continue', { suppressUserMessage: true });
+
+        expect(context.getTokenCountAsync.mock.calls.filter(([text]) => text === context.chat.at(-1).mes)).toHaveLength(0);
+        expect(dom.trigger).not.toHaveBeenCalledWith('click', expect.anything());
     });
 
     describe.each([

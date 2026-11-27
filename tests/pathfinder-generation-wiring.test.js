@@ -109,7 +109,7 @@ function createHost() {
     context.setExtensionPrompt = jest.fn((key, value) => { context.extension_prompts[key] = { value }; });
     context.getExtensionPrompt = async () => context.extension_prompts.pathfinder_pipeline_retrieval?.value ?? '';
     context.prepareOpenAIMessages = jest.fn(async data => [[{ role: 'system', content: data.extensionPrompts.pathfinder_pipeline_retrieval?.value ?? '' }], false]);
-    const scriptFunctions = ['setAgentGenerationContextProvider', 'Generate', 'generateQuietPrompt', 'showStopButton', 'hideStopButton', 'activateSendButtons', 'deactivateSendButtons', 'stopGeneration', 'unblockGeneration', 'getNextMessageId'];
+    const scriptFunctions = ['setAgentGenerationContextProvider', 'Generate', 'generateQuietPrompt', 'showStopButton', 'hideStopButton', 'activateSendButtons', 'deactivateSendButtons', 'stopGeneration', 'unblockGeneration', 'getNextMessageId', 'isAutoContinueAllowed', 'countLastMessageForAutoContinue'];
     vm.runInContext(scriptFunctions.map(name => functionSource(scriptSource, name)).join('\n'), context);
     vm.runInContext(functionSource(worldSource, 'getWorldInfoPrompt'), context);
     vm.runInContext(functionSource(runnerSource, 'onWorldInfoActivated'), context);
