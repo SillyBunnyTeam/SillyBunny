@@ -13514,15 +13514,6 @@ function bindBodyStateClassObservers() {
     syncBodyStateClasses();
 }
 
-function getActiveChatScrollKey() {
-    const chatContext = getChatUiContext();
-    const chatEl = getChatScrollElement();
-    const domCount = chatEl ? chatEl.childElementCount : 0;
-    const lastMesId = chatEl?.lastElementChild?.getAttribute?.('mesid') ?? '';
-    const chatLen = Array.isArray(chatContext.context?.chat) ? chatContext.context.chat.length : '';
-    return `${chatContext.group?.id ?? ''}:${chatContext.character?.avatar ?? ''}:${chatContext.chatId}:${chatLen}:${domCount}:${lastMesId}`;
-}
-
 function initAll() {
     if (sbState.initialized) {
         return;
@@ -13922,12 +13913,6 @@ function openSettingsPage(shellKey, tabId = null) {
     const wasOpen = sbSettingsState.open;
     const previousShell = sbSettingsState.activeShell;
 
-    if (!wasOpen) {
-        const chatEl = getChatScrollElement();
-        sbSettingsState.savedChatScrollTop = chatEl ? chatEl.scrollTop : null;
-        sbSettingsState.savedChatScrollKey = getActiveChatScrollKey();
-    }
-
     sbSettingsState.open = true;
     sbSettingsState.activeShell = shellKey;
     sbSettingsState.closeGen++;
@@ -13969,12 +13954,7 @@ function openSettingsPage(shellKey, tabId = null) {
 
     page.hidden = false;
     syncSettingsPaneInert();
-    animateSettingsPage(page, 'in', () => {
-        page.classList.remove('sb-settings-page--opening');
-        if (sbSettingsState.open) {
-            document.body?.classList.add('sb-settings-page-open');
-        }
-    });
+    animateSettingsPage(page, 'in', () => page.classList.remove('sb-settings-page--opening'));
 
     // The pane that is off screen on a phone is inert and cannot take focus, so a restored page shows content and focuses Close.
     const entry = () => (isMobileViewport() && !sbSettingsState.mobileContentView
@@ -14006,21 +13986,7 @@ function closeSettingsPage() {
     const openerId = SB_TOPBAR_SECTIONS.find(section => section.shellKey === closingShell)?.leadId;
     sbSettingsState.activeTabId = null;
     delete document.documentElement.dataset.sbSettingsOpen;
-    document.body?.classList.remove('sb-settings-page-open');
     cancelScheduledBackgroundGalleryMount();
-
-    if (sbSettingsState.savedChatScrollTop !== null && sbSettingsState.savedChatScrollTop !== undefined) {
-        const savedScrollTop = sbSettingsState.savedChatScrollTop;
-        const savedKey = sbSettingsState.savedChatScrollKey;
-        sbSettingsState.savedChatScrollTop = null;
-        sbSettingsState.savedChatScrollKey = '';
-        if (savedKey === getActiveChatScrollKey()) {
-            const chatEl = getChatScrollElement();
-            if (chatEl) {
-                chatEl.scrollTop = savedScrollTop;
-            }
-        }
-    }
 
     const closeGen = ++sbSettingsState.closeGen;
     clearSettingsAnimationState();

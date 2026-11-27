@@ -1,6 +1,6 @@
 /* eslint-disable playwright/no-standalone-expect -- Jest unit tests for CSS diet and dynamic-styles batching. */
 import { describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -106,15 +106,30 @@ describe('PR 7 CSS diet regressions', () => {
         }
     });
 
-    test('isolates #sheld when settings page is open and contains inactive shell panels', () => {
-        const sheldIsolation = extractRuleBlock(tabsCss, 'body\\.sb-settings-page-open\\s+#sheld');
-        expect(sheldIsolation).not.toBeNull();
-        expect(sheldIsolation).toContain('contain: layout style paint');
-        expect(sheldIsolation).toContain('content-visibility: hidden');
-
+    test('contains inactive shell panels', () => {
         const inactivePanel = extractRuleBlock(tabsCss, '\\.sb-shell-panel:not\\(\\.sb-shell-panel-active\\)');
         expect(inactivePanel).not.toBeNull();
         expect(inactivePanel).toContain('contain: content');
+    });
+
+    test('no rule skips the rendering of the chat column or of the page root', () => {
+        // Chromium can leave `content-visibility: hidden` applied after the rule stops matching when a chat message was
+        // added while the subtree was skipped, which leaves the chat frozen or blank.
+        const cssDir = path.join(repoRoot, 'public', 'css');
+        const sheets = [
+            ['style.css', styleCss],
+            ...readdirSync(cssDir).filter(name => name.endsWith('.css')).map(name => [name, readPublic('css', name)]),
+        ];
+        const offenders = [];
+        for (const [name, css] of sheets) {
+            for (const [, selector, body] of stripComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+                if (!/content-visibility\s*:\s*hidden/.test(body)) continue;
+                if (/#sheld\b|#chat\b|(^|[\s,>+~])(html|body)\b/.test(selector)) {
+                    offenders.push(`${name}: ${selector.trim().replace(/\s+/g, ' ')}`);
+                }
+            }
+        }
+        expect(offenders).toEqual([]);
     });
 });
 

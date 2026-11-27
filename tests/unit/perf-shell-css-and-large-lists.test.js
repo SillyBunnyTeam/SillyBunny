@@ -566,24 +566,6 @@ describe('PR 7 drawer persistence guard, narrowed shell search & settings scroll
         expect(leftReady).toHaveBeenCalledTimes(2);
         expect(rightReady).toHaveBeenCalledTimes(1);
     });
-
-    test('openSettingsPage/closeSettingsPage defer body.sb-settings-page-open until open animation finishes and guard #chat.scrollTop against new messages', () => {
-        const openSource = extractFunctionSource(tabsSource, 'openSettingsPage');
-        const closeSource = extractFunctionSource(tabsSource, 'closeSettingsPage');
-        const scrollKeySource = extractFunctionSource(tabsSource, 'getActiveChatScrollKey');
-
-        expect(openSource).toContain('sbSettingsState.savedChatScrollTop = chatEl ? chatEl.scrollTop : null;');
-        // Body isolation class is added in animateSettingsPage onFinish so #sheld never flashes blank during the 250ms open animation.
-        expect(openSource).toMatch(/animateSettingsPage\(page,\s*'in'[\s\S]*if\s*\(sbSettingsState\.open\)\s*\{\s*document\.body\?\.classList\.add\('sb-settings-page-open'\);/);
-
-        expect(closeSource).toContain('document.body?.classList.remove(\'sb-settings-page-open\')');
-        expect(closeSource).toContain('if (savedKey === getActiveChatScrollKey())');
-        expect(closeSource).toContain('chatEl.scrollTop = savedScrollTop;');
-
-        // Scroll key tracks message count & last message id so background messages while Settings is open prevent snapping scrollTop backward.
-        expect(scrollKeySource).toContain('childElementCount');
-        expect(scrollKeySource).toContain('mesid');
-    });
 });
 
 describe('PR 7 ConnectionsPanel deferMount & body state classes', () => {

@@ -1409,12 +1409,6 @@ body:not(.movingUI) .drawer-content.maximized {
     display: block;
 }
 
-/* Isolate the chat column while the full-screen settings page covers it; JS toggles this class around scroll restoration. */
-body.sb-settings-page-open #sheld {
-    contain: layout style paint;
-    content-visibility: hidden;
-}
-
 .sb-shell-panel-scroller {
     height: 100%;
     min-height: 0;
