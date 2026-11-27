@@ -34,6 +34,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const defaultConfigPath = path.join(repoRoot, 'default', 'config.yaml');
 const originalDataRoot = global.DATA_ROOT;
 const compileCacheStatus = moduleConstants.compileCacheStatus;
+const describePosix = process.platform === 'win32' ? describe.skip : describe;
 
 setConfigFilePath(defaultConfigPath);
 
@@ -691,6 +692,9 @@ describe('MemoryLimitedMap O(1) LRU eviction', () => {
 
 describe('Node V8 compile cache and launcher hygiene', () => {
     test('enableNodeCompileCache and flushNodeCompileCache honor env, fallback path, and Bun guard', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-env-'));
+        const repoDir = path.join(tempRoot, 'sillybunny');
+        const customCacheDir = path.join(tempRoot, 'custom-v8');
         const calls = [];
         const mockModule = {
             enableCompileCache: (dir) => {
@@ -704,23 +708,23 @@ describe('Node V8 compile cache and launcher hygiene', () => {
             moduleApi: mockModule,
             env: {},
             versions: { node: '24.0.0' },
-            repoDir: '/opt/sillybunny',
+            repoDir,
         });
-        expect(defaultDir).toBe(path.join('/opt/sillybunny', 'node_modules', '.cache', 'sillybunny-v8'));
+        expect(defaultDir).toBe(path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8'));
 
         const customDir = enableNodeCompileCache({
             moduleApi: mockModule,
-            env: { NODE_COMPILE_CACHE: '/tmp/custom-v8' },
+            env: { NODE_COMPILE_CACHE: customCacheDir },
             versions: { node: '24.0.0' },
-            repoDir: '/opt/sillybunny',
+            repoDir,
         });
-        expect(customDir).toBe('/tmp/custom-v8');
+        expect(customDir).toBe(customCacheDir);
 
         expect(enableNodeCompileCache({
             moduleApi: mockModule,
             env: {},
             versions: { node: '24.0.0', bun: '1.4.4' },
-            repoDir: '/opt/sillybunny',
+            repoDir,
         })).toBeNull();
         expect(flushNodeCompileCache({
             moduleApi: mockModule,
@@ -733,8 +737,8 @@ describe('Node V8 compile cache and launcher hygiene', () => {
         })).toBe(true);
 
         expect(calls).toEqual([
-            ['enable', path.join('/opt/sillybunny', 'node_modules', '.cache', 'sillybunny-v8')],
-            ['enable', '/tmp/custom-v8'],
+            ['enable', path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8')],
+            ['enable', customCacheDir],
             ['flush'],
         ]);
 
@@ -745,55 +749,294 @@ describe('Node V8 compile cache and launcher hygiene', () => {
             flushCompileCache: () => { throw Object.assign(new Error('EROFS'), { code: 'EROFS' }); },
         };
         expect(flushNodeCompileCache({ moduleApi: throwingModule, versions: { node: '24.0.0' } })).toBe(false);
+        fs.rmSync(tempRoot, { recursive: true, force: true });
     });
 
     test('enableNodeCompileCache reports the status that Node.js returns instead of the directory it asked for', () => {
         const versions = { node: '24.0.0' };
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-status-'));
+        const repoDir = path.join(tempRoot, 'sillybunny');
         const moduleReturning = (result) => ({ enableCompileCache: () => result });
 
         expect(enableNodeCompileCache({
             moduleApi: moduleReturning({ status: compileCacheStatus.FAILED, message: 'Cannot create cache directory: permission denied' }),
             env: {},
             versions,
-            repoDir: '/opt/sillybunny',
+            repoDir,
         })).toBeNull();
         expect(enableNodeCompileCache({
             moduleApi: moduleReturning({ status: compileCacheStatus.DISABLED, message: 'Disabled by NODE_DISABLE_COMPILE_CACHE' }),
             env: {},
             versions,
-            repoDir: '/opt/sillybunny',
+            repoDir,
         })).toBeNull();
         expect(enableNodeCompileCache({
             moduleApi: moduleReturning({ status: compileCacheStatus.ALREADY_ENABLED, directory: '/var/cache/active-v8' }),
-            env: { NODE_COMPILE_CACHE: '/tmp/requested-v8' },
+            env: { NODE_COMPILE_CACHE: path.join(tempRoot, 'requested-v8') },
             versions,
-            repoDir: '/opt/sillybunny',
+            repoDir,
         })).toBe('/var/cache/active-v8');
         expect(enableNodeCompileCache({
             moduleApi: moduleReturning(undefined),
             env: {},
             versions,
-            repoDir: '/opt/sillybunny',
+            repoDir,
         })).toBeNull();
+        fs.rmSync(tempRoot, { recursive: true, force: true });
     });
 
-    test('enableNodeCompileCache returns null when the real Node.js API cannot create the directory', () => {
-        // A path below a regular file cannot be created by anyone, including root, so Node.js returns its FAILED status.
-        const blocker = path.join(os.tmpdir(), `sb-compile-cache-blocker-${process.pid}`);
-        fs.writeFileSync(blocker, 'not a directory', 'utf8');
+    test('enableNodeCompileCache follows the status of the real Node.js API', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-real-'));
         try {
+            const cacheRoot = path.join(tempRoot, 'cache');
             const script = [
                 `const { enableNodeCompileCache } = await import(${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src', 'node-compile-cache.js')).href)});`,
-                `console.log(JSON.stringify(enableNodeCompileCache({ env: { NODE_COMPILE_CACHE: ${JSON.stringify(path.join(blocker, 'cache'))} } })));`,
+                `console.log(JSON.stringify(enableNodeCompileCache({ env: { NODE_COMPILE_CACHE: ${JSON.stringify(cacheRoot)} }, repoDir: ${JSON.stringify(path.join(tempRoot, 'repo'))} })));`,
             ].join('\n');
+            const run = (extraEnv) => {
+                const env = { ...process.env, ...extraEnv };
+                delete env.NODE_COMPILE_CACHE;
+                if (!('NODE_DISABLE_COMPILE_CACHE' in extraEnv)) {
+                    delete env.NODE_DISABLE_COMPILE_CACHE;
+                }
+                const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', env }).trim();
+                return JSON.parse(raw.split(/\r?\n/).pop());
+            };
+
+            expect(run({})).toBe(cacheRoot);
+            // Node.js answers a disabled cache with a DISABLED status, not with an exception.
+            expect(run({ NODE_DISABLE_COMPILE_CACHE: '1' })).toBeNull();
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    describe('private compile cache directory', () => {
+        let tempDir;
+        let repoDir;
+        let defaultCacheDir;
+        const versions = { node: '24.0.0' };
+        const enabledModule = () => {
+            const asked = [];
+            return {
+                asked,
+                enableCompileCache: (dir) => {
+                    asked.push(dir);
+                    return { status: compileCacheStatus.ENABLED, directory: dir };
+                },
+            };
+        };
+
+        // Only root can chown, so a directory that another user owns is modelled by changing the owner that stat reports.
+        const reportOwnedByAnotherUser = (target) => {
+            const realStatSync = fs.statSync;
+            jest.spyOn(fs, 'statSync').mockImplementation((candidate, ...rest) => {
+                const stat = realStatSync(candidate, ...rest);
+                return candidate === target ? Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { uid: process.getuid() + 1 }) : stat;
+            });
+        };
+
+        beforeEach(() => {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-dir-'));
+            repoDir = path.join(tempDir, 'repo');
+            defaultCacheDir = path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8');
+        });
+
+        afterEach(() => {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        });
+
+        describePosix('with POSIX owner and mode bits', () => {
+            test('uses an external directory that the user owns and that group and others cannot write to', () => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external, { mode: 0o755 });
+                fs.chmodSync(external, 0o755);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(external);
+                expect(moduleApi.asked).toEqual([external]);
+                expect(env.NODE_COMPILE_CACHE).toBe(external);
+                expect(warn).not.toHaveBeenCalled();
+            });
+
+            test.each([
+                ['group-writable', 0o775],
+                ['world-writable', 0o777],
+            ])('falls back to the default private directory when an external directory is %s', (_label, mode) => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external);
+                fs.chmodSync(external, mode);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(moduleApi.asked).toEqual([defaultCacheDir]);
+                expect(env.NODE_COMPILE_CACHE).toBe(defaultCacheDir);
+                expect(warn).toHaveBeenCalledTimes(1);
+                expect(warn.mock.calls[0][0]).toContain(external);
+                expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+            });
+
+            test('falls back to the default private directory when an external directory belongs to another user', () => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external, { mode: 0o700 });
+                reportOwnedByAnotherUser(external);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(env.NODE_COMPILE_CACHE).toBe(defaultCacheDir);
+                expect(warn).toHaveBeenCalledTimes(1);
+            });
+
+            test('creates a missing external directory closed to group and others', () => {
+                const external = path.join(tempDir, 'made', 'by', 'the-wrapper');
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+
+                expect(enableNodeCompileCache({ moduleApi, env: { NODE_COMPILE_CACHE: external }, versions, repoDir, warn })).toBe(external);
+                expect(fs.statSync(external).mode & 0o777).toBe(0o700);
+                expect(warn).not.toHaveBeenCalled();
+            });
+
+            test('the default directory passes its own check: it is created private and an older group-writable one is closed', () => {
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+
+                expect(enableNodeCompileCache({ moduleApi, env: {}, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+
+                fs.chmodSync(defaultCacheDir, 0o775);
+                const env = { NODE_COMPILE_CACHE: defaultCacheDir };
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+                expect(warn).not.toHaveBeenCalled();
+            });
+
+            test('stays off and says so when even the default directory is not private', () => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external);
+                fs.chmodSync(external, 0o777);
+                fs.mkdirSync(path.dirname(defaultCacheDir), { recursive: true });
+                fs.mkdirSync(defaultCacheDir, { mode: 0o700 });
+                reportOwnedByAnotherUser(defaultCacheDir);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBeNull();
+                expect(moduleApi.asked).toEqual([]);
+                expect('NODE_COMPILE_CACHE' in env).toBe(false);
+                expect(warn).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        test('skips the ownership and mode check on Windows', () => {
+            const external = path.join(tempDir, 'external');
+            fs.mkdirSync(external, { recursive: true });
+            if (process.platform !== 'win32') {
+                fs.chmodSync(external, 0o777);
+            }
+            const moduleApi = enabledModule();
+            const warn = jest.fn();
+
+            expect(enableNodeCompileCache({ moduleApi, env: { NODE_COMPILE_CACHE: external }, versions, repoDir, warn, platform: 'win32' })).toBe(external);
+            expect(warn).not.toHaveBeenCalled();
+        });
+    });
+
+    describePosix('start.sh compile cache directory', () => {
+        const startShSource = fs.readFileSync(path.join(repoRoot, 'start.sh'), 'utf8');
+        let tempDir;
+        let scriptDir;
+        let harnessPath;
+        let defaultCacheDir;
+
+        // start.sh cannot be sourced without installing packages, so the two functions are lifted out and run alone.
+        const extractShellFunction = (name) => {
+            const lines = startShSource.split('\n');
+            const start = lines.findIndex(line => line.startsWith(`${name}() {`));
+            expect(start).toBeGreaterThanOrEqual(0);
+            const end = lines.findIndex((line, index) => index > start && line === '}');
+            expect(end).toBeGreaterThan(start);
+            return lines.slice(start, end + 1).join('\n');
+        };
+
+        const configure = (requested) => {
             const env = { ...process.env };
             delete env.NODE_COMPILE_CACHE;
-            delete env.NODE_DISABLE_COMPILE_CACHE;
-            const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', env }).trim();
-            expect(JSON.parse(raw.split(/\r?\n/).pop())).toBeNull();
-        } finally {
-            fs.rmSync(blocker, { force: true });
-        }
+            if (requested !== undefined) {
+                env.NODE_COMPILE_CACHE = requested;
+            }
+            const output = execFileSync('bash', [harnessPath, scriptDir], { encoding: 'utf8', env });
+            const lines = output.trim().split('\n');
+            return { result: lines.pop().replace(/^RESULT=/, ''), notices: lines };
+        };
+
+        beforeEach(() => {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-start-sh-cache-'));
+            scriptDir = path.join(tempDir, 'install');
+            fs.mkdirSync(path.join(scriptDir, 'node_modules'), { recursive: true });
+            defaultCacheDir = path.join(scriptDir, 'node_modules', '.cache', 'sillybunny-v8');
+            harnessPath = path.join(tempDir, 'harness.sh');
+            fs.writeFileSync(harnessPath, [
+                '#!/usr/bin/env bash',
+                'set -euo pipefail',
+                'SCRIPT_DIR="$1"',
+                extractShellFunction('compile_cache_dir_is_private'),
+                extractShellFunction('configure_compile_cache'),
+                'configure_compile_cache',
+                'printf "RESULT=%s\\n" "${NODE_COMPILE_CACHE-unset}"',
+                '',
+            ].join('\n\n'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        });
+
+        test('the launcher default is created private and passes its own check', () => {
+            expect(configure()).toEqual({ result: defaultCacheDir, notices: [] });
+            expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+        });
+
+        test('an older default directory that is open to the group is closed again', () => {
+            fs.mkdirSync(defaultCacheDir, { recursive: true });
+            fs.chmodSync(defaultCacheDir, 0o775);
+
+            expect(configure()).toEqual({ result: defaultCacheDir, notices: [] });
+            expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+        });
+
+        test.each([
+            ['group-writable', 0o775],
+            ['world-writable', 0o777],
+        ])('ignores an external directory that is %s and uses the default', (_label, mode) => {
+            const external = path.join(tempDir, 'external');
+            fs.mkdirSync(external);
+            fs.chmodSync(external, mode);
+
+            const { result, notices } = configure(external);
+            expect(result).toBe(defaultCacheDir);
+            expect(notices).toHaveLength(1);
+            expect(notices[0]).toContain(external);
+            expect(fs.statSync(external).mode & 0o777).toBe(mode);
+        });
+
+        test('uses an external directory that only this user can write to, and creates a missing one private', () => {
+            const readable = path.join(tempDir, 'readable');
+            fs.mkdirSync(readable);
+            fs.chmodSync(readable, 0o755);
+            expect(configure(readable)).toEqual({ result: readable, notices: [] });
+
+            const missing = path.join(tempDir, 'missing', 'cache');
+            expect(configure(missing)).toEqual({ result: missing, notices: [] });
+            expect(fs.statSync(missing).mode & 0o777).toBe(0o700);
+        });
     });
 
     test('launchers, server.js, and server-main.js wire V8 compile cache and HTTP keep-alive hygiene safely', () => {
