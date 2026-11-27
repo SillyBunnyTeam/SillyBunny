@@ -7,10 +7,12 @@ import { color, getConfigValue, uuidv4, tryWriteFileSync } from '../util.js';
 import { encrypt, decrypt, isEncrypted, getEncryptionPassphrase } from '../encryption.js';
 import { createFileStamp, isFileStampCurrent } from '../file-stamp.js';
 
-// SillyBunny: cache parsed/decrypted secrets.json per filePath keyed by (file stamp, passphraseDigest)
-// so hot LLM generation calls skip repeated disk reads and 40+ ms scryptSync key derivations.
+// SillyBunny: a decrypted secrets.json is cached per filePath, keyed by (file stamp, passphraseDigest), so hot LLM
+// generation calls skip the scryptSync key derivation. A plaintext file is cheap to read, so it is never cached, and
+// the decrypted copy is dropped after a short time so that the plaintext of every key does not stay in memory.
 const MAX_SECRETS_CACHE_ENTRIES = 64;
-/** @type {Map<string, { stamp: import('../file-stamp.js').FileStamp, passphraseDigest: string, needsEncryptionMigration: boolean, secrets: SecretKeys }>} */
+export const SECRETS_CACHE_TTL_MS = 30_000;
+/** @type {Map<string, { stamp: import('../file-stamp.js').FileStamp, passphraseDigest: string, secrets: SecretKeys, expiresAt: number, timer: ReturnType<typeof setTimeout> }>} */
 const secretsFileCache = new Map();
 
 /**
@@ -25,10 +27,57 @@ function getPassphraseDigest(passphrase) {
 }
 
 /**
+ * Removes one file's entry from the secrets cache and stops the timer that would drop it.
+ * @param {string} filePath
+ */
+function dropCachedSecrets(filePath) {
+    const entry = secretsFileCache.get(filePath);
+    if (entry) {
+        clearTimeout(entry.timer);
+        secretsFileCache.delete(filePath);
+    }
+}
+
+/**
+ * Keeps decrypted secrets for `SECRETS_CACHE_TTL_MS`, then drops them without waiting for another read.
+ * @param {string} filePath
+ * @param {import('../file-stamp.js').FileStamp} stamp Stamp taken before the file was read
+ * @param {string} passphraseDigest
+ * @param {SecretKeys} secrets
+ */
+function cacheDecryptedSecrets(filePath, stamp, passphraseDigest, secrets) {
+    dropCachedSecrets(filePath);
+    if (secretsFileCache.size >= MAX_SECRETS_CACHE_ENTRIES) {
+        const oldestKey = secretsFileCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            dropCachedSecrets(oldestKey);
+        }
+    }
+    const timer = setTimeout(() => dropCachedSecrets(filePath), SECRETS_CACHE_TTL_MS);
+    timer.unref?.();
+    secretsFileCache.set(filePath, {
+        stamp,
+        passphraseDigest,
+        secrets: structuredClone(secrets),
+        expiresAt: Date.now() + SECRETS_CACHE_TTL_MS,
+        timer,
+    });
+}
+
+/**
  * Clears the in-memory secrets.json cache.
  */
 export function clearSecretsCache() {
-    secretsFileCache.clear();
+    for (const filePath of [...secretsFileCache.keys()]) {
+        dropCachedSecrets(filePath);
+    }
+}
+
+/**
+ * @returns {number} How many files have decrypted secrets in memory
+ */
+export function getSecretsCacheSize() {
+    return secretsFileCache.size;
 }
 
 export const SECRETS_FILE = 'secrets.json';
@@ -165,55 +214,49 @@ export class SecretManager {
     _readSecretsFile() {
         this._ensureSecretsFile();
         const passphrase = getEncryptionPassphrase(this.directories.root);
-        const passphraseDigest = getPassphraseDigest(passphrase);
 
-        // SillyBunny: reuse cached parsed/decrypted secrets when file metadata and passphrase match.
+        // SillyBunny: with a passphrase, reuse the decrypted secrets while the file stamp and passphrase match.
+        // Without one the file is read directly and nothing stays in memory.
+        const passphraseDigest = getPassphraseDigest(passphrase);
         let stamp = null;
-        try {
-            stamp = createFileStamp(fs.statSync(this.filePath, { bigint: true }));
-            const cached = secretsFileCache.get(this.filePath);
-            if (cached
-                && isFileStampCurrent(cached.stamp, stamp)
-                && cached.passphraseDigest === passphraseDigest) {
-                this._needsEncryptionMigration = cached.needsEncryptionMigration;
-                return structuredClone(cached.secrets);
+        if (passphrase) {
+            try {
+                stamp = createFileStamp(fs.statSync(this.filePath, { bigint: true }));
+                const cached = secretsFileCache.get(this.filePath);
+                if (cached
+                    && cached.expiresAt > Date.now()
+                    && isFileStampCurrent(cached.stamp, stamp)
+                    && cached.passphraseDigest === passphraseDigest) {
+                    return structuredClone(cached.secrets);
+                }
+            } catch {
+                dropCachedSecrets(this.filePath);
             }
-        } catch {
-            secretsFileCache.delete(this.filePath);
+        } else {
+            dropCachedSecrets(this.filePath);
         }
 
         const rawBuffer = fs.readFileSync(this.filePath);
-        let needsEncryptionMigration = false;
 
         let fileContents;
+        let wasDecrypted = false;
         if (isEncrypted(rawBuffer)) {
             if (!passphrase) {
                 throw new Error('Secrets file is encrypted but no encryption passphrase is configured. Set encryptSecrets.enabled and a passphrase in config.yaml.');
             }
             fileContents = decrypt(rawBuffer, passphrase);
+            wasDecrypted = true;
         } else {
             fileContents = rawBuffer.toString('utf-8');
             // Auto-migrate: if encryption is enabled but file is plaintext, mark for re-encryption on next write
             if (passphrase) {
-                needsEncryptionMigration = true;
                 this._needsEncryptionMigration = true;
             }
         }
 
         const parsed = /** @type {SecretKeys} */ (JSON.parse(fileContents));
-        if (stamp) {
-            if (secretsFileCache.size >= MAX_SECRETS_CACHE_ENTRIES && !secretsFileCache.has(this.filePath)) {
-                const oldestKey = secretsFileCache.keys().next().value;
-                if (oldestKey !== undefined) {
-                    secretsFileCache.delete(oldestKey);
-                }
-            }
-            secretsFileCache.set(this.filePath, {
-                stamp,
-                passphraseDigest,
-                needsEncryptionMigration,
-                secrets: structuredClone(parsed),
-            });
+        if (wasDecrypted && stamp) {
+            cacheDecryptedSecrets(this.filePath, stamp, passphraseDigest, parsed);
         }
 
         return parsed;
@@ -225,7 +268,7 @@ export class SecretManager {
      * @param {SecretKeys} secrets
      */
     _writeSecretsFile(secrets) {
-        secretsFileCache.delete(this.filePath);
+        dropCachedSecrets(this.filePath);
         const jsonString = JSON.stringify(secrets, null, 4);
         const passphrase = getEncryptionPassphrase(this.directories.root);
 
@@ -239,7 +282,7 @@ export class SecretManager {
         } else {
             tryWriteFileSync(this.filePath, jsonString);
         }
-        secretsFileCache.delete(this.filePath);
+        dropCachedSecrets(this.filePath);
     }
 
     /**

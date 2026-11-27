@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 
 import { SETTINGS_FILE, USER_DIRECTORY_TEMPLATE } from '../src/constants.js';
 import { decrypt, encrypt } from '../src/encryption.js';
-import { RACY_WINDOW_MS } from '../src/file-stamp.js';
 import { setConfigFilePath } from '../src/util.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,41 +34,33 @@ describe('encryption scrypt maxmem parity and bounded secrets cache', () => {
         expect(decrypt(encrypted, 'unit-test-passphrase')).toBe(secretPayload);
     });
 
-    test('SecretManager caches parsed secrets by file stat, returns isolated clones, and invalidates on write', async () => {
-        const { SecretManager, clearSecretsCache, readSecret, writeSecret } = await import('../src/endpoints/secrets.js');
+    test('SecretManager reads a plaintext secrets file on every call, keeps nothing in memory, and shows a write at once', async () => {
+        const { SecretManager, clearSecretsCache, getSecretsCacheSize, readSecret, writeSecret } = await import('../src/endpoints/secrets.js');
         clearSecretsCache();
 
         const userDir = path.join(tempDir, 'user-secrets');
         fs.mkdirSync(userDir, { recursive: true });
         const directories = { root: userDir };
 
-        writeSecret(directories, 'api_key_openai', 'sk-cached-first', 'primary');
-        // A file that is newer than the racy window is read again on every call, so let it age first.
-        await new Promise(resolve => setTimeout(resolve, RACY_WINDOW_MS + 20));
+        writeSecret(directories, 'api_key_openai', 'sk-plain-first', 'primary');
+        const secretsPath = path.join(userDir, 'secrets.json');
         const readSpy = jest.spyOn(fs, 'readFileSync');
+        const secretsReads = () => readSpy.mock.calls.filter(([target]) => target === secretsPath).length;
 
         try {
-            const first = readSecret(directories, 'api_key_openai');
-            const readsAfterFirst = readSpy.mock.calls.length;
-            expect(first).toBe('sk-cached-first');
-            expect(readsAfterFirst).toBeGreaterThanOrEqual(1);
+            expect(readSecret(directories, 'api_key_openai')).toBe('sk-plain-first');
+            expect(readSecret(directories, 'api_key_openai')).toBe('sk-plain-first');
+            expect(secretsReads()).toBe(2);
+            expect(getSecretsCacheSize()).toBe(0);
 
-            // Second read hits cache without calling fs.readFileSync again.
-            const second = readSecret(directories, 'api_key_openai');
-            expect(second).toBe('sk-cached-first');
-            expect(readSpy.mock.calls.length).toBe(readsAfterFirst);
-
-            // Mutating a cloned secrets object returned by _readSecretsFile must not poison cache.
+            // A change of the returned object does not reach the next read.
             const manager = new SecretManager(directories);
-            const rawClone = manager._readSecretsFile();
-            rawClone.api_key_openai[0].value = 'mutated-in-caller';
-            expect(readSecret(directories, 'api_key_openai')).toBe('sk-cached-first');
-            expect(readSpy.mock.calls.length).toBe(readsAfterFirst);
+            const rawObject = manager._readSecretsFile();
+            rawObject.api_key_openai[0].value = 'mutated-in-caller';
+            expect(readSecret(directories, 'api_key_openai')).toBe('sk-plain-first');
 
-            // Writing invalidates the cache immediately.
             writeSecret(directories, 'api_key_openai', 'sk-updated-second', 'primary');
-            const afterWrite = readSecret(directories, 'api_key_openai');
-            expect(afterWrite).toBe('sk-updated-second');
+            expect(readSecret(directories, 'api_key_openai')).toBe('sk-updated-second');
         } finally {
             readSpy.mockRestore();
             clearSecretsCache();
