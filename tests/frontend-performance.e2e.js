@@ -137,43 +137,56 @@ test.describe('frontend performance smoke', () => {
         }
     });
 
-    test('keeps idle recalc and DOM mutations quiet behind open Settings', async ({ page, context }) => {
-        test.setTimeout(90_000);
-        const pageErrors = [];
-        page.on('pageerror', error => pageErrors.push(error.message));
+    test.describe('on a phone', () => {
+        // The Home hero art runs its motion on a phone, and that motion keeps running behind the Settings page unless
+        // the app pauses it. A desktop browser of the same width does not start the motion, so only a phone context
+        // can show whether the page behind Settings is quiet.
+        test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
 
-        await page.setViewportSize({ width: 390, height: 844 });
-        await page.goto('/', { waitUntil: 'domcontentloaded' });
-        await waitForAppReady(page, { timeout: 60000 });
-        await page.waitForFunction(() => (
-            globalThis.document.readyState === 'complete'
-            && globalThis.document.getElementById('preloader') === null
-            && Boolean(globalThis.SillyBunnyShell?.openTab)
-        ), null, { timeout: 60000 });
+        test('keeps idle recalc and DOM mutations quiet behind open Settings', async ({ page, context }) => {
+            test.setTimeout(90_000);
+            const pageErrors = [];
+            page.on('pageerror', error => pageErrors.push(error.message));
 
-        let cdpSession = null;
-        try {
-            cdpSession = await context.newCDPSession(page);
-        } catch {
-            cdpSession = null;
-        }
+            await page.goto('/', { waitUntil: 'domcontentloaded' });
+            await waitForAppReady(page, { timeout: 60000 });
+            await page.waitForFunction(() => (
+                globalThis.document.readyState === 'complete'
+                && globalThis.document.getElementById('preloader') === null
+                && Boolean(globalThis.SillyBunnyShell?.openTab)
+            ), null, { timeout: 60000 });
 
-        try {
-            await page.evaluate(async () => {
-                await globalThis.SillyBunnyShell.openTab('right', 'appearance');
-                await new Promise(resolve => globalThis.setTimeout(resolve, 600));
-            });
-
-            const idle = await measureIdleActivity(page, { cdpSession, durationMs: 1500 });
-            const label = 'idle behind Settings';
-            expect(idle.available).toBe(true);
-            for (const { metric, limit } of runtimeBudgetsFor('mobile', IDLE_BEHIND_SETTINGS)) {
-                expect(requireMetric(idle, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+            let cdpSession = null;
+            try {
+                cdpSession = await context.newCDPSession(page);
+            } catch {
+                cdpSession = null;
             }
-            expect(pageErrors).toEqual([]);
-        } finally {
-            await cdpSession?.detach().catch(() => {});
-        }
+
+            try {
+                // Without moving art there is nothing behind Settings that could keep running, and the counters
+                // below would pass for a page that never had the problem.
+                await expect.poll(
+                    () => page.evaluate(() => globalThis.document.querySelector('[data-sb-art-motion="playing"]') !== null),
+                    { message: 'the Home hero art never started to move', timeout: 30_000 },
+                ).toBe(true);
+
+                await page.evaluate(async () => {
+                    await globalThis.SillyBunnyShell.openTab('right', 'appearance');
+                    await new Promise(resolve => globalThis.setTimeout(resolve, 600));
+                });
+
+                const idle = await measureIdleActivity(page, { cdpSession, durationMs: 1500 });
+                const label = 'idle behind Settings';
+                expect(idle.available).toBe(true);
+                for (const { metric, limit } of runtimeBudgetsFor('mobile', IDLE_BEHIND_SETTINGS)) {
+                    expect(requireMetric(idle, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+                }
+                expect(pageErrors).toEqual([]);
+            } finally {
+                await cdpSession?.detach().catch(() => {});
+            }
+        });
     });
 
     test('bounds layout reads and style recalc during streaming after a large reasoning block', async ({ page, context }) => {
