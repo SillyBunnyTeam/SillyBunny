@@ -1,4 +1,5 @@
 import { animation_duration } from '../script.js';
+import { cloneTemplate } from './dom-template.js';
 import { loadMovingUIState, power_user } from './power-user.js';
 import { dragElement } from './RossAscends-mods.js';
 
@@ -42,7 +43,7 @@ export function toggleZoomedAvatar({ file, src = `/characters/${encodeURICompone
         return;
     }
 
-    const element = $($('#zoomed_avatar_template').html());
+    const element = cloneTemplate('zoomed_avatar_template');
     element.attr('forChar', key);
     element.attr('id', `zoomFor_${key}`);
     element.addClass('draggable');
