@@ -244,6 +244,7 @@ export async function importScriptModule(options = {}) {
         sort_field: 'name',
         sort_order: 'asc',
         sort_rule: null,
+        personas: {},
         instruct: { enabled: false },
         context: { story_string: '' },
         persona_description: '',
@@ -329,6 +330,10 @@ export async function importScriptModule(options = {}) {
         }), {
             unix: () => ({ format: () => '2026-01-01', valueOf: () => 0, diff: () => 0, isValid: () => true }),
             invalid: () => ({ format: () => '', valueOf: () => NaN, diff: () => 0, isValid: () => false }),
+            duration: ms => ({
+                asSeconds: () => Number(ms) / 1000,
+                locale: () => ({ humanize: () => `${Math.round(Number(ms) / 1000)}s` }),
+            }),
         }),
         DOMPurify: { sanitize: jest.fn(v => String(v ?? '')), addHook: jest.fn(), removeAllHooks: jest.fn() },
         hljs: { highlightElement: jest.fn(), highlightAuto: jest.fn(v => ({ value: v })) },
@@ -884,7 +889,7 @@ export async function importScriptModule(options = {}) {
         },
         'scripts/textgen-models.js': { initTextGenModels: jest.fn() },
         'scripts/chats.js': {
-            appendFileContent: jest.fn(v => v),
+            appendFileContent: jest.fn((_msg, text = '') => text),
             hasPendingFileAttachment: jest.fn(() => false),
             populateFileAttachment: jest.fn(),
             decodeStyleTags: jest.fn(v => v),
