@@ -139,8 +139,6 @@ describe('Slice 1E: bounded session caches and World Info fast paths', () => {
         expect(backgroundsSource).toContain('function cacheThumbnailBlobUrl(');
         expect(backgroundsSource).toContain('URL.revokeObjectURL(evictUrl);');
 
-        expect(tokenizersSource).toContain('const MAX_TOKEN_CACHE_CHATS = 20;');
-        expect(tokenizersSource).toContain('const MAX_TOKEN_CACHE_ENTRIES_PER_CHAT = 500;');
         expect(tokenizersSource).toContain('eventSource.on(event_types.CHAT_DELETED');
 
         expect(worldInfoSource).toContain('static #wholeWordRegexCache = new Map();');

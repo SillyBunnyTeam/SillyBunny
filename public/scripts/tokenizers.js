@@ -160,30 +160,92 @@ const objectStore = localforage.createInstance({ name: 'SillyTavern_ChatCompleti
 
 // SillyBunny: cap cached chats and entries per chat so tokenCache does not grow unbounded across long sessions.
 const MAX_TOKEN_CACHE_CHATS = 20;
-const MAX_TOKEN_CACHE_ENTRIES_PER_CHAT = 500;
+// Entries leave a bucket in insertion order and a cache hit does not move an entry. A prompt build that reads the same keys in the same order every time misses on every read once its key count passes this bound, so the bound stays far above the key count of any plausible prompt.
+const MAX_TOKEN_CACHE_ENTRIES_PER_CHAT = 20_000;
+// Only the newest entries of each chat go to IndexedDB, to keep the stored cache small.
+const MAX_PERSISTED_TOKEN_CACHE_ENTRIES_PER_CHAT = 500;
 
 let tokenCache = {};
+let lastTokenCacheChatKey = null;
 
-function pruneTokenCache() {
-    const chatIds = Object.keys(tokenCache);
-    if (chatIds.length > MAX_TOKEN_CACHE_CHATS) {
-        for (const staleChatId of chatIds.slice(0, chatIds.length - MAX_TOKEN_CACHE_CHATS)) {
-            delete tokenCache[staleChatId];
-        }
+/**
+ * Insertion order of the keys of each bucket. Finding the oldest key of a plain object needs a scan of all its keys, so the order is kept here to make each eviction O(1).
+ * @type {WeakMap<object, { keys: string[], head: number }>}
+ */
+const tokenCacheOrders = new WeakMap();
+
+function getTokenCacheOrder(bucket) {
+    let order = tokenCacheOrders.get(bucket);
+    if (!order) {
+        order = { keys: Object.keys(bucket), head: 0 };
+        tokenCacheOrders.set(bucket, order);
     }
-    for (const chatId of Object.keys(tokenCache)) {
-        const bucket = tokenCache[chatId];
+    return order;
+}
+
+function createTokenCacheBucket() {
+    const bucket = {};
+    tokenCacheOrders.set(bucket, { keys: [], head: 0 });
+    return bucket;
+}
+
+function dropOldestTokenCacheEntries(bucket, order, keep) {
+    while (order.keys.length - order.head > keep) {
+        delete bucket[order.keys[order.head]];
+        order.head++;
+    }
+    // Compact only when the dropped prefix is longer than the live part, so the copy cost stays proportional to the entries dropped.
+    if (order.head > 1024 && order.head > order.keys.length - order.head) {
+        order.keys = order.keys.slice(order.head);
+        order.head = 0;
+    }
+}
+
+function dropOldestTokenCacheChats() {
+    const chatKeys = Object.keys(tokenCache);
+    for (let i = 0; i < chatKeys.length - MAX_TOKEN_CACHE_CHATS; i++) {
+        delete tokenCache[chatKeys[i]];
+    }
+}
+
+/**
+ * Stores a token count in a bucket of the cache and drops the oldest entries when the bucket is over its bound.
+ * @param {Object} bucket Token cache object of one chat, from getTokenCacheObject().
+ * @param {string} cacheKey Entry key.
+ * @param {number} value Token count.
+ */
+function setTokenCacheEntry(bucket, cacheKey, value) {
+    const order = getTokenCacheOrder(bucket);
+    if (!Object.hasOwn(bucket, cacheKey)) {
+        order.keys.push(cacheKey);
+    }
+    bucket[cacheKey] = value;
+    dropOldestTokenCacheEntries(bucket, order, MAX_TOKEN_CACHE_ENTRIES_PER_CHAT);
+}
+
+/**
+ * Builds the object that goes to IndexedDB: at most the newest entries of each chat, in the same plain-object format as the in-memory cache.
+ * @returns {Object} Token cache for storage.
+ */
+function getPersistedTokenCache() {
+    const persisted = {};
+    for (const chatKey of Object.keys(tokenCache)) {
+        const bucket = tokenCache[chatKey];
         if (!bucket || typeof bucket !== 'object') {
-            delete tokenCache[chatId];
             continue;
         }
-        const entryKeys = Object.keys(bucket);
-        if (entryKeys.length > MAX_TOKEN_CACHE_ENTRIES_PER_CHAT) {
-            for (const staleKey of entryKeys.slice(0, entryKeys.length - MAX_TOKEN_CACHE_ENTRIES_PER_CHAT)) {
-                delete bucket[staleKey];
-            }
+        const { keys, head } = getTokenCacheOrder(bucket);
+        if (keys.length - head <= MAX_PERSISTED_TOKEN_CACHE_ENTRIES_PER_CHAT) {
+            persisted[chatKey] = bucket;
+            continue;
         }
+        const newest = {};
+        for (let i = keys.length - MAX_PERSISTED_TOKEN_CACHE_ENTRIES_PER_CHAT; i < keys.length; i++) {
+            newest[keys[i]] = bucket[keys[i]];
+        }
+        persisted[chatKey] = newest;
     }
+    return persisted;
 }
 
 export function evictTokenCacheForChat(chatId) {
@@ -212,7 +274,16 @@ async function loadTokenCache() {
     try {
         console.debug('Chat Completions: loading token cache');
         tokenCache = await objectStore.getItem('tokenCache') || {};
-        pruneTokenCache();
+        lastTokenCacheChatKey = null;
+        dropOldestTokenCacheChats();
+        for (const chatKey of Object.keys(tokenCache)) {
+            const bucket = tokenCache[chatKey];
+            if (!bucket || typeof bucket !== 'object') {
+                delete tokenCache[chatKey];
+                continue;
+            }
+            dropOldestTokenCacheEntries(bucket, getTokenCacheOrder(bucket), MAX_TOKEN_CACHE_ENTRIES_PER_CHAT);
+        }
     } catch (e) {
         console.log('Chat Completions: unable to load token cache, using default value', e);
         tokenCache = {};
@@ -222,8 +293,7 @@ async function loadTokenCache() {
 export async function saveTokenCache() {
     try {
         console.debug('Chat Completions: saving token cache');
-        pruneTokenCache();
-        await objectStore.setItem('tokenCache', tokenCache);
+        await objectStore.setItem('tokenCache', getPersistedTokenCache());
     } catch (e) {
         console.log('Chat Completions: unable to save token cache', e);
     }
@@ -529,7 +599,7 @@ export async function getTokenCountAsync(str, padding = undefined) {
         return 0;
     }
 
-    cacheObject[cacheKey] = result;
+    setTokenCacheEntry(cacheObject, cacheKey, result);
     return result;
 }
 
@@ -585,7 +655,7 @@ export function getTokenCount(str, padding = undefined) {
         return 0;
     }
 
-    cacheObject[cacheKey] = result;
+    setTokenCacheEntry(cacheObject, cacheKey, result);
     return result;
 }
 
@@ -883,7 +953,7 @@ export function countTokensOpenAI(messages, full = false) {
                 contentType: 'application/json',
                 success: function (data) {
                     token_count += Number(data.token_count);
-                    cacheObject[cacheKey] = Number(data.token_count);
+                    setTokenCacheEntry(cacheObject, cacheKey, Number(data.token_count));
                 },
             });
         }
@@ -969,7 +1039,7 @@ export async function countTokensOpenAIAsync(messages, full = false) {
 
             // SillyBunny: The cache key names only the source until KoboldCpp reports its loaded model. A count under that key could stay in the cache after a model switch.
             if (model !== chat_completion_sources.KOBOLDCPP) {
-                cacheObject[cacheKey] = tokenCount;
+                setTokenCacheEntry(cacheObject, cacheKey, tokenCount);
             }
         }
     }
@@ -1035,7 +1105,7 @@ export async function primeOpenAITokenCache(messages) {
             const tokenCount = Number(count);
 
             if (Number.isFinite(tokenCount)) {
-                cacheObject[cacheKeys[index]] = tokenCount;
+                setTokenCacheEntry(cacheObject, cacheKeys[index], tokenCount);
             }
         });
     } catch (error) {
@@ -1076,17 +1146,20 @@ function getTokenCacheObject() {
     }
 
     const key = String(chatId);
-    if (typeof tokenCache[key] !== 'object' || tokenCache[key] === null) {
-        tokenCache[key] = {};
-    } else {
-        // SillyBunny: refresh insertion order so pruneTokenCache evicts least recently used chats first.
-        const existing = tokenCache[key];
+    let bucket = tokenCache[key];
+    if (typeof bucket !== 'object' || bucket === null) {
+        bucket = createTokenCacheBucket();
+        tokenCache[key] = bucket;
+        dropOldestTokenCacheChats();
+        lastTokenCacheChatKey = key;
+    } else if (key !== lastTokenCacheChatKey) {
+        // SillyBunny: move the chat to the newest position when the user switches to it, so the oldest chats are evicted first. Doing this on every call would turn the root object into a dictionary for no gain.
         delete tokenCache[key];
-        tokenCache[key] = existing;
+        tokenCache[key] = bucket;
+        lastTokenCacheChatKey = key;
     }
-    pruneTokenCache();
 
-    return tokenCache[key];
+    return bucket;
 }
 
 /**

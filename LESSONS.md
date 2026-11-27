@@ -1904,6 +1904,12 @@ This is the largest class by a wide margin.
 - **Guards:** `sillybunny-settings-sync.js` hashes live JS objects directly (omitting root `_version` without mutating, skipping `undefined`/function/symbol properties and invoking `toJSON()`) using a reusable 8 KiB byte buffer with an inline ASCII fast-path and `encodeInto()`; `public/script.js` hashes `settings` on load and computes `settingsSync.getFingerprint(payload)` before `JSON.stringify(payload)` on save.
 - **Tests:** `tests/sillybunny-settings-sync.test.js`, `tests/unit/sillybunny-memory-engine-hotfixes.test.js`.
 
+### Token cache bounds (`public/scripts/tokenizers.js`)
+
+- **Breaks:** `getTokenCacheObject()` runs first in every count function, so pruning there enumerated every cached chat on each count call. A bound of 500 entries per chat, evicted in insertion order without refresh on a hit, missed on every read once one prompt build read more than 500 distinct keys.
+- **Guards:** entries leave a bucket only when one is inserted (`setTokenCacheEntry()`), and a chat bucket leaves only when a new one is created or the cache loads. The bound is 20 chats and 20,000 entries per chat in memory; `saveTokenCache()` writes at most the newest 500 entries per chat, in the same plain-object format. `tokenCacheOrders` keeps each bucket's key order so that an eviction is O(1). The cache moves a chat to the newest position when the user switches to it, not on every count.
+- **Tests:** `tests/token-cache-bounds.test.js`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
