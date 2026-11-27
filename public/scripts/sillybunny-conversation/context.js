@@ -298,10 +298,20 @@ export function persistConversationStore() {
     saveSettingsDebounced();
 }
 
+const UNREAD_STORAGE_CLEANED_KEY = 'sillybunny_conv_unread_cleaned_v1';
+
 /** Removes the unread counts that the first versions kept in `localStorage`. They are worked out from the chats now. */
 export function clearLegacyConversationUnreadStorage() {
     if (typeof localStorage === 'undefined') {
         return 0;
+    }
+
+    try {
+        if (typeof localStorage.getItem === 'function' && localStorage.getItem(UNREAD_STORAGE_CLEANED_KEY) === '1') {
+            return 0;
+        }
+    } catch {
+        // Ignore storage read failures in private/restricted contexts.
     }
 
     const unreadKeys = [];
@@ -312,6 +322,15 @@ export function clearLegacyConversationUnreadStorage() {
         }
     }
     unreadKeys.forEach(key => localStorage.removeItem(key));
+
+    try {
+        if (typeof localStorage.setItem === 'function') {
+            localStorage.setItem(UNREAD_STORAGE_CLEANED_KEY, '1');
+        }
+    } catch {
+        // Ignore storage write failures in private/quota-limited contexts.
+    }
+
     return unreadKeys.length;
 }
 

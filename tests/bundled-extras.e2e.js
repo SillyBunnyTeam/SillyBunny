@@ -89,7 +89,7 @@ async function boot(page, { installed = {}, missingPresets = [], themeInstall = 
     await protectMaintainerServer(page);
     await installFixtureChats(page);
 
-    await page.route('**/api/extensions/discover', async (route) => {
+    await page.route('**/api/extensions/discover*', async (route) => {
         const real = await fetchJsonOrSkip(route);
         if (!real) return;
         const known = real.filter(entry => !world.folders.has(entry.name.replace(/^third-party\//, '')));

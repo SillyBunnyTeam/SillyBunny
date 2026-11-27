@@ -1,16 +1,63 @@
 import { lodash } from '../lib.js';
-import { addOneMessage, chat, displayVersion, setSendButtonState, system_avatar, systemUserName } from '../script.js';
+import { addOneMessage, chat, displayVersion, eventSource, event_types, setSendButtonState, system_avatar, systemUserName } from '../script.js';
 import { t } from './i18n.js';
 import { getMessageTimeStamp } from './RossAscends-mods.js';
 import { getSlashCommandsHelp } from './slash-commands.js';
 import { SlashCommandBrowser } from './slash-commands/SlashCommandBrowser.js';
 import { MacroBrowser, getMacrosHelp } from './macros/engine/MacroBrowser.js';
-import { renderTemplateAsync } from './templates.js';
+import { renderTemplate, renderTemplateAsync } from './templates.js';
 
 /** @type {Record<string, ChatMessage>} */
 export const system_messages = {};
 /** @type {ChatMessage[]} */
 export const SAFETY_CHAT = [];
+
+// SillyBunny: defer template fetches out of pre-settings startup; hydrate in parallel on idle or lazily on demand.
+const SYSTEM_MESSAGE_TEMPLATE_SPECS = Object.freeze({
+    help: { templateId: 'help', getData: () => ({}) },
+    formatting: { templateId: 'formatting', getData: () => ({}) },
+    welcome: { templateId: 'welcome', getData: () => ({ displayVersion }) },
+    welcome_prompt: { templateId: 'welcomePrompt', getData: () => ({}) },
+    assistant_note: { templateId: 'assistantNote', getData: () => ({}) },
+});
+const hydratedSystemMessageTypes = new Set();
+let systemMessageHydrationPromise = null;
+
+function hydrateSystemMessageSync(type) {
+    if (hydratedSystemMessageTypes.has(type)) {
+        return;
+    }
+    const spec = SYSTEM_MESSAGE_TEMPLATE_SPECS[type];
+    if (!spec || !system_messages[type]) {
+        return;
+    }
+    system_messages[type].mes = renderTemplate(spec.templateId, spec.getData()) ?? '';
+    hydratedSystemMessageTypes.add(type);
+}
+
+export function ensureSystemMessagesHydrated() {
+    if (systemMessageHydrationPromise) {
+        return systemMessageHydrationPromise;
+    }
+
+    systemMessageHydrationPromise = Promise.all(
+        Object.entries(SYSTEM_MESSAGE_TEMPLATE_SPECS).map(async ([type, spec]) => {
+            if (hydratedSystemMessageTypes.has(type) || !system_messages[type]) {
+                return;
+            }
+            const rendered = await renderTemplateAsync(spec.templateId, spec.getData());
+            if (!hydratedSystemMessageTypes.has(type) && system_messages[type]) {
+                system_messages[type].mes = rendered ?? '';
+                hydratedSystemMessageTypes.add(type);
+            }
+        }),
+    ).then(() => undefined).catch((error) => {
+        systemMessageHydrationPromise = null;
+        console.warn('Failed to prewarm system message templates.', error);
+    });
+
+    return systemMessageHydrationPromise;
+}
 
 /**
  * @enum {string} System message types
@@ -32,6 +79,8 @@ export const system_message_types = {
 };
 
 export async function initSystemMessages() {
+    hydratedSystemMessageTypes.clear();
+    systemMessageHydrationPromise = null;
     /** @type {ChatMessage} */
     const defaultMessage = {
         name: systemUserName,
@@ -44,7 +93,7 @@ export async function initSystemMessages() {
     const result = {
         /** @type {ChatMessage} */
         help: lodash.merge(structuredClone(defaultMessage), {
-            mes: await renderTemplateAsync('help'),
+            mes: '',
         }),
         /** @type {ChatMessage} */
         slash_commands: lodash.merge(structuredClone(defaultMessage), {
@@ -52,7 +101,7 @@ export async function initSystemMessages() {
         }),
         /** @type {ChatMessage} */
         formatting: lodash.merge(structuredClone(defaultMessage), {
-            mes: await renderTemplateAsync('formatting'),
+            mes: '',
         }),
         /** @type {ChatMessage} */
         macros: lodash.merge(structuredClone(defaultMessage), {
@@ -60,7 +109,7 @@ export async function initSystemMessages() {
         }),
         /** @type {ChatMessage} */
         welcome: lodash.merge(structuredClone(defaultMessage), {
-            mes: await renderTemplateAsync('welcome', { displayVersion }),
+            mes: '',
             extra: {
                 uses_system_ui: true,
             },
@@ -75,7 +124,7 @@ export async function initSystemMessages() {
         }),
         /** @type {ChatMessage} */
         welcome_prompt: lodash.merge(structuredClone(defaultMessage), {
-            mes: await renderTemplateAsync('welcomePrompt'),
+            mes: '',
             extra: {
                 uses_system_ui: true,
                 isSmallSys: true,
@@ -83,7 +132,7 @@ export async function initSystemMessages() {
         }),
         /** @type {ChatMessage} */
         assistant_note: lodash.merge(structuredClone(defaultMessage), {
-            mes: await renderTemplateAsync('assistantNote'),
+            mes: '',
             extra: {
                 uses_system_ui: true,
                 isSmallSys: true,
@@ -103,6 +152,17 @@ export async function initSystemMessages() {
         mes: t`You deleted a character/chat and arrived back here for safety reasons! Pick another character!`,
     };
     SAFETY_CHAT.splice(0, SAFETY_CHAT.length, safetyMessage);
+
+    // SillyBunny: prewarm templates in parallel during post-APP_READY idle instead of blocking startup with 5 serial XHRs.
+    if (eventSource && event_types?.APP_READY) {
+        eventSource.once(event_types.APP_READY, () => {
+            if (typeof globalThis.requestIdleCallback === 'function') {
+                globalThis.requestIdleCallback(() => { void ensureSystemMessagesHydrated(); }, { timeout: 3000 });
+            } else {
+                globalThis.setTimeout(() => { void ensureSystemMessagesHydrated(); }, 500);
+            }
+        });
+    }
 }
 
 
@@ -116,6 +176,9 @@ export async function initSystemMessages() {
  * @returns {ChatMessage} System message object
  */
 export function getSystemMessageByType(type, text, extra = {}) {
+    if (!text) {
+        hydrateSystemMessageSync(type);
+    }
     const systemMessage = system_messages[type];
 
     if (!systemMessage) {

@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const scriptSource = read('../public/script.js');
-const copyFunction = scriptSource.match(/^export function addCopyToCodeBlocks\([\s\S]*?^}/m)[0];
+// The copy buttons share this block with the lazy highlighting that they schedule.
+const copyFunction = scriptSource.match(/^const HLJS_AUTO_LANGUAGE_CANDIDATES = [\s\S]*?^export function addCopyToCodeBlocks\([\s\S]*?^}/m)[0];
 const modules = new Map([
     ['/scripts/util/stream-fadein.js', read('../public/scripts/util/stream-fadein.js')],
     ['/scripts/a11y.js', read('../public/scripts/a11y.js')],
@@ -113,6 +114,12 @@ test('repeated message refreshes keep one working copy button per code block', a
         addCopyToCodeBlocks(message);
         button.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
         await Promise.resolve();
+        // A visible block is highlighted when the observer reports it, a frame or more after the refreshes.
+        const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+        for (let waited = 0; highlights === 0 && waited < 120; waited++) await frame();
+        addCopyToCodeBlocks(message);
+        await frame();
+        await frame();
         return { highlights, copies: message.querySelectorAll('.code-copy').length, sameButton: button === message.querySelector('.code-copy'), copied };
     });
     expect(result).toEqual({ highlights: 1, copies: 1, sameButton: true, copied: ['const answer = 42;'] });

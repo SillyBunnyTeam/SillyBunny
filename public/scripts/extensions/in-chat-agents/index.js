@@ -142,7 +142,49 @@ const PATHFINDER_EXTENSIONS_HOST_ID = 'extension_settings_in_chat_agents_pathfin
 /** Built-in templates loaded from JSON files. */
 let templates = [];
 let templateRegexBundles = {};
+let templatesLoaded = false;
+let templatesLoadPromise = null;
+// A failed load leaves `templatesLoaded` false, and the agent list re-renders after the load and asks for the templates again on each render.
+// After a failed load the render-driven path waits for this time before it loads again; a user action that calls loadTemplates() is not held back.
+const TEMPLATES_RENDER_RETRY_DELAY_MS = 30_000;
+let templatesRenderRetryAt = 0;
 let autoSeededTemplateIds = new Set();
+let bundledAgentsReconciled = false;
+let bundledAgentsReconcilePromise = null;
+let consumedInitialSettingsSnapshot = false;
+
+function isAgentsSurfaceOpen() {
+    if (typeof document === 'undefined') return false;
+    if (document.querySelector('.sb-shell-panel-active[data-sb-panel="agents"]')) return true;
+    if (document.documentElement?.dataset?.sbSettingsOpen === 'true') {
+        const activeSettingsTab = document.querySelector('[data-sb-settings-tab="agents"][aria-selected="true"], [data-sb-settings-tab="agents"].is-active');
+        if (activeSettingsTab) return true;
+    }
+    const listRoot = document.querySelector('.ica-list-root');
+    return Boolean(listRoot && listRoot.getClientRects?.().length > 0);
+}
+
+function ensureTemplatesLoaded() {
+    if (bundledAgentsReconciled && templatesLoaded) {
+        return Promise.resolve();
+    }
+    if (bundledAgentsReconcilePromise) {
+        return bundledAgentsReconcilePromise;
+    }
+    return reconcileBundledAgentsOnce();
+}
+
+function warmTemplatesForAgentsUi() {
+    if ((templatesLoaded && bundledAgentsReconciled) || Date.now() < templatesRenderRetryAt) {
+        return Promise.resolve();
+    }
+    return ensureTemplatesLoaded().then(() => {
+        if (!templatesLoaded) {
+            templatesRenderRetryAt = Date.now() + TEMPLATES_RENDER_RETRY_DELAY_MS;
+        }
+        renderAgentList();
+    });
+}
 
 let pathfinderExtensionsMountPromise = null;
 let pathfinderExtensionsMountRevision = 0;
@@ -482,6 +524,9 @@ function getCatalogueContext() {
 }
 
 function getAgentListEntries() {
+    if (!templatesLoaded && isAgentsSurfaceOpen()) {
+        void warmTemplatesForAgentsUi();
+    }
     return listAgentEntries({ agents: getAgents(), templates, regexBundles: templateRegexBundles });
 }
 
@@ -492,6 +537,9 @@ function currentAgentListEntry(entry) {
 }
 
 async function setAgentListEntryEnabled(entry, enabled) {
+    if (entry?.kind === 'agent-template') {
+        await loadTemplates();
+    }
     entry = currentAgentListEntry(entry);
     if (entry.kind === 'agent-template') {
         if (!enabled) return null;
@@ -525,6 +573,9 @@ async function setAgentListEntryEnabled(entry, enabled) {
 
 async function openAgentListEntry(entry) {
     if (!entry) return openEditor();
+    if (entry?.kind === 'agent-template') {
+        await loadTemplates();
+    }
     entry = currentAgentListEntry(entry);
     if (entry.kind === 'agent') return openEditor(entry.agent.id);
     const defaults = createDefaultAgent();
@@ -539,6 +590,9 @@ async function openAgentListEntry(entry) {
 async function performAgentListAction(entry, action) {
     const allowedActions = new Set(['pin', 'unpin', 'preview-prompt', 'preview-feedback', 'export', 'duplicate', 'apply-target', 'apply-last', 'run-last', 'convert-companion', 'convert-inline', 'update', 'restore-default', 'delete']);
     if (!allowedActions.has(action)) throw new Error(`Unknown agent action: ${action}`);
+    if (entry?.kind === 'agent-template' || ['duplicate', 'update', 'restore-default'].includes(action)) {
+        await loadTemplates();
+    }
     entry = currentAgentListEntry(entry);
     if (entry.kind === 'agent-template' && ['update', 'restore-default', 'delete'].includes(action)) {
         throw new Error(`Agent action requires a saved entry: ${action}`);
@@ -717,8 +771,16 @@ async function registerAgentListUi(settingsStore, settingsFields) {
             },
         },
         groups: {
-            getGroups, deleteGroup, createGroup: createCustomGroup,
+            getGroups: () => {
+                if (!templatesLoaded && isAgentsSurfaceOpen()) {
+                    void warmTemplatesForAgentsUi();
+                }
+                return getGroups();
+            },
+            deleteGroup,
+            createGroup: createCustomGroup,
             async turnOnGroup(group) {
+                await loadTemplates();
                 const result = await turnOnGroup(group, getCatalogueContext());
                 syncToolAgentRegistrations();
                 renderAgentList();
@@ -756,8 +818,14 @@ async function registerAgentListUi(settingsStore, settingsFields) {
         fixTrackers: fixTrackersFromList,
         convertTrackers: convertTrackersFromList,
         exportAll: handleExportAll,
-        getGroups,
+        getGroups: () => {
+            if (!templatesLoaded && isAgentsSurfaceOpen()) {
+                void warmTemplatesForAgentsUi();
+            }
+            return getGroups();
+        },
         turnOnGroup: async group => {
+            await loadTemplates();
             const result = await turnOnGroup(group, getCatalogueContext()); syncToolAgentRegistrations(); renderAgentList();
             return result;
         },
@@ -768,17 +836,20 @@ async function registerAgentListUi(settingsStore, settingsFields) {
                 ...agent,
                 settings: agentEditorTemplateSettings(agent),
             }),
-            materialise: (id, options) => materialise(
-                id,
-                {
-                    ...options,
-                    edits: {
-                        ...options.edits,
-                        settings: agentEditorTemplateSettings(options.edits),
+            materialise: async (id, options) => {
+                await loadTemplates();
+                return materialise(
+                    id,
+                    {
+                        ...options,
+                        edits: {
+                            ...options.edits,
+                            settings: agentEditorTemplateSettings(options.edits),
+                        },
                     },
-                },
-                getCatalogueContext(),
-            ),
+                    getCatalogueContext(),
+                );
+            },
             syncCompanionChatHistoryConfig,
             saveChatDebounced,
             refreshRegexSnapshotsForAgent,
@@ -865,6 +936,9 @@ async function registerAgentListUi(settingsStore, settingsFields) {
 }
 
 async function performAgentBulkAction(keys, action, { properties = {}, onSaved = () => {} } = {}) {
+    if ([...keys].some(key => String(key).startsWith('agent-template:'))) {
+        await loadTemplates();
+    }
     const entries = new Map(getAgentListEntries().map(entry => [entry.key, entry]));
     let eligible = 0;
     let changed = 0;
@@ -1457,6 +1531,7 @@ function buildUpdatedAgentFromTemplate(agent, template) {
 }
 
 async function updateAgentFromSourceTemplate(agent) {
+    await loadTemplates();
     const template = findSourceTemplateForAgent(agent);
     if (!template) {
         return;
@@ -1482,6 +1557,7 @@ async function updateAgentFromSourceTemplate(agent) {
 }
 
 async function updateAllAgentsFromSourceTemplates() {
+    await loadTemplates();
     const outdatedAgents = getAgentsWithTemplateUpdates();
     if (outdatedAgents.length === 0) {
         toastr.info('Every bundled agent is already on its latest template');
@@ -2101,6 +2177,9 @@ async function openEditor(agentId = null, {
     autoOpenCompanionMaker = false,
     materialiseTemplateId = null,
 } = {}, origin = 'agent-list') {
+    if (materialiseTemplateId) {
+        await loadTemplates();
+    }
     // SillyBunny: preserve the public hook while routing generic agents to Backend detail.
     const saved = agentId ? getAgentById(agentId) : null;
     if (agentId && !saved) return;
@@ -2122,48 +2201,64 @@ async function openEditor(agentId = null, {
  * Loads built-in template agents from the templates directory.
  */
 async function loadTemplates() {
-    if (templates.length > 0) {
+    if (templatesLoaded) {
         return;
     }
-
-    try {
-        const [templateResponse, regexBundleResponse, groupResponse] = await Promise.all([
-            fetch(getTemplateAssetUrl('index.json')),
-            fetch(getTemplateAssetUrl('regex-bundles.json')),
-            fetch(getTemplateAssetUrl('groups.json')),
-        ]);
-
-        const rawTemplates = templateResponse.ok ? await templateResponse.json() : [];
-        templateRegexBundles = regexBundleResponse.ok ? await regexBundleResponse.json() : {};
-        templates = Array.isArray(rawTemplates)
-            ? rawTemplates
-                .filter(template => !REMOVED_BUNDLED_TEMPLATE_IDS.has(String(template?.id ?? '').trim()))
-                .map(template => mergeTemplateDefaults(template))
-            : [];
-
-        if (groupResponse.ok) {
-            const rawGroups = await groupResponse.json();
-            const builtinGroups = Array.isArray(rawGroups)
-                ? rawGroups
-                    .filter(group => !REMOVED_BUNDLED_GROUP_IDS.has(String(group?.id ?? '').trim()))
-                    .map(group => ({
-                        ...group,
-                        agentTemplateIds: Array.isArray(group?.agentTemplateIds)
-                            ? group.agentTemplateIds.filter(id => !REMOVED_BUNDLED_TEMPLATE_IDS.has(String(id ?? '').trim()))
-                            : [],
-                    }))
-                : [];
-            loadBuiltinGroups(builtinGroups);
-        }
-    } catch (e) {
-        console.warn('[InChatAgents] Failed to load templates:', e);
+    if (templatesLoadPromise) {
+        return templatesLoadPromise;
     }
+
+    templatesLoadPromise = (async () => {
+        try {
+            const [templateResponse, regexBundleResponse, groupResponse] = await Promise.all([
+                fetch(getTemplateAssetUrl('index.json')),
+                fetch(getTemplateAssetUrl('regex-bundles.json')),
+                fetch(getTemplateAssetUrl('groups.json')),
+            ]);
+
+            const rawTemplates = templateResponse.ok ? await templateResponse.json() : [];
+            templateRegexBundles = regexBundleResponse.ok ? await regexBundleResponse.json() : {};
+            templates = Array.isArray(rawTemplates)
+                ? rawTemplates
+                    .filter(template => !REMOVED_BUNDLED_TEMPLATE_IDS.has(String(template?.id ?? '').trim()))
+                    .map(template => mergeTemplateDefaults(template))
+                : [];
+
+            if (groupResponse.ok) {
+                const rawGroups = await groupResponse.json();
+                const builtinGroups = Array.isArray(rawGroups)
+                    ? rawGroups
+                        .filter(group => !REMOVED_BUNDLED_GROUP_IDS.has(String(group?.id ?? '').trim()))
+                        .map(group => ({
+                            ...group,
+                            agentTemplateIds: Array.isArray(group?.agentTemplateIds)
+                                ? group.agentTemplateIds.filter(id => !REMOVED_BUNDLED_TEMPLATE_IDS.has(String(id ?? '').trim()))
+                                : [],
+                        }))
+                    : [];
+                loadBuiltinGroups(builtinGroups);
+            }
+            // groups.json is optional: without it the templates still work and only the bundled groups are missing.
+            if (templateResponse.ok && regexBundleResponse.ok) {
+                templatesLoaded = true;
+            }
+        } catch (e) {
+            console.warn('[InChatAgents] Failed to load templates:', e);
+        } finally {
+            templatesLoadPromise = null;
+        }
+    })();
+
+    return templatesLoadPromise;
 }
 
 /**
  * Creates a custom group from the user's current agents.
  */
 async function createCustomGroup(selectedKeys = null) {
+    if (selectedKeys) {
+        await loadTemplates();
+    }
     const entries = selectedKeys ? getAgentListEntries() : getAgentListEntries().filter(entry => entry.kind === 'agent');
     const currentAgents = entries.map(entry => entry.agent);
     if (currentAgents.length === 0) {
@@ -3534,6 +3629,7 @@ async function refinePromptWithAI(currentPrompt, category, phase, connectionProf
 // ===================== Initialization =====================
 
 async function resetBundledAgentsFromSettings() {
+    await loadTemplates();
     const agents = getVisibleInChatAgents();
     const visibleDefaultBundledTemplates = getDefaultBundledTemplates()
         .filter(template => !HIDDEN_TEMPLATE_BROWSER_IDS.has(String(template?.id ?? '').trim()));
@@ -3559,6 +3655,100 @@ async function resetBundledAgentsFromSettings() {
     return result;
 }
 
+async function reconcileBundledAgentsOnce() {
+    if (bundledAgentsReconciled && templatesLoaded) {
+        return;
+    }
+    if (bundledAgentsReconcilePromise) {
+        return bundledAgentsReconcilePromise;
+    }
+
+    bundledAgentsReconcilePromise = (async () => {
+        await loadTemplates();
+        if (!templatesLoaded) {
+            return;
+        }
+
+        await ensureDefaultBundledAgents();
+        const latestBundledAgentMigration = await refreshBundledAgentsFromLatestTemplates();
+        if (latestBundledAgentMigration.updatedCount > 0) {
+            toastr.success(`Updated ${latestBundledAgentMigration.updatedCount} bundled agent${latestBundledAgentMigration.updatedCount !== 1 ? 's' : ''} to the latest template defaults`);
+        }
+        if (latestBundledAgentMigration.removedCount > 0) {
+            toastr.success(`Removed ${latestBundledAgentMigration.removedCount} redundant bundled agent duplicate${latestBundledAgentMigration.removedCount !== 1 ? 's' : ''}`);
+        }
+
+        await migrateBundledRegexScriptsToSavedAgents();
+        const migratedCyoaChoiceRegexCount = await migrateCyoaChoiceRegexCleanupToSavedAgents();
+        if (migratedCyoaChoiceRegexCount > 0) {
+            toastr.success(`Updated ${migratedCyoaChoiceRegexCount} bundled CYOA choice regex script${migratedCyoaChoiceRegexCount !== 1 ? 's' : ''}`);
+        }
+
+        const migratedTemplateMetadataCount = await migrateBundledTemplateMetadataToSavedAgents();
+        if (migratedTemplateMetadataCount > 0) {
+            toastr.success(`Updated ${migratedTemplateMetadataCount} bundled agent credit${migratedTemplateMetadataCount !== 1 ? 's' : ''}`);
+        }
+
+        const migratedTrackerPromptPassCount = await migrateBundledTrackerPromptPassesToSavedAgents();
+        if (migratedTrackerPromptPassCount > 0) {
+            toastr.success(`Updated ${migratedTrackerPromptPassCount} bundled tracker agent(s) to pre-generation defaults`);
+        }
+
+        const migratedRegexPostDefaultsCount = await migrateBundledRegexPostDefaultsToSavedAgents();
+        if (migratedRegexPostDefaultsCount > 0) {
+            toastr.success(`Updated ${migratedRegexPostDefaultsCount} bundled regex agent(s) to post-generation defaults`);
+        }
+
+        if (isPathfinderSubmoduleEnabled()) {
+            const migratedPathfinderToolCount = await migratePathfinderAgentToolsFromTemplate();
+            if (migratedPathfinderToolCount > 0) {
+                toastr.success(`Updated ${migratedPathfinderToolCount} Pathfinder agent(s) with default tool toggles`);
+            }
+        }
+
+        const migratedPromptTransformImpersonateCount = await migrateBundledPromptTransformImpersonateToSavedAgents();
+        if (migratedPromptTransformImpersonateCount > 0) {
+            toastr.success(`Updated ${migratedPromptTransformImpersonateCount} bundled prompt pass agent(s) for impersonations`);
+        }
+
+        const migratedPromptTransformTokenCount = await migrateLegacyPromptTransformMaxTokens();
+        if (migratedPromptTransformTokenCount > 0) {
+            toastr.success(`Updated ${migratedPromptTransformTokenCount} agent(s) to the new 8192 prompt transform token default`);
+        }
+
+        const removedBundledAgentCount = await purgeRemovedBundledAgents();
+        if (removedBundledAgentCount > 0) {
+            toastr.success(`Removed ${removedBundledAgentCount} bundled agent(s) from the default catalog`);
+        }
+
+        const removedDuplicateCount = await removeRedundantBundledAgentDuplicates();
+        if (removedDuplicateCount > 0) {
+            toastr.success(`Removed ${removedDuplicateCount} redundant bundled agent duplicate(s)`);
+        }
+
+        const migratedTrackerCompanionCount = await migrateTrackerCompanionsToAutoLoop();
+        if (migratedTrackerCompanionCount > 0) {
+            toastr.success(`${migratedTrackerCompanionCount} tracker companion(s) now run automatically with their own prompt, feed state back into context, and show in the Tracker panel`);
+        }
+
+        await migrateLevelUpStatsContextLinks();
+
+        bundledAgentsReconciled = true;
+        try {
+            syncToolAgentRegistrations();
+        } catch (err) {
+            console.warn('[InChatAgents] Tool agent sync failed:', err);
+        }
+        renderAgentList();
+    })().catch((error) => {
+        console.warn('[InChatAgents] Failed to reconcile bundled agents:', error);
+    }).finally(() => {
+        bundledAgentsReconcilePromise = null;
+    });
+
+    return bundledAgentsReconcilePromise;
+}
+
 (async function () {
     const bulkEditHtml = await renderExtensionTemplateAsync(MODULE_NAME, 'bulk-edit');
     if (!bulkEditHtml) return;
@@ -3577,22 +3767,30 @@ async function resetBundledAgentsFromSettings() {
         restoreAutoSeededTemplateIds(savedState);
     }
 
+    // SillyBunny: consume the startup /api/settings/get snapshot instead of firing a duplicate settings POST.
     const initResults = await Promise.allSettled([
         loadTemplates(),
         loadCustomGroupsFromServer(),
         (async () => {
-            const settingsResp = await fetch('/api/settings/get', {
-                method: 'POST',
-                headers: getRequestHeaders(),
-                body: JSON.stringify({}),
-            });
+            const initialSnapshot = !consumedInitialSettingsSnapshot ? globalThis.__sbGetInitialSettingsSnapshot?.() : null;
+            consumedInitialSettingsSnapshot = true;
 
-            if (!settingsResp.ok) {
-                return;
+            let settings = initialSnapshot;
+            if (!settings) {
+                const settingsResp = await fetch('/api/settings/get', {
+                    method: 'POST',
+                    headers: getRequestHeaders(),
+                    body: JSON.stringify({}),
+                });
+
+                if (!settingsResp.ok) {
+                    return;
+                }
+
+                settings = await settingsResp.json();
             }
 
-            const settings = await settingsResp.json();
-            if (settings.inChatAgents) {
+            if (settings?.inChatAgents) {
                 loadAgents(settings.inChatAgents);
             }
         })(),
@@ -3619,69 +3817,9 @@ async function resetBundledAgentsFromSettings() {
         persistExtensionState();
     }
 
-    await ensureDefaultBundledAgents();
-    const latestBundledAgentMigration = await refreshBundledAgentsFromLatestTemplates();
-    if (latestBundledAgentMigration.updatedCount > 0) {
-        toastr.success(`Updated ${latestBundledAgentMigration.updatedCount} bundled agent${latestBundledAgentMigration.updatedCount !== 1 ? 's' : ''} to the latest template defaults`);
-    }
-    if (latestBundledAgentMigration.removedCount > 0) {
-        toastr.success(`Removed ${latestBundledAgentMigration.removedCount} redundant bundled agent duplicate${latestBundledAgentMigration.removedCount !== 1 ? 's' : ''}`);
-    }
-
-    await migrateBundledRegexScriptsToSavedAgents();
-    const migratedCyoaChoiceRegexCount = await migrateCyoaChoiceRegexCleanupToSavedAgents();
-    if (migratedCyoaChoiceRegexCount > 0) {
-        toastr.success(`Updated ${migratedCyoaChoiceRegexCount} bundled CYOA choice regex script${migratedCyoaChoiceRegexCount !== 1 ? 's' : ''}`);
-    }
-
-    const migratedTemplateMetadataCount = await migrateBundledTemplateMetadataToSavedAgents();
-    if (migratedTemplateMetadataCount > 0) {
-        toastr.success(`Updated ${migratedTemplateMetadataCount} bundled agent credit${migratedTemplateMetadataCount !== 1 ? 's' : ''}`);
-    }
-
-    const migratedTrackerPromptPassCount = await migrateBundledTrackerPromptPassesToSavedAgents();
-    if (migratedTrackerPromptPassCount > 0) {
-        toastr.success(`Updated ${migratedTrackerPromptPassCount} bundled tracker agent(s) to pre-generation defaults`);
-    }
-
-    const migratedRegexPostDefaultsCount = await migrateBundledRegexPostDefaultsToSavedAgents();
-    if (migratedRegexPostDefaultsCount > 0) {
-        toastr.success(`Updated ${migratedRegexPostDefaultsCount} bundled regex agent(s) to post-generation defaults`);
-    }
-
-    if (isPathfinderSubmoduleEnabled()) {
-        const migratedPathfinderToolCount = await migratePathfinderAgentToolsFromTemplate();
-        if (migratedPathfinderToolCount > 0) {
-            toastr.success(`Updated ${migratedPathfinderToolCount} Pathfinder agent(s) with default tool toggles`);
-        }
-    }
-
-    const migratedPromptTransformImpersonateCount = await migrateBundledPromptTransformImpersonateToSavedAgents();
-    if (migratedPromptTransformImpersonateCount > 0) {
-        toastr.success(`Updated ${migratedPromptTransformImpersonateCount} bundled prompt pass agent(s) for impersonations`);
-    }
-
-    const migratedPromptTransformTokenCount = await migrateLegacyPromptTransformMaxTokens();
-    if (migratedPromptTransformTokenCount > 0) {
-        toastr.success(`Updated ${migratedPromptTransformTokenCount} agent(s) to the new 8192 prompt transform token default`);
-    }
-
-    const removedBundledAgentCount = await purgeRemovedBundledAgents();
-    if (removedBundledAgentCount > 0) {
-        toastr.success(`Removed ${removedBundledAgentCount} bundled agent(s) from the default catalog`);
-    }
-
-    const removedDuplicateCount = await removeRedundantBundledAgentDuplicates();
-    if (removedDuplicateCount > 0) {
-        toastr.success(`Removed ${removedDuplicateCount} redundant bundled agent duplicate(s)`);
-    }
-
-    const migratedTrackerCompanionCount = await migrateTrackerCompanionsToAutoLoop();
-    if (migratedTrackerCompanionCount > 0) {
-        toastr.success(`${migratedTrackerCompanionCount} tracker companion(s) now run automatically with their own prompt, feed state back into context, and show in the Tracker panel`);
-    }
-
-    await migrateLevelUpStatsContextLinks();
+    // The reconcile saves agents, so it finishes here, before the Agents surface and the first generation can read them.
+    // A run that started later would rewrite agents under an editor that the user already opened.
+    await reconcileBundledAgentsOnce();
 
     if (getGlobalSettings().separateRecentChats) {
         const initializedScopedAgentState = initializeScopedAgentEnableState();
@@ -3728,6 +3866,9 @@ async function resetBundledAgentsFromSettings() {
     });
     initCompanionPanel();
     schedulePathfinderExtensionsMount();
+    $(document).on('click', '[data-sb-settings-tab="agents"], [data-sb-tab="agents"]', () => {
+        void warmTemplatesForAgentsUi();
+    });
 
     $('#ica--importFile').on('change', handleImport);
 
@@ -3784,6 +3925,8 @@ async function resetBundledAgentsFromSettings() {
 
         if (enabled) {
             try {
+                await loadTemplates();
+                await ensureDefaultBundledAgents();
                 const migratedPathfinderToolCount = await migratePathfinderAgentToolsFromTemplate();
                 if (migratedPathfinderToolCount > 0) {
                     toastr.success(`Updated ${migratedPathfinderToolCount} Pathfinder agent(s) with default tool toggles`);

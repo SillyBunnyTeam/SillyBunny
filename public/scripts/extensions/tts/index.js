@@ -2,25 +2,7 @@ import { cancelTtsPlay, eventSource, event_types, getCurrentChatId, isStreamingE
 import { ModuleWorkerWrapper, extension_settings, getContext, renderExtensionTemplateAsync } from '../../extensions.js';
 import { delay, escapeRegex, getBase64Async, getStringHash, onlyUnique, regexFromString } from '../../utils.js';
 import { accountStorage } from '../../util/AccountStorage.js';
-import { EdgeTtsProvider } from './edge.js';
-import { ElevenLabsTtsProvider } from './elevenlabs.js';
-import { SileroTtsProvider } from './silerotts.js';
-import { GptSovitsV2Provider } from './gpt-sovits-v2.js';
-import { GptSoVITSAdapterProvider } from './gpt-sovits-adapter.js';
-import { CoquiTtsProvider } from './coqui.js';
-import { SystemTtsProvider } from './system.js';
-import { NovelTtsProvider } from './novel.js';
 import { power_user } from '../../power-user.js';
-import { OpenAITtsProvider } from './openai.js';
-import { OpenAICompatibleTtsProvider } from './openai-compatible.js';
-import { XTTSTtsProvider } from './xtts.js';
-import { VITSTtsProvider } from './vits.js';
-import { GSVITtsProvider } from './gsvi.js';
-import { SBVits2TtsProvider } from './sbvits2.js';
-import { AllTalkTtsProvider } from './alltalk.js';
-import { CosyVoiceProvider } from './cosyvoice.js';
-import { SpeechT5TtsProvider } from './speecht5.js';
-import { AzureTtsProvider } from './azure.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
 import { SlashCommand } from '../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
@@ -28,20 +10,42 @@ import { debounce_timeout } from '../../constants.js';
 import { SlashCommandEnumValue, enumTypes } from '../../slash-commands/SlashCommandEnumValue.js';
 import { enumIcons } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { POPUP_TYPE, callGenericPopup } from '../../popup.js';
-import { GoogleTranslateTtsProvider } from './google-translate.js';
-import { GoogleNativeTtsProvider } from './google-native.js';
-import { ChatterboxTtsProvider } from './chatterbox.js';
-import { KokoroTtsProvider } from './kokoro.js';
-import { TtsWebuiProvider } from './tts-webui.js';
-import { PollinationsTtsProvider } from './pollinations.js';
-import { MiniMaxTtsProvider } from './minimax.js';
-import { ElectronHubTtsProvider } from './electronhub.js';
-import { ChutesTtsProvider } from './chutes.js';
-import { VolcengineTtsProvider } from './volcengine.js';
 import { applyLocale, t } from '/scripts/i18n.js';
 import { registerExtensionCapability } from '../../sillybunny-conversation/extension-capabilities.js';
 // SillyBunny: voice previews use shared action rows while preserving upstream TTS controls and IDs.
 import { createButtonRow, createPrefGroup, releaseRowIds } from '../../sillybunny-editor/rows.js';
+
+// SillyBunny: lazy dynamic-import registry so startup only loads the active TTS provider instead of all 28 modules.
+const builtinTtsProviderLoaders = Object.freeze({
+    AllTalk: () => import('./alltalk.js').then(m => m.AllTalkTtsProvider),
+    Azure: () => import('./azure.js').then(m => m.AzureTtsProvider),
+    Chatterbox: () => import('./chatterbox.js').then(m => m.ChatterboxTtsProvider),
+    Chutes: () => import('./chutes.js').then(m => m.ChutesTtsProvider),
+    Coqui: () => import('./coqui.js').then(m => m.CoquiTtsProvider),
+    'CosyVoice (Unofficial)': () => import('./cosyvoice.js').then(m => m.CosyVoiceProvider),
+    Edge: () => import('./edge.js').then(m => m.EdgeTtsProvider),
+    ElevenLabs: () => import('./elevenlabs.js').then(m => m.ElevenLabsTtsProvider),
+    'Electron Hub': () => import('./electronhub.js').then(m => m.ElectronHubTtsProvider),
+    'Google Translate': () => import('./google-translate.js').then(m => m.GoogleTranslateTtsProvider),
+    'Google Gemini TTS': () => import('./google-native.js').then(m => m.GoogleNativeTtsProvider),
+    GSVI: () => import('./gsvi.js').then(m => m.GSVITtsProvider),
+    'GPT-SoVITS-Adapter': () => import('./gpt-sovits-adapter.js').then(m => m.GptSoVITSAdapterProvider),
+    'GPT-SoVITS-V2 (Unofficial)': () => import('./gpt-sovits-v2.js').then(m => m.GptSovitsV2Provider),
+    Kokoro: () => import('./kokoro.js').then(m => m.KokoroTtsProvider),
+    MiniMax: () => import('./minimax.js').then(m => m.MiniMaxTtsProvider),
+    Novel: () => import('./novel.js').then(m => m.NovelTtsProvider),
+    OpenAI: () => import('./openai.js').then(m => m.OpenAITtsProvider),
+    'OpenAI Compatible': () => import('./openai-compatible.js').then(m => m.OpenAICompatibleTtsProvider),
+    Pollinations: () => import('./pollinations.js').then(m => m.PollinationsTtsProvider),
+    SBVits2: () => import('./sbvits2.js').then(m => m.SBVits2TtsProvider),
+    Silero: () => import('./silerotts.js').then(m => m.SileroTtsProvider),
+    SpeechT5: () => import('./speecht5.js').then(m => m.SpeechT5TtsProvider),
+    System: () => import('./system.js').then(m => m.SystemTtsProvider),
+    'TTS WebUI': () => import('./tts-webui.js').then(m => m.TtsWebuiProvider),
+    VITS: () => import('./vits.js').then(m => m.VITSTtsProvider),
+    XTTSv2: () => import('./xtts.js').then(m => m.XTTSTtsProvider),
+    Volcengine: () => import('./volcengine.js').then(m => m.VolcengineTtsProvider),
+});
 
 const UPDATE_INTERVAL = 1000;
 const wrapper = new ModuleWorkerWrapper(moduleWorker);
@@ -118,6 +122,7 @@ let lastChatId = null;
 let lastMessage = null;
 let lastMessageHash = null;
 let periodicMessageGenerationTimer = null;
+let ttsWorkerInterval = null;
 let lastPositionOfParagraphEnd = -1;
 let activeNarrateButton = null;
 let ttsShellInitializationPromise = null;
@@ -196,49 +201,56 @@ export function registerTtsProvider(name, provider) {
     }
 }
 
-var _ttsProviders = null;
-function getTtsProviders() {
-    if (!_ttsProviders) {
-        _ttsProviders = {
-            AllTalk: AllTalkTtsProvider,
-            Azure: AzureTtsProvider,
-            Chatterbox: ChatterboxTtsProvider,
-            Chutes: ChutesTtsProvider,
-            Coqui: CoquiTtsProvider,
-            'CosyVoice (Unofficial)': CosyVoiceProvider,
-            Edge: EdgeTtsProvider,
-            ElevenLabs: ElevenLabsTtsProvider,
-            'Electron Hub': ElectronHubTtsProvider,
-            'Google Translate': GoogleTranslateTtsProvider,
-            'Google Gemini TTS': GoogleNativeTtsProvider,
-            GSVI: GSVITtsProvider,
-            'GPT-SoVITS-Adapter': GptSoVITSAdapterProvider,
-            'GPT-SoVITS-V2 (Unofficial)': GptSovitsV2Provider,
-            Kokoro: KokoroTtsProvider,
-            MiniMax: MiniMaxTtsProvider,
-            Novel: NovelTtsProvider,
-            OpenAI: OpenAITtsProvider,
-            'OpenAI Compatible': OpenAICompatibleTtsProvider,
-            Pollinations: PollinationsTtsProvider,
-            SBVits2: SBVits2TtsProvider,
-            Silero: SileroTtsProvider,
-            SpeechT5: SpeechT5TtsProvider,
-            System: SystemTtsProvider,
-            'TTS WebUI': TtsWebuiProvider,
-            VITS: VITSTtsProvider,
-            XTTSv2: XTTSTtsProvider,
-            Volcengine: VolcengineTtsProvider,
-        };
-    }
-    return _ttsProviders;
+const resolvedTtsProviders = Object.create(null);
+
+function getTtsProviderNames() {
+    return Array.from(new Set([
+        ...Object.keys(builtinTtsProviderLoaders),
+        ...Object.keys(resolvedTtsProviders),
+    ]));
 }
-// Proxy so existing code using ttsProviders[key] and Object.entries(ttsProviders) still works
+
+async function resolveTtsProviderClass(name) {
+    if (typeof resolvedTtsProviders[name] === 'function') {
+        return resolvedTtsProviders[name];
+    }
+    if (Object.hasOwn(builtinTtsProviderLoaders, name)) {
+        const ProviderClass = await builtinTtsProviderLoaders[name]();
+        resolvedTtsProviders[name] = ProviderClass;
+        return ProviderClass;
+    }
+    return undefined;
+}
+
+// Proxy so existing code using ttsProviders[key] and for..in / Object.keys(ttsProviders) works without eager imports
 const ttsProviders = new Proxy({}, {
-    get(_, prop) { return getTtsProviders()[prop]; },
-    set(_, prop, val) { getTtsProviders()[prop] = val; return true; },
-    has(_, prop) { return prop in getTtsProviders(); },
-    ownKeys() { return Reflect.ownKeys(getTtsProviders()); },
-    getOwnPropertyDescriptor(_, prop) { return Object.getOwnPropertyDescriptor(getTtsProviders(), prop); },
+    get(_, prop) {
+        if (typeof prop !== 'string') return undefined;
+        return resolvedTtsProviders[prop] ?? builtinTtsProviderLoaders[prop];
+    },
+    set(_, prop, val) {
+        if (typeof prop === 'string') {
+            resolvedTtsProviders[prop] = val;
+        }
+        return true;
+    },
+    has(_, prop) {
+        return typeof prop === 'string' && (prop in resolvedTtsProviders || Object.hasOwn(builtinTtsProviderLoaders, prop));
+    },
+    ownKeys() {
+        return getTtsProviderNames();
+    },
+    getOwnPropertyDescriptor(_, prop) {
+        if (typeof prop === 'string' && (prop in resolvedTtsProviders || Object.hasOwn(builtinTtsProviderLoaders, prop))) {
+            return {
+                configurable: true,
+                enumerable: true,
+                writable: true,
+                value: resolvedTtsProviders[prop] ?? builtinTtsProviderLoaders[prop],
+            };
+        }
+        return undefined;
+    },
 });
 let ttsProvider;
 let ttsProviderName;
@@ -398,14 +410,52 @@ export async function narrateTtsMessage(message, { messageId = null, manual = fa
     return true;
 }
 
+function stopTtsWorkerTimer() {
+    if (ttsWorkerInterval) {
+        clearInterval(ttsWorkerInterval);
+        ttsWorkerInterval = null;
+    }
+}
+
+function hasPendingTtsWork() {
+    return Boolean(
+        extension_settings.tts?.enabled
+        && (
+            ttsJobQueue.length > 0
+            || audioJobQueue.length > 0
+            || currentTtsJob != null
+            || currentAudioJob != null
+            || !audioElement.paused
+        ),
+    );
+}
+
+// SillyBunny: run the 1000 ms TTS worker pump only while TTS is enabled and has queued/active playback work.
+function syncTtsWorkerTimer() {
+    if (hasPendingTtsWork()) {
+        if (!ttsWorkerInterval) {
+            ttsWorkerInterval = setInterval(() => {
+                void wrapper.update();
+                if (!hasPendingTtsWork()) {
+                    stopTtsWorkerTimer();
+                }
+            }, UPDATE_INTERVAL);
+        }
+    } else {
+        stopTtsWorkerTimer();
+    }
+}
+
 async function moduleWorker() {
     if (!extension_settings.tts.enabled) {
+        stopTtsWorkerTimer();
         return;
     }
 
     await processTtsQueue();
     await processAudioJobQueue();
     updateUiAudioPlayState();
+    syncTtsWorkerTimer();
 }
 
 function resetTtsPlayback() {
@@ -434,6 +484,7 @@ function resetTtsPlayback() {
 
     // Set audio ready to process again
     audioQueueProcessorReady = true;
+    stopTtsWorkerTimer();
     resetNarrateButtonIcon();
 }
 
@@ -479,6 +530,8 @@ function processAndQueueTtsMessage(message, messageId = null, { manual = false }
 
     if (!extension_settings.tts.narrate_by_paragraphs) {
         ttsJobQueue.push(clone);
+        syncTtsWorkerTimer();
+        scheduleTtsQueueWakeup();
         return;
     }
 
@@ -497,6 +550,8 @@ function processAndQueueTtsMessage(message, messageId = null, { manual = false }
             }),
         );
     }
+    syncTtsWorkerTimer();
+    scheduleTtsQueueWakeup();
 }
 
 function debugTtsPlayback() {
@@ -728,6 +783,7 @@ async function addAudioJob(response, char, epoch = ttsPlaybackEpoch) {
         return null;
     }
     audioJobQueue.push({ audioBlob, char, epoch });
+    syncTtsWorkerTimer();
     console.debug('Pushed audio job to queue.');
     await processAudioJobQueue();
     return { audioBlob, mimeType };
@@ -1296,6 +1352,7 @@ function onEnableClick() {
         ':checked',
     );
     updateUiAudioPlayState();
+    syncTtsWorkerTimer();
     saveSettingsDebounced();
     $('body').toggleClass('tts', extension_settings.tts.enabled);
 }
@@ -1404,7 +1461,7 @@ async function loadTtsProviderInternal(provider) {
         throw new Error('No TTS provider is selected.');
     }
 
-    const Provider = ttsProviders[provider];
+    const Provider = await resolveTtsProviderClass(provider);
     if (typeof Provider !== 'function') {
         throw new Error(`TTS provider ${provider} is unavailable.`);
     }
@@ -1569,6 +1626,8 @@ async function onMessageEvent(messageId, lastCharIndex) {
     if (extension_settings.tts.periodic_auto_generation && isStreamingEnabled()) {
         message.id = messageId;
         ttsJobQueue.push(message);
+        syncTtsWorkerTimer();
+        scheduleTtsQueueWakeup();
     } else {
         processAndQueueTtsMessage(message, messageId, { manual: false });
     }
@@ -1985,7 +2044,7 @@ async function initializeTtsExtension() {
         console.warn('TTS provider initialization failed; it will be retried on demand.', error);
     });
     addAudioControl(); // Depends on Extension Controls
-    setInterval(wrapper.update.bind(wrapper), UPDATE_INTERVAL); // Init depends on all the things
+    syncTtsWorkerTimer(); // Init depends on all the things
     eventSource.on(event_types.MESSAGE_SWIPED, resetTtsPlayback);
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
     eventSource.on(event_types.MESSAGE_DELETED, onMessageDeleted);

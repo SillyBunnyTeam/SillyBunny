@@ -415,7 +415,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(source).toContain('await this.#checkDomElements(messageId);');
         expect(source).toContain('await updateMessageTokenAccounting(chat[messageId],');
         expect(source).toContain('shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork');
-        expect(source).toContain('this.setFirstSwipe(messageId);');
+        expect(source).toContain('this.setFirstSwipe(messageId, { isFinal });');
         expect(source).toContain('this.#queueStreamingVisibleWrite({');
         expect(source).toContain('formatText,');
         expect(source).toContain('timePassed,');
@@ -736,7 +736,9 @@ describe('chat render lifecycle script wiring', () => {
         expect(scriptSource).toContain('const CHAT_SHELL_WHEEL_SURFACE_SELECTOR = \'#sheld, #chat_wrapper, #form_sheld, #top-bar, #send_form\';');
         expect(scriptSource).toContain('const shellBoundary = getChatShellWheelBoundary(event.target);');
         expect(scriptSource).toContain('hasScrollableWheelTarget(event.target, shellBoundary)');
-        expect(initSource).toContain('document.addEventListener(\'wheel\', routeShellWheelToChat, { passive: false, capture: true });');
+        expect(initSource).toContain('for (const chromeId of [\'top-bar\', \'form_sheld\'])');
+        expect(initSource).toContain('document.getElementById(chromeId)?.addEventListener(\'wheel\', routeShellWheelToChat, { passive: false, capture: true });');
+        expect(initSource).not.toContain('document.addEventListener(\'wheel\', routeShellWheelToChat');
         expect(initSource).toContain('setupMobileChatViewportObserver(markMobileViewportScroll);');
     });
 
