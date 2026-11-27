@@ -63,6 +63,22 @@ describe('a page that a deferred module builds is held until it is built', () =>
         expect(isHidden(two)).toBe(true);
     });
 
+    test('the scroller is out of the Tab order while the page is held, because its hidden rows still give it something to scroll', () => {
+        const { panel, scroller } = createPanel('raw');
+        const { panel: other, scroller: otherScroller } = createPanel('raw');
+        otherScroller.setAttribute('tabindex', '0');
+
+        holdPanel(panel);
+        holdPanel(other);
+        expect(scroller.getAttribute('tabindex')).toBe('-1');
+        expect(otherScroller.getAttribute('tabindex')).toBe('-1');
+
+        releasePanel(panel);
+        releasePanel(other);
+        expect(scroller.hasAttribute('tabindex')).toBe(false);
+        expect(otherScroller.getAttribute('tabindex')).toBe('0');
+    });
+
     test('a status page shows first in the scroller, replaces the one before it, and is not itself hidden', () => {
         const { panel, scroller } = createPanel('raw');
         holdPanel(panel);

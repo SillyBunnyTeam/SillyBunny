@@ -59,8 +59,10 @@ export function holdPanel(panel) {
     let hold = holds.get(panel);
     if (!hold) {
         const scroller = panel.querySelector(SCROLLER);
-        hold = { targets: scroller ? [...scroller.children] : [], page: null };
+        hold = { scroller, tabindex: scroller?.getAttribute('tabindex') ?? null, targets: scroller ? [...scroller.children] : [], page: null };
         holds.set(panel, hold);
+        // The hidden rows still give the scroller something to scroll, which makes a browser put it in the Tab order.
+        scroller?.setAttribute('tabindex', '-1');
     }
     panel.setAttribute('aria-busy', 'true');
     for (const target of hold.targets) target.setAttribute('aria-busy', 'true');
@@ -112,5 +114,7 @@ export function releasePanel(panel) {
     holds.delete(panel);
     panel.removeAttribute('aria-busy');
     for (const target of hold.targets) target.removeAttribute('aria-busy');
+    if (hold.tabindex === null) hold.scroller?.removeAttribute('tabindex');
+    else hold.scroller?.setAttribute('tabindex', hold.tabindex);
     return focused;
 }
