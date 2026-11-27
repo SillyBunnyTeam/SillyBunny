@@ -243,7 +243,9 @@ compute_boot_stamp() {
     fi
 
     # server-init.js migrates the config.yaml in the server folder whatever
-    # --configPath or --global say, so that file belongs in the stamp.
+    # --configPath or --global say, so that file belongs in the stamp. Both
+    # locations of mime are inputs because dependency-state.js check fails when
+    # send can resolve neither, and has_warm_boot_runtime_packages cannot tell.
     for path_item in \
         package.json \
         package-lock.json \
@@ -253,6 +255,8 @@ compute_boot_stamp() {
         scripts/dependency-state.js \
         src/server-init.js \
         src/config-init.js \
+        node_modules/mime/package.json \
+        node_modules/send/node_modules/mime/package.json \
         node_modules/.sillybunny-dependencies.json; do
         if [[ -f "$SCRIPT_DIR/$path_item" ]]; then
             existing_files+=("$path_item")

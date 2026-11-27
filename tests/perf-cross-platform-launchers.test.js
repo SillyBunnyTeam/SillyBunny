@@ -308,6 +308,8 @@ describe('cross-platform launcher static and line-ending contracts', () => {
         expect(startNodeBatSource).toContain('node_modules\\.cache\\.sillybunny-boot-stamp');
         expect(startBatSource).toContain('"default\\config.yaml" "config.yaml" "scripts\\dependency-state.js"');
         expect(startNodeBatSource).toContain('"default\\config.yaml" "config.yaml" "scripts\\dependency-state.js"');
+        expect(startBatSource).toContain('"node_modules\\mime\\package.json" "node_modules\\send\\node_modules\\mime\\package.json"');
+        expect(startNodeBatSource).toContain('"node_modules\\mime\\package.json" "node_modules\\send\\node_modules\\mime\\package.json"');
         expect(startBatSource).toContain('node_modules\\send\\node_modules\\mime\\package.json');
         expect(startNodeBatSource).toContain('node_modules\\send\\node_modules\\mime\\package.json');
         expect(startBatSource).toContain('else if exist "!_common_rel!\\packed-refs"');
@@ -826,6 +828,22 @@ describeWin32('Windows batch launcher stamp and updater failure handling', () =>
         expect(takeBootCalls(appDir)).toEqual(['server']);
     });
 
+    test.each([
+        ['Start.bat'],
+        ['Start-Node.bat'],
+    ])('%s runs the dependency check again when no copy of mime is left for send', (batName) => {
+        const appDir = createBootApp(`win-mime-gone-${batName}`, path.join(repoRoot, batName));
+        expect(runBatIn(appDir, batName).status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+        expect(runBatIn(appDir, batName).status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(['server']);
+
+        fs.rmSync(path.join(appDir, 'node_modules', 'mime'), { recursive: true });
+        fs.rmSync(path.join(appDir, 'node_modules', 'send', 'node_modules', 'mime'), { recursive: true });
+        expect(runBatIn(appDir, batName).status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+    });
+
     test('Start.bat starts the server when the optional updater exits with a non-zero code', () => {
         const appDir = createBootApp('win-updater-crash', startBatPath);
         fs.writeFileSync(
@@ -987,6 +1005,20 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
         // The stamp saved after init covers the rewritten file, so the next boot is warm again.
         expect(boot().status).toBe(0);
         expect(takeBootCalls(appDir)).toEqual(['server']);
+    });
+
+    test('start.sh runs the dependency check again when no copy of mime is left for send', () => {
+        const appDir = createBootApp('posix-mime-gone');
+        expect(runStartShIn(appDir).status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+        expect(runStartShIn(appDir).status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(['server']);
+
+        // dependency-state.js check fails when send cannot resolve mime; the gate in front of it must not hide that.
+        fs.rmSync(path.join(appDir, 'node_modules', 'mime'), { recursive: true });
+        fs.rmSync(path.join(appDir, 'node_modules', 'send', 'node_modules', 'mime'), { recursive: true });
+        expect(runStartShIn(appDir).status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
     });
 
     test.each([1, 3, 127])('start.sh starts the server when the optional updater exits with code %i', (exitCode) => {

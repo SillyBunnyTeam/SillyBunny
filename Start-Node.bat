@@ -204,7 +204,7 @@ if defined _packed_refs_file (
 )
 if "!_head_unresolved!"=="1" exit /b 0
 set "_files_state="
-for %%P in ("package.json" "package-lock.json" "bun.lock" "default\config.yaml" "config.yaml" "scripts\dependency-state.js" "src\server-init.js" "src\config-init.js" "node_modules\.sillybunny-dependencies.json") do (
+for %%P in ("package.json" "package-lock.json" "bun.lock" "default\config.yaml" "config.yaml" "scripts\dependency-state.js" "src\server-init.js" "src\config-init.js" "node_modules\mime\package.json" "node_modules\send\node_modules\mime\package.json" "node_modules\.sillybunny-dependencies.json") do (
     if exist %%P (
         for %%F in (%%P) do set "_files_state=!_files_state!;%%~P=%%~tF:%%~zF"
     ) else (
