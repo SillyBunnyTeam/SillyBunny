@@ -190,6 +190,7 @@ jobs:
     name: ✅ Check Bun Runtime
     runs-on: ubuntu-latest
     if: always()
+    timeout-minutes: 10
 
     steps:
       - name: Checkout Repository
@@ -206,7 +207,7 @@ jobs:
       - name: Install dependencies with Bun
         run: bun install --frozen-lockfile --ignore-scripts
 
-      - name: Run Bun startup smoke
+      - name: Initialize server state
         run: bun src/server-init.js
 
       - name: Run character index tests
@@ -218,13 +219,30 @@ jobs:
       - name: Run conversation index tests
         run: bun test ./tests/conversation-index.test.js
 
+      - name: Run Bun runtime parity checks
+        run: bun tests/runtime-parity.js --runtime bun --log-file "$RUNNER_TEMP/bun-parity-server.log"
+
+      - name: Print Bun server log on failure
+        if: failure() || cancelled()
+        run: |
+          if [ -f "$RUNNER_TEMP/bun-parity-server.log" ]; then
+            cat "$RUNNER_TEMP/bun-parity-server.log"
+          fi
+
+      - name: Upload Bun server log on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bun-runtime-parity-log-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bun-parity-server.log
+          if-no-files-found: ignore
+          retention-days: 14
+
   run-node-checks:
     name: ✅ Check Node Runtime
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 10
-    env:
-      SILLYBUNNY_TEST_BASE_URL: http://127.0.0.1:4444
 
     steps:
       - name: Checkout Repository
@@ -244,23 +262,21 @@ jobs:
       - name: Initialize server state
         run: npm run init
 
-      - name: Node boot smoke
-        env:
-          SILLYBUNNY_LAUNCHER: '1'
-          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+      - name: Run Node runtime parity checks
+        run: node tests/runtime-parity.js --runtime node --log-file "$RUNNER_TEMP/node-parity-server.log"
+
+      - name: Print Node server log on failure
+        if: failure() || cancelled()
         run: |
-          set -euo pipefail
-          log="$RUNNER_TEMP/node-boot.log"
-          node server.js --browserLaunchEnabled=false > "$log" 2>&1 &
-          pid=$!
-          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
-          deadline=$((SECONDS + 120))
-          until curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/" > /dev/null; do
-            if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= deadline )); then
-              echo 'Node server did not become ready.' >&2
-              cat "$log" >&2
-              exit 1
-            fi
-            sleep 1
-          done
-          echo 'Node server is up.'
+          if [ -f "$RUNNER_TEMP/node-parity-server.log" ]; then
+            cat "$RUNNER_TEMP/node-parity-server.log"
+          fi
+
+      - name: Upload Node server log on failure
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: node-runtime-parity-log-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/node-parity-server.log
+          if-no-files-found: ignore
+          retention-days: 14
