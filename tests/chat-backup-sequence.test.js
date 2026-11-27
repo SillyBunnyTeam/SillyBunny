@@ -77,7 +77,7 @@ function createClient(group) {
         toastr: { error: jest.fn() }, t: strings => strings.join(''),
     });
     const { source, ast } = sources[group ? 'scripts/group-chats.js' : 'script.js'];
-    for (const name of group ? ['saveGroupChat', 'saveGroupChatImmediately'] : ['saveChat', 'saveChatImmediately']) {
+    for (const name of group ? ['saveGroupChat', 'saveGroupChatImmediately'] : ['recordSuccessfulServerContact', 'saveChat', 'saveChatImmediately']) {
         const node = ast.body.map(node => node.declaration ?? node).find(node => node.id?.name === name);
         vm.runInContext(source.slice(node.start, node.end), runtime);
     }

@@ -37,7 +37,7 @@ function createSaveRuntime() {
         toastr: { error: jest.fn() },
         t: strings => strings.join(''),
     });
-    for (const name of ['saveChat', 'saveChatImmediately']) {
+    for (const name of ['recordSuccessfulServerContact', 'saveChat', 'saveChatImmediately']) {
         const node = ast.body.map(node => node.declaration ?? node).find(node => node.id?.name === name);
         vm.runInContext(source.slice(node.start, node.end), runtime);
     }

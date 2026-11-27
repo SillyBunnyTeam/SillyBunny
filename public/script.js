@@ -1118,16 +1118,8 @@ let lastSuccessfulServerContactAt = 0;
  * Records the timestamp of a successful server response.
  * @param {number} [now=Date.now()] Timestamp in milliseconds.
  */
-export function recordSuccessfulServerContact(now = Date.now()) {
+function recordSuccessfulServerContact(now = Date.now()) {
     lastSuccessfulServerContactAt = now;
-}
-
-/**
- * Returns the timestamp of the last recorded successful server contact.
- * @returns {number}
- */
-export function getLastSuccessfulServerContactAt() {
-    return lastSuccessfulServerContactAt;
 }
 
 /**

@@ -36,7 +36,7 @@ function saveContext(group = false) {
         chatGeneration: 1, getChatGeneration: () => 1,
         getChatBackupSaveOptions, getQueuedChatSaveAbortReason, uuidv4: randomUUID,
     });
-    load(context, 'script.js', ['saveChatConditional', 'saveMetadata']);
+    load(context, 'script.js', ['recordSuccessfulServerContact', 'saveChatConditional', 'saveMetadata']);
     return context;
 }
 
@@ -95,7 +95,7 @@ describe('strict host chat saves', () => {
             toastr: { error: jest.fn() },
             t: strings => strings.join(''),
         });
-        load(context, 'script.js', ['saveChat', 'saveChatImmediately']);
+        load(context, 'script.js', ['recordSuccessfulServerContact', 'saveChat', 'saveChatImmediately']);
         await expect(context.saveMetadata({ throwOnError: true })).rejects.toThrow();
         await expect(context.saveMetadata()).resolves.toBe(false);
         expect(context.saveTokenCache).not.toHaveBeenCalled();
