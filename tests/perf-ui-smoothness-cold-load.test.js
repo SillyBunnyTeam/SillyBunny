@@ -8,6 +8,34 @@ import { JSDOM } from 'jsdom';
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const readPublic = relPath => readFileSync(path.join(repoRoot, 'public', relPath), 'utf8');
 
+/**
+ * Best wall time of each run over several interleaved repetitions. The minimum
+ * drops garbage collection pauses and scheduler noise, and interleaving makes a
+ * burst of machine load hit both runs, so the ratio of the two times reflects
+ * how the work grows with the input and not how busy the machine is.
+ * @param {() => void} runSmall
+ * @param {() => void} runLarge
+ * @returns {{ smallMs: number, largeMs: number }}
+ */
+function bestTimesMs(runSmall, runLarge, repetitions = 9) {
+    const time = run => {
+        const start = performance.now();
+        run();
+        return performance.now() - start;
+    };
+    let smallMs = Infinity;
+    let largeMs = Infinity;
+    for (let repetition = 0; repetition < repetitions; repetition++) {
+        smallMs = Math.min(smallMs, time(runSmall));
+        largeMs = Math.min(largeMs, time(runLarge));
+    }
+    return { smallMs, largeMs };
+}
+
+// A fourfold input takes about fourfold time when the work is linear and about
+// sixteenfold when it is quadratic, so this limit sits between the two.
+const MAX_LINEAR_GROWTH_FOR_4X_INPUT = 8;
+
 // Seed minimal localStorage so i18n module load stays quiet in Node Jest.
 if (!global.localStorage) {
     global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
@@ -519,7 +547,7 @@ describe('Workstream 1: side-panel dock smoothness & offscreen content-visibilit
 });
 
 describe('Workstream 2: Conversation Mode O(N) receipts, delegated hover & cross-tab worker lock', () => {
-    test('buildConversationReceiptMap matches O(N^2) semantics in O(N) time for 5,000 messages', () => {
+    test('buildConversationReceiptMap matches O(N^2) semantics and its time grows linearly with the message count', () => {
         const messages = [
             { id: 'u1', role: 'user', created_at: 1000 },
             { id: 'c1', role: 'character', created_at: 2000 },
@@ -534,18 +562,25 @@ describe('Workstream 2: Conversation Mode O(N) receipts, delegated hover & cross
         expect(map.get('s1')).toBe(''); // system message
         expect(map.get('u3')).toBe('Delivered'); // created_at > seenAt and no reply after
 
-        const large = Array.from({ length: 5000 }, (_, i) => ({
+        const buildThread = count => Array.from({ length: count }, (_, i) => ({
             id: `m-${i}`,
             role: i % 2 === 0 ? 'user' : 'character',
             created_at: 1000 + i,
         }));
-        const start = performance.now();
-        const largeMap = buildConversationReceiptMap(large, 0);
-        const elapsed = performance.now() - start;
-        expect(largeMap.size).toBe(5000);
+        const smallThread = buildThread(20000);
+        const largeThread = buildThread(80000);
+        const largeMap = buildConversationReceiptMap(largeThread, 0);
+        expect(largeMap.size).toBe(80000);
         expect(largeMap.get('m-0')).toBe('Seen');
-        expect(largeMap.get('m-4998')).toBe('Seen');
-        expect(elapsed).toBeLessThan(50);
+        expect(largeMap.get('m-79998')).toBe('Seen');
+        expect(largeMap.get('m-79999')).toBe('');
+
+        buildConversationReceiptMap(smallThread, 0);
+        const { smallMs, largeMs } = bestTimesMs(
+            () => buildConversationReceiptMap(smallThread, 0),
+            () => buildConversationReceiptMap(largeThread, 0),
+        );
+        expect(largeMs / smallMs).toBeLessThan(MAX_LINEAR_GROWTH_FOR_4X_INPUT);
 
         const timelineSrc = readPublic('scripts/sillybunny-conversation/timeline-render.js');
         expect(timelineSrc).toContain('getCachedEffectiveStatus');
@@ -655,7 +690,7 @@ describe('Workstream 2: Conversation Mode O(N) receipts, delegated hover & cross
 });
 
 describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolation, and MacroAutoComplete wiring', () => {
-    test('parses 2,000 piped STScript commands with embedded macro pipes in <50 ms', () => {
+    test('parses piped STScript commands with embedded macro pipes in time that grows linearly with the command count', () => {
         if (!SlashCommandParser.commands.echo) {
             SlashCommandParser.addCommandObjectUnsafe(SlashCommand.fromProps({
                 name: 'echo',
@@ -663,27 +698,28 @@ describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolatio
             }));
         }
 
-        const parts = Array.from({ length: 2000 }, (_, i) => (
+        const buildScript = count => Array.from({ length: count }, (_, i) => (
             i % 50 === 0
                 ? `/echo {{random::alpha|beta|gamma}} item ${i}`
                 : `/echo item ${i}`
-        ));
-        const script = parts.join(' | ');
-
+        )).join(' | ');
+        const smallScript = buildScript(1000);
+        const largeScript = buildScript(4000);
         const parser = new SlashCommandParser();
-        // Warm up JIT on a representative slice so tier-up overhead does not skew the benchmark.
-        const warmupScript = parts.slice(0, 250).join(' | ');
-        parser.parse(warmupScript);
-        parser.parse(warmupScript);
 
-        const start = performance.now();
-        const closure = parser.parse(script);
-        const elapsedMs = performance.now() - start;
-
-        expect(closure.executorList).toHaveLength(2000);
+        const closure = parser.parse(largeScript);
+        expect(closure.executorList).toHaveLength(4000);
         expect(closure.executorList[0].unnamedArgumentList[0].value).toBe('{{random::alpha|beta|gamma}} item 0');
-        expect(closure.executorList[1999].unnamedArgumentList[0].value).toBe('item 1999');
-        expect(elapsedMs).toBeLessThan(50);
+        expect(closure.executorList[3999].unnamedArgumentList[0].value).toBe('item 3999');
+
+        // Warm up the JIT on both sizes so tier-up cost does not land in the first measurement.
+        parser.parse(smallScript);
+        parser.parse(smallScript);
+        const { smallMs, largeMs } = bestTimesMs(
+            () => parser.parse(smallScript),
+            () => parser.parse(largeScript),
+        );
+        expect(largeMs / smallMs).toBeLessThan(MAX_LINEAR_GROWTH_FOR_4X_INPUT);
     });
 
     test('incremental isInsideMacroBraces and zero-slice testSymbol preserve split-brace and escaping edge cases', () => {
