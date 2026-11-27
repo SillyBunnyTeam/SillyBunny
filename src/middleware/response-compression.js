@@ -85,7 +85,9 @@ export function parseAcceptEncoding(headerValue) {
 
 /**
  * Negotiates the preferred response encoding for a client's Accept-Encoding header.
- * Prefers native zstd when explicitly accepted at >= the highest quality of br/gzip.
+ * Brotli (at the `compression` package's default quality) wins at equal quality because it
+ * sends fewer bytes than zstd at the speed-oriented level used here. Native zstd is chosen
+ * only when the client does not accept brotli, or ranks zstd strictly above it.
  * @param {string | string[] | undefined} acceptEncodingHeader
  * @param {{ zstdSupported?: boolean }} [options]
  * @returns {'zstd' | 'br' | 'gzip' | null}
@@ -101,7 +103,7 @@ export function negotiateCompressionEncoding(acceptEncodingHeader, { zstdSupport
     const brQ = qualities.has('br') ? qualities.get('br') : wildcardQ;
     const gzipQ = qualities.has('gzip') ? qualities.get('gzip') : wildcardQ;
 
-    if (zstdSupported && zstdQ > 0 && zstdQ >= brQ && zstdQ >= gzipQ) {
+    if (zstdSupported && zstdQ > 0 && zstdQ > brQ && zstdQ >= gzipQ) {
         return 'zstd';
     }
     if (brQ > 0 && brQ >= gzipQ) {
