@@ -1,5 +1,5 @@
 import { DEFAULT_SCROLL_EDGE_SETTLE_DELAYS, jumpScrollElementToEdge } from './chat-scroll-edges.js';
-import { createDeferredPanel } from './deferred-panel.js';
+import { clearPanelPage, createDeferredPanel, holdPanel, releasePanel, showPanelPage } from './deferred-panel.js';
 import { createDeferredModule, createLazyController } from './deferred-module.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
 import { initInstallNotice } from './sillybunny-install-notice.js';
@@ -271,16 +271,12 @@ function isAppearancePending(tabId) {
 
 async function presentAppearancePage() {
     const container = document.getElementById(SB_USER_SETTINGS_CONTAINER_IDS.appearance);
-    try {
-        const module = await loadAppearanceModule();
-        module.presentAppearance(container);
-        appearanceModule = module;
-        setAnimatedBackgroundPresenter(module.presentAnimatedBackgrounds);
-        // The folder gallery loads with the Appearance page, which stays busy until it has taken over the Global tab, so the header does not change under a reader.
-        await loadBackgroundGalleryModule().then(gallery => gallery.initBackgroundGallery()).catch(error => console.error('[Backgrounds] The folder gallery did not load:', error));
-    } finally {
-        container?.removeAttribute('aria-busy');
-    }
+    const module = await loadAppearanceModule();
+    module.presentAppearance(container);
+    appearanceModule = module;
+    setAnimatedBackgroundPresenter(module.presentAnimatedBackgrounds);
+    // The folder gallery loads with the Appearance page, which stays held until it has taken over the Global tab, so the header does not change under a reader.
+    await loadBackgroundGalleryModule().then(gallery => gallery.initBackgroundGallery()).catch(error => console.error('[Backgrounds] The folder gallery did not load:', error));
 }
 
 function loadServerTools() {
@@ -335,27 +331,59 @@ function ensureBackendPages() {
         backendPagesPromise = undefined;
         console.error('[SillyBunny] Could not build the Formatting and Presets rows:', error);
         throw error;
-    }));
+    }), () => ensureBackendPages());
     return backendPagesPromise;
 }
 
 /**
- * Marks the panels that a deferred module fills as busy until it has built them, the way an on-demand panel is marked, so
- * that a screen reader and automated checks can tell a page that is still the raw upstream rows from a built one.
+ * Keeps the pages that a deferred module fills from showing the raw upstream rows while it builds them. A page is held
+ * from the moment it is registered (`holdUntilBuilt` on its bundle, see `registerShellTab`), so that no way of opening it
+ * shows the rows. This starts the wait: a page that is still loading shows the loading status page after its short delay,
+ * a build that succeeds shows the page, and a build that fails keeps the rows hidden and shows the error page with Retry,
+ * as an on-demand panel does (`createOnDemandShellPanel`).
  * @template T
  * @param {'left' | 'right'} shellKey
  * @param {string[]} tabIds
  * @param {Promise<T>} build
+ * @param {() => Promise<unknown>} [retry] Builds the pages again; the error page offers it.
  * @returns {Promise<T>}
  */
-function markPanelsBusyUntilBuilt(shellKey, tabIds, build) {
+function markPanelsBusyUntilBuilt(shellKey, tabIds, build, retry) {
     const panels = tabIds
         .map(tabId => getShellState(shellKey)?.tabs.get(tabId)?.panel)
         .filter(panel => panel instanceof HTMLElement);
-    for (const panel of panels) panel.setAttribute('aria-busy', 'true');
-    const done = () => panels.forEach(panel => panel.removeAttribute('aria-busy'));
-    build.then(done, done);
+    let focusLost = false;
+    for (const panel of panels) {
+        holdPanel(panel);
+        focusLost = clearPanelPage(panel) || focusLost;
+        focusLost = showPanelPage(panel, createStatusPage({ state: 'loading', title: t`Loading Settings`, compact: true, busy: panel })) || focusLost;
+    }
+    // The button that started this retry has just left the document.
+    if (focusLost) restoreSettingsFocus();
+    build.then(() => {
+        if (panels.map(releasePanel).some(Boolean)) restoreSettingsFocus();
+    }, error => {
+        for (const panel of panels) {
+            showPanelPage(panel, createStatusPage({
+                state: 'error',
+                title: t`Settings Not Loaded`,
+                description: String(error?.message || error),
+                compact: true,
+                actions: retry ? [{ label: 'Retry', primary: true, onActivate: () => void retry().catch(() => {}) }] : [],
+            }));
+        }
+    });
     return build;
+}
+
+/**
+ * Where the keyboard focus goes when the control that had it leaves the page: the tab of the open page, or on a phone, where
+ * the sidebar with the tabs is inert while a page shows, the Close button (see `setSettingsMobileContentView`).
+ */
+function restoreSettingsFocus() {
+    const tab = document.querySelector('.sb-settings-tab[aria-selected="true"]');
+    const target = tab && !tab.closest('[inert]') ? tab : document.getElementById('sb-settings-close');
+    target?.focus({ preventScroll: true });
 }
 
 function initializeSettingsPanel() {
@@ -374,7 +402,7 @@ function initializeSettingsPanel() {
         // already run its flatten pass. The flatten pass is therefore repeated once the panel is fully built.
         flattenRightShellSettingsDrawers();
         invalidateUserSettingsTabSearchIndexes();
-    })).catch(error => {
+    }), () => initializeSettingsPanel()).catch(error => {
         settingsPanelPromise = undefined;
         throw error;
     });
@@ -7189,19 +7217,29 @@ function buildEditorPanel() {
     const { panel, scroller } = createShellPanel({ id: 'editor' });
     const column = createElement('div', { className: 'sb-shell-column' });
     scroller.append(column);
-    const ensureEditorReady = () => loadBackendPanelsController().then(panels => {
-        panels.prepareEditorPanel(column);
-        panels.groupAdvancedFormattingIntoDrawers();
-        panels.updateEditorPanel(panel);
-    });
+    let build;
+    let built = false;
+    const ensureEditorReady = () => {
+        build ??= markPanelsBusyUntilBuilt('left', ['editor'], loadBackendPanelsController().then(panels => {
+            panels.prepareEditorPanel(column);
+            panels.groupAdvancedFormattingIntoDrawers();
+            panels.updateEditorPanel(panel);
+            built = true;
+        }).catch(error => {
+            build = undefined;
+            throw error;
+        }), ensureEditorReady);
+        return build;
+    };
     return {
         panel,
         scroller,
         searchRoot: column,
+        holdUntilBuilt: true,
         ensureReady: ensureEditorReady,
         onActivate: () => {
-            if (backendPanelsController) {
-                backendPanelsController.prepareEditorPanel(column);
+            // Once the page is built, an activation only brings it up to date.
+            if (built && backendPanelsController) {
                 backendPanelsController.groupAdvancedFormattingIntoDrawers();
                 backendPanelsController.updateEditorPanel(panel);
             } else {
@@ -8561,8 +8599,7 @@ function buildShell(shellKey) {
         userSettingsSplit = splitUserSettingsContent(originalContent);
 
         if (userSettingsSplit) {
-            // SillyBunny: the Appearance module loads when the page first needs it, so the upstream rows wait unseen until it has built its groups.
-            userSettingsSplit.appearance.setAttribute('aria-busy', 'true');
+            // SillyBunny: the Appearance module loads when the page first needs it. The page is held (`holdUntilBuilt` below), so the upstream rows wait unseen until the build has presented them.
             basePanel.scroller.appendChild(userSettingsSplit.appearance);
         }
 
@@ -8585,6 +8622,7 @@ function buildShell(shellKey) {
         }
 
         basePanel.ensureReady = initializeSettingsPanel;
+        basePanel.holdUntilBuilt = true;
         basePanel.onActivate = () => initializeSettingsPanel().catch(error => {
             console.error('[SillyBunny] Could not initialize settings:', error);
             toastr.error(String(error.message || error));
@@ -8624,6 +8662,7 @@ function buildShell(shellKey) {
                 promptingPanel.scroller.appendChild(originalContent);
             }
             promptingPanel.ensureReady = ensureBackendPages;
+            promptingPanel.holdUntilBuilt = shellKey === 'left';
             promptingPanel.onActivate = () => {
                 updatePromptingPanel(promptingPanel.panel);
                 void ensureBackendPages().catch(() => {});
@@ -8664,6 +8703,7 @@ function buildShell(shellKey) {
                 const contextPanel = createShellPanel(customTab);
                 contextPanel.scroller.appendChild(formattingPrep.drawer);
                 contextPanel.ensureReady = ensureBackendPages;
+                contextPanel.holdUntilBuilt = true;
                 contextPanel.onActivate = () => {
                     groupAdvancedFormattingIntoDrawers();
                     updateFormattingGroupVisibility(document.getElementById('AdvancedFormatting'));
@@ -8687,6 +8727,7 @@ function buildShell(shellKey) {
                 panel.scroller.appendChild(userSettingsSplit.messages);
             }
             panel.ensureReady = initializeSettingsPanel;
+            panel.holdUntilBuilt = true;
             // Messages authors the animated thumbnails switch that the Background group in Appearance takes in, so direct entry loads the Appearance module too.
             panel.onActivate = basePanel.onActivate;
             registerShellTab(shellKey, customTab, panel);
@@ -8700,6 +8741,7 @@ function buildShell(shellKey) {
                 panel.scroller.appendChild(userSettingsSplit.interface);
             }
             panel.ensureReady = initializeSettingsPanel;
+            panel.holdUntilBuilt = true;
             // Interface shares the deferred controls authored by Appearance. Initialize them on
             // direct entry as well as through search, before the post-injection presentation pass.
             panel.onActivate = basePanel.onActivate;
@@ -8792,6 +8834,9 @@ function registerShellTab(shellKey, tabConfig, panelBundle, explicitSearchRoot =
         onActivate: panelBundle.onActivate ?? tabConfig.onActivate ?? null,
         onDeactivate: panelBundle.onDeactivate ?? tabConfig.onDeactivate ?? null,
     });
+
+    // A page that a deferred module builds is held from here on, so no way of opening it can show its raw rows.
+    if (panelBundle.holdUntilBuilt) holdPanel(panelBundle.panel);
 }
 
 function routeDrawerTarget(targetId) {

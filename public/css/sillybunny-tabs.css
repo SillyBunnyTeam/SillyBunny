@@ -1422,7 +1422,8 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-bottom: var(--sb-shell-panel-bottom-padding);
 }
 
-/* Appearance presents its groups once its module has loaded, so the upstream rows stay out of sight until then. */
+/* A page that a deferred module builds (Appearance, Interface, Messages, Presets, Editor, Formatting) is held while the module
+   loads, so the upstream rows stay out of sight until the module has presented them (`holdPanel` in deferred-panel.js). */
 .sb-shell-panel-scroller > [aria-busy='true'] {
     visibility: hidden;
 }
