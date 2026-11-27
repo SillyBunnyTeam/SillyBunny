@@ -1301,14 +1301,16 @@ function shouldIgnoreBackupEntry(relativePosixPath) {
 }
 
 /**
- * Walks a user root directory safely without following symlinks and returns regular files with size totals.
+ * Walks a user root directory without following symlinks inside it and returns regular files with size totals.
+ * The root itself may be a symlink, or sit below one (a user folder moved to another disk, a symlinked data root).
  * @param {string} rootDir Absolute user root directory
  * @returns {Promise<{ files: Array<{ absolutePath: string, entryName: string, size: number }>, totalUncompressedBytes: number, maxFileBytes: number }>} Ordered files and size summary
  */
 async function collectBackupFiles(rootDir) {
-    const resolvedRoot = path.resolve(rootDir);
-    const rootStat = await fs.promises.lstat(resolvedRoot);
-    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    // Resolve the root once and walk the real path, so that the symlink rules below only apply to what the user folder contains.
+    const resolvedRoot = await fs.promises.realpath(rootDir);
+    const rootStat = await fs.promises.stat(resolvedRoot);
+    if (!rootStat.isDirectory()) {
         throw new Error('User backup root is not a valid directory.');
     }
 

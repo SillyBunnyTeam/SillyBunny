@@ -535,6 +535,54 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
         expect(unzipped['secrets.json']).toBeUndefined();
     });
 
+    async function backupToBuffer(handle) {
+        const chunks = [];
+        const output = new PassThrough();
+        output.on('data', chunk => chunks.push(chunk));
+        await createBackupArchive(handle, output);
+        return Buffer.concat(chunks);
+    }
+
+    function entryNames(zipBuffer) {
+        return Object.keys(unzipSync(new Uint8Array(zipBuffer))).sort();
+    }
+
+    test('archives a user folder that is itself a symlink, and still skips symlinks inside it', async () => {
+        const handle = `zip-linked-root-${Date.now()}`;
+        const storeRoot = makeTempDir('sb-linked-store-');
+        const realUserRoot = path.join(storeRoot, handle);
+        const outsideRoot = makeTempDir('sb-linked-outside-');
+        writeFiles(outsideRoot, {
+            'secret.txt': 'outside-file',
+            'dir/nested.txt': 'outside-dir-file',
+        });
+        writeFiles(realUserRoot, {
+            'settings.json': '{"linked":true}',
+            'chats/a.jsonl': 'line\n'.repeat(20),
+        });
+        fs.symlinkSync(realUserRoot, path.join(global.DATA_ROOT, handle), 'dir');
+        fs.symlinkSync(path.join(outsideRoot, 'secret.txt'), path.join(realUserRoot, 'escape-file.txt'));
+        fs.symlinkSync(path.join(outsideRoot, 'dir'), path.join(realUserRoot, 'escape-dir'), 'dir');
+        fs.symlinkSync(path.join(outsideRoot, 'dir'), path.join(realUserRoot, 'chats', 'escape-dir'), 'dir');
+
+        const names = entryNames(await backupToBuffer(handle));
+
+        expect(names).toEqual(['chats/a.jsonl', 'settings.json']);
+    });
+
+    test('archives a user folder under a symlinked data root', async () => {
+        const handle = `zip-linked-data-root-${Date.now()}`;
+        const realDataRoot = global.DATA_ROOT;
+        const linkedDataRoot = path.join(makeTempDir('sb-linked-data-parent-'), 'data');
+        fs.symlinkSync(realDataRoot, linkedDataRoot, 'dir');
+        writeFiles(path.join(realDataRoot, handle), { 'settings.json': '{"linked":true}' });
+        global.DATA_ROOT = linkedDataRoot;
+
+        const names = entryNames(await backupToBuffer(handle));
+
+        expect(names).toEqual(['settings.json']);
+    });
+
     test('honors downstream backpressure on slow writable streams without corrupting output', async () => {
         const handle = `zip-backpressure-${Date.now()}`;
         const userRoot = path.join(global.DATA_ROOT, handle);
