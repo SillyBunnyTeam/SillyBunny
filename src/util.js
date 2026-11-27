@@ -28,6 +28,7 @@ export { enableNodeCompileCache, flushNodeCompileCache } from './node-compile-ca
 const DEFAULT_STREAMING_CONNECTION_POLLING_INTERVAL_MS = 150;
 const VERSION_CACHE_TTL_MS = 30_000;
 const GIT_VERSION_TIMEOUT_MS = 5_000;
+const GIT_REPOSITORY_ENV_NAMES = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR']);
 
 /**
  * Parsed config object.
@@ -231,10 +232,26 @@ function readGitStateSnapshot(baseDir) {
     };
 }
 
+// SillyBunny: getVersion() must report the checkout that holds the server, so git does not inherit variables that point it at another repository.
+/**
+ * Windows treats variable names case-insensitively, so the names are compared in upper case.
+ * @returns {NodeJS.ProcessEnv} Copy of the process environment without the variables that select a repository
+ */
+function getGitVersionEnvironment() {
+    const env = {};
+    for (const [name, value] of Object.entries(process.env)) {
+        if (!GIT_REPOSITORY_ENV_NAMES.has(name.toUpperCase())) {
+            env[name] = value;
+        }
+    }
+    return env;
+}
+
 function runGitCommand(baseDir, args) {
     return new Promise((resolve, reject) => {
         execFile('git', args, {
             cwd: baseDir,
+            env: getGitVersionEnvironment(),
             windowsHide: true,
             timeout: GIT_VERSION_TIMEOUT_MS,
         }, (error, stdout) => {

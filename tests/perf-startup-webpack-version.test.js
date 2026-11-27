@@ -492,6 +492,53 @@ describe('memoized getVersion and util hotfixes', () => {
         expect(updated.gitRevision).not.toBe(first.gitRevision);
     });
 
+    test('reads the checkout that holds the server and ignores GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE from the environment', async () => {
+        const ambientNames = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'];
+        const cleanEnv = { ...process.env };
+        for (const name of ambientNames) {
+            delete cleanEnv[name];
+        }
+        const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: cleanEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+        const makeRepo = (dir, commits) => {
+            fs.mkdirSync(dir, { recursive: true });
+            git(dir, 'init', '-b', 'main');
+            git(dir, 'config', 'user.email', 'test@users.noreply.github.com');
+            git(dir, 'config', 'user.name', 'Test');
+            fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: '2.0.0-env' }), 'utf8');
+            git(dir, 'add', 'package.json');
+            for (let index = 0; index < commits; index++) {
+                git(dir, 'commit', '--allow-empty', '-m', `commit ${index}`);
+            }
+        };
+
+        const serverRepo = path.join(tempDir, 'server');
+        const otherRepo = path.join(tempDir, 'other');
+        makeRepo(serverRepo, 2);
+        makeRepo(otherRepo, 1);
+        const expectedRevision = git(serverRepo, 'rev-parse', '--short', 'HEAD');
+        expect(git(otherRepo, 'rev-parse', '--short', 'HEAD')).not.toBe(expectedRevision);
+
+        // Jest gives the test its own copy of process.env, which child processes of the code under test never see, so the lookup runs in a real process.
+        const script = [
+            `const { getVersion } = await import(${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src', 'util.js')).href)});`,
+            `console.log(JSON.stringify(await getVersion({ baseDir: ${JSON.stringify(serverRepo)} })));`,
+        ].join('\n');
+        const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            env: {
+                ...cleanEnv,
+                GIT_DIR: path.join(otherRepo, '.git'),
+                GIT_WORK_TREE: otherRepo,
+                GIT_INDEX_FILE: path.join(otherRepo, '.git', 'index'),
+                GIT_COMMON_DIR: path.join(otherRepo, '.git'),
+            },
+        }).trim();
+        const version = JSON.parse(raw.split(/\r?\n/).pop());
+        expect(version.gitRevision).toBe(expectedRevision);
+        expect(version.gitBranch).toBe('main');
+    });
+
     test('does not poison version cache across concurrent ref changes or mid-flight invalidation', async () => {
         fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-race' }), 'utf8');
         fs.mkdirSync(path.join(tempDir, '.git', 'refs', 'heads'), { recursive: true });
