@@ -3767,10 +3767,9 @@ async function reconcileBundledAgentsOnce() {
         restoreAutoSeededTemplateIds(savedState);
     }
 
-    // SillyBunny: consume the startup /api/settings/get snapshot instead of firing a duplicate settings POST,
-    // and defer templates/index.json + regex-bundles.json + bundled-agent reconciliation to post-APP_READY idle
-    // or first Agents UI open (without suppressing updates behind a persistent schema stamp).
+    // SillyBunny: consume the startup /api/settings/get snapshot instead of firing a duplicate settings POST.
     const initResults = await Promise.allSettled([
+        loadTemplates(),
         loadCustomGroupsFromServer(),
         (async () => {
             const initialSnapshot = !consumedInitialSettingsSnapshot ? globalThis.__sbGetInitialSettingsSnapshot?.() : null;
@@ -3818,17 +3817,9 @@ async function reconcileBundledAgentsOnce() {
         persistExtensionState();
     }
 
-    if (isPathfinderSubmoduleEnabled() && !getAgents().some(isPathfinderAgent)) {
-        await reconcileBundledAgentsOnce();
-    } else if (eventSource && event_types?.APP_READY) {
-        eventSource.once(event_types.APP_READY, () => {
-            if (typeof globalThis.requestIdleCallback === 'function') {
-                globalThis.requestIdleCallback(() => { void reconcileBundledAgentsOnce(); }, { timeout: 3000 });
-            } else {
-                globalThis.setTimeout(() => { void reconcileBundledAgentsOnce(); }, 500);
-            }
-        });
-    }
+    // The reconcile saves agents, so it finishes here, before the Agents surface and the first generation can read them.
+    // A run that started later would rewrite agents under an editor that the user already opened.
+    await reconcileBundledAgentsOnce();
 
     if (getGlobalSettings().separateRecentChats) {
         const initializedScopedAgentState = initializeScopedAgentEnableState();
