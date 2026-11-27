@@ -13,6 +13,10 @@ const DEFAULT_RELEASE_DOWNLOAD_BASE = 'https://github.com/SillyBunnyTeam/SillyBu
 const RELEASE_TAG_RE = /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
 const DEFAULT_TIMEOUT_MS = 15_000;
+// The launch path waits for this step before it starts the server, so one deadline covers every request of the run.
+const OPTIONAL_SEED_DEADLINE_MS = 6_000;
+// Holds the tag of a release that publishes no tarballs, so the launch path asks for it only once.
+const NO_ASSETS_STAMP_FILENAME = '.release-assets-none';
 const MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024;
 const MAX_EXTRACTED_TAR_BYTES = 128 * 1024 * 1024;
 const PREBUILT_LIB_FILENAME = 'lib.js';
@@ -309,6 +313,31 @@ function isRegularFile(filePath) {
     }
 }
 
+class HttpStatusError extends Error {
+    constructor(status, url) {
+        super(`HTTP ${status} fetching ${url}`);
+        this.status = status;
+    }
+}
+
+function readNoAssetsStamp(repoDir) {
+    try {
+        return fs.readFileSync(path.join(repoDir, 'dist', NO_ASSETS_STAMP_FILENAME), 'utf8').trim();
+    } catch {
+        return '';
+    }
+}
+
+function writeNoAssetsStamp(repoDir, tag) {
+    try {
+        const distDir = path.join(repoDir, 'dist');
+        fs.mkdirSync(distDir, { recursive: true });
+        fs.writeFileSync(path.join(distDir, NO_ASSETS_STAMP_FILENAME), `${tag}\n`, 'utf8');
+    } catch {
+        // Best-effort stamp only.
+    }
+}
+
 function hasMatchingHeadStamp(repoDir, currentHeadSha) {
     if (!currentHeadSha) {
         return true;
@@ -388,7 +417,7 @@ async function fetchBufferWithLimit(url, { timeoutMs = DEFAULT_TIMEOUT_MS, maxBy
             headers: { 'User-Agent': 'SillyBunny-Release-Asset-Seeder' },
         });
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status} fetching ${url}`);
+            throw new HttpStatusError(response.status, url);
         }
 
         const contentLength = Number(response.headers?.get?.('content-length') || 0);
@@ -402,6 +431,11 @@ async function fetchBufferWithLimit(url, { timeoutMs = DEFAULT_TIMEOUT_MS, maxBy
             throw new Error(`Downloaded payload exceeded maximum allowed size (${buffer.length} > ${maxBytes}).`);
         }
         return buffer;
+    } catch (error) {
+        if (controller.signal.aborted) {
+            throw new Error(`Timed out after ${timeoutMs} ms fetching ${url}`);
+        }
+        throw error;
     } finally {
         clearTimeout(timer);
     }
@@ -414,7 +448,8 @@ async function fetchBufferWithLimit(url, { timeoutMs = DEFAULT_TIMEOUT_MS, maxBy
  * @param {string} [options.repoDir=DEFAULT_REPO_DIR]
  * @param {string} [options.tag]
  * @param {string} [options.baseUrl]
- * @param {number} [options.timeoutMs=DEFAULT_TIMEOUT_MS]
+ * @param {number} [options.timeoutMs=DEFAULT_TIMEOUT_MS] Limit for each request
+ * @param {number} [options.deadlineMs] Limit for all requests together; defaults to a few seconds when `optional` and to none otherwise
  * @param {NodeJS.ProcessEnv} [options.env=process.env]
  * @param {typeof globalThis.fetch} [options.fetchImpl]
  * @param {(msg: string) => void} [options.stdout]
@@ -427,6 +462,7 @@ export async function seedReleaseAssets({
     tag = '',
     baseUrl = '',
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    deadlineMs = optional ? OPTIONAL_SEED_DEADLINE_MS : 0,
     env = process.env,
     fetchImpl = globalThis.fetch,
     stdout = msg => console.log(msg),
@@ -473,12 +509,36 @@ export async function seedReleaseAssets({
         return { ok: optional, seeded: [], skipped: ['invalid-base-url'] };
     }
 
+    // An explicit run always asks, so a maintainer can retry after a release gains its tarballs.
+    if (optional && readNoAssetsStamp(repoDir) === resolvedTag) {
+        return { ok: true, seeded: [], skipped: ['no-assets'] };
+    }
+
     const seeded = [];
     const skipped = [];
 
+    const startedAt = Date.now();
+    const requestLimits = () => {
+        const remainingMs = deadlineMs > 0 ? deadlineMs - (Date.now() - startedAt) : Infinity;
+        if (remainingMs <= 0) {
+            throw new Error(`Timed out after ${deadlineMs} ms.`);
+        }
+        return { timeoutMs: Math.min(timeoutMs, remainingMs) };
+    };
+
     try {
         const sumsUrl = `${effectiveBaseUrl}/${encodeURIComponent(resolvedTag)}/SHA256SUMS`;
-        const sumsBuffer = await fetchBufferWithLimit(sumsUrl, { timeoutMs, maxBytes: 1024 * 1024, fetchImpl });
+        let sumsBuffer;
+        try {
+            sumsBuffer = await fetchBufferWithLimit(sumsUrl, { ...requestLimits(), maxBytes: 1024 * 1024, fetchImpl });
+        } catch (error) {
+            // Only a 404 means "this release has no assets". A timeout or a network error says nothing about the release.
+            if (optional && error instanceof HttpStatusError && error.status === 404) {
+                writeNoAssetsStamp(repoDir, resolvedTag);
+                return { ok: true, seeded: [], skipped: ['no-assets'] };
+            }
+            throw error;
+        }
         const checksums = parseSha256Sums(sumsBuffer.toString('utf8'));
 
         for (const target of missingTargets) {
@@ -489,7 +549,7 @@ export async function seedReleaseAssets({
             }
 
             const tarballUrl = `${effectiveBaseUrl}/${encodeURIComponent(resolvedTag)}/${target.tarballName}`;
-            const gzBuffer = await fetchBufferWithLimit(tarballUrl, { timeoutMs, maxBytes: MAX_DOWNLOAD_BYTES, fetchImpl });
+            const gzBuffer = await fetchBufferWithLimit(tarballUrl, { ...requestLimits(), maxBytes: MAX_DOWNLOAD_BYTES, fetchImpl });
             const actualSha = crypto.createHash('sha256').update(gzBuffer).digest('hex');
             if (actualSha !== expectedSha) {
                 throw new Error(`SHA-256 mismatch for ${target.tarballName} (${actualSha} !== ${expectedSha}).`);
@@ -535,6 +595,9 @@ export async function seedReleaseAssets({
         }
         if (allFresh) {
             writeReleaseAssetsStamp();
+        } else if (optional && skipped.length > 0) {
+            // SHA256SUMS was readable and has no line for a tarball that is still missing, so this release does not publish it.
+            writeNoAssetsStamp(repoDir, resolvedTag);
         }
 
         return { ok: true, seeded, skipped };

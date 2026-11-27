@@ -427,6 +427,15 @@ export function runSelfUpdate({
             return;
         }
 
+        // seed-release-assets.js writes this file when the release publishes no tarballs.
+        try {
+            if (fs.readFileSync(path.join(repoDir, 'dist', '.release-assets-none'), 'utf8').trim() === releaseTag) {
+                return;
+            }
+        } catch {
+            // No stamp: the seeder decides.
+        }
+
         const seedResult = spawnSync(process.execPath, [seedScriptPath, '--optional', '--repo', repoDir, '--tag', releaseTag], {
             cwd: repoDir,
             env,

@@ -397,6 +397,272 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
         expect(disabledResult).toEqual({ ok: true, seeded: [], skipped: ['disabled'] });
     });
 
+    function createReleaseRepo(name, version) {
+        const repo = path.join(tempDir, name);
+        fs.mkdirSync(repo, { recursive: true });
+        git(tempDir, 'init', '--quiet', '--initial-branch=release', repo);
+        fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'sillybunny', version }));
+        git(repo, 'add', 'package.json');
+        git(repo, 'commit', '--quiet', '-m', `release ${version}`);
+        return repo;
+    }
+
+    async function listen(handler) {
+        server = http.createServer(handler);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        return `http://127.0.0.1:${server.address().port}`;
+    }
+
+    describe('release without published tarballs on the launch path', () => {
+        function optionalSeed(repo, baseUrl, extra = {}) {
+            const stderrLines = [];
+            const promise = seedReleaseAssets({
+                repoDir: repo,
+                tag: 'v2.3.0',
+                baseUrl,
+                optional: true,
+                env: makeGitEnv(),
+                stdout: () => {},
+                stderr: message => stderrLines.push(message),
+                ...extra,
+            });
+            return promise.then(result => ({ result, stderrLines }));
+        }
+
+        const noAssetsStamp = repo => path.join(repo, 'dist', '.release-assets-none');
+
+        test('a 404 for SHA256SUMS is remembered per tag, is silent, and is not asked again', async () => {
+            const repo = createReleaseRepo('no-assets-404', '2.3.0');
+            const requestedUrls = [];
+            const baseUrl = await listen((req, res) => {
+                requestedUrls.push(req.url);
+                res.writeHead(404);
+                res.end('not found');
+            });
+
+            const first = await optionalSeed(repo, baseUrl);
+            expect(first.result).toEqual({ ok: true, seeded: [], skipped: ['no-assets'] });
+            expect(first.stderrLines).toEqual([]);
+            expect(requestedUrls).toEqual(['/v2.3.0/SHA256SUMS']);
+            expect(fs.readFileSync(noAssetsStamp(repo), 'utf8').trim()).toBe('v2.3.0');
+
+            const second = await optionalSeed(repo, baseUrl);
+            expect(second.result).toEqual({ ok: true, seeded: [], skipped: ['no-assets'] });
+            expect(second.stderrLines).toEqual([]);
+            expect(requestedUrls).toHaveLength(1);
+
+            // A new release asks again, once.
+            await optionalSeed(repo, baseUrl, { tag: 'v2.3.1' });
+            await optionalSeed(repo, baseUrl, { tag: 'v2.3.1' });
+            expect(requestedUrls).toEqual(['/v2.3.0/SHA256SUMS', '/v2.3.1/SHA256SUMS']);
+
+            // An explicit run is not the launch path: it asks and it reports the 404.
+            const stderrLines = [];
+            const explicit = await seedReleaseAssets({
+                repoDir: repo,
+                tag: 'v2.3.1',
+                baseUrl,
+                optional: false,
+                env: makeGitEnv(),
+                stdout: () => {},
+                stderr: message => stderrLines.push(message),
+            });
+            expect(explicit.ok).toBe(false);
+            expect(stderrLines.join('\n')).toContain('HTTP 404');
+            expect(requestedUrls).toHaveLength(3);
+        });
+
+        test('a SHA256SUMS without the tarball lines is remembered too', async () => {
+            const repo = createReleaseRepo('no-assets-sums', '2.3.0');
+            let requests = 0;
+            const baseUrl = await listen((req, res) => {
+                requests += 1;
+                res.writeHead(200);
+                res.end(`${sha256Hex('source')}  sillybunny-2.3.0.zip\n`);
+            });
+
+            const first = await optionalSeed(repo, baseUrl);
+            expect(first.result.ok).toBe(true);
+            expect(first.result.seeded).toEqual([]);
+            expect(first.stderrLines).toEqual([]);
+            expect(fs.readFileSync(noAssetsStamp(repo), 'utf8').trim()).toBe('v2.3.0');
+
+            await optionalSeed(repo, baseUrl);
+            expect(requests).toBe(1);
+        });
+
+        test('SILLYBUNNY_SKIP_RELEASE_ASSETS makes no request and writes no stamp', async () => {
+            const repo = createReleaseRepo('no-assets-skip', '2.3.0');
+            let requests = 0;
+            const baseUrl = await listen((req, res) => {
+                requests += 1;
+                res.writeHead(404);
+                res.end();
+            });
+
+            const { result } = await optionalSeed(repo, baseUrl, { env: makeGitEnv({ SILLYBUNNY_SKIP_RELEASE_ASSETS: '1' }) });
+            expect(result).toEqual({ ok: true, seeded: [], skipped: ['disabled'] });
+            expect(requests).toBe(0);
+            expect(fs.existsSync(noAssetsStamp(repo))).toBe(false);
+        });
+
+        test('a refused connection, a server error and a stalled server are never remembered', async () => {
+            const repo = createReleaseRepo('no-assets-errors', '2.3.0');
+
+            // Nothing listens on this port any more.
+            const deadBase = await listen((req, res) => res.end());
+            await new Promise(resolve => server.close(resolve));
+            server = null;
+            const refused = await optionalSeed(repo, deadBase);
+            expect(refused.result.ok).toBe(true);
+            expect(refused.result.skipped).toContain('error');
+            expect(refused.stderrLines).toHaveLength(1);
+            expect(fs.existsSync(noAssetsStamp(repo))).toBe(false);
+
+            const failingBase = await listen((req, res) => {
+                res.writeHead(503);
+                res.end('unavailable');
+            });
+            const unavailable = await optionalSeed(repo, failingBase);
+            expect(unavailable.result.skipped).toContain('error');
+            expect(unavailable.stderrLines).toHaveLength(1);
+            expect(fs.existsSync(noAssetsStamp(repo))).toBe(false);
+            await new Promise(resolve => server.close(resolve));
+            server = null;
+
+            const stalledBase = await listen(() => {});
+            const startedAt = Date.now();
+            const stalled = await optionalSeed(repo, stalledBase, { deadlineMs: 300 });
+            expect(Date.now() - startedAt).toBeLessThan(3000);
+            expect(stalled.result.skipped).toContain('error');
+            expect(stalled.stderrLines).toHaveLength(1);
+            expect(stalled.stderrLines[0]).toContain('Timed out');
+            expect(fs.existsSync(noAssetsStamp(repo))).toBe(false);
+            server.closeAllConnections();
+        });
+
+        test('one deadline covers all requests of the run, not each request on its own', async () => {
+            const repo = createReleaseRepo('no-assets-deadline', '2.3.0');
+            const libSum = `${sha256Hex('lib')}  sillybunny-prebuilt-lib.tar.gz\n`;
+            const baseUrl = await listen((req, res) => {
+                setTimeout(() => {
+                    res.writeHead(200);
+                    res.end(req.url.endsWith('SHA256SUMS') ? libSum : 'lib');
+                }, 300);
+            });
+
+            const startedAt = Date.now();
+            const { result, stderrLines } = await optionalSeed(repo, baseUrl, { deadlineMs: 500 });
+            const elapsed = Date.now() - startedAt;
+            // Two requests of 300 ms each fit a per-request limit of 15 s but not a 500 ms deadline.
+            expect(elapsed).toBeLessThan(800);
+            expect(result.skipped).toContain('error');
+            expect(stderrLines).toHaveLength(1);
+            expect(stderrLines[0]).toContain('Timed out');
+            expect(fs.existsSync(noAssetsStamp(repo))).toBe(false);
+            server.closeAllConnections();
+        });
+    });
+
+    describe('updaters on a release checkout whose release has no tarballs', () => {
+        function createReleaseClone(name, version) {
+            const workParent = path.join(tempDir, name);
+            const remoteDir = path.join(workParent, 'remote.git');
+            const upstreamDir = path.join(workParent, 'upstream');
+            const cloneDir = path.join(workParent, 'clone');
+            fs.mkdirSync(workParent, { recursive: true });
+
+            git(workParent, 'init', '--quiet', '--bare', '--initial-branch=release', remoteDir);
+            git(workParent, 'init', '--quiet', '--initial-branch=release', upstreamDir);
+            fs.mkdirSync(path.join(upstreamDir, 'scripts'), { recursive: true });
+            for (const script of ['seed-release-assets.js', 'self-update.sh']) {
+                fs.copyFileSync(path.join(repoRoot, 'scripts', script), path.join(upstreamDir, 'scripts', script));
+            }
+            fs.writeFileSync(path.join(upstreamDir, 'package.json'), JSON.stringify({ name: 'sillybunny', type: 'module', version }));
+            fs.writeFileSync(path.join(upstreamDir, '.gitignore'), '/dist\n');
+            git(upstreamDir, 'add', '-A');
+            git(upstreamDir, 'commit', '--quiet', '-m', `v${version}`);
+            git(upstreamDir, 'remote', 'add', 'origin', remoteDir);
+            git(upstreamDir, 'push', '--quiet', '-u', 'origin', 'release');
+            git(workParent, 'clone', '--quiet', '--branch', 'release', remoteDir, cloneDir);
+            return cloneDir;
+        }
+
+        // The test's own HTTP server answers from this process, so the updater has to run asynchronously.
+        function runUpdater(kind, cloneDir, baseUrl) {
+            const [command, args] = kind === 'js'
+                ? [process.execPath, [path.join(repoRoot, 'scripts', 'self-update.js'), '--optional', '--repo', cloneDir]]
+                : ['bash', [path.join(cloneDir, 'scripts', 'self-update.sh'), '--optional']];
+            return new Promise((resolve, reject) => {
+                const startedAt = Date.now();
+                const child = spawn(command, args, {
+                    cwd: cloneDir,
+                    env: makeGitEnv({ SILLYBUNNY_RELEASE_ASSET_BASE_URL: baseUrl }),
+                    windowsHide: true,
+                });
+                let stdout = '';
+                let stderr = '';
+                child.stdout.setEncoding('utf8');
+                child.stderr.setEncoding('utf8');
+                child.stdout.on('data', chunk => { stdout += chunk; });
+                child.stderr.on('data', chunk => { stderr += chunk; });
+                child.on('error', reject);
+                child.on('close', status => resolve({ status, stdout, stderr, elapsedMs: Date.now() - startedAt }));
+            });
+        }
+
+        test.each([['js'], ['sh']])('self-update.%s asks for the tarballs once per release and says nothing on the 404', async (kind) => {
+            const cloneDir = createReleaseClone(`release-clone-404-${kind}`, '2.4.0');
+            const requestedUrls = [];
+            const baseUrl = await listen((req, res) => {
+                requestedUrls.push(req.url);
+                res.writeHead(404);
+                res.end('not found');
+            });
+
+            const firstLaunch = await runUpdater(kind, cloneDir, baseUrl);
+            expect(firstLaunch.status).toBe(0);
+            expect(firstLaunch.stdout).toContain('SillyBunny is already up to date.');
+            expect(firstLaunch.stderr).toBe('');
+
+            // From here on the updater must not even start the seeder.
+            const marker = path.join(cloneDir, 'seeder-was-started');
+            const seedScript = path.join(cloneDir, 'scripts', 'seed-release-assets.js');
+            git(cloneDir, 'update-index', '--skip-worktree', 'scripts/seed-release-assets.js');
+            fs.writeFileSync(seedScript, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'started');\n`);
+
+            for (let launch = 0; launch < 2; launch += 1) {
+                const result = await runUpdater(kind, cloneDir, baseUrl);
+                expect(result.status).toBe(0);
+                expect(result.stdout).toContain('SillyBunny is already up to date.');
+                expect(result.stderr).toBe('');
+            }
+            expect(fs.existsSync(marker)).toBe(false);
+            expect(requestedUrls).toEqual(['/v2.4.0/SHA256SUMS']);
+        });
+
+        test('both updaters stop waiting for a server that never answers within the seed deadline', async () => {
+            const jsClone = createReleaseClone('release-clone-stall-js', '2.5.0');
+            const shClone = createReleaseClone('release-clone-stall-sh', '2.5.0');
+            const baseUrl = await listen(() => {});
+
+            const [js, sh] = await Promise.all([
+                runUpdater('js', jsClone, baseUrl),
+                runUpdater('sh', shClone, baseUrl),
+            ]);
+            server.closeAllConnections();
+
+            for (const result of [js, sh]) {
+                expect(result.status).toBe(0);
+                expect(result.stderr).toContain('Skipping release asset seed (v2.5.0): Timed out');
+                // A request timeout of 15 s per request, up to three requests, was the limit before.
+                expect(result.elapsedMs).toBeLessThan(12_000);
+            }
+            expect(fs.existsSync(path.join(jsClone, 'dist', '.release-assets-none'))).toBe(false);
+            expect(fs.existsSync(path.join(shClone, 'dist', '.release-assets-none'))).toBe(false);
+        }, 30_000);
+    });
+
     test('self-update.js resolves package.json release tag after --no-tags pull and seeds release assets', async () => {
         const workParent = path.join(tempDir, 'self-update-seed');
         const remoteDir = path.join(workParent, 'remote.git');

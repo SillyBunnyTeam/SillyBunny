@@ -210,6 +210,14 @@ maybe_seed_release_assets() {
     fi
     [[ -n "$release_tag" ]] || return 0
 
+    # seed-release-assets.js writes this file when the release publishes no tarballs.
+    local no_assets_tag=""
+    if [[ -f "$REPO_DIR/dist/.release-assets-none" ]]; then
+        IFS= read -r no_assets_tag < "$REPO_DIR/dist/.release-assets-none" || true
+        no_assets_tag="${no_assets_tag%$'\r'}"
+        [[ "$no_assets_tag" != "$release_tag" ]] || return 0
+    fi
+
     "$runtime_bin" "$seed_script" --optional --repo "$REPO_DIR" --tag "$release_tag" || true
 }
 
