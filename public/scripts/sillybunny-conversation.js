@@ -1,8 +1,9 @@
 export {
     isConversationModeEnabled,
     getConversationWelcomeChats,
-    deleteConversationWelcomeBranch,
-    renameConversationBranch,
+    loadConversationWelcomeChats,
+    deleteConversationWelcomeChat,
+    renameConversationChat,
     openConversationWorkspaceForAvatar,
     openConversationWorkspaceFromWelcome,
     getRoleplayAvatarForWelcome,

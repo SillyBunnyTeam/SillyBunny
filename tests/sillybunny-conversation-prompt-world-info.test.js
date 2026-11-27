@@ -5,11 +5,11 @@ await jest.unstable_mockModule('../public/scripts/constants.js', () => ({ MEDIA_
 await jest.unstable_mockModule('../public/scripts/personas.js', () => ({ user_avatar: 'persona-a.png' }));
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ power_user: { persona_description: '' } }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-    getActiveConversationBranch: () => null,
+    getActiveConversationChat: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: value => String(typeof value === 'undefined' ? 'persona-a.png' : value || ''),
-    getConversationThreadKey: (_avatar, groupId, { personaId }) => `persona:${personaId}:${groupId || 'solo'}`,
-    getConversationThreadStore: () => null,
+    getConversationKey: (_avatar, groupId, { personaId }) => `persona:${personaId}:${groupId || 'solo'}`,
+    getConversationRecord: () => null,
     getCurrentCharAvatar: () => 'reisen.png',
     getCurrentCharName: () => 'Reisen',
     parsePositiveInt: (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback,
@@ -35,8 +35,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/person
     getUserStatus: () => 'online',
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
-    getCurrentActivityFromSchedule: () => ({ activity: 'free', status: 'online' }),
-    getStoredSchedule: () => null,
+    getCharacterStatus: () => ({ activity: null, status: 'online', source: 'manual' }),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
     buildConversationGroupReferenceContext: () => '',
@@ -55,7 +54,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
     memorySummaryBusyAvatars: new Set(),
     memorySummaryTimers: new Map(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     getConversationAttachmentSummary: () => '',
     getConversationFileAttachments: () => [],
     getConversationMediaAttachments: () => [],
@@ -68,7 +67,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread
 const { buildConversationPromptMessages, buildConversationSystemPrompt } = await import('../public/scripts/sillybunny-conversation/prompt.js');
 
 const EMPTY = { before: '', after: '', authorsNoteBefore: '', authorsNoteAfter: '', depth: [] };
-const PROMPT_OPTIONS = { branchId: 'branch-a', groupId: '', personaId: 'persona-a.png', threadAvatar: 'reisen.png' };
+const PROMPT_OPTIONS = { chatId: 'branch-a', groupId: '', personaId: 'persona-a.png', anchorAvatar: 'reisen.png' };
 
 function message(id, role, name) {
     return { id, role, name, mes: `${name} message ${id}` };
@@ -158,6 +157,15 @@ describe('Conversation prompt lorebook entries', () => {
             'conversation-reply-directive',
         ]);
         expect(prompt[4]).toEqual({ role: 'user', content: 'Depth two lore.', identifier: 'conversation-world-info-depth-2-user' });
+    });
+
+    test('leaves a reply that the server wrote and no page has landed yet out of the transcript', async () => {
+        const pending = { ...message('3', 'character', 'Reisen'), extra: { server_generation: { pending: true } } };
+        const messages = [message('1', 'user', 'Moon Fan'), message('2', 'character', 'Reisen'), pending];
+
+        const prompt = await buildConversationPromptMessages(messages, 'Reply.', 'Reisen', { personaId: 'persona-a.png', worldInfo: EMPTY });
+
+        expect(prompt.map(item => item.identifier)).toEqual(['conversation-transcript-header', 'conversation-message-1', 'conversation-message-2', 'conversation-reply-directive']);
     });
 
     test('keeps the empty transcript note before a depth zero entry', async () => {

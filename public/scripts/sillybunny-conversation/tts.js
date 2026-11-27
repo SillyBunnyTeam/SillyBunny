@@ -1,6 +1,6 @@
 import { name1 } from '../../script.js';
 import { getExtensionCapability } from './extension-capabilities.js';
-import { getConversationAttachmentSummary } from './thread-store-utils.js';
+import { getConversationAttachmentSummary } from './conversation-store-utils.js';
 
 function getConversationTtsText(message) {
     const displayText = String(message?.extra?.display_text || '').trim();

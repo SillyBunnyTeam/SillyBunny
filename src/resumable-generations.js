@@ -1,8 +1,9 @@
 import { Buffer } from 'node:buffer';
 import express from 'express';
 
+import { CONVERSATION_CHAT_KEY_PREFIX, parseConversationChatKey } from '../public/scripts/conversation-commit-plan.js';
 import { GENERATION_COMMIT_HEADER, decodeCommitPlan, getCommitChatKey } from '../public/scripts/generation-commit-plan.js';
-import { acknowledgeLostGenerations, forgetGeneration, getLostGenerations, recordGeneration } from './generation-journal.js';
+import { acknowledgeLostGenerations, forgetGeneration, getLostGenerations, getLostGenerationsByPrefix, recordGeneration } from './generation-journal.js';
 import { parseGenerationReply } from './generation-reply-parser.js';
 
 // Loaded on first commit: generation-commit.js reaches chats.js, which imports util.js, which imports this module.
@@ -22,7 +23,8 @@ const loadGenerationCommit = () => import('./generation-commit.js');
  * /claim), the server writes it into the chat itself (generation-commit.js). A stop from that page
  * (POST /cancel) keeps the reply out of the chat, even when the upstream had already finished it.
  * Pages with a chat open follow its generations over GET /events, and generation-journal.js
- * remembers which replies are in flight so a restart can report the ones it lost.
+ * remembers which replies are in flight so a restart can report the ones it lost. Conversation
+ * mode follows every conversation chat of the user over one stream (`owner=conversations`).
  */
 
 export const RESUMABLE_GENERATION_HEADER = 'x-generation-id';
@@ -55,6 +57,8 @@ const COMMITTABLE_PATHS = new Set([
 const IN_FLIGHT_COMMIT_STATES = new Set(['running', 'waiting', 'committing']);
 /** An idle event stream sends a comment this often, so proxies do not close it. */
 const EVENTS_KEEPALIVE_MS = 25 * 1000;
+/** Value of the `owner` query of GET /events that follows every conversation chat of the user. */
+const CONVERSATIONS_EVENTS_OWNER = 'conversations';
 
 /** @type {Map<string, ResumableGeneration>} */
 const generations = new Map();
@@ -924,29 +928,58 @@ router.post('/claim', async (request, response) => {
 });
 
 /**
- * Generations a page with this chat open should know about: still running, finished but not yet
+ * @param {ChatWatcher} watcher Page following chats
+ * @param {string} chatKey Chat of a generation
+ * @returns {boolean} Whether the watcher follows that chat: its own chat, or any chat under its prefix
+ */
+function watcherMatches(watcher, chatKey) {
+    return watcher.chatKeyPrefix ? chatKey.startsWith(watcher.chatKeyPrefix) : watcher.chatKey === chatKey;
+}
+
+/**
+ * @param {ResumableGeneration} generation Generation with a commit plan
+ * @param {GenerationCommit} commit Its commit
+ * @returns {object} What a page learns about the generation; a conversation reply also names its conversation and chat
+ */
+function describePending(generation, commit) {
+    const item = { id: generation.id, state: commit.state, kind: commit.plan.kind, reason: commit.reason, page: commit.plan.page };
+    return commit.plan.chat.conversation ? { ...item, conversation: commit.plan.chat.conversation, chat: commit.plan.file } : item;
+}
+
+/**
+ * @param {import('./generation-journal.js').JournalEntry} entry A reply that a restart lost
+ * @returns {object} The entry, with the conversation and chat that a conversation reply was for
+ */
+function describeLost(entry) {
+    return { ...entry, state: 'lost', reason: 'server-restart', ...parseConversationChatKey(entry.chatKey) };
+}
+
+/**
+ * Generations a page following these chats should know about: still running, finished but not yet
  * shown, or lost to a server restart. A finished reply whose page no longer follows the chat is
  * committed now: that page is gone, or is a second tab that will learn it was too late when it claims.
- * @param {ChatWatcher} watcher Page following the chat
+ * @param {ChatWatcher} watcher Page following the chats
  * @returns {object[]}
  */
-function collectPending({ handle, user, chatKey, page }) {
+function collectPending(watcher) {
+    const { handle, user, page } = watcher;
     const prefix = `${handle}:`;
     const pending = [];
     for (const [key, generation] of generations) {
         const commit = generation.commit;
-        if (!key.startsWith(prefix) || !commit || commit.chatKey !== chatKey
+        if (!key.startsWith(prefix) || !commit || !watcherMatches(watcher, commit.chatKey)
             || commit.state === 'claimed' || commit.state === 'cancelled'
             || (commit.acknowledged && !IN_FLIGHT_COMMIT_STATES.has(commit.state))) {
             continue;
         }
-        if (commit.state === 'waiting' && commit.plan.page !== page && !isPageWatching(handle, chatKey, commit.plan.page)) {
+        if (commit.state === 'waiting' && commit.plan.page !== page && !isPageWatching(handle, commit.chatKey, commit.plan.page)) {
             void generation.runCommit();
         }
-        pending.push({ id: generation.id, state: commit.state, kind: commit.plan.kind, reason: commit.reason, page: commit.plan.page });
+        pending.push(describePending(generation, commit));
     }
-    for (const entry of getLostGenerations(user, chatKey)) {
-        pending.push({ ...entry, state: 'lost', reason: 'server-restart' });
+    const lost = watcher.chatKeyPrefix ? getLostGenerationsByPrefix(user, watcher.chatKeyPrefix) : getLostGenerations(user, watcher.chatKey);
+    for (const entry of lost) {
+        pending.push(describeLost(entry));
     }
     return pending;
 }
@@ -955,7 +988,8 @@ function collectPending({ handle, user, chatKey, page }) {
  * @typedef {object} ChatWatcher
  * @property {string} handle Profile handle
  * @property {any} user Profile
- * @property {string} chatKey Chat followed
+ * @property {string} chatKey Chat followed; empty for a watcher that follows by prefix
+ * @property {string} chatKeyPrefix Every chat whose key starts with this is followed; empty for a watcher of one chat
  * @property {string} page Page load following it
  * @property {() => void} push Sends the current pending list
  * @property {boolean} scheduled A push is queued
@@ -973,7 +1007,7 @@ const chatWatchers = new Set();
  */
 function isPageWatching(handle, chatKey, page) {
     for (const watcher of chatWatchers) {
-        if (watcher.handle === handle && watcher.chatKey === chatKey && watcher.page === page) {
+        if (watcher.handle === handle && watcherMatches(watcher, chatKey) && watcher.page === page) {
             return true;
         }
     }
@@ -987,10 +1021,13 @@ function isPageWatching(handle, chatKey, page) {
  */
 function notifyChatWatchers(handle, chatKey) {
     for (const watcher of chatWatchers) {
-        if (watcher.handle === handle && watcher.chatKey === chatKey && !watcher.scheduled) {
+        if (watcher.handle === handle && watcherMatches(watcher, chatKey) && !watcher.scheduled) {
             watcher.scheduled = true;
             setImmediate(() => {
                 watcher.scheduled = false;
+                if (!chatWatchers.has(watcher)) {
+                    return;
+                }
                 watcher.push();
             });
         }
@@ -1000,21 +1037,37 @@ function notifyChatWatchers(handle, chatKey) {
 /**
  * Server-sent events with the chat's pending generations: once on connect, then on every change.
  * EventSource reconnects on its own, so a page also hears about replies lost to a restart.
+ * With `owner=conversations` the stream follows every conversation chat of the user instead of one
+ * chat; each item then names its `conversation` and `chat`.
  */
 router.get('/events', (request, response) => {
-    const avatar = typeof request.query.avatar === 'string' ? request.query.avatar : '';
-    const group = typeof request.query.group === 'string' ? request.query.group : '';
-    const file = typeof request.query.file === 'string' ? request.query.file : '';
-    if (!file || (!avatar && !group)) {
+    const owner = request.query.owner;
+    if (owner !== undefined && owner !== CONVERSATIONS_EVENTS_OWNER) {
         return response.sendStatus(400);
+    }
+    /** @type {Pick<ChatWatcher, 'chatKey' | 'chatKeyPrefix'>} */
+    let followed = { chatKey: '', chatKeyPrefix: CONVERSATION_CHAT_KEY_PREFIX };
+    if (owner === undefined) {
+        const avatar = typeof request.query.avatar === 'string' ? request.query.avatar : '';
+        const group = typeof request.query.group === 'string' ? request.query.group : '';
+        const file = typeof request.query.file === 'string' ? request.query.file : '';
+        if (!file || (!avatar && !group)) {
+            return response.sendStatus(400);
+        }
+        followed = { chatKey: getCommitChatKey(group ? { group } : { avatar }, file), chatKeyPrefix: '' };
     }
     /** @type {ChatWatcher} */
     const watcher = {
         handle: getProfileHandle(request),
         user: request.user,
-        chatKey: getCommitChatKey(group ? { group } : { avatar }, file),
+        ...followed,
         page: typeof request.query.page === 'string' ? request.query.page : '',
-        push: () => response.write(`data: ${JSON.stringify({ pending: collectPending(watcher) })}\n\n`),
+        push: () => {
+            if (response.writableEnded || response.destroyed) {
+                return;
+            }
+            response.write(`data: ${JSON.stringify({ pending: collectPending(watcher) })}\n\n`);
+        },
         scheduled: false,
     };
     response.status(200).set({
@@ -1030,8 +1083,9 @@ router.get('/events', (request, response) => {
     whenClientGone(request, response, () => {
         clearInterval(keepAlive);
         chatWatchers.delete(watcher);
-        // Replies this page left unclaimed can now be committed by the pages still watching.
-        notifyChatWatchers(watcher.handle, watcher.chatKey);
+        // Replies this page left unclaimed can now be committed by the pages still watching. A
+        // prefix is also a key that every watcher of that prefix follows.
+        notifyChatWatchers(watcher.handle, watcher.chatKeyPrefix || watcher.chatKey);
     });
 });
 

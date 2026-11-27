@@ -97,7 +97,7 @@ function saveRecentChatsSettings(settings) {
 
 
 /**
- * @typedef {Pick<RecentChat, 'group' | 'avatar' | 'file_name' | 'is_conversation' | 'conversation_branch_id'>} PinnedChat
+ * @typedef {Pick<RecentChat, 'group' | 'avatar' | 'file_name' | 'is_conversation' | 'conversation_id' | 'conversation_chat_id'>} PinnedChat
  */
 
 /**
@@ -138,9 +138,9 @@ class PinnedChatsManager {
      * @returns {string} Key for pinned chat storage
      */
     static getKey(recentChat) {
-        if (recentChat.is_conversation && recentChat.conversation_branch_id) {
-            const ownerKey = recentChat.group ? `group_${recentChat.group}` : `char_${recentChat.avatar || ''}`;
-            return `conversation_${ownerKey}_branch_${recentChat.conversation_branch_id}`;
+        if (recentChat.is_conversation && recentChat.conversation_id && recentChat.conversation_chat_id) {
+            // SillyBunny: a chat of a conversation is pinned by the ids of the conversation and the chat, as the migration keyed old pins.
+            return `conversation_${recentChat.conversation_id}_${recentChat.conversation_chat_id}`;
         }
         return `${recentChat.group ? 'group_' + recentChat.group : ''}${recentChat.avatar ? 'char_' + recentChat.avatar : ''}_${recentChat.file_name}`;
     }
@@ -190,7 +190,8 @@ class PinnedChatsManager {
                 avatar: recentChat.avatar,
                 file_name: recentChat.file_name,
                 is_conversation: recentChat.is_conversation,
-                conversation_branch_id: recentChat.conversation_branch_id,
+                conversation_id: recentChat.conversation_id,
+                conversation_chat_id: recentChat.conversation_chat_id,
             };
         } else {
             delete pinState[pinKey];
@@ -664,7 +665,7 @@ async function chooseHomeAssistant(avatar) {
 
 // SillyBunny: one set of card actions for every render of Home, so a double click is dropped across a re-render.
 const assistantActions = createAppAssistantActions({
-    openConversation: (avatar, { branchId, groupId, enable }) => openRecentConversationChat(avatar, groupId, branchId, { enable }),
+    openConversation: (avatar, { chatId, groupId, enable }) => openRecentConversationChat(avatar, groupId, chatId, { enable }),
 });
 
 // SillyBunny: a Restore or an Update puts a file back, so the library is read again and the deletion mark that made the card show as deleted is cleared. Keep Mine changes no file, so it only renders Home.
@@ -804,8 +805,8 @@ async function sendWelcomePanel(chats, expand = false, { failed = false } = {}) 
                 const fileName = item.getAttribute('data-file');
                 const isConversation = item.getAttribute('data-recent-chat-type') === 'conversation';
                 if (isConversation && avatarId) {
-                    const branchId = item.getAttribute('data-conversation-branch-id');
-                    void openRecentConversationChat(avatarId, groupId, branchId);
+                    const chatId = item.getAttribute('data-conversation-chat-id');
+                    void openRecentConversationChat(avatarId, groupId, chatId);
                     return;
                 }
                 if (avatarId && fileName) {
@@ -908,8 +909,8 @@ async function sendWelcomePanel(chats, expand = false, { failed = false } = {}) 
  */
 function renameRecentChat(target) {
     if (target.isConversation) {
-        if (target.avatarId && target.branchId && target.branchName) {
-            void renameRecentConversationChat(target.avatarId, target.groupId, target.branchId, target.branchName, target.recentChat);
+        if (target.avatarId && target.chatId && target.chatName) {
+            void renameRecentConversationChat(target.avatarId, target.groupId, target.chatId, target.chatName, target.recentChat);
         }
         return;
     }
@@ -926,8 +927,8 @@ function renameRecentChat(target) {
  */
 function deleteRecentChat(target) {
     if (target.isConversation) {
-        if (target.avatarId && target.branchId) {
-            void deleteRecentConversationChat(target.avatarId, target.groupId, target.branchId, target.recentChat);
+        if (target.avatarId && target.chatId) {
+            void deleteRecentConversationChat(target.avatarId, target.groupId, target.chatId, target.recentChat);
         }
         return;
     }
@@ -980,11 +981,11 @@ async function openRecentCharacterChat(avatarId, fileName) {
  * Opens a character in Conversation Mode from the welcome page.
  * @param {string} avatarId Avatar file name
  * @param {string} groupId Group ID, when opening a group-scoped Conversation
- * @param {string} branchId Conversation branch ID
+ * @param {string} chatId Conversation chat ID
  * @param {object} [options]
  * @param {boolean} [options.enable=false] Turn Conversation Mode on for the character, which lists the thread in Recent Chats.
  */
-async function openRecentConversationChat(avatarId, groupId = '', branchId = '', { enable = false } = {}) {
+async function openRecentConversationChat(avatarId, groupId = '', chatId = '', { enable = false } = {}) {
     const characterId = characters.findIndex(x => x.avatar === avatarId);
     if (characterId === -1) {
         console.error(`Character not found for avatar ID: ${avatarId}`);
@@ -994,8 +995,8 @@ async function openRecentConversationChat(avatarId, groupId = '', branchId = '',
     try {
         setConversationWelcomeOpeningSuppressed(true);
         const conversationModule = await import('./sillybunny-conversation.js');
-        const opened = conversationModule.openConversationWorkspaceForAvatar?.(avatarId, {
-            branchId,
+        const opened = await conversationModule.openConversationWorkspaceForAvatar?.(avatarId, {
+            chatId,
             groupId: groupId || null,
             showToast: false,
             enable,
@@ -1014,23 +1015,23 @@ async function openRecentConversationChat(avatarId, groupId = '', branchId = '',
 }
 
 /**
- * Renames a Conversation Mode branch from the welcome page.
+ * Renames a Conversation Mode chat from the welcome page.
  * @param {string} avatarId Avatar file name
  * @param {string} groupId Group ID, when renaming a group-scoped Conversation
- * @param {string} branchId Conversation branch ID
- * @param {string} branchName Current branch name
+ * @param {string} chatId Conversation chat ID
+ * @param {string} chatName Current chat name
  * @param {RecentChat|undefined} recentChat Recent chat record
  */
-async function renameRecentConversationChat(avatarId, groupId, branchId, branchName, recentChat) {
+async function renameRecentConversationChat(avatarId, groupId, chatId, chatName, recentChat) {
     try {
         const popupText = await renderTemplateAsync('chatRename');
-        const newName = await callGenericPopup(popupText, POPUP_TYPE.INPUT, branchName);
-        if (!newName || typeof newName !== 'string' || newName === branchName) {
+        const newName = await callGenericPopup(popupText, POPUP_TYPE.INPUT, chatName);
+        if (!newName || typeof newName !== 'string' || newName === chatName) {
             return;
         }
 
         const conversationModule = await import('./sillybunny-conversation.js');
-        const renamed = conversationModule.renameConversationBranch?.(avatarId, branchId, newName, { groupId });
+        const renamed = conversationModule.renameConversationChat?.(avatarId, chatId, newName, { groupId }); // SillyBunny: Home renames and deletes Conversation mode chats through that module's exports.
         if (!renamed) {
             toastr.warning(t`Failed to rename Conversation chat`); // SillyBunny: no trailing period, by DESIGN.md
             return;
@@ -1048,13 +1049,13 @@ async function renameRecentConversationChat(avatarId, groupId, branchId, branchN
 }
 
 /**
- * Deletes a Conversation Mode branch from the welcome page.
+ * Deletes a Conversation Mode chat from the welcome page.
  * @param {string} avatarId Avatar file name
  * @param {string} groupId Group ID, when deleting a group-scoped Conversation
- * @param {string} branchId Conversation branch ID
+ * @param {string} chatId Conversation chat ID
  * @param {RecentChat|undefined} recentChat Recent chat record
  */
-async function deleteRecentConversationChat(avatarId, groupId, branchId, recentChat) {
+async function deleteRecentConversationChat(avatarId, groupId, chatId, recentChat) {
     try {
         // SillyBunny: names the response with a verb (confirmVerb).
         const confirm = await callGenericPopup(t`Delete the chat file?`, POPUP_TYPE.CONFIRM, '', confirmVerb(t`Delete`, { destructive: true }));
@@ -1063,7 +1064,7 @@ async function deleteRecentConversationChat(avatarId, groupId, branchId, recentC
         }
 
         const conversationModule = await import('./sillybunny-conversation.js');
-        const result = conversationModule.deleteConversationWelcomeBranch?.(avatarId, branchId, { groupId });
+        const result = await conversationModule.deleteConversationWelcomeChat?.(avatarId, chatId, { groupId }); // SillyBunny: Home renames and deletes Conversation mode chats through that module's exports.
         const deleted = Boolean(result?.deleted);
         if (!deleted) {
             toastr.warning(t`Failed to delete Conversation chat`); // SillyBunny: no trailing period, by DESIGN.md
@@ -1427,8 +1428,9 @@ async function openRecentChatsSettingsPopup() {
  * @property {boolean} pinned Indicates if the chat is pinned
  * @property {boolean} is_agent Indicates if the chat contains Agent-authored edits or transform history
  * @property {boolean} [is_conversation] Indicates if the chat is a Conversation Mode branch
- * @property {string} [conversation_branch_id] Conversation Mode branch ID
- * @property {string} [conversation_branch_name] Conversation Mode branch name
+ * @property {string} [conversation_id] Conversation Mode conversation ID
+ * @property {string} [conversation_chat_id] Conversation Mode chat ID
+ * @property {string} [conversation_chat_name] Conversation Mode chat name
  */
 function shouldSeparateAgentRecentChats() {
     return Boolean(extension_settings?.inChatAgents?.globalSettings?.separateRecentChats);
@@ -1460,7 +1462,8 @@ async function getRecentChats({ onRequestFailed = () => {} } = {}) {
     const getConversationChats = async () => {
         try {
             const conversationModule = await import('./sillybunny-conversation.js');
-            const conversationChats = conversationModule.getConversationWelcomeChats?.({ max: settings.maxDisplayed }) || [];
+            // SillyBunny: the list of conversations is read from the server once the page has started, so Home waits for it, for a short time at most.
+            const conversationChats = await conversationModule.loadConversationWelcomeChats?.({ max: settings.maxDisplayed }) || [];
             return conversationChats;
         } catch (error) {
             console.warn('Failed to load Conversation Mode recent chats', error);

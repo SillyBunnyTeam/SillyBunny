@@ -64,33 +64,31 @@ describe('Conversation mobile controls', () => {
     });
 
     test('the pages layout follows the layout attribute, not a viewport media query', () => {
-        // The layout is decided from the #sheld width in settings-panel.js, so a viewport query here would disagree with it.
-        expect(findMediaRule(query => query.includes('max-width: 768px') && !query.includes('max-height'))
-            ?.rules.flatMap(rule => rule.selectors ?? []).filter(selector => selector.includes('#sb_conversation_pals_rail'))).toEqual([]);
+        // The layout is decided from the #sheld width in conversation-pages.js, so a viewport query here would disagree with it.
+        const viewportRules = findMediaRule(query => query.includes('max-width: 768px') && !query.includes('max-height'))?.rules ?? [];
+        expect(viewportRules.flatMap(rule => rule.selectors ?? []).filter(selector => selector.includes('#sb_conversation_list'))).toEqual([]);
         expect(css).not.toMatch(/@media \(max-width: 450px\)/);
     });
 
     test('mobile pages are driven by data-sb-conversation-page', () => {
         const media = ast.stylesheet;
-        expect(getDeclarations(media, `${PAGES} #sb_conversation_pals_rail`)).toMatchObject({
+        expect(getDeclarations(media, `${PAGES} #sb_conversation_list`)).toMatchObject({
             position: 'absolute',
             inset: '0',
             'grid-area': 'unset',
             transform: 'translateX(-100%)',
         });
-        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='pals'] #sb_conversation_pals_rail`)).toMatchObject({
+        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='list'] #sb_conversation_list`)).toMatchObject({
             visibility: 'visible',
             transform: 'none',
         });
-        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='pals'] :is(#sb_conversation_header, #sb_conversation_stage)`)).toMatchObject({
+        expect(getDeclarations(media, `${PAGES}[data-sb-conversation-page='list'] :is(#sb_conversation_header, #sb_conversation_stage)`)).toMatchObject({
             visibility: 'hidden',
         });
         expect(getDeclarations(media, `${PAGES} .sb-conversation-header-back`)).toMatchObject({ display: 'inline-grid' });
-        expect(getDeclarations(media, `${PAGES} .sb-conversation-header-settings`)).toMatchObject({ display: 'none' });
         expect(getDeclarations(media, `${PAGES} .sb-conversation-header-title`)).toMatchObject({ flex: '1 1 auto' });
-        expect(getDeclarations(media, `${PAGES} .sb-conversation-composer-more`)).toMatchObject({ display: 'inline-grid' });
-        expect(getDeclarations(media, `${PAGES} .sb-conversation-composer-attach`)).toMatchObject({ display: 'none' });
-        expect(getDeclarations(media, `${PAGES} .sb-conversation-composer-actions`)).toMatchObject({ display: 'none' });
+        // Attach and the "+" menu show in every layout, so the pages layout has no rule that hides or shows either.
+        expect(pagesSelectors.join(' ')).not.toMatch(/composer-(more|attach|actions)/);
         expect(getDeclarations(media, PAGES)).toMatchObject({
             border: '0',
             height: 'calc(var(--sb-shell-viewport-height, 100dvh) - var(--sb-topbar-layout-offset, var(--topBarBlockSize))) !important',
@@ -117,35 +115,10 @@ describe('Conversation mobile controls', () => {
             .toMatch(/PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;/);
     });
 
-    test('settings is a non-modal pane that docks as a split column', () => {
-        // Hidden by default; only an overlay pane shows it, so a split pane or a page gets no shade.
-        expect(getRuleDeclarations('#sb_conversation_settings_backdrop')).toMatchObject({ display: 'none' });
-        const OVERLAY = '#sheld[data-sb-conversation-layout=\'overlay\']';
-        expect(getRuleDeclarations(`${OVERLAY} #sb_conversation_settings_backdrop:not([hidden])`)).toMatchObject({ display: 'block' });
-        expect(css.match(/#sb_conversation_settings_backdrop/g)).toHaveLength(3);
-        // Half the dialog backdrop over the whole workspace (the rail included), under the pane: the page transition shade of an overlay split view.
-        const shade = getRuleDeclarations(`${OVERLAY} #sb_conversation_settings_backdrop`);
-        expect(shade).toMatchObject({
-            inset: '0',
-            background: 'color-mix(in srgb, var(--sb-dialog-backdrop) 50%, transparent)',
-        });
-        expect(shade).not.toHaveProperty('inset-inline-start');
-        const drawer = getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_settings_drawer');
-        expect(drawer).toMatchObject({ 'box-shadow': 'var(--sb-conv-pane-shadow)' });
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['--sb-conv-pane-shadow']).toBe('0 0 56px var(--sb-dialog-backdrop)');
-        expect(drawer['z-index']).toBe('calc(var(--sb-z-raised) + 4)');
-        expect(shade['z-index']).toBe('calc(var(--sb-z-raised) + 3)');
-        expect(getRuleDeclarations(`${PAGES} #sb_conversation_settings_drawer`)).toMatchObject({ 'box-shadow': 'none' });
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-layout=\'split\'] #sb_conversation_settings_drawer')).toMatchObject({
-            'grid-area': 'settings',
-            position: 'relative',
-        });
-    });
-
     test('surfaces are opaque layers without backdrop-filter', () => {
         expect(css).not.toMatch(/backdrop-filter\s*:/);
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_header').background).toBe('var(--sb-layer-view)');
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_pals_rail').background).toBe('var(--sb-conv-sidebar-bg)');
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_list').background).toBe('var(--sb-conv-sidebar-bg)');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-search-bar').background).toBe('var(--sb-conv-sidebar-bg)');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer').padding).toBe('8px 12px');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['border-radius']).toBe('0');
@@ -164,12 +137,9 @@ describe('Conversation mobile controls', () => {
             'grid-template-columns': 'minmax(0, 1fr)',
             'max-inline-size': '100%',
         });
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_settings_drawer').background).toBe('var(--sb-layer-drawer)');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_stage').background).toBe('var(--sb-layer-view)');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-back').display).toBe('none');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-header-title').flex).toBe('0 1 auto');
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-more').display).toBe('none');
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-layout=\'split\']')['grid-template-columns']).toBe('var(--sb-conv-sidebar-width) minmax(0, 1fr) 0px');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['--sb-conv-column-gutter']).toBe('20px');
         expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\']')['--sb-conv-column-width']).toBe('100%');
         expect(getRuleDeclarations('.sb-conversation-message[data-role=\'user\']').justifyContent || getRuleDeclarations('.sb-conversation-message[data-role=\'user\']')['justify-content']).toBe('flex-end');
@@ -203,18 +173,11 @@ describe('Conversation mobile controls', () => {
         expect(css).toMatch(/\.sb-conversation-composer\s*\{[^}]*--sb-composer-action-icon-size:\s*var\(--sb-mobile-composer-action-icon-size/);
     });
 
-    test('settings groups are shared boxed-list rows and boolean rows are shared switches', () => {
-        expect(getRuleDeclarations('.sb-conversation-settings-body')).toMatchObject({
-            gap: 'var(--sb-settings-group-gap)',
-            padding: 'var(--sb-settings-inset-top) var(--sb-settings-inset) var(--sb-settings-inset)',
-        });
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-settings-body [hidden]')).toMatchObject({
-            display: 'none !important',
-        });
-        expect(getRuleDeclarations('.sb-conversation-members-wrapper:not([hidden])')).toMatchObject({ display: 'contents' });
-        // The group, row and switch looks come from the shared .ds-* and .sb-switch rules; no local copy is left.
-        expect(css).not.toMatch(/\.sb-settings-group|\.sb-conversation-pref-|\.sb-conversation-switch/);
-        expect(css).not.toMatch(/\.sb-conversation-idle-actions/);
+    test('keeps no pane, filter tab, quick button or local copy of the shared row looks', () => {
+        // The details window and the composer menu replaced them; a leftover rule would style nothing.
+        expect(css).not.toMatch(/settings_drawer|settings_backdrop|sb-conversation-settings-|channel-tab|composer-actions|composer-quick|header-settings|header-caret/);
+        expect(css).not.toMatch(/data-sb-conversation-layout='(?:split|overlay)'/);
+        expect(css).not.toMatch(/\.sb-settings-group|\.sb-conversation-pref-|\.sb-conversation-switch|\.sb-conversation-idle-actions/);
     });
 
     test('the message toolbar is an OSD overlay above the bubble, with no border or shadow of its own', () => {
@@ -242,6 +205,15 @@ describe('Conversation mobile controls', () => {
         expect(getDeclarations(contrast, '.sb-conversation-message-actions')).toEqual({ 'box-shadow': 'var(--sb-osd-contrast-ring)' });
     });
 
+    test('the composer is a container, and its Emoji button is not drawn in a row that is narrower than a 360px composer', () => {
+        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer')).toMatchObject({ container: 'sb-conv-composer / inline-size' });
+        // 360px less the 8px of padding on each side in the pages layout: the entry keeps 144px beside four buttons.
+        const folded = findContainerRule('sb-conv-composer (max-width: 343px)');
+        // The selector has to outrank the flat-button rule that sets display: inline-grid.
+        expect(getDeclarations(folded, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-composer-emoji')).toEqual({ display: 'none' });
+        expect(findContainerRule('sb-conv-composer (max-width: 359px)')).toBeUndefined();
+    });
+
     test('the drop hint is an accent ring inside a tonal fill, without a dashed border or an outer shadow', () => {
         const hint = getRuleDeclarations('.sb-conversation-drop-hint');
         expect(hint).toMatchObject({
@@ -251,12 +223,6 @@ describe('Conversation mobile controls', () => {
             '--sb-drop-hint-ring': 'inset 0 0 0 2px color-mix(in srgb, var(--sb-accent) 40%, transparent)',
         });
         expect(hint).not.toHaveProperty('border');
-    });
-
-    test('an overlay settings pane stays beside the rail, so the header keeps its width', () => {
-        expect(getRuleDeclarations('#sheld[data-sb-conversation-mode=\'on\'][data-sb-conversation-layout=\'overlay\'] #sb_conversation_settings_drawer')).toMatchObject({
-            'inline-size': 'min(var(--sb-conv-pane-width), calc(100% - var(--sb-conv-sidebar-width)))',
-        });
     });
 
     test('the header avatars reach the touch floor with a real box', () => {

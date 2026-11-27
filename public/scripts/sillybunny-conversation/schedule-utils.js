@@ -1,11 +1,4 @@
-import {
-    DEFAULT_INACTIVITY_THRESHOLD,
-    DEFAULT_TALKATIVENESS,
-    MAX_INACTIVITY_THRESHOLD,
-    MIN_INACTIVITY_THRESHOLD,
-    SCHEDULE_STATUSES,
-    WEEKDAY_LABELS,
-} from './constants.js';
+import { SCHEDULE_STATUSES, WEEKDAY_LABELS } from './constants.js';
 
 const WEEKDAY_FULL_LABELS = Object.freeze(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
 
@@ -254,20 +247,7 @@ export function parseScheduleResponse(rawText) {
         return null;
     }
 
-    const metadataSources = [parsed, parsed?.schedule, parsed?.weeklySchedule, parsed?.weekly_schedule, parsed?.metadata].filter(Boolean);
-    const talkativeness = clamp(parsePositiveIntValue(getFirstDefined(metadataSources, ['talkativeness', 'talkativenessScore', 'talkativeness_score']), DEFAULT_TALKATIVENESS, 0), 0, 100);
-    const inactivityThresholdMinutes = clamp(
-        parsePositiveIntValue(getFirstDefined(metadataSources, ['inactivityThresholdMinutes', 'inactivity_threshold', 'inactivityThreshold', 'patienceMinutes', 'patience_minutes']), DEFAULT_INACTIVITY_THRESHOLD, MIN_INACTIVITY_THRESHOLD),
-        MIN_INACTIVITY_THRESHOLD,
-        MAX_INACTIVITY_THRESHOLD,
-    );
-
-    return {
-        days,
-        talkativeness,
-        inactivityThresholdMinutes,
-        generatedAt: Date.now(),
-    };
+    return { days, generatedAt: Date.now() };
 }
 
 export function parseScheduleTimeRange(range) {

@@ -27,6 +27,64 @@ describe('sillybunny conversation generation utils', () => {
             selfieRequests: ['desk'],
             scheduleUpdates: ['status="dnd" activity="coding" duration="1h"'],
             reminders: [{ delay: '15m', memo: 'check back' }],
+            reaction: null,
+        });
+    });
+
+    describe('the reaction of a character', () => {
+        const parse = (text, settings = {}) => extractCharacterReplyCommandParts(text, settings);
+
+        test('is read from [react: <emoji>] anywhere in the reply and taken out of the text', () => {
+            expect(parse('haha [react: 😂] that is great')).toMatchObject({ text: 'haha that is great', reaction: '😂' });
+            expect(parse('[react: 👍] sounds good')).toMatchObject({ text: 'sounds good', reaction: '👍' });
+            expect(parse('sounds good [react: 👍]')).toMatchObject({ text: 'sounds good', reaction: '👍' });
+        });
+
+        test('is read with no space after the colon, in any case, and in quotes or backticks', () => {
+            expect(parse('ok [react:🎉]').reaction).toBe('🎉');
+            expect(parse('ok [REACT: 🎉]').reaction).toBe('🎉');
+            expect(parse('ok [react: "🎉"]').reaction).toBe('🎉');
+            expect(parse('ok [react: `🎉`]').reaction).toBe('🎉');
+        });
+
+        test('is the first of several emoji, and fully qualified', () => {
+            expect(parse('ok [react: 😂👍]').reaction).toBe('😂');
+            expect(parse('ok [react: ❤]').reaction).toBe('❤️');
+        });
+
+        test('is none for text that is not an emoji, and the marker is taken out all the same', () => {
+            expect(parse('ok [react: laughing]')).toMatchObject({ text: 'ok', reaction: null });
+            expect(parse('ok [react: 😂 lol]')).toMatchObject({ text: 'ok', reaction: null });
+            expect(parse('ok [react: ]')).toMatchObject({ text: 'ok', reaction: null });
+        });
+
+        test('is taken out whether or not characters may react, so that a model that echoes it shows no brackets', () => {
+            expect(parse('haha [react: 😂]', { characters_react: false })).toMatchObject({ text: 'haha', reaction: '😂' });
+        });
+
+        test('is the first marker when a reply holds two', () => {
+            expect(parse('a [react: 😂] b [react: 👍]')).toMatchObject({ text: 'a b', reaction: '😂' });
+        });
+
+        test('makes a reply of only the marker a reaction with no text, and not a bubble that shows the marker', () => {
+            expect(parse('[react: 👍]')).toMatchObject({ text: '', reaction: '👍' });
+            expect(parse('  [react: 👍]\n')).toMatchObject({ text: '', reaction: '👍' });
+            expect(parse('[react: nope]')).toMatchObject({ text: '', reaction: null });
+        });
+
+        test('is read before the quotes of the text go, with the other commands, in any order', () => {
+            const result = parse('"On my way" [react: 🏃] [schedule_update: status="idle" activity="walking"] [reminder: 5m | leave]', { schedule_command_enabled: true });
+
+            expect(result).toMatchObject({
+                text: 'On my way',
+                reaction: '🏃',
+                scheduleUpdates: ['status="idle" activity="walking"'],
+                reminders: [{ delay: '5m', memo: 'leave' }],
+            });
+        });
+
+        test('is none for a reply without the marker', () => {
+            expect(parse('plain reply').reaction).toBeNull();
         });
     });
 

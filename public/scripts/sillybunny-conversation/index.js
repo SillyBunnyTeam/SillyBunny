@@ -3,14 +3,15 @@ import './init.js';
 export {
     isConversationModeEnabled,
     getConversationWelcomeChats,
+    loadConversationWelcomeChats,
 } from './settings-store.js';
 export {
-    deleteConversationWelcomeBranch,
-    renameConversationBranch,
+    deleteConversationWelcomeChat,
+    getRoleplayAvatarForWelcome,
+    renameConversationChat,
 } from './context.js';
 export {
+    disableConversationModeForCurrentCharacter,
     openConversationWorkspaceForAvatar,
     openConversationWorkspaceFromWelcome,
-    getRoleplayAvatarForWelcome,
-    disableConversationModeForCurrentCharacter,
-} from './chrome.js';
+} from './lazy-parts.js';

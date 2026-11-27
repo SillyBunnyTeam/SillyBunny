@@ -92,7 +92,7 @@ describe('forced colours: the edge of a surface that draws it as a shadow ring',
 
     // A drag helper is a copy of a row that is on the page already. A menu sheet is the same element as its popover.
     // The card of an in-app notification and the pill of a toast draw the popover ring too, and the rule for messages above (`:is(#toast-container, #sb-toast-overlay) > div`) gives each its edge.
-    const notSurfaces = new Set(['.ui-sortable-helper.ica--tpanel-agent', '#rm_group_members .group_member.ui-sortable-helper', ':is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet]', 'body #toast-container[class] > .sb-form-notification', '#sb-toast-overlay > .sb-form-toast']);
+    const notSurfaces = new Set(['.ui-sortable-helper.ica--tpanel-agent', '#rm_group_members .group_member.ui-sortable-helper', '.sb-conversation-list-ghost', ':is(#options, #extensionsMenu, #sd_dropdown, .actionButtonsModal)[data-sb-menu-sheet]', 'body #toast-container[class] > .sb-form-notification', '#sb-toast-overlay > .sb-form-toast']);
 
     test('one rule in the theme sheet, inside forced-colors, draws a 1px inset outline in a system colour', () => {
         expect(edgeRule).toBeDefined();
@@ -251,11 +251,6 @@ describe('the outer ring on solid fills and pictures', () => {
         const conversation = declarationsOf(sheet('sillybunny-conversation.css'), '#sheld[data-sb-conversation-mode=\'on\'] #sb_conversation_send:focus-visible');
         expect(conversation).toBe(outer);
         expect(conversation).not.toContain('background');
-    });
-
-    test('the Conversation day pill draws the same colour and offset on its checked accent fill', () => {
-        const pill = declarationsOf(sheet('sillybunny-conversation.css'), '.sb-conversation-day-pill:focus-within');
-        expect(pill).toBe('outline: 2px solid var(--sb-focus-ring-color); outline-offset: 1px;');
     });
 
     test('no outer ring rule outranks the forced-colours outline, which is important', () => {

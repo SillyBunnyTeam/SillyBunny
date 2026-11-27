@@ -39,11 +39,23 @@ const WINDOWS = [
 
 const SECTION_TITLES = [
     'Getting Around', 'Models and Connections', 'Presets and Prompts', 'Characters and Personas', 'World Info', 'Chatting',
-    'Modes', 'Agents', 'Extensions and Themes', 'Search', 'Data and Importing', 'Troubleshooting',
+    'Modes', 'Conversations', 'Agents', 'Extensions and Themes', 'Search', 'Data and Importing', 'Troubleshooting',
 ];
 const SECTION_IDS = [
     'getting-around', 'models-and-connections', 'presets-and-prompts', 'characters-and-personas', 'world-info', 'chatting',
-    'modes', 'agents', 'extensions-and-themes', 'search', 'data-and-importing', 'troubleshooting',
+    'modes', 'conversations', 'agents', 'extensions-and-themes', 'search', 'data-and-importing', 'troubleshooting',
+];
+const CONVERSATION_TOPIC_IDS = [
+    'start-a-conversation', 'start-a-group', 'manage-the-conversation-list', 'use-conversation-folders', 'use-conversation-details',
+    'open-a-character-profile', 'let-characters-message-first', 'get-replies-after-closing-the-page', 'insert-an-emoji',
+    'react-to-a-message', 'let-characters-react', 'select-and-delete-messages', 'delete-a-chat-or-conversation',
+    'change-conversation-preferences',
+];
+const CONVERSATION_TOPIC_TITLES = [
+    'Start a Conversation', 'Start a Group', 'Manage the Conversation List', 'Use Conversation Folders', 'Use the Details Window',
+    'Open a Character Profile', 'Let Characters Message First', 'Get Replies After Closing the Page', 'Insert an Emoji',
+    'React to a Message', 'Let Characters React', 'Select and Delete Messages', 'Delete a Chat or a Conversation',
+    'Change Conversation Preferences',
 ];
 const FEATURED_IDS = ['connect-to-a-model', 'choose-a-preset', 'add-a-character', 'start-a-chat'];
 const FEATURED_TITLES = ['Connect to a Model', 'Choose a Preset', 'Add a Character', 'Start a Chat'];
@@ -987,7 +999,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
         });
 
         test.describe('Help', () => {
-            test('the front page shows the Reisen art, the intro, the featured topics and all twelve sections', async ({ page }) => {
+            test('the front page shows the Reisen art, the intro, the featured topics and all thirteen sections', async ({ page }) => {
                 const host = await openFromMenu(page, 'Help');
                 await showIndex(host);
                 const view = helpView(host);
@@ -998,7 +1010,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(view.getByRole('group', { name: 'Featured Topics' }).locator('.ds-row-label')).toHaveText(FEATURED_TITLES);
                 const sections = view.getByRole('group', { name: 'All Sections' });
                 await expect(sections.locator('.ds-row-label')).toHaveText(SECTION_TITLES);
-                await expect(sections.locator('.sbHelpRowIcon')).toHaveCount(12);
+                await expect(sections.locator('.sbHelpRowIcon')).toHaveCount(13);
                 await expect(view.getByRole('navigation', { name: 'Breadcrumb' })).toHaveCount(0);
                 await expectNoUnmarkedPlaceholder(host);
             });
@@ -1013,6 +1025,19 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(helpTitle(host)).toHaveText('Models and Connections');
                 await expectSlots(view, ['HELP-SECTION-models-and-connections-DESC', 'HELP-TOPIC-connect-to-a-model-DESC']);
                 await expect(view.getByRole('group', { name: 'Models and Connections' }).locator('.ds-row-label')).toHaveText(['Connect to a Model']);
+                await expectNoUnmarkedPlaceholder(host);
+            });
+
+            test('the Conversations section lists its fourteen topics in reading order, each with its placeholder description', async ({ page }) => {
+                const host = await openFromMenu(page, 'Help');
+
+                await showSection(host, 'Conversations');
+
+                const view = helpView(host);
+                await expect(view).toHaveAttribute('data-sb-help-view', 'section');
+                await expect(helpTitle(host)).toHaveText('Conversations');
+                await expectSlots(view, ['HELP-SECTION-conversations-DESC', ...CONVERSATION_TOPIC_IDS.map(id => `HELP-TOPIC-${id}-DESC`)]);
+                await expect(view.getByRole('group', { name: 'Conversations' }).locator('.ds-row-label')).toHaveText(CONVERSATION_TOPIC_TITLES);
                 await expectNoUnmarkedPlaceholder(host);
             });
 
@@ -1153,7 +1178,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 const host = await openFromMenu(page, 'Help');
                 const results = helpSidebar(host).locator('[data-sb-help-topic] .ds-row-label');
                 const nav = helpSidebar(host).locator('[data-sb-help-nav]');
-                await expect(nav).toHaveCount(13);
+                await expect(nav).toHaveCount(14);
 
                 await host.locator('.sb-dialog__search-toggle').click();
                 const field = host.getByRole('searchbox');
@@ -1188,7 +1213,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await expect(status.locator('.sb-status-page__title[data-sb-copy-placeholder]')).toHaveCount(0);
 
                 await field.fill('');
-                await expect(helpSidebar(host).locator('[data-sb-help-nav]')).toHaveCount(13);
+                await expect(helpSidebar(host).locator('[data-sb-help-nav]')).toHaveCount(14);
                 await expect(status).toBeHidden();
             });
 
@@ -1212,7 +1237,7 @@ for (const { name, sheet, options } of VIEWPORTS) {
                 await page.keyboard.press('Escape');
 
                 await expect(host.getByRole('searchbox')).toBeHidden();
-                await expect(helpSidebar(host).locator('[data-sb-help-nav]')).toHaveCount(13);
+                await expect(helpSidebar(host).locator('[data-sb-help-nav]')).toHaveCount(14);
                 await expect(hosts(page)).toHaveCount(1);
 
                 await page.keyboard.press('Escape');

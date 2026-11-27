@@ -2,7 +2,7 @@ import { characters, chat, getCurrentChatId, this_chid } from '../../script.js';
 import { eventSource, event_types } from '../events.js';
 import { selected_group } from '../group-chats.js';
 import { fixToastrForDialogs } from '../popup.js';
-import { CONVERSATION_MESSAGE_SENT_EVENT, CONVERSATION_THREAD_OPENED_EVENT } from '../sillybunny-conversation/constants.js';
+import { CONVERSATION_MESSAGE_SENT_EVENT, CONVERSATION_OPENED_EVENT } from '../sillybunny-conversation/constants.js';
 import { accountStorage } from '../util/AccountStorage.js';
 import { createGettingStartedState, getGettingStartedSteps, setSharedGettingStartedState } from './getting-started.js';
 import { createGettingStartedSignals, isGeneratedReply, isUserMessage } from './getting-started-signals.js';
@@ -100,7 +100,7 @@ function bindSignals() {
         }
     });
     window.addEventListener(CONVERSATION_MESSAGE_SENT_EVENT, () => getSignals().messageSent());
-    window.addEventListener(CONVERSATION_THREAD_OPENED_EVENT, (event) => {
+    window.addEventListener(CONVERSATION_OPENED_EVENT, (event) => {
         getSignals().conversationThreadOpened(/** @type {CustomEvent<{ avatar?: string }>} */ (event).detail?.avatar);
     });
 }

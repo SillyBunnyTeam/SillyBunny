@@ -14,7 +14,7 @@ const LAYOUT_MODULES = [
     'public/scripts/sillybunny-search-entities.js',
     'public/scripts/sillybunny-world-info-editor.js',
     'public/scripts/sillybunny-tabs.js',
-    'public/scripts/sillybunny-conversation/settings-panel.js',
+    'public/scripts/sillybunny-conversation/conversation-pages.js',
     'public/scripts/extensions/in-chat-agents/ui/agent-editor.js',
 ];
 

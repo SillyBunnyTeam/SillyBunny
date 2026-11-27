@@ -55,7 +55,7 @@
                     <div class="noRecentChat displayNone" data-recent-chat-empty-state="filtered"></div>
                 {{#each chats}}
                     {{#with this}}
-                    <article class="recentChat {{#if hidden}}hidden{{/if}} {{#if is_group}}group{{else}}individual{{/if}} {{#if is_agent}}agent{{/if}} {{#if is_conversation}}conversation{{/if}}" data-recent-chat-type="{{recent_chat_type}}" data-file="{{chat_name}}" data-avatar="{{avatar}}" data-group="{{group}}" data-conversation-branch-id="{{conversation_branch_id}}" data-conversation-branch-name="{{conversation_branch_name}}">
+                    <article class="recentChat {{#if hidden}}hidden{{/if}} {{#if is_group}}group{{else}}individual{{/if}} {{#if is_agent}}agent{{/if}} {{#if is_conversation}}conversation{{/if}}" data-recent-chat-type="{{recent_chat_type}}" data-file="{{chat_name}}" data-avatar="{{avatar}}" data-group="{{group}}" data-conversation-id="{{conversation_id}}" data-conversation-chat-id="{{conversation_chat_id}}" data-conversation-chat-name="{{conversation_chat_name}}">
                         <button type="button" class="recentChatOpen"><span class="sr-only">{{char_name}} &ndash; {{chat_name}}</span></button>
                         {{#if pinned}}
                             <div class="recentChatPinned">

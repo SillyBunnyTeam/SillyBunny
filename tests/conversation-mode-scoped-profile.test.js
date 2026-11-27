@@ -36,27 +36,24 @@ function getFunctionSource(source, name) {
 
 const generationSource = readConversationSource('generation.js');
 const attachmentsSource = readConversationSource('attachments.js');
+const sendQueueSource = readConversationSource('send-queue.js');
 const personasSource = readConversationSource('personas.js');
 const chromeSource = readConversationSource('chrome.js');
 const actionMenuSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-action-menu.js'), 'utf8'));
 const constantsSource = readConversationSource('constants.js');
-const contextSource = readConversationSource('context.js');
 const initSource = readConversationSource('init.js');
-const palsRailSource = readConversationSource('pals-rail.js');
+const conversationListSource = readConversationSource('conversation-list.js');
 const pickersSource = readConversationSource('pickers.js');
 const promptSource = readConversationSource('prompt.js');
 const sharedHelpersSource = readConversationSource('shared-helpers.js');
 const settingsStoreSource = readConversationSource('settings-store.js');
 const stateSource = readConversationSource('state.js');
-const threadStoreSource = readConversationSource('thread-store.js');
+const conversationStoreSource = readConversationSource('conversation-store.js');
 const timelineSource = readConversationSource('timeline-render.js');
 const conversationTtsSource = readConversationSource('tts.js');
 const extensionTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'index.js'), 'utf8'));
 const pollinationsTtsSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'tts', 'pollinations.js'), 'utf8'));
 const speechEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'speech.js'), 'utf8'));
-const serverEndpointSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'sillybunny-conversation.js'), 'utf8'));
-const conversationGenerationSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'endpoints', 'conversation-generation.js'), 'utf8'));
-const serverStartupSource = normalizeSource(readFileSync(path.join(repoRoot, 'src', 'server-startup.js'), 'utf8'));
 const welcomeSource = normalizeSource(readFileSync(path.join(repoRoot, 'public', 'scripts', 'welcome-screen.js'), 'utf8'));
 
 describe('conversation mode scoped connection profile', () => {
@@ -90,8 +87,9 @@ describe('conversation mode scoped connection profile', () => {
         expect(helperSource).not.toContain('applyConnectionProfileByName');
         // Falls back to generateRaw (the active profile) when scoped path is unavailable.
         expect(helperSource).toContain('generateRaw(options)');
-        // The scoped request keeps its own length. Only the request to the active API is limited.
-        expect(helperSource).toContain('CMRS.sendRequest(profile.id, messages, options.responseLength, {');
+        // The scoped request keeps its own length, or the length of the preset of the profile. Only the request to the active API is limited.
+        expect(helperSource).toContain('CMRS.sendRequest(profile.id, messages, profileResponseLength, {');
+        expect(helperSource).toContain('options.responseLength > 0 ? options.responseLength : await getProfileResponseLength(profile)');
         expect(helperSource.indexOf('CMRS.sendRequest')).toBeLessThan(helperSource.indexOf('getActiveApiResponseLength(options.responseLength)'));
     });
 
@@ -113,9 +111,11 @@ describe('conversation mode scoped connection profile', () => {
     });
 
     test('routes explicitly prefixed group replies to the named participant', () => {
-        expect(generationSource).toContain('getSpeakerPrefixMatch');
-        expect(generationSource).toContain('resolveConversationReplySpeaker');
-        expect(generationSource).toContain('resolvedExtra.partner_avatar = speakerAvatar');
+        const replyStepsSource = readConversationSource('reply-steps.js');
+        expect(replyStepsSource).toContain('getSpeakerPrefixMatch');
+        expect(replyStepsSource).toContain('resolveReplySpeaker');
+        expect(generationSource).toContain('buildReplySteps');
+        expect(generationSource).toContain('resolvedExtra.member_avatar = speakerAvatar');
     });
 
     test('adds context-aware implicit references for group DMs', () => {
@@ -124,8 +124,8 @@ describe('conversation mode scoped connection profile', () => {
         expect(sharedHelpersSource).toContain('last non-user speaker before it');
         expect(sharedHelpersSource).toContain('do not assume every you means');
         expect(generationSource).toContain('buildConversationPromptMessages(messages, directive, speakerName, { groupId, personaId, worldInfo })');
-        expect(attachmentsSource).toContain('getImplicitGroupReplyCandidate');
-        expect(attachmentsSource).toContain('isBroadGroupAddress');
+        expect(sendQueueSource).toContain('chooseGroupSpeakers');
+        expect(readConversationSource('speaker-selection.js')).toContain('isBroadGroupAddress');
     });
 
     test('adds device date time and timezone context to Conversation prompts', () => {
@@ -134,110 +134,57 @@ describe('conversation mode scoped connection profile', () => {
         expect(promptSource).toContain('Intl.DateTimeFormat().resolvedOptions().timeZone');
         expect(promptSource).toContain('weekday: \'long\'');
         expect(promptSource).toContain('computer/phone time');
-        expect(promptSource).toContain('getCurrentActivityFromSchedule(schedule, avatar, now, { personaId })');
+        expect(promptSource).toContain('getCharacterStatus(avatar, now, { personaId })');
     });
 
     test('adds compact editable Grounded Dialogue Rules as an optional global prompt block', () => {
         expect(constantsSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled: false');
-        expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules_enabled\', key: \'grounded_dialogue_rules_enabled\', prop: \'checked\' }');
-        expect(constantsSource).toContain('{ id: \'sb_conv_grounded_dialogue_rules\', key: \'grounded_dialogue_rules\', prop: \'value\' }');
         expect(constantsSource).toContain('grounded_dialogue_rules_enabled');
         expect(constantsSource).toContain('grounded_dialogue_rules');
-        expect(timelineSource).toContain('action: \'edit-grounded-dialogue-rules\'');
-        expect(timelineSource).toContain('createSettingsControl(\'textarea\', \'sb_conv_grounded_dialogue_rules\', { hidden: true })');
-        expect(chromeSource).toContain('openGroundedDialogueRulesEditor');
-        expect(chromeSource).toContain('case \'edit-grounded-dialogue-rules\':');
-        expect(chromeSource).toContain('DEFAULT_GROUNDED_DIALOGUE_RULES');
         expect(promptSource).toContain('getGroundedDialogueRulesPrompt');
         expect(promptSource).toContain('from \'./shared-helpers.js\'');
         expect(promptSource).toContain('fields.push(groundedRules)');
-        // Server endpoint now imports from conversation-generation.js which imports from shared-helpers.js
-        expect(serverEndpointSource).toContain('from \'./conversation-generation.js\'');
-        // normalizeConversationSettings is now in conversation-generation.js
-        expect(conversationGenerationSource).toContain('normalized.grounded_dialogue_rules_enabled = Boolean(normalized.grounded_dialogue_rules_enabled)');
     });
 
-    test('settings booleans are switch rows and picker menus pass their trigger', () => {
-        const switchIds = [
-            'sb_conv_idle_followup',
-            'sb_conv_idle_spontaneous',
-            'sb_conv_notifications_muted',
-            'sb_conv_proactive_messaging',
-            'sb_conv_selfie_command_enabled',
-            'sb_conv_schedule_command_enabled',
-            'sb_conv_include_related_memory',
-            'sb_conv_auto_message',
-            'sb_conv_grounded_dialogue_rules_enabled',
-            'sb_conv_multi_char',
-            'sb_conv_auto_character_chat',
-            'sb_conv_roleplay_reactions',
-            'sb_conv_image_gen_enabled',
-            'sb_conv_spontaneous_selfies',
-            'sb_conv_editable_messages',
-            'sb_conv_prose_polisher',
-        ];
-        for (const id of switchIds) {
-            expect(timelineSource).toContain(`id: '${id}'`);
-        }
-        // The pane's rows are the shared switch rows, not a Conversation-only checkbox class.
-        expect(timelineSource).toContain('createSwitchRow(');
-        expect(timelineSource).not.toContain('sb-conversation-switch');
-        expect(timelineSource).not.toContain('sb-conversation-pref-');
-        expect(timelineSource).toContain('createSettingsHiddenInput(\'sb_conv_copy_memory_to_new_branch\', \'checkbox\')');
-        expect(chromeSource).toContain('toggleAddDmPicker(target)');
+    test('picker menus pass their trigger, and the composer and the timeline are the markup that the actions read', () => {
+        expect(chromeSource).toContain('toggleStartDirectConversationPicker(target)');
         expect(chromeSource).toContain('toggleConversationGroupPicker({ anchor: target })');
         expect(chromeSource).toContain('togglePersonaPicker(target)');
         expect(pickersSource).toContain('preferBelow: true');
-        expect(pickersSource).toContain('role="switch" class="sb-switch sb-conv-weekly-enabled-check"');
-        expect(palsRailSource).toContain('Messaging-app order: newest message first');
-        expect(palsRailSource).not.toContain('first.key === activeKey');
-        // The menu keeps the settings entry whenever the pages layout hides the header gear, whatever the viewport width.
-        expect(chromeSource).toContain('...(isConversationPagesLayout()');
+        // The rail keeps the order of the list that the server sends, newest message first, and does not move the open row.
+        expect(conversationListSource).toContain('conversationData.list({ personaId })');
+        expect(conversationListSource).not.toContain('.sort(');
+        expect(conversationListSource).not.toContain('first.key === activeKey');
         expect(chromeSource).not.toContain('LAYOUT_MOBILE_QUERY');
+        // Attach is a button of its own and the "+" menu holds the other four tools, so the four quick buttons are not in the markup.
         expect(timelineSource).toContain('sb-conversation-composer-attach');
-        expect(timelineSource).toContain('sb-conversation-composer-actions');
         expect(timelineSource).toContain('data-sb-conversation-action="attach-file"');
-        expect(timelineSource).toContain('data-sb-conversation-action="quick-selfie"');
+        expect(timelineSource).toContain('data-sb-conversation-action="open-composer-menu"');
+        expect(timelineSource).not.toContain('sb-conversation-composer-actions');
+        expect(timelineSource).not.toContain('data-sb-conversation-action="quick-selfie"');
         expect(timelineSource).toContain('content.append(bubble, actionBar)');
         expect(timelineSource).toContain('item.append(avatarWrap, body, mobileTrigger)');
         expect(timelineSource).not.toContain('bubble.append(actionBar, mobileTrigger)');
         expect(pickersSource).toContain('maxLeft < minLeft');
         expect(actionMenuSource).toContain('maxLeft < minLeft');
-        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261118zzj');
+        expect(chromeSource).toContain('css/sillybunny-conversation.css?v=20261126d');
     });
 
-    test('keeps saved Conversation-owned group DMs visible without messages', () => {
-        expect(settingsStoreSource).toContain('const hasConversationGroups');
-        expect(settingsStoreSource).toContain('getConversationGroups().forEach');
-        expect(settingsStoreSource).toContain('!group.is_conversation_group');
-        expect(palsRailSource).toContain('getConversationGroups({ personaId }).forEach');
-        expect(palsRailSource).toContain('isEmptyThread && !group?.is_conversation_group');
-        expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeGreaterThanOrEqual(0);
-        expect(palsRailSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeGreaterThanOrEqual(0);
-        expect(settingsStoreSource.indexOf('getConversationGroups().forEach')).toBeLessThan(settingsStoreSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
-        expect(palsRailSource.indexOf('getConversationGroups({ personaId }).forEach')).toBeLessThan(palsRailSource.indexOf('Object.entries(getConversationStore().characters || {}).forEach'));
-        expect(contextSource).toContain('group.updatedAt = Date.now();');
-        expect(timelineSource).toContain('group.updatedAt = Date.now();');
-    });
-
-    test('defaults group DM cross-talk settings on without global solo overrides hiding them', () => {
-        const groupSettingsIndex = settingsStoreSource.indexOf('if (groupId) {');
-        expect(groupSettingsIndex).toBeGreaterThanOrEqual(0);
-        expect(settingsStoreSource.indexOf('globalSettings', groupSettingsIndex)).toBeLessThan(settingsStoreSource.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS', groupSettingsIndex));
-        expect(settingsStoreSource.indexOf('GROUP_CONVERSATION_FORCED_SETTINGS', groupSettingsIndex)).toBeLessThan(settingsStoreSource.indexOf('getGroupConversationSettings(groupId)', groupSettingsIndex));
-    });
-
-    test('scopes Conversation storage by active persona to prevent bleedthrough', () => {
-        expect(contextSource).toContain('PERSONA_CONVERSATION_STORE_PREFIX');
-        expect(contextSource).toContain('getConversationPersonaId');
-        expect(contextSource).toContain('scopeConversationStorageKey');
-        expect(contextSource).toContain('isConversationThreadKeyForPersona');
-        expect(contextSource).toContain('migrateLegacyConversationStoreToPersona');
-        expect(contextSource).toContain('personaId: getConversationPersonaId(personaId)');
-        expect(settingsStoreSource).toContain('isConversationThreadKeyForPersona(storeKey)');
-        expect(palsRailSource).toContain('isConversationThreadKeyForPersona(storeKey, personaId)');
+    // Behaviour that these three tests used to pin in the source (a group without messages, the forced group settings,
+    // the persona scoping) is tested on the real data module in sillybunny-conversation-settings-store.test.js and
+    // sillybunny-conversation-core-data-regressions.test.js.
+    test('lists the conversations of the persona from the data module, and starts again when the persona changes', () => {
+        expect(conversationListSource).toContain('conversationData.list({ personaId })');
+        expect(settingsStoreSource).toContain('conversationData.list({ personaId: getConversationPersonaId() })');
         expect(initSource).toContain('event_types.PERSONA_CHANGED');
+    });
+
+    test('the settings of a conversation are layered with what is derived on top, and nothing is forced on a group', () => {
+        const layers = settingsStoreSource.slice(settingsStoreSource.indexOf('const settings = mergeConversationSettingsLayers('));
+        expect(layers.indexOf('globalSettings')).toBeGreaterThanOrEqual(0);
+        expect(layers.indexOf('globalSettings')).toBeLessThan(layers.indexOf('getDerivedSettings'));
+        expect(settingsStoreSource).not.toContain('FORCED_SETTINGS');
     });
 
     test('uses reply metadata instead of copying quoted text into the composer', () => {
@@ -254,11 +201,10 @@ describe('conversation mode scoped connection profile', () => {
     test('does not inline reply references in the Conversation prompt transcript', () => {
         expect(promptSource).not.toContain('formatConversationReplyReference');
         expect(promptSource).not.toContain('(replying to');
-        expect(serverEndpointSource).not.toContain('formatConversationReplyReference');
     });
 
     test('lets generated character replies use message reply metadata', () => {
-        expect(threadStoreSource).toContain('export function buildConversationMessageReplyReference');
+        expect(conversationStoreSource).toContain('export function buildConversationMessageReplyReference');
         expect(timelineSource).toContain('buildConversationMessageReplyReference(context.message)');
         expect(generationSource).toContain('getGeneratedReplyReference');
         expect(generationSource).toContain('buildConversationMessageReplyReference(message)');
@@ -281,11 +227,6 @@ describe('conversation mode scoped connection profile', () => {
         expect(welcomeSource).toContain('setConversationWelcomeOpeningSuppressed(false)');
     });
 
-    test('exposes Conversation REST discovery on both supported API base paths', () => {
-        expect(serverStartupSource).toContain('app.use(\'/api/sillybunny-conversation\', sillyBunnyConversationRouter)');
-        expect(serverStartupSource).toContain('app.use(\'/api/sillybunny/conversation\', sillyBunnyConversationRouter)');
-    });
-
     test('connects Conversation messages to the existing TTS extension', () => {
         expect(extensionTtsSource).toContain('export async function narrateTtsMessage');
         expect(extensionTtsSource).toContain('async function ensureTtsProviderLoaded');
@@ -299,7 +240,7 @@ describe('conversation mode scoped connection profile', () => {
         expect(conversationTtsSource).toContain('getExtensionCapability(\'tts\')');
         expect(conversationTtsSource).not.toContain('../extensions/tts/index.js');
         expect(conversationTtsSource).toContain('narrateTtsMessage(ttsMessage');
-        expect(threadStoreSource).toContain('void narrateConversationMessage(message, { isStillVisible })');
+        expect(conversationStoreSource).toContain('void narrateConversationMessage(message, { isStillVisible })');
         expect(timelineSource).toContain('action: \'speak-message\'');
         expect(timelineSource).toContain('speakConversationMessage');
         expect(chromeSource).toContain('case \'speak-message\':');
@@ -347,7 +288,7 @@ describe('conversation mode scoped connection profile', () => {
 
     test('waits around five seconds for rapid follow-up messages before replying', () => {
         expect(constantsSource).toContain('SEND_QUEUE_COALESCE_MS = 5000');
-        expect(attachmentsSource).toContain('windowMs: SEND_QUEUE_COALESCE_MS');
+        expect(sendQueueSource).toContain('windowMs: SEND_QUEUE_COALESCE_MS');
         expect(readConversationSource('send-queue-utils.js')).toContain('DEFAULT_COALESCE_WINDOW_MS = 5000');
     });
 });

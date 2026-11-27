@@ -140,6 +140,7 @@ export async function startAccountServer({ config = {} } = {}) {
     }
 
     const users = await import('../../src/users.js');
+    const { conversationIndex } = await import('../../src/conversation-index.js');
     const { router: publicRouter } = await import('../../src/endpoints/users-public.js');
     const { router: privateRouter } = await import('../../src/endpoints/users-private.js');
     const { router: adminRouter } = await import('../../src/endpoints/users-admin.js');
@@ -245,6 +246,7 @@ export async function startAccountServer({ config = {} } = {}) {
             server.closeAllConnections();
             await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
             storage.stopWriteQueueInterval();
+            conversationIndex.close();
             jest.restoreAllMocks();
             process.chdir(originalWorkingDirectory);
             global.DATA_ROOT = originalDataRoot;

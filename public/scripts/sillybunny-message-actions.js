@@ -8,7 +8,7 @@
  */
 
 import { eventSource, event_types } from './events.js';
-import { t, translate } from './i18n.js';
+import { translate } from './i18n.js';
 import { closeActionMenu, getActionMenuTrigger, isActionMenuOpen, openActionMenu } from './sillybunny-action-menu.js';
 import { initializeConversationMessageMenu } from './sillybunny-conversation/message-menu.js';
 import { animateIn, MOTION_FAST, MOTION_EASE_OUT_QUAD, stopMotion } from './sillybunny-motion.js';
@@ -209,7 +209,8 @@ function buildEditSections(mes) {
 
 function openMessageMenu(trigger, { point = null, keyboard = false } = {}) {
     const mes = trigger.closest('#chat > .mes');
-    if (!(mes instanceof HTMLElement)) {
+    // Selection mode turns the per-message actions off; a keyboard route must not bring one back.
+    if (!(mes instanceof HTMLElement) || document.getElementById('sheld')?.dataset.selectionMode === 'true') {
         return;
     }
     const editing = trigger.classList.contains('sb-mes-edit-more') || Boolean(mes.querySelector('#curEditTextarea'));
@@ -708,25 +709,6 @@ function observeChat(chat) {
     }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 }
 
-/* ---------- Delete mode: live count ---------- */
-
-/** Writes how many messages the deletion covers (the chosen one and every one after it) into the delete bar. */
-function initializeDeleteCount(chat) {
-    const bar = document.getElementById('dialogue_del_mes');
-    const count = document.getElementById('dialogue_del_mes_count');
-    if (!bar || !count) {
-        return;
-    }
-    const update = () => {
-        if (bar.style.display === 'block') {
-            count.textContent = t`${chat.querySelectorAll(':scope > .mes.selected').length} selected`;
-        }
-    };
-    // Upstream marks the rows with a class when one is chosen, and opens the bar by writing its style.
-    new MutationObserver(update).observe(chat, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    new MutationObserver(update).observe(bar, { attributes: true, attributeFilter: ['style'] });
-}
-
 export function initializeMessageActions() {
     if (initialized) {
         return;
@@ -754,7 +736,6 @@ export function initializeMessageActions() {
     document.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('resize', () => scheduleLayoutForAll(), { passive: true });
     observeChat(chat);
-    initializeDeleteCount(chat);
     initializeConversationMessageMenu();
 
     const closeImmediately = () => closeActionMenu({ animate: false });

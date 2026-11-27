@@ -181,7 +181,7 @@ function findProblems(extensionPattern) {
 describe('WebKit prefix companions', () => {
     test('scans fork files and skips upstream-origin and vendored files', () => {
         expect(scannedFiles).toContain('public/css/sillybunny-theme.css');
-        expect(scannedFiles).toContain('public/scripts/sillybunny-conversation/settings-panel.js');
+        expect(scannedFiles).toContain('public/scripts/sillybunny-conversation/conversation-pages.js');
         expect(scannedFiles).toContain(`${templatesDir}index.json`);
         expect(upstreamOriginFiles.has('public/style.css')).toBe(true);
         expect(scannedFiles).not.toContain('public/style.css');

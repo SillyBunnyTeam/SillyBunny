@@ -20,10 +20,16 @@ export function createConversationMessageRevisionEntries(messages) {
         }));
 }
 
+/** A round that a page carries on after the chat was opened: the members still to speak, and when it began. */
+function normalizeQueueRound(round) {
+    const remaining = (Array.isArray(round?.remaining) ? round.remaining : []).filter(avatar => typeof avatar === 'string' && avatar);
+    return remaining.length && Number.isFinite(round?.started) ? { remaining, started: round.started } : null;
+}
+
 export function createConversationQueueItem({
     avatar,
     attachmentContext = '',
-    branchId,
+    chatId,
     coalesced = false,
     createdAt = Date.now(),
     force = false,
@@ -32,12 +38,13 @@ export function createConversationQueueItem({
     messageRevisions = [],
     personaId,
     replyTarget = null,
+    round = null,
     text = '',
-    threadKey,
+    conversationKey,
 } = {}) {
     return {
         avatar: String(avatar || '').trim(),
-        branchId: String(branchId || '').trim(),
+        chatId: String(chatId || '').trim(),
         coalesced: Boolean(coalesced),
         groupId: String(groupId || '').trim(),
         messageIds: Array.from(new Set((Array.isArray(messageIds) ? messageIds : []).map(String).filter(Boolean))),
@@ -50,7 +57,8 @@ export function createConversationQueueItem({
             messageId: String(replyTarget.messageId),
             revision: String(replyTarget.revision),
         } : null,
-        threadKey: String(threadKey || '').trim(),
+        conversationKey: String(conversationKey || '').trim(),
+        round: normalizeQueueRound(round),
         text: String(text || ''),
         attachmentContext: String(attachmentContext || ''),
         createdAt: Number.isFinite(Number(createdAt)) ? Number(createdAt) : Date.now(),
@@ -114,7 +122,7 @@ export function getLastConversationQueueUserMessage(queueItem, messages) {
     return [...resolved].reverse().find(message => message?.role === 'user') || null;
 }
 
-export function resolveConversationQueueReplyTarget(queueItem, messages, threadAvatar) {
+export function resolveConversationQueueReplyTarget(queueItem, messages, anchorAvatar) {
     const triggeringUserMessage = getLastConversationQueueUserMessage(queueItem, messages);
     const targetMessageId = String(triggeringUserMessage?.extra?.conversation_reply_to?.messageId || '').trim();
     if (!targetMessageId) {
@@ -133,14 +141,14 @@ export function resolveConversationQueueReplyTarget(queueItem, messages, threadA
         return { explicit: true, valid: false, speakerAvatar: '', targetMessage: targetMessage || null };
     }
 
-    const speakerAvatar = targetMessage.role === 'partner'
-        ? String(targetMessage.extra?.partner_avatar || '').trim()
-        : String(threadAvatar || '').trim();
+    const speakerAvatar = targetMessage.role === 'member'
+        ? String(targetMessage.extra?.member_avatar || '').trim()
+        : String(anchorAvatar || '').trim();
     return { explicit: true, valid: Boolean(speakerAvatar), speakerAvatar, targetMessage };
 }
 
-export function resolveConversationQueueReplyTargetSpeaker(queueItem, messages, threadAvatar) {
-    const target = resolveConversationQueueReplyTarget(queueItem, messages, threadAvatar);
+export function resolveConversationQueueReplyTargetSpeaker(queueItem, messages, anchorAvatar) {
+    const target = resolveConversationQueueReplyTarget(queueItem, messages, anchorAvatar);
     return target.valid ? target.speakerAvatar : '';
 }
 
@@ -157,7 +165,7 @@ export function requeueConversationQueueItem(queue, queueItem) {
  * Two queue items belong to the same conversation thread when they target the same
  * persona + thread + branch and neither is a forced (non-coalescable) item.
  */
-export function isSameConversationQueueThread(left, right) {
+export function isSameQueueConversation(left, right) {
     return Boolean(
         left
         && right
@@ -166,8 +174,8 @@ export function isSameConversationQueueThread(left, right) {
         && String(left.personaId || '') === String(right.personaId || '')
         && left.avatar === right.avatar
         && String(left.groupId || '') === String(right.groupId || '')
-        && String(left.threadKey || '') === String(right.threadKey || '')
-        && String(left.branchId || '') === String(right.branchId || ''),
+        && String(left.conversationKey || '') === String(right.conversationKey || '')
+        && String(left.chatId || '') === String(right.chatId || ''),
     );
 }
 
@@ -201,9 +209,9 @@ export function mergeConversationQueueItems(items) {
  * starting with `firstItem`. Stops at the first item that belongs to a different
  * thread. Returns the collected items.
  */
-export function drainSameThreadItems(firstItem, queue) {
+export function drainSameConversationItems(firstItem, queue) {
     const items = [firstItem];
-    while (queue.length && isSameConversationQueueThread(firstItem, queue[0])) {
+    while (queue.length && isSameQueueConversation(firstItem, queue[0])) {
         items.push(queue.shift());
     }
     return items;
@@ -255,7 +263,7 @@ export async function coalesceConversationQueueItems(firstItem, queue, options =
         await new Promise(resolve => timeout(resolve, windowMs));
 
         const beforeLength = items.length;
-        while (queue.length && isSameConversationQueueThread(firstItem, queue[0])) {
+        while (queue.length && isSameQueueConversation(firstItem, queue[0])) {
             items.push(queue.shift());
         }
 

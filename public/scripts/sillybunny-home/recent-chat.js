@@ -3,7 +3,8 @@
  * @property {string} file
  * @property {string} avatar
  * @property {string} group
- * @property {string} branchId
+ * @property {string} conversationId
+ * @property {string} chatId
  */
 
 /**
@@ -11,8 +12,9 @@
  * @property {string} avatarId
  * @property {string} groupId
  * @property {string} fileName
- * @property {string} branchId
- * @property {string} branchName
+ * @property {string} conversationId
+ * @property {string} chatId
+ * @property {string} chatName
  * @property {boolean} isConversation
  * @property {object|undefined} recentChat The matching entry of the recent chats list, if the list has one.
  */
@@ -26,7 +28,8 @@ export function readRecentChatIdentity(row) {
         file: row.getAttribute('data-file') ?? '',
         avatar: row.getAttribute('data-avatar') ?? '',
         group: row.getAttribute('data-group') ?? '',
-        branchId: row.getAttribute('data-conversation-branch-id') ?? '',
+        conversationId: row.getAttribute('data-conversation-id') ?? '',
+        chatId: row.getAttribute('data-conversation-chat-id') ?? '',
     };
 }
 
@@ -43,7 +46,8 @@ export function findRecentChatRow(root, identity) {
         return candidate.file === identity.file
             && candidate.avatar === identity.avatar
             && candidate.group === identity.group
-            && candidate.branchId === identity.branchId;
+            && candidate.conversationId === identity.conversationId
+            && candidate.chatId === identity.chatId;
     }) ?? null;
 }
 
@@ -54,18 +58,19 @@ export function findRecentChatRow(root, identity) {
  * @returns {RecentChatTarget}
  */
 export function resolveRecentChatTarget(row, chats) {
-    const { file: fileName, avatar: avatarId, group: groupId, branchId } = readRecentChatIdentity(row);
+    const { file: fileName, avatar: avatarId, group: groupId, conversationId, chatId } = readRecentChatIdentity(row);
     const isConversation = row.getAttribute('data-recent-chat-type') === 'conversation';
     const recentChat = chats.find(chat => isConversation
-        ? chat.is_conversation && chat.avatar === avatarId && String(chat.group || '') === groupId && chat.conversation_branch_id === branchId
+        ? chat.is_conversation && chat.conversation_id === conversationId && chat.conversation_chat_id === chatId
         : chat.chat_name === fileName && ((chat.is_group && chat.group === groupId) || (!chat.is_group && chat.avatar === avatarId)));
 
     return {
         avatarId,
         groupId,
         fileName,
-        branchId,
-        branchName: row.getAttribute('data-conversation-branch-name') ?? '',
+        conversationId,
+        chatId,
+        chatName: row.getAttribute('data-conversation-chat-name') ?? '',
         isConversation,
         recentChat,
     };

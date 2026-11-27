@@ -72,6 +72,36 @@ describe('action menu optional sections', () => {
         expect(input.getAttribute('aria-labelledby')).toBe(label.id);
     });
 
+    test('a trigger that is not tracked keeps its own aria-expanded and gets no aria-controls, while a menu and a popover are open and after', () => {
+        const heading = trigger();
+        heading.setAttribute('aria-expanded', 'true');
+
+        openActionMenu({ trigger: heading, title: 'Folder', trackTrigger: false, sections: [{ items: [{ label: 'Rename', onSelect: () => {} }] }] });
+        expect(isActionMenuOpen(heading)).toBe(true);
+        expect(heading.getAttribute('aria-expanded')).toBe('true');
+        expect(heading.hasAttribute('aria-controls')).toBe(false);
+        closeActionMenu({ animate: false, restoreFocus: true });
+        expect(heading.getAttribute('aria-expanded')).toBe('true');
+
+        openPopover({ trigger: heading, content: document.createElement('div'), trackTrigger: false });
+        expect(heading.getAttribute('aria-expanded')).toBe('true');
+        expect(heading.hasAttribute('aria-controls')).toBe(false);
+        closeActionMenu({ animate: false });
+        expect(heading.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    test('a trigger that is tracked, the default, gets aria-expanded and aria-controls while the menu is open and aria-expanded false after', () => {
+        const button = trigger();
+
+        openActionMenu({ trigger: button, title: 'Menu', sections: [{ items: [{ label: 'Item', onSelect: () => {} }] }] });
+        expect(button.getAttribute('aria-expanded')).toBe('true');
+        expect(button.hasAttribute('aria-controls')).toBe(true);
+        closeActionMenu({ animate: false });
+
+        expect(button.getAttribute('aria-expanded')).toBe('false');
+        expect(button.hasAttribute('aria-controls')).toBe(false);
+    });
+
     test('the same trigger closes an open custom popover', () => {
         const button = trigger();
         const firstContent = document.createElement('div');

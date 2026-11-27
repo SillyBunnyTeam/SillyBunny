@@ -6,6 +6,7 @@ import _ from 'lodash';
 import bytes from 'bytes';
 
 import { SETTINGS_FILE } from '../constants.js';
+import { ensureMigrated } from '../conversation-migration.js'; // SillyBunny: conversation storage
 import { getSettingsVersion, isUnchangedSettingsSave, prepareSettingsSave } from '../settings-version.js';
 import {
     getConfigValue,
@@ -294,6 +295,13 @@ router.post('/save', function (request, response) {
 
 // Wintermute's code
 router.post('/get', (request, response) => {
+    // SillyBunny: the conversations are moved out of settings.json before it is read, so the page's first settings save is not refused for an old version.
+    try {
+        ensureMigrated(request.user);
+    } catch (error) {
+        console.error('The conversation migration could not be checked:', error);
+    }
+
     let settings;
     try {
         const pathToSettings = path.join(request.user.directories.root, SETTINGS_FILE);

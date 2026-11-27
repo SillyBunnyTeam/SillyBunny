@@ -12,7 +12,7 @@ function renderPanel(files, { hiddenFiles = [] } = {}) {
         <button type="button" class="sbHomeMenuButton">Menu</button>
         <button type="button" class="welcomeRecentTab">All</button>
         ${files.map(file => `
-            <article class="recentChat${hiddenFiles.includes(file) ? ' hidden' : ''}" data-file="${file}" data-avatar="a.png" data-group="" data-conversation-branch-id="">
+            <article class="recentChat${hiddenFiles.includes(file) ? ' hidden' : ''}" data-file="${file}" data-avatar="a.png" data-group="" data-conversation-chat-id="">
                 <button type="button" class="recentChatOpen">Open ${file}</button>
                 <button type="button" class="pinChat">Pin ${file}</button>
                 <button type="button" class="chatMenu">Menu ${file}</button>
@@ -37,7 +37,7 @@ describe('captureHomeFocus', () => {
 
         const target = captureHomeFocus(panel, control(panel, 'two', '.pinChat'));
 
-        expect(target).toMatchObject({ control: 'pin', identity: { file: 'two', avatar: 'a.png', group: '', branchId: '' }, index: 1 });
+        expect(target).toMatchObject({ control: 'pin', identity: { file: 'two', avatar: 'a.png', group: '', chatId: '' }, index: 1 });
     });
 
     test.each([

@@ -1,0 +1,347 @@
+import { describe, expect, jest, test } from '@jest/globals';
+
+const {
+    buildComposerMenuSections,
+    buildHeaderMenuSections,
+    buildMainMenuSections,
+    buildFolderMenuSections,
+    buildMoveToFolderSections,
+    buildNewMenuSections,
+    buildRowMenuSections,
+} = await import('../public/scripts/sillybunny-conversation/conversation-menus.js');
+
+const entry = (overrides = {}) => ({ id: 'conv_1', name: 'Seraphina', favorite: false, muted: false, unread: 0, lastMessageRole: 'character', active: false, ...overrides });
+
+const makeActions = () => ({
+    markRead: jest.fn(),
+    markUnread: jest.fn(),
+    setFavorite: jest.fn(),
+    setMuted: jest.fn(),
+    moveToFolder: jest.fn(),
+    openDetails: jest.fn(),
+    remove: jest.fn(),
+});
+
+const labels = sections => sections.map(section => section.items.map(item => item.label));
+const find = (sections, label) => sections.flatMap(section => section.items).find(item => item.label === label);
+
+describe('the menu of a row', () => {
+    test('offers Mark as Unread, Add to Favorites, Move to Folder and Mute for a read row, then Details, then Delete in a section of its own', () => {
+        const sections = buildRowMenuSections(entry(), makeActions());
+
+        expect(labels(sections)).toEqual([
+            ['Mark as Unread'],
+            ['Add to Favorites', 'Move to Folder…', 'Mute'],
+            ['Details'],
+            ['Delete'],
+        ]);
+    });
+
+    test('swaps each verb for its opposite when the state is the other one', () => {
+        const sections = buildRowMenuSections(entry({ unread: 4, favorite: true, muted: true }), makeActions());
+
+        expect(labels(sections)).toEqual([
+            ['Mark as Read'],
+            ['Remove From Favorites', 'Move to Folder…', 'Unmute'],
+            ['Details'],
+            ['Delete'],
+        ]);
+    });
+
+    test('leaves out the read item, and its section, when the row has no message to mark, as the open conversation has none', () => {
+        const sections = buildRowMenuSections(entry({ active: true }), makeActions());
+
+        expect(labels(sections)).toEqual([['Add to Favorites', 'Move to Folder…', 'Mute'], ['Details'], ['Delete']]);
+    });
+
+    test('Delete is a danger item, every item has an icon, and no item is disabled', () => {
+        const sections = buildRowMenuSections(entry({ unread: 1 }), makeActions());
+        const items = sections.flatMap(section => section.items);
+
+        expect(find(sections, 'Delete').danger).toBe(true);
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+        expect(items.some(item => item.disabled)).toBe(false);
+    });
+
+    test('each item runs its action with the row\'s entry', () => {
+        const actions = makeActions();
+        const row = entry({ unread: 2 });
+        const sections = buildRowMenuSections(row, actions);
+
+        find(sections, 'Mark as Read').onSelect();
+        find(sections, 'Add to Favorites').onSelect();
+        find(sections, 'Mute').onSelect();
+        find(sections, 'Move to Folder…').onSelect();
+        find(sections, 'Details').onSelect();
+        find(sections, 'Delete').onSelect();
+
+        expect(actions.markRead).toHaveBeenCalledWith(row);
+        expect(actions.moveToFolder).toHaveBeenCalledWith(row);
+        expect(actions.setFavorite).toHaveBeenCalledWith(row, true);
+        expect(actions.setMuted).toHaveBeenCalledWith(row, true);
+        expect(actions.openDetails).toHaveBeenCalledWith(row);
+        expect(actions.remove).toHaveBeenCalledWith(row);
+    });
+
+    test('the opposite verbs run the opposite change', () => {
+        const actions = makeActions();
+        const row = entry({ favorite: true, muted: true });
+        const sections = buildRowMenuSections(row, actions);
+
+        find(sections, 'Mark as Unread').onSelect();
+        find(sections, 'Remove From Favorites').onSelect();
+        find(sections, 'Unmute').onSelect();
+
+        expect(actions.markUnread).toHaveBeenCalledWith(row);
+        expect(actions.setFavorite).toHaveBeenCalledWith(row, false);
+        expect(actions.setMuted).toHaveBeenCalledWith(row, false);
+    });
+});
+
+describe('the menu that moves a row to a folder', () => {
+    const folders = [{ id: 'f1', name: 'Work' }, { id: 'f2', name: 'Friends' }];
+    const makeMove = () => ({ setFolder: jest.fn(), newFolder: jest.fn() });
+
+    test('offers No Folder and each folder as one radio choice, then New Folder in a group of its own', () => {
+        const sections = buildMoveToFolderSections(entry(), folders, makeMove());
+
+        expect(labels(sections)).toEqual([['No Folder', 'Work', 'Friends'], ['New Folder…']]);
+    });
+
+    test('checks the folder that holds the row, or No Folder for a row in none', () => {
+        const checked = sections => sections[0].items.filter(item => item.checked).map(item => item.label);
+
+        expect(checked(buildMoveToFolderSections(entry(), folders, makeMove()))).toEqual(['No Folder']);
+        expect(checked(buildMoveToFolderSections(entry({ folderId: 'f2' }), folders, makeMove()))).toEqual(['Friends']);
+        expect(buildMoveToFolderSections(entry({ folderId: 'f2' }), folders, makeMove())[0].items.every(item => item.kind === 'radio')).toBe(true);
+    });
+
+    test('checks the stored folder of a favourite, which is where it returns', () => {
+        const sections = buildMoveToFolderSections(entry({ favorite: true, folderId: 'f1' }), folders, makeMove());
+
+        expect(sections[0].items.filter(item => item.checked).map(item => item.label)).toEqual(['Work']);
+    });
+
+    test('runs the choice with the folder id, an empty one for No Folder, and New Folder with no argument', () => {
+        const actions = makeMove();
+        const sections = buildMoveToFolderSections(entry({ folderId: 'f1' }), folders, actions);
+
+        find(sections, 'Friends').onSelect();
+        find(sections, 'No Folder').onSelect();
+        find(sections, 'New Folder…').onSelect();
+
+        expect(actions.setFolder.mock.calls).toEqual([['f2'], ['']]);
+        expect(actions.newFolder).toHaveBeenCalledTimes(1);
+    });
+
+    test('still offers New Folder when the persona has no folder', () => {
+        expect(labels(buildMoveToFolderSections(entry(), [], makeMove()))).toEqual([['No Folder'], ['New Folder…']]);
+    });
+});
+
+describe('the New menu', () => {
+    test('offers New Conversation and New Group, then New Folder in a group of its own', () => {
+        const actions = { newConversation: jest.fn(), newGroup: jest.fn(), newFolder: jest.fn() };
+        const sections = buildNewMenuSections(actions);
+
+        expect(labels(sections)).toEqual([['New Conversation', 'New Group'], ['New Folder…']]);
+        find(sections, 'New Conversation').onSelect();
+        find(sections, 'New Group').onSelect();
+        find(sections, 'New Folder…').onSelect();
+        expect(actions.newConversation).toHaveBeenCalledTimes(1);
+        expect(actions.newGroup).toHaveBeenCalledTimes(1);
+        expect(actions.newFolder).toHaveBeenCalledTimes(1);
+    });
+
+    test('gives every item an icon and disables none', () => {
+        const items = buildNewMenuSections({ newConversation: jest.fn(), newGroup: jest.fn(), newFolder: jest.fn() }).flatMap(section => section.items);
+
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+        expect(items.some(item => item.disabled)).toBe(false);
+    });
+});
+
+describe('the menu of a folder heading', () => {
+    const folder = { id: 'f1', name: 'Work' };
+    const makeFolderActions = () => ({ rename: jest.fn(), colour: jest.fn(), remove: jest.fn() });
+
+    test('offers Rename and Colour, then Delete in a section of its own', () => {
+        expect(labels(buildFolderMenuSections(folder, makeFolderActions()))).toEqual([['Rename', 'Colour'], ['Delete']]);
+    });
+
+    test('each item runs its action with the folder, and Delete is a danger item', () => {
+        const actions = makeFolderActions();
+        const sections = buildFolderMenuSections(folder, actions);
+
+        find(sections, 'Rename').onSelect();
+        find(sections, 'Colour').onSelect();
+        find(sections, 'Delete').onSelect();
+
+        expect(actions.rename).toHaveBeenCalledWith(folder);
+        expect(actions.colour).toHaveBeenCalledWith(folder);
+        expect(actions.remove).toHaveBeenCalledWith(folder);
+        expect(find(sections, 'Delete').danger).toBe(true);
+    });
+
+    test('has no Move Up or Move Down, because the folders are ordered in the Folder Manager, and no item is disabled', () => {
+        const items = buildFolderMenuSections(folder, makeFolderActions()).flatMap(section => section.items);
+
+        expect(items.map(item => item.label).some(label => /^Move/.test(label))).toBe(false);
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+        expect(items.some(item => item.disabled)).toBe(false);
+    });
+});
+
+describe('the Main Menu', () => {
+    test('holds Mark All as Read and Manage Folders first, then Preferences and Help as the last group, and no Close or Quit', () => {
+        const actions = { markAllRead: jest.fn(), manageFolders: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() };
+        const sections = buildMainMenuSections(actions);
+
+        expect(labels(sections)).toEqual([['Mark All as Read', 'Manage Folders'], ['Preferences', 'Help']]);
+        find(sections, 'Mark All as Read').onSelect();
+        find(sections, 'Manage Folders').onSelect();
+        expect(actions.manageFolders).toHaveBeenCalledTimes(1);
+        find(sections, 'Preferences').onSelect();
+        find(sections, 'Help').onSelect();
+        expect(actions.markAllRead).toHaveBeenCalledTimes(1);
+        expect(actions.openPreferences).toHaveBeenCalledTimes(1);
+        expect(actions.openHelp).toHaveBeenCalledTimes(1);
+    });
+
+    test('gives every item an icon and disables none', () => {
+        const items = buildMainMenuSections({ markAllRead: jest.fn(), manageFolders: jest.fn(), openPreferences: jest.fn(), openHelp: jest.fn() }).flatMap(section => section.items);
+
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+        expect(items.some(item => item.disabled)).toBe(false);
+    });
+});
+
+const makeHeaderActions = () => ({
+    openDetails: jest.fn(),
+    openPinned: jest.fn(),
+    newChat: jest.fn(),
+    addMember: jest.fn(),
+    setMuted: jest.fn(),
+    selectMessages: jest.fn(),
+    deleteChat: jest.fn(),
+    deleteConversation: jest.fn(),
+});
+const headerState = (overrides = {}) => ({ muted: false, hasMessages: true, hasChat: true, ...overrides });
+
+describe('the menu of the conversation header', () => {
+    test('offers Details, New Chat and Add Member, then Mute and Select Messages, then the two deletes in a section of their own', () => {
+        const sections = buildHeaderMenuSections(headerState(), makeHeaderActions());
+
+        expect(labels(sections)).toEqual([
+            ['Details', 'New Chat', 'Add Member'],
+            ['Mute', 'Select Messages'],
+            ['Delete Chat', 'Delete Conversation'],
+        ]);
+    });
+
+    test('offers Pinned Messages after Details when the open chat has a pinned message, and leaves it out when it has none', () => {
+        const withPin = buildHeaderMenuSections(headerState({ hasPinned: true }), makeHeaderActions());
+
+        expect(labels(withPin)[0]).toEqual(['Details', 'Pinned Messages', 'New Chat', 'Add Member']);
+        expect(labels(buildHeaderMenuSections(headerState({ hasPinned: false }), makeHeaderActions()))[0]).toEqual(['Details', 'New Chat', 'Add Member']);
+        expect(labels(buildHeaderMenuSections(headerState(), makeHeaderActions()))[0]).toEqual(['Details', 'New Chat', 'Add Member']);
+    });
+
+    test('runs openPinned from Pinned Messages, with an icon, and does not disable it', () => {
+        const actions = makeHeaderActions();
+        const item = buildHeaderMenuSections(headerState({ hasPinned: true }), actions).flatMap(section => section.items).find(entry => entry.label === 'Pinned Messages');
+
+        item.onSelect();
+
+        expect(actions.openPinned).toHaveBeenCalledTimes(1);
+        expect(item.icon).toMatch(/^fa-solid fa-thumbtack/);
+        expect(item.disabled).toBeFalsy();
+    });
+
+    test('says Unmute for a muted conversation', () => {
+        const sections = buildHeaderMenuSections(headerState({ muted: true }), makeHeaderActions());
+
+        expect(labels(sections)[1]).toEqual(['Unmute', 'Select Messages']);
+    });
+
+    test('leaves out Select Messages when there is no message, and Delete Chat when there is no chat, instead of disabling them', () => {
+        const sections = buildHeaderMenuSections(headerState({ hasMessages: false, hasChat: false }), makeHeaderActions());
+        const items = sections.flatMap(section => section.items);
+
+        expect(labels(sections)).toEqual([['Details', 'New Chat', 'Add Member'], ['Mute'], ['Delete Conversation']]);
+        expect(items.some(item => item.disabled)).toBe(false);
+    });
+
+    test('has no gear, no Branches and no Edit Schedule, and no item that the Main Menu has', () => {
+        const all = buildHeaderMenuSections(headerState(), makeHeaderActions()).flatMap(section => section.items.map(item => item.label));
+
+        expect(all).not.toContain('Conversation Settings');
+        expect(all.some(label => /branch/i.test(label))).toBe(false);
+        expect(all).not.toContain('Edit Schedule…');
+        expect(all).not.toContain('Mark All as Read');
+    });
+
+    test('both deletes are danger items, every item has an icon', () => {
+        const sections = buildHeaderMenuSections(headerState(), makeHeaderActions());
+        const items = sections.flatMap(section => section.items);
+
+        expect(find(sections, 'Delete Chat').danger).toBe(true);
+        expect(find(sections, 'Delete Conversation').danger).toBe(true);
+        expect(items.filter(item => item.danger)).toHaveLength(2);
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+    });
+
+    test('each item runs its action; Mute and Unmute pass the state that they set', () => {
+        const actions = makeHeaderActions();
+        const sections = buildHeaderMenuSections(headerState(), actions);
+
+        for (const label of ['Details', 'New Chat', 'Add Member', 'Mute', 'Select Messages', 'Delete Chat', 'Delete Conversation']) {
+            find(sections, label).onSelect();
+        }
+        const unmute = buildHeaderMenuSections(headerState({ muted: true }), actions);
+        find(unmute, 'Unmute').onSelect();
+
+        expect(actions.openDetails).toHaveBeenCalledTimes(1);
+        expect(actions.newChat).toHaveBeenCalledTimes(1);
+        expect(actions.addMember).toHaveBeenCalledTimes(1);
+        expect(actions.setMuted.mock.calls).toEqual([[true], [false]]);
+        expect(actions.selectMessages).toHaveBeenCalledTimes(1);
+        expect(actions.deleteChat).toHaveBeenCalledTimes(1);
+        expect(actions.deleteConversation).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('the "+" menu of the composer', () => {
+    test('holds Selfie, Remind, Summarize and Force Reply, and not Attach, which has a button of its own', () => {
+        const actions = { selfie: jest.fn(), remind: jest.fn(), summarize: jest.fn(), forceReply: jest.fn() };
+        const sections = buildComposerMenuSections({ enabled: true }, actions);
+
+        expect(labels(sections)).toEqual([['Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']]);
+        for (const item of sections[0].items) {
+            item.onSelect();
+        }
+        expect(actions.selfie).toHaveBeenCalledTimes(1);
+        expect(actions.remind).toHaveBeenCalledTimes(1);
+        expect(actions.summarize).toHaveBeenCalledTimes(1);
+        expect(actions.forceReply).toHaveBeenCalledTimes(1);
+    });
+
+    test('adds Insert Emoji, first, only where the composer has no Emoji button of its own', () => {
+        const actions = { selfie: jest.fn(), remind: jest.fn(), summarize: jest.fn(), forceReply: jest.fn(), insertEmoji: jest.fn() };
+
+        expect(labels(buildComposerMenuSections({ enabled: true, showEmoji: false }, actions))).toEqual([['Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']]);
+        const sections = buildComposerMenuSections({ enabled: true, showEmoji: true }, actions);
+        expect(labels(sections)).toEqual([['Insert Emoji', 'Send a Selfie', 'Remind Me', 'Summarize Memory', 'Force a Reply']]);
+        sections[0].items[0].onSelect();
+        expect(actions.insertEmoji).toHaveBeenCalledTimes(1);
+        expect(buildComposerMenuSections({ enabled: false, showEmoji: true }, actions)[0].items[0]).toMatchObject({ label: 'Insert Emoji', disabled: true });
+    });
+
+    test('disables every item while no conversation is open, and gives each an icon', () => {
+        const actions = { selfie: jest.fn(), remind: jest.fn(), summarize: jest.fn(), forceReply: jest.fn() };
+        const items = buildComposerMenuSections({ enabled: false }, actions).flatMap(section => section.items);
+
+        expect(items.every(item => item.disabled === true)).toBe(true);
+        expect(items.every(item => typeof item.icon === 'string' && item.icon.startsWith('fa-'))).toBe(true);
+    });
+});

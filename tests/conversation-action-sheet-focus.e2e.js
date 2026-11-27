@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { OPEN_ACTION_SHEET } from './helpers/action-sheet.js';
+import { resetConversations, seedConversation, uniquePersona } from './helpers/conversation-seed.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { waitForAppReady } from './helpers/app-ready.js';
@@ -13,6 +14,7 @@ async function openConversation(page, baseURL) {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
     let settingsVersion = Date.now();
+    const persona = uniquePersona();
     const readEndpoints = new Set([
         '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
         '/api/avatars/get', '/api/stats/get', '/api/secrets/read', '/api/users/me',
@@ -32,9 +34,10 @@ async function openConversation(page, baseURL) {
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             applyWelcomeSettings(settings);
+            // This page sees only its own conversations, because the server's user is shared with the specs that run beside this one.
+            settings.user_avatar = persona;
             settings.power_user.auto_connect = false;
             settings.power_user.reduced_motion = false;
-            settings.extension_settings.sillybunny_conversation = {};
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
             return route.fulfill({ json: data });
@@ -42,7 +45,8 @@ async function openConversation(page, baseURL) {
         if (url.pathname === '/api/settings/save') {
             return route.fulfill({ json: { version: ++settingsVersion } });
         }
-        if (readEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) {
+        // The conversations are on the server of the test, which the spec seeds through the routes.
+        if (readEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/') || url.pathname.startsWith('/api/sillybunny-conversation/')) {
             return route.continue();
         }
         if (url.pathname.startsWith('/api/backends/')) {
@@ -60,20 +64,26 @@ async function openConversation(page, baseURL) {
         const { prefersReducedMotion } = await import('/scripts/sillybunny-motion.js');
         return prefersReducedMotion();
     })).toBe(true);
-    await page.evaluate(async ({ text }) => {
+    const avatar = await page.evaluate(() => {
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+        const character = window.SillyTavern.getContext().characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
+        if (!character?.avatar) throw new Error('No bundled Conversation character found.');
+        return character.avatar;
+    });
+    await resetConversations(page);
+    await seedConversation(page, { avatar });
+    await page.evaluate(async ({ text }) => {
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
         const { stopConversationAutoWorker } = await import('/scripts/sillybunny-conversation/auto-engine.js');
-        const { appendConversationThreadMessage } = await import('/scripts/sillybunny-conversation/thread-store.js');
+        const { appendConversationChatMessage, ensureConversationChatLoaded } = await import('/scripts/sillybunny-conversation/conversation-store.js');
         const { renderConversationTimeline } = await import('/scripts/sillybunny-conversation/timeline-render.js');
-        const { getSettings, saveSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
         const context = window.SillyTavern.getContext();
         const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
         if (!character?.avatar) throw new Error('No bundled Conversation character found.');
-        openConversationWorkspaceForAvatar(character.avatar, { showToast: false });
+        await openConversationWorkspaceForAvatar(character.avatar, { showToast: false });
+        await ensureConversationChatLoaded(character.avatar);
         stopConversationAutoWorker();
-        saveSettings(character.avatar, { ...getSettings(character.avatar), editable_messages: true });
-        appendConversationThreadMessage(character.avatar, { role: 'assistant', name: 'Seraphina', mes: text, extra: {} });
+        appendConversationChatMessage(character.avatar, { role: 'assistant', name: 'Seraphina', mes: text, extra: {} });
         renderConversationTimeline();
     }, { text: MESSAGE_TEXT });
     const message = page.locator('.sb-conversation-message').filter({ hasText: MESSAGE_TEXT });
@@ -138,21 +148,23 @@ test('mobile action sheet reaction chip returns focus to the message trigger bef
     const sheet = await openSheet(page, trigger);
     // The reaction re-renders the message row, so the order of events is recorded on the
     // original trigger node instead of reading focus back after the row has been replaced.
-    await trigger.evaluate(node => {
+    // The data module announces the reaction as it is written, which is when focus must be back on the trigger.
+    await trigger.evaluate(async (node) => {
         window.__sbFocusLog = [];
         node.addEventListener('focusin', () => window.__sbFocusLog.push('focus:trigger'));
-        document.addEventListener('click', event => {
-            if (event.target instanceof Element && event.target.closest('.sb-conversation-message-actions .sb-conversation-reaction-button')) {
-                window.__sbFocusLog.push(document.activeElement === node ? 'click:reaction:trigger-focused' : 'click:reaction:trigger-blurred');
+        const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
+        conversationData.subscribe((event) => {
+            if (event.type === 'chat' && event.local) {
+                window.__sbFocusLog.push(document.activeElement === node ? 'reaction:trigger-focused' : 'reaction:trigger-blurred');
             }
-        }, true);
+        });
     });
     await page.screenshot({ path: testInfo.outputPath('chip-open.png') });
     await getMenu(page).getByRole('menuitemcheckbox').first().click();
     await expect(sheet).toBeHidden();
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await expect.poll(() => page.evaluate(() => window.__sbFocusLog)).toEqual(['focus:trigger', 'click:reaction:trigger-focused']);
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => window.__sbFocusLog)).toEqual(['focus:trigger', 'reaction:trigger-focused']);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
     await page.screenshot({ path: testInfo.outputPath('chip-closed.png') });
 });
 
@@ -165,7 +177,7 @@ test('mobile action sheet reaction chip leaves the re-rendered message trigger f
     await getMenu(page).getByRole('menuitemcheckbox').first().click();
     await expect(sheet).toBeHidden();
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
     await expect(trigger).toBeFocused();
 });
 
@@ -184,7 +196,7 @@ test.describe('with a mouse', () => {
         await menu.getByRole('menuitemcheckbox').first().click();
         await expect(menu).toBeHidden();
         await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-        await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+        await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
         await expect(trigger).toBeFocused();
     });
 });
@@ -205,7 +217,7 @@ test('a delayed reaction render preserves focus moved to the composer', async ({
     await expect(sheet).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.__sbPendingTimelineRender)).toBe(true);
     await expect(trigger).toBeFocused();
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(0);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(0);
     const composer = page.locator('#sb_conversation_input');
     await composer.focus();
     await page.evaluate(async () => {
@@ -214,6 +226,6 @@ test('a delayed reaction render preserves focus moved to the composer', async ({
         registerConversationRenderer('timeline', renderConversationTimeline);
         renderConversationTimeline();
     });
-    await expect(message.locator('.sb-conversation-reaction-button[aria-pressed="true"]')).toHaveCount(1);
+    await expect(message.locator('.sb-conversation-message-reaction-chip[aria-pressed="true"]')).toHaveCount(1);
     await expect(composer).toBeFocused();
 });

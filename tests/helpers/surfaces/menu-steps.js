@@ -6,6 +6,7 @@
  * is set at once, so `:not([hidden])` never matches a sheet that is on its way out.
  */
 
+import { alternatingMessages, seedConversation } from '../conversation-seed.js';
 import { FIXTURES } from './fixture-data.js';
 import { openPersonaEditorEntry } from './panel-steps.js';
 import { isBottomBarChipRow, selectBackend, settle } from './steps.js';
@@ -176,7 +177,7 @@ export async function openAuditConversation(page) {
     if (await page.locator('#sheld[data-sb-conversation-mode="on"] #sb_conversation_timeline .sb-conversation-message').count()) {
         return;
     }
-    await page.evaluate(async ({ avatar, messages }) => {
+    await page.evaluate(async (avatar) => {
         const context = window.SillyTavern.getContext();
         if (!context.characters.length) {
             await context.getCharacters();
@@ -187,19 +188,50 @@ export async function openAuditConversation(page) {
         }
         await context.selectCharacterById(index, { switchMenu: false });
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
-        const day = Date.UTC(2026, 0, 1, 12, 0, 0);
-        saveConversationThread(avatar, messages.map((text, number) => ({
-            id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? 'Audit Character' : 'Audit User',
-            mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
-        })));
+    }, FIXTURES.character.avatar);
+    await seedConversation(page, { avatar: FIXTURES.character.avatar, chats: [{ messages: alternatingMessages(FIXTURES.chat.messages) }] });
+    await page.evaluate(async (avatar) => {
         const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
+        if (!await openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
             throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
         }
-    }, { avatar: FIXTURES.character.avatar, messages: FIXTURES.chat.messages });
+    }, FIXTURES.character.avatar);
     await page.locator('#sheld[data-sb-conversation-mode="on"]').waitFor({ state: 'visible' });
     await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
+    await settle(page);
+}
+
+/** The folders that `showAuditConversationFolders()` shows, in the order of the list: the first is open and holds the audit conversation, the second is closed and empty. */
+export const AUDIT_FOLDERS = Object.freeze([
+    Object.freeze({ id: 'fld_1764000000000_audit00work1', name: 'Audit Work', color: 'rgb(200, 90, 40)', expanded: true }),
+    Object.freeze({ id: 'fld_1764000000001_audit00frnd2', name: 'Audit Friends', color: '', expanded: false }),
+]);
+
+/**
+ * Gives the page of the audit persona two folders and files the audit conversation in the first. The folders are the
+ * page's own: the answer of `/folders/get` is replaced for this page, so the account that every surface of a run shares
+ * keeps none, and the page reads the file again at once. Run it after `openAuditConversation()`. A surface that goes on to
+ * change a folder would send the change to the real route, which does not know these folders.
+ */
+export async function showAuditConversationFolders(page) {
+    const { personaId, conversationId } = await page.evaluate(async (avatar) => {
+        const { getRequestHeaders } = await import('/script.js');
+        const { user_avatar: personaId } = await import('/scripts/personas.js');
+        const response = await fetch('/api/sillybunny-conversation/list', { method: 'POST', headers: getRequestHeaders(), body: '{}' });
+        const { conversations } = await response.json();
+        const conversation = conversations.find(entry => entry.personaId === personaId && JSON.stringify(entry.characters) === JSON.stringify([avatar]));
+        if (!conversation) {
+            throw new Error('The audit conversation is not on the server.');
+        }
+        return { personaId, conversationId: conversation.id };
+    }, FIXTURES.character.avatar);
+    const file = { version: 1, personas: { [personaId]: { folders: AUDIT_FOLDERS, members: { [conversationId]: AUDIT_FOLDERS[0].id } } } };
+    await page.route('**/api/sillybunny-conversation/folders/get', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(file) }));
+    await page.evaluate(async () => {
+        const { conversationFolders } = await import('/scripts/sillybunny-conversation/conversation-folders-browser.js');
+        await conversationFolders.refresh();
+    });
+    await page.locator(`#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[0].id}"]`).waitFor({ state: 'attached' });
     await settle(page);
 }
 
@@ -207,17 +239,17 @@ export async function openAuditConversation(page) {
  * Shows one page of the Conversation workspace. A desktop window shows the rail and the chat together; the pages layout
  * of a phone shows one at a time.
  * @param {import('@playwright/test').Page} page
- * @param {'chat' | 'pals'} wanted `pals` is the rail of conversations, with the status and new-conversation buttons.
+ * @param {'chat' | 'list'} wanted `list` is the rail of conversations, with the status and new-conversation buttons.
  */
 export async function showConversationPage(page, wanted) {
     const sheld = page.locator('#sheld');
     if (await sheld.getAttribute('data-sb-conversation-layout') !== 'pages' || await sheld.getAttribute('data-sb-conversation-page') === wanted) {
         return;
     }
-    if (wanted === 'pals') {
-        await page.locator('#sb_conversation_pals_toggle').click();
+    if (wanted === 'list') {
+        await page.locator('#sb_conversation_list_toggle').click();
     } else {
-        await page.locator('.sb-conversation-pal').first().click();
+        await page.locator('.sb-conversation-list-item').first().click();
     }
     await page.waitForFunction(value => document.getElementById('sheld')?.getAttribute('data-sb-conversation-page') === value, wanted);
     await settle(page);

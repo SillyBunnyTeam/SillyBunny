@@ -50,6 +50,9 @@ export const USER_DIRECTORY_TEMPLATE = Object.freeze({
     reasoning: 'reasoning',
     inChatAgents: 'InChatAgents',
     inChatAgentGroups: 'InChatAgentGroups',
+    // SillyBunny: conversation mode keeps one folder per conversation here. Being a template key puts it in the startup
+    // folder creation, the account backup ZIP, the import whitelist and the account purge.
+    conversations: 'conversations',
 });
 
 /**

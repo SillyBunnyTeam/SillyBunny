@@ -1,0 +1,131 @@
+/**
+ * The event stream of the mode on this page (`reply-events.js`): the data module, the finalizer, the send queue and the
+ * notices. The stream is one connection per visible page for every conversation of the user.
+ */
+
+import { event_types, eventSource } from '../events.js';
+import { getActiveGenerationIds, onActiveGenerationsChange, onServerOwnedReplyMissing, pageId } from '../resumable-generation.js';
+import { queueForcedConversationReply } from './send-queue.js';
+import { SAFE_TOAST_OPTIONS } from './constants.js';
+import { conversationData } from './conversation-data-browser.js';
+import { getCharacterForAvatar } from './media.js';
+import { isPendingServerReply } from './pending-reply.js';
+import { acknowledgeGenerations, finalizePendingReplies, wasReplyLanded } from './reply-finalizer-browser.js';
+import { createReplyEvents } from './reply-events.js';
+import { hasAnyConversationModeUsage } from './settings-store.js';
+
+/**
+ * Queues the forced reply that a lost reply is asked for again with.
+ * @param {{ conversationId: string, chatId: string }} address
+ * @param {{ remaining: string[], started: number }|null} round For a group, the lost member and the members that were to follow it.
+ */
+export function regenerateLostReply(address, round) {
+    const view = conversationData.get(address.conversationId);
+    if (!view) {
+        return;
+    }
+    const anchor = view.characters.find(avatar => getCharacterForAvatar(avatar)) ?? view.characters[0] ?? '';
+    queueForcedConversationReply(anchor, { chatId: address.chatId, groupId: view.kind === 'group' ? view.id : '', personaId: view.personaId, round });
+}
+
+/**
+ * @param {{ item: Record<string, any>, regenerate: (() => void)|null }} notice
+ */
+export function showLostReplyNotice({ regenerate }) {
+    const content = document.createElement('div');
+    const text = document.createElement('div');
+    // TODO(copy): the body of this notice is a placeholder.
+    text.textContent = 'TODO(copy)';
+    text.dataset.sbCopyPlaceholder = 'true';
+    content.append(text);
+    /** @type {any} */
+    let toast = null;
+    if (regenerate) {
+        const link = document.createElement('a');
+        link.setAttribute('href', 'javascript:void(0)');
+        link.textContent = 'Regenerate';
+        link.addEventListener('click', (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (toast) {
+                // toastr keeps a toast that holds the focused element, and the link that was just clicked has the focus.
+                globalThis.toastr.clear(toast, { force: true });
+            }
+            regenerate();
+        });
+        content.append(link);
+    }
+    toast = globalThis.toastr?.warning?.(content, 'Reply lost', { escapeHtml: false, timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: !regenerate });
+}
+
+export function showFailedReplyNotice() {
+    // TODO(copy): the body of this alert is a placeholder.
+    globalThis.toastr?.error?.('TODO(copy)', 'Reply failed', { ...SAFE_TOAST_OPTIONS });
+}
+
+const events = createReplyEvents({
+    data: conversationData,
+    pageId,
+    getActiveGenerationIds,
+    isVisible: () => document.visibilityState !== 'hidden',
+    hasUsage: hasAnyConversationModeUsage,
+    page: {
+        async reloadChat(address) {
+            // A reply that is in the chat already needs landing and no read. A read made while this page lands it can
+            // come back with the message that the landing replaced, and the server's list reports a reply as soon as it
+            // is written, which is while a page that has the chat open is landing it.
+            if (!conversationData.chat(address)?.messages.some(isPendingServerReply)) {
+                await conversationData.reloadChat(address);
+            }
+            await finalizePendingReplies(address);
+        },
+        wasLanded: wasReplyLanded,
+        acknowledge: acknowledgeGenerations,
+        showLost: showLostReplyNotice,
+        showFailed: showFailedReplyNotice,
+        regenerate: regenerateLostReply,
+    },
+});
+
+let installed = false;
+
+/**
+ * When a stream breaks and the server no longer holds the reply (for example, a frozen tab wakes past retention), the
+ * server may have written the reply to disk already: reload and land a loaded chat, or refresh the list for an unloaded one.
+ * @param {import('../generation-commit-plan.js').GenerationCommitPlan} plan
+ */
+function onMissingServerReply(plan) {
+    const conversationId = plan?.chat?.conversation;
+    const chatId = plan?.file;
+    if (typeof conversationId !== 'string' || !conversationId || typeof chatId !== 'string' || !chatId) {
+        return;
+    }
+    const address = { conversationId, chatId };
+    if (conversationData.chat(address)) {
+        conversationData.reloadChat(address)
+            .then(() => finalizePendingReplies(address))
+            .catch(error => console.warn('Conversation Mode: could not reload chat after a missing server reply', error));
+        return;
+    }
+    Promise.resolve(conversationData.refresh())
+        .catch(error => console.warn('Conversation Mode: could not refresh conversations after a missing server reply', error));
+}
+
+/** Follows the replies of the conversations over the event stream, for as long as the page is visible or reads a reply. Runs once. */
+export function installReplyEvents() {
+    if (installed) {
+        events.sync();
+        return;
+    }
+    installed = true;
+    document.addEventListener('visibilitychange', events.sync);
+    onActiveGenerationsChange(events.sync);
+    onServerOwnedReplyMissing(onMissingServerReply);
+    eventSource.on(event_types.PERSONA_CHANGED, events.sync);
+    conversationData.subscribe((event) => {
+        if (event.type === 'list' || event.type === 'status') {
+            events.sync();
+        }
+    });
+    events.sync();
+}

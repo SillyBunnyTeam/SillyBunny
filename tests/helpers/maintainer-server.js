@@ -1,6 +1,7 @@
 import { gunzipSync } from 'node:zlib';
 import { appendFileSync } from 'node:fs';
 import { test } from '@playwright/test';
+import { isolateConversations } from './conversation-isolation.js';
 import { fetchBodyOrSkip } from './route-fetch.js';
 import { keepWelcomeClosed } from './welcome-dialog.js';
 
@@ -39,8 +40,12 @@ const protectedPages = new WeakSet();
  */
 export const isMaintainerServerProtected = page => protectedPages.has(page);
 
-/** Installs browser-QA safety defaults; a test may override a route with its in-memory fixture. */
-export async function protectMaintainerServer(page) {
+/**
+ * Installs browser-QA safety defaults; a test may override a route with its in-memory fixture.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ conversationPrefix?: string }} [options] `conversationPrefix` is shared by the pages of one spec that must see each other's conversations.
+ */
+export async function protectMaintainerServer(page, { conversationPrefix } = {}) {
     const titlePath = test.info().titlePath;
     // Context fallback also protects popups and requests made while a page's routes are being removed.
     await page.context().route('**/api/settings/save', route => {
@@ -59,6 +64,8 @@ export async function protectMaintainerServer(page) {
         const payload = readPayload(route.request());
         return route.fulfill({ json: { result: 'ok', version: payload._version + 1 } });
     });
+    // Conversations are kept on the server, which other specs share, so this page gets conversations of its own.
+    await isolateConversations(page, conversationPrefix);
     await page.route(/\/api\/chats\/(?:group\/)?get$/, async route => {
         const request = route.request();
         const payload = readPayload(request);

@@ -39,9 +39,19 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
 }));
 
+// The default adapters read the library through script.js and the personas through power-user.js.
+const libraryCharacters = [{ name: 'Alice', avatar: 'alice.png' }, { name: 'Nobody', avatar: 'none' }];
+await jest.unstable_mockModule('../../public/script.js', () => ({
+    characters: libraryCharacters,
+    default_avatar: '/img/ai4.png',
+    getMobileThumbnailUrl: (type, file) => `/small/${type}/${file}`,
+    getThumbnailUrlForViewport: (type, file) => `/viewport/${type}/${file}`,
+}));
+await jest.unstable_mockModule('../../public/scripts/power-user.js', () => ({ power_user: { personas: { 'a.png': 'Alice' } } }));
+
 const folders = await import('../../public/scripts/sillybunny-folders.js');
 const settle = async () => { for (let index = 0; index < 10; index++) await Promise.resolve(); };
-const { createFolderManager } = await import('../../public/scripts/sillybunny-folder-manager.js');
+const { createFolderManager, loadDefaultAdapter } = await import('../../public/scripts/sillybunny-folder-manager.js');
 
 let settings;
 let manager;
@@ -406,5 +416,57 @@ describe('Folder Manager selection mode', () => {
         await settle();
         expect(folders.getFolders('groups')).toHaveLength(1);
         expect(manager.root.dataset.selectionMode).toBe('true');
+    });
+});
+
+describe('Folder Manager default adapters: the member pictures', () => {
+    /** The order in which a detached image gets its loading attributes and its address. */
+    function recordImageAssignments() {
+        const order = [];
+        const create = document.createElement.bind(document);
+        jest.spyOn(document, 'createElement').mockImplementation(tag => {
+            const element = create(tag);
+            if (tag === 'img') {
+                for (const name of ['loading', 'decoding', 'src']) {
+                    let value;
+                    Object.defineProperty(element, name, { configurable: true, get: () => value, set: next => { order.push(name); value = next; } });
+                }
+            }
+            return element;
+        });
+        return order;
+    }
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    test.each([
+        ['a character', 'characters', libraryCharacters[0], '/small/avatar/alice.png'],
+        ['a persona', 'personas', 'a.png', '/small/persona/a.png'],
+        ['a character without a picture', 'characters', libraryCharacters[1], '/img/ai4.png'],
+    ])('the picture of %s is lazy before it has an address, and is the small thumbnail', async (_name, scope, item, expected) => {
+        const adapter = await loadDefaultAdapter(scope);
+        const order = recordImageAssignments();
+
+        const image = adapter.getAvatar(item);
+
+        expect(order).toEqual(['loading', 'decoding', 'src']);
+        expect(image.loading).toBe('lazy');
+        expect(image.decoding).toBe('async');
+        expect(image.src).toBe(expected);
+        expect(image.alt).toBe('');
+    });
+
+    test('a member row of a folder shows the lazy picture, so a long folder asks for the pictures that are on the screen', async () => {
+        const folder = folders.createFolder('characters', 'Favourites');
+        folders.setFolder('characters', ['alice.png'], folder.id);
+        mount('characters', await loadDefaultAdapter('characters'));
+
+        manager.root.querySelector(`[data-folder-id="${folder.id}"]`).click();
+
+        const image = manager.root.querySelector('.sb-folder-manager__member-row img');
+        expect(image.loading).toBe('lazy');
+        expect(image.getAttribute('src')).toBe('/small/avatar/alice.png');
     });
 });

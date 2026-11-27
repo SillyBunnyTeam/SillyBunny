@@ -1,80 +1,78 @@
-import { animation_duration, characters } from '../../script.js';
+import { characters } from '../../script.js';
 import { debounce_timeout } from '../constants.js';
 import { loadStylesheetAsync } from '../dynamic-styles.js';
 import { isIOSWebKitPlatform } from '../mobile-send-button.js';
-import { getUserAvatar } from '../personas.js';
-import { POPUP_RESULT, POPUP_TYPE, Popup } from '../popup.js';
-import { loadMovingUIState, power_user } from '../power-user.js';
-import { dragElement, shouldSendOnEnter } from '../RossAscends-mods.js';
-import { debounce } from '../utils.js';
-import { addConversationFilesToInput, clearConversationAttachmentInput, processSendQueue, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
-import { CHROME_IDS, CONVERSATION_THREAD_OPENED_EVENT, DEFAULT_BRANCH_ID, DEFAULT_GROUNDED_DIALOGUE_RULES, GEECHAN_DEFAULT_PROMPT } from './constants.js';
+import { shouldSendOnEnter } from '../RossAscends-mods.js';
+import { debounce, flashHighlight } from '../utils.js';
+import { addConversationFilesToInput, clearConversationAttachmentInput, submitConversationInput, updateConversationAttachmentPreview } from './attachments.js';
+import { stashComposerDraft } from './composer-draft.js';
+import { CHROME_IDS, CONVERSATION_OPENED_EVENT } from './constants.js';
 import { confirmConversationAction, promptConversationText } from './dialogs.js';
 import {
-    createConversationBranchForAvatar,
-    deleteConversationBranch,
-    getConversationBranches,
+    createConversationChat,
+    deleteConversationByAvatar,
+    deleteConversationChat,
+    ensureDirectConversation,
+    getConversationChats,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationThreadKey,
-    getConversationThreadStore,
-    getCurrentCharacter,
+    getConversationKey,
+    getConversationRecord,
     getCurrentCharAvatar,
     getRoleplayCurrentCharacter,
     isAvatarInConversationGroup,
     parsePositiveInt,
-    renameConversationBranch,
-    resetCharacterConversationBranches,
-    saveGroupConversationSettings,
-    setActiveConversationBranch,
+    renameConversationChat,
+    setActiveConversationChat,
 } from './context.js';
 import { editConversationMessage } from './generation.js';
 import {
-    applySettingsToPanel,
+    getConversationListEntries,
     handleCharacterMessagePolish,
-    saveCurrentPanelSettings,
-    updateConversationChrome,
     updateConversationHeader,
 } from './interface.js';
+import { bindConversationListControls } from './conversation-list-controls.js';
+import { conversationFolders, installConversationFoldersHooks } from './conversation-folders-browser.js';
+import { buildComposerMenuSections, buildHeaderMenuSections, buildMainMenuSections, buildNewMenuSections } from './conversation-menus.js';
+import { announceInList, setConversationListQuery } from './conversation-list-view.js';
+import { openNewFolderPopover } from './conversation-list-folders.js';
 import { getCharacterForAvatar } from './media.js';
-import { clearAllConversationUnreadCounts, clearUnreadCount, isConversationActiveThread } from './notifications.js';
-import { getConversationPals, getConversationRailItems, getCurrentGroupConversationMembers } from './pals-rail.js';
+import { clearAllConversationUnreadCounts, isConversationActive } from './notifications.js';
+import { getDirectConversations } from './conversation-list.js';
 import { switchConversationPersona } from './persona-switch.js';
-import { editUserPersonaStatus, getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
+import { getUserStatus, setActiveConversationPersonaAppendixIds, setUserStatus } from './personas.js';
 import {
-    addWeeklyScheduleRow,
+    editUserPersonaStatus,
     hideConversationPickers,
-    openAddMemberPicker,
     renderConversationPersonaPicker,
-    toggleAddDmPicker,
+    toggleStartDirectConversationPicker,
     toggleConversationGroupPicker,
     togglePersonaPicker,
     toggleUserStatusPicker,
     updateUserFooter,
 } from './pickers.js';
-import { afterConversationRender, scheduleInterfaceRefresh, schedulePalsRailRender, scheduleTimelineRender } from './render-scheduler.js';
-import { generateCharacterSchedule, saveStoredSchedule } from './schedule.js';
+import { afterConversationRender, scheduleInterfaceRefresh, scheduleConversationListRender, scheduleTimelineRender } from './render-scheduler.js';
 import {
-    clearConversationMemoryFromPanel,
-    closeConversationSettings,
-    closePalsRail,
-    dismissConversationSettings,
-    dismissConversationSettingsOnEscape,
-    forceCreateMemoryFromPanel,
-    isConversationPagesLayout,
+    closeConversationList,
     observeConversationLayout,
-    openConversationSettings,
-    openScheduleEditorModal,
-    refreshConversationMemoryFromPanel,
-    renderConversationMemoryPanel,
-    renderScheduleDisplay,
+    openConversationList,
     syncConversationPage,
-    togglePalsRail,
-} from './settings-panel.js';
-import { getSettings, resetFollowupCount, saveSettings } from './settings-store.js';
+    toggleConversationList,
+} from './conversation-pages.js';
+import { getGlobalConversationSettings, getSettings } from './settings-store.js';
+import { isComposerHeld, withConversationSwitch } from './screen-target.js';
 import { conversationState, sendQueue } from './state.js';
+import { processSendQueue } from './send-queue.js';
 import { createForcedConversationQueueItem } from './send-queue-utils.js';
-import { getConversationThread, updateLastUserActivity } from './thread-store.js';
+import { getConversationMessageCount, getConversationMessages, updateLastUserActivity } from './conversation-store.js';
+import { PIN_EVENT_ACTIONS, findMessageNode } from './pin-events-ui.js';
+import { hasPinnedMessage } from './pin-model.js';
+import { conversationData } from './conversation-data-browser.js';
+import { setConversationMuted } from './conversation-list-actions.js';
+import { getConversationDisplayName } from './media.js';
+import { enterConversationSelection } from './selection.js';
+import { bindMessageLongPress } from './message-long-press.js';
+import { openConversationMessageMenuAt } from './message-menu.js';
 import {
     branchConversationFromMessage,
     clearConversationReplyTarget,
@@ -85,21 +83,23 @@ import {
     quickConversationReminder,
     quickConversationSelfie,
     quickConversationSummarize,
-    reactConversationMessage,
     regenerateConversationMessage,
     replyToConversationMessage,
-    setConversationTimelineChannel,
     toggleConversationSearchBar,
     speakConversationMessage,
     toggleConversationMessagePin,
     updateConversationSearchQuery,
 } from './timeline-render.js';
-import { setLastConversationPreview } from './typing.js';
+import { openReactionChooser, reactConversationMessage } from './reactions-ui.js';
 import { confirmMessageDeletion } from '../sillybunny-delete-confirm.js';
-import { openActionMenu } from '../sillybunny-action-menu.js';
+import { closeActionMenu, openActionMenu } from '../sillybunny-action-menu.js';
+import { ensureDetailsStyles } from './details/styles.js';
+import { applyEmojiFont } from './emoji/emoji-font.js';
+import { insertEmojiAtCaret } from './emoji/emoji-insert.js';
+import { hasNativeEmojiPicker, isEmojiShortcut } from './emoji/emoji-shortcut.js';
 
-const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261118zzj';
-const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261118zzu';
+const CONVERSATION_STYLESHEET_HREF = 'css/sillybunny-conversation.css?v=20261126d';
+const EDITOR_SHELL_STYLESHEET_HREF = 'css/sillybunny-editor-shell.css?v=20261126b';
 const EDITOR_SHELL_STYLESHEET_ID = 'deferred-editor-shell-css';
 
 /**
@@ -160,7 +160,7 @@ function revealConversationWorkspaceAfterStylesheet() {
     }
 
     conversationState.timelineBottomScrollPending = true;
-    scheduleInterfaceRefresh({ syncControls: false });
+    scheduleInterfaceRefresh();
 }
 
 function ensureConversationStylesheet() {
@@ -170,10 +170,13 @@ function ensureConversationStylesheet() {
 
     conversationStylesheetStatus = 'loading';
     insertConversationStylesheetLink();
-    // The settings pane is built from shared rows whose button, text-area and insensitive styles live in the editor shell.
+    // The details window is built from shared rows whose button, text-area and insensitive styles live in the editor shell,
+    // and its own sheet loads here too, so that both are there before the window's first page draws.
     Promise.all([
         loadStylesheetAsync(CONVERSATION_STYLESHEET_HREF, { id: CONVERSATION_STYLESHEET_ID }),
         loadStylesheetAsync(EDITOR_SHELL_STYLESHEET_HREF, { id: EDITOR_SHELL_STYLESHEET_ID }),
+        // A sheet that fails to load must not fail the mode's own: the window then opens unstyled.
+        ensureDetailsStyles().catch(error => console.warn('Conversation Mode: the details stylesheet failed to load', error)),
     ])
         .then(() => {
             conversationStylesheetStatus = 'ready';
@@ -195,60 +198,6 @@ function ensureConversationStylesheet() {
 
 function requestConversationRuntimeStart() {
     window.dispatchEvent(new CustomEvent('sb:conversation-runtime-needed'));
-}
-
-async function openGroundedDialogueRulesEditor() {
-    const backingInput = document.getElementById('sb_conv_grounded_dialogue_rules');
-    if (!(backingInput instanceof HTMLTextAreaElement)) {
-        toastr.warning('Open Conversation settings before editing Grounded Dialogue Rules');
-        return;
-    }
-
-    const content = document.createElement('div');
-    content.id = 'sb_conversation_grounded_rules_modal';
-    content.className = 'sb-conversation-grounded-rules-editor';
-
-    const title = document.createElement('h3');
-    title.id = 'sb_conversation_grounded_rules_title';
-    title.textContent = 'Grounded Dialogue Rules';
-
-    const hint = document.createElement('p');
-    hint.className = 'sb-conversation-field-hint';
-    hint.textContent = 'This global block is added to Conversation Mode prompts only when the Grounded Dialogue Rules toggle is on.';
-
-    const editor = document.createElement('textarea');
-    editor.className = 'text_pole textarea_compact wide100p sb-conversation-grounded-rules-input';
-    editor.rows = 18;
-    editor.value = backingInput.value || DEFAULT_GROUNDED_DIALOGUE_RULES;
-    editor.setAttribute('aria-labelledby', title.id);
-    content.append(title, hint, editor);
-
-    const popup = new Popup(content, POPUP_TYPE.TEXT, null, {
-        okButton: 'Save',
-        cancelButton: 'Cancel',
-        wider: true,
-        leftAlign: true,
-        allowVerticalScrolling: true,
-        customButtons: [{
-            text: 'Reset to Default',
-            classes: ['sb-conversation-dialog-reset'],
-            action: () => {
-                editor.value = DEFAULT_GROUNDED_DIALOGUE_RULES;
-                editor.focus({ preventScroll: true });
-            },
-        }],
-        onOpen: () => editor.focus({ preventScroll: true }),
-    });
-    popup.dlg.classList.add('sb-conversation-dialog', 'sb-conversation-grounded-rules-dialog');
-    popup.dlg.setAttribute('aria-labelledby', title.id);
-    if (await popup.show() !== POPUP_RESULT.AFFIRMATIVE) {
-        return;
-    }
-
-    backingInput.value = editor.value;
-    backingInput.dispatchEvent(new Event('input', { bubbles: true }));
-    saveCurrentPanelSettings();
-    toastr.success('Grounded Dialogue Rules updated');
 }
 
 function focusConversationInput({ skipIOS = false } = {}) {
@@ -283,137 +232,54 @@ function focusConversationInputAfterRender() {
     });
 }
 
-function getConversationFullAvatarUrl(file, type) {
+/**
+ * Opens or closes the zoomed avatar of a character, the way roleplay does: the same window, key and place, so a position that
+ * Moving UI saved in one mode is used in the other. The viewer loads on the first picture that is opened.
+ * @param {string|undefined} file The avatar file of the character.
+ */
+async function showZoomedAvatar(file) {
     if (!file || file === 'none') {
-        return '';
-    }
-
-    if (type === 'persona') {
-        return getUserAvatar(file);
-    }
-
-    return `/characters/${encodeURIComponent(file)}`;
-}
-
-function getConversationZoomedAvatarElement(avatarKey) {
-    return $('.zoomed_avatar').filter(function () {
-        return $(this).attr('forChar') === avatarKey;
-    });
-}
-
-function removeConversationZoomedAvatar($avatar) {
-    $avatar.fadeOut(animation_duration, () => {
-        $avatar.remove();
-    });
-}
-
-function showConversationZoomedAvatar(target) {
-    const file = target.dataset.avatarFile || '';
-    const type = target.dataset.avatarType || 'avatar';
-    const avatarSrc = getConversationFullAvatarUrl(file, type);
-    if (!avatarSrc) {
         return;
     }
 
-    const avatarKey = `${type}:${file}`;
-    const existingAvatar = getConversationZoomedAvatarElement(avatarKey);
-    if (existingAvatar.length) {
-        removeConversationZoomedAvatar(existingAvatar);
-        return;
-    }
-
-    if (!power_user.movingUI) {
-        $('.zoomed_avatar').each(function () {
-            const currentForChar = $(this).attr('forChar');
-            if (currentForChar && currentForChar !== avatarKey) {
-                $(this).remove();
-            }
-        });
-    }
-
-    const template = $('#zoomed_avatar_template').html();
-    if (!template) {
-        return;
-    }
-
-    const safeId = avatarKey.replace(/[^\w-]/g, '_');
-    const newElement = $(template);
-    newElement.attr('forChar', avatarKey);
-    newElement.attr('id', `zoomFor_${safeId}`);
-    newElement.addClass('draggable sb-conversation-zoomed-avatar');
-    newElement.find('.drag-grabber').attr('id', `zoomFor_${safeId}header`);
-
-    const zoomedAvatarImgElement = newElement.find('.zoomed_avatar_img');
-    zoomedAvatarImgElement.attr('src', avatarSrc);
-    zoomedAvatarImgElement.attr('data-izoomify-url', avatarSrc);
-    zoomedAvatarImgElement.on('dragstart', (event) => {
-        event.preventDefault();
-        return false;
-    });
-
-    newElement.on('click touchend', '.dragClose', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        removeConversationZoomedAvatar(newElement);
-    });
-
-    $('body').append(newElement);
-    newElement.fadeIn(animation_duration);
-    loadMovingUIState();
-    newElement.css('display', 'flex');
-    dragElement(newElement);
-
-    if (power_user.zoomed_avatar_magnification) {
-        newElement.find('.zoomed_avatar_container').izoomify();
-    }
+    const { toggleZoomedAvatar } = await import('../sillybunny-avatar-viewer.js');
+    toggleZoomedAvatar({ file });
 }
 
-function closeConversationZoomedAvatars() {
-    const $avatars = $('.zoomed_avatar.sb-conversation-zoomed-avatar:visible');
-    if (!$avatars.length) {
-        return false;
-    }
-
-    $avatars.each(function () {
-        removeConversationZoomedAvatar($(this));
-    });
-    return true;
+/**
+ * Opens the details window of a conversation. The window and its pages load on first use.
+ * @param {string} conversationId
+ * @param {{ page?: string, avatar?: string }} [options] See `openConversationDetails` in `details/window.js` for the pages.
+ * @returns {Promise<boolean>} Whether the window is open.
+ */
+export async function openConversationDetails(conversationId, options = {}) {
+    const { openConversationDetails: open } = await import('./details/window.js');
+    return open(conversationId, options);
 }
 
-let conversationZoomEscapeBound = false;
-
-function bindConversationZoomEscape() {
-    if (conversationZoomEscapeBound || typeof document === 'undefined') {
-        return;
-    }
-
-    conversationZoomEscapeBound = true;
-    document.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
-            return;
-        }
-
-        if (closeConversationZoomedAvatars()) {
-            event.preventDefault();
-            event.stopPropagation();
-        }
-    }, true);
+/** Opens the mode-wide Preferences in the details window. */
+export async function openConversationPreferences() {
+    const { openConversationPreferences: open } = await import('./details/window.js');
+    return open();
 }
 
-export async function selectConversationThread(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
+/** Every list row, notification, details window and group picker opens a conversation here. The composer is held from the call, before the persona switch waits for the server. */
+export async function selectConversation(avatar, { chatId = '', groupId = null, personaId = getConversationPersonaId(), showToast = false } = {}) {
     if (!avatar) {
         return false;
     }
 
-    if (personaId && !await switchConversationPersona(personaId)) {
-        return false;
-    }
+    return withConversationSwitch(async () => {
+        if (personaId && !await switchConversationPersona(personaId)) {
+            return false;
+        }
 
-    const normalizedGroupId = groupId ? String(groupId) : '';
-    return openConversationWorkspaceForAvatar(avatar, {
-        branchId,
-        groupId: normalizedGroupId || null,
-        showToast,
+        const normalizedGroupId = groupId ? String(groupId) : '';
+        return openConversationWorkspaceForAvatar(avatar, {
+            chatId,
+            groupId: normalizedGroupId || null,
+            showToast,
+        });
     });
 }
 
@@ -424,7 +290,18 @@ const USER_STATUS_MENU_ITEMS = Object.freeze([
     { status: 'offline', label: 'Invisible' },
 ]);
 
-function getActiveThreadIdentity() {
+// TODO(copy): the body of the alerts that ask before a chat or a conversation is deleted is a placeholder.
+const DELETE_ALERT_BODY = 'TODO(copy)';
+
+function getNameOfConversation(avatar, groupId) {
+    return getConversationDisplayName(avatar, getSettings(avatar, { groupId }), { groupId });
+}
+
+function isConversationSelectedInWorkspace(avatar, groupId) {
+    return conversationState.conversationSelectedAvatar === avatar && (conversationState.conversationSelectedGroupId || '') === (groupId || '');
+}
+
+function getActiveConversationIdentity() {
     const avatar = getCurrentCharAvatar();
     return { avatar, groupId: avatar ? getConversationGroupIdForAvatar(avatar) : '' };
 }
@@ -433,89 +310,151 @@ function runFromMenu(action, data = {}, trigger = null) {
     return () => void runConversationAction(action, data, trigger);
 }
 
-function openConversationBranchMenu(trigger) {
-    const { avatar, groupId } = getActiveThreadIdentity();
-    if (!avatar) {
-        togglePalsRail();
+function getOpenConversationId() {
+    const { avatar, groupId } = getActiveConversationIdentity();
+    return avatar ? getConversationRecord(avatar, { create: false, groupId })?.id ?? '' : '';
+}
+
+/** Brings a message of the open chat to the middle of the timeline and flashes it, as Show in Chat does from Details. */
+function showMessageInOpenTimeline(messageId) {
+    const timeline = document.getElementById(CHROME_IDS.timeline);
+    const node = timeline ? findMessageNode(timeline, messageId) : null;
+    if (!node) {
         return;
     }
-
-    const activeBranchId = getConversationThreadStore(avatar, { create: false, groupId })?.activeBranchId || DEFAULT_BRANCH_ID;
-    const branches = getConversationBranches(avatar, { groupId });
-    const activeBranch = branches.find(branch => branch.id === activeBranchId);
-    const identity = { avatar, groupId };
-    openActionMenu({
-        trigger,
-        title: 'Branches',
-        sections: [
-            {
-                items: branches.map(branch => ({
-                    label: branch.name || 'Conversation',
-                    checked: branch.id === activeBranchId,
-                    detail: branch.unread > 0 ? String(branch.unread) : '',
-                    onSelect: runFromMenu('select-branch', { ...identity, branchId: branch.id }),
-                })),
-            },
-            {
-                items: [
-                    { label: 'New Branch…', icon: 'fa-solid fa-plus', onSelect: runFromMenu('new-branch', identity) },
-                    { label: 'Rename Branch…', icon: 'fa-solid fa-pen', disabled: !activeBranch, onSelect: runFromMenu('rename-branch', { ...identity, branchId: activeBranchId }) },
-                ],
-            },
-            {
-                items: [
-                    { label: 'Delete Branch…', icon: 'fa-solid fa-trash-can', danger: true, disabled: !activeBranch, onSelect: runFromMenu('delete-branch', { ...identity, branchId: activeBranchId }) },
-                ],
-            },
-        ],
-    });
+    node.scrollIntoView({ block: 'center' });
+    flashHighlight($(node), 1000);
 }
 
 function openConversationOverflowMenu(trigger) {
-    const { avatar, groupId } = getActiveThreadIdentity();
-    const canEditSchedule = Boolean(avatar) || getCurrentGroupConversationMembers().length > 0;
-    const addMemberLabel = groupId ? 'Add Member to Group…' : 'Add Member…';
+    const { avatar, groupId } = getActiveConversationIdentity();
+    const conversationId = getOpenConversationId();
+    if (!avatar || !conversationId) {
+        return;
+    }
+
+    const activeChatId = getConversationRecord(avatar, { create: false, groupId })?.activeChatId || '';
+    const settings = getSettings(avatar, { groupId });
     openActionMenu({
         trigger,
         title: 'Conversation',
-        sections: [
-            {
-                items: [
-                    ...(avatar ? [{ label: addMemberLabel, icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-member', {}, trigger) }] : []),
-                    { label: 'New Chat', icon: 'fa-solid fa-message', disabled: !avatar, onSelect: runFromMenu('new-chat') },
-                    { label: 'Edit Schedule…', icon: 'fa-solid fa-calendar-days', disabled: !canEditSchedule, onSelect: runFromMenu('edit-schedule') },
-                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
-                    // The header gear covers settings in the split and overlay layouts; the pages layout hides the gear, so the menu keeps it there.
-                    ...(isConversationPagesLayout()
-                        ? [{ label: 'Conversation Settings', icon: 'fa-solid fa-gear', onSelect: runFromMenu('open-settings') }]
-                        : []),
-                ],
+        sections: buildHeaderMenuSections({
+            muted: Boolean(settings.notifications_muted),
+            hasMessages: getConversationMessageCount(avatar, { groupId }) > 0,
+            hasChat: Boolean(activeChatId),
+            hasPinned: hasPinnedMessage(getConversationMessages(avatar, { groupId })),
+        }, {
+            openDetails: () => void openConversationDetails(conversationId),
+            openPinned: () => void openConversationDetails(conversationId, { page: 'pinned' }),
+            newChat: runFromMenu('new-chat'),
+            addMember: () => void openConversationDetails(conversationId, { page: 'add-member' }),
+            setMuted: (muted) => {
+                setConversationMuted(conversationData, conversationId, muted);
+                scheduleConversationListRender();
             },
-            {
-                items: avatar
-                    ? [{ label: 'Delete Conversation History…', icon: 'fa-solid fa-trash-can', danger: true, onSelect: runFromMenu('delete-dm', { avatar, groupId }) }]
-                    : [],
-            },
-        ],
+            selectMessages: runFromMenu('select-messages', {}, trigger),
+            deleteChat: runFromMenu('delete-chat', { avatar, groupId, chatId: activeChatId }),
+            deleteConversation: runFromMenu('delete-conversation', { avatar, groupId }),
+        }),
+    });
+}
+
+/** A composer too narrow for its Emoji button does not draw it (a container rule of the stylesheet), and the "+" menu offers the action instead. */
+function isComposerEmojiButtonHidden() {
+    const button = document.getElementById(CHROME_IDS.emoji);
+    return button instanceof HTMLElement && getComputedStyle(button).display === 'none';
+}
+
+/**
+ * Opens the emoji chooser for the composer entry. The entry's selection is read first, because the chooser takes the focus.
+ * @param {HTMLElement} trigger The Emoji button, or the "+" button when the Emoji button is not drawn.
+ * @param {{ fromEntry?: boolean }} [options] `fromEntry`: the shortcut opened it, so a chooser that closes without a pick gives the focus back to the entry and not to the button.
+ */
+function isVisibleFocusTarget(element) {
+    if (!(element instanceof HTMLElement) || !element.isConnected || element.hasAttribute('data-sb-menu-only')) {
+        return false;
+    }
+    for (let node = element; node instanceof HTMLElement; node = node.parentElement) {
+        if (node.hidden) {
+            return false;
+        }
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+    }
+    if (document.body?.getClientRects?.().length > 0 && element.getClientRects().length === 0) {
+        return false;
+    }
+    return true;
+}
+
+function resolveSelectionFocusTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+        return null;
+    }
+    if (isVisibleFocusTarget(target)) {
+        return target;
+    }
+    const message = target.closest('.sb-conversation-message');
+    if (message instanceof HTMLElement) {
+        const mobile = message.querySelector('.sb-conversation-mobile-menu-trigger');
+        const desktop = message.querySelector('.sb-conversation-message-menu');
+        const ordered = window.matchMedia?.('(pointer: coarse)')?.matches ? [mobile, desktop] : [desktop, mobile];
+        const visible = ordered.filter(isVisibleFocusTarget);
+        if (visible.length > 1) {
+            const laidOut = visible.find(element => element.getClientRects().length > 0);
+            if (laidOut) {
+                return laidOut;
+            }
+        }
+        if (visible.length) {
+            return visible[0];
+        }
+    }
+    return null;
+}
+
+async function openComposerEmojiChooser(trigger, { fromEntry = false } = {}) {
+    const input = document.getElementById(CHROME_IDS.input);
+    if (!(input instanceof HTMLTextAreaElement) || input.disabled) {
+        return;
+    }
+    let range = { start: input.selectionStart ?? input.value.length, end: input.selectionEnd ?? input.value.length };
+    const { openEmojiChooser } = await import('./emoji/emoji-chooser.js');
+    if (!conversationState.conversationWorkspaceOpen || input.disabled || !trigger?.isConnected) {
+        return;
+    }
+    openEmojiChooser({
+        trigger,
+        kind: 'insert',
+        bounds: document.getElementById(CHROME_IDS.stage),
+        onPick: (emoji, { keepOpen }) => {
+            const caret = insertEmojiAtCaret(input, emoji, range, { focus: !keepOpen });
+            range = { start: caret, end: caret };
+        },
+        onClose: fromEntry
+            // The surface gives the focus to its trigger after this callback; only a focus that is on the trigger by then is moved, so a click elsewhere keeps its own.
+            ? () => setTimeout(() => {
+                if (document.activeElement === trigger) {
+                    input.focus({ preventScroll: true });
+                }
+            }, 0)
+            : null,
     });
 }
 
 function openConversationComposerMenu(trigger) {
-    const hasThread = Boolean(getCurrentCharAvatar());
     openActionMenu({
         trigger,
         title: 'Add to Message',
-        sections: [
-            {
-                items: [
-                    { label: 'Attach Files', icon: 'fa-solid fa-paperclip', disabled: !hasThread, onSelect: runFromMenu('attach-file') },
-                    { label: 'Send a Selfie', icon: 'fa-solid fa-camera', disabled: !hasThread, onSelect: runFromMenu('quick-selfie') },
-                    { label: 'Remind Me', icon: 'fa-solid fa-bell', disabled: !hasThread, onSelect: runFromMenu('quick-remind') },
-                    { label: 'Summarize Memory', icon: 'fa-solid fa-book-open', disabled: !hasThread, onSelect: runFromMenu('quick-summarize') },
-                    { label: 'Force a Reply', icon: 'fa-solid fa-bolt', disabled: !hasThread, onSelect: runFromMenu('force-response') },
-                ],
-            },
-        ],
+        sections: buildComposerMenuSections({ enabled: Boolean(getCurrentCharAvatar()), showEmoji: isComposerEmojiButtonHidden() }, {
+            insertEmoji: runFromMenu('open-emoji-chooser', {}, trigger),
+            selfie: runFromMenu('quick-selfie'),
+            remind: runFromMenu('quick-remind'),
+            summarize: runFromMenu('quick-summarize'),
+            forceReply: runFromMenu('force-response'),
+        }),
     });
 }
 
@@ -546,20 +485,34 @@ function openConversationPersonaMenu(trigger) {
 function openConversationNewMenu(trigger) {
     openActionMenu({
         trigger,
-        title: 'New Conversation',
-        sections: [
-            {
-                items: [
-                    { label: 'New DM', icon: 'fa-solid fa-user-plus', onSelect: runFromMenu('open-add-dm', {}, trigger) },
-                    { label: 'New Group', icon: 'fa-solid fa-user-group', onSelect: runFromMenu('open-new-group-chat', {}, trigger) },
-                ],
-            },
-            {
-                items: [
-                    { label: 'Mark All as Read', icon: 'fa-solid fa-check-double', onSelect: runFromMenu('mark-all-read') },
-                ],
-            },
-        ],
+        title: 'New',
+        sections: buildNewMenuSections({
+            newConversation: runFromMenu('open-start-direct-conversation', {}, trigger),
+            newGroup: runFromMenu('open-new-group-chat', {}, trigger),
+            newFolder: () => openNewFolderPopover({
+                trigger,
+                bounds: document.getElementById(CHROME_IDS.conversationList),
+                folders: conversationFolders,
+                personaId: getConversationPersonaId(),
+                announce: announceInList,
+                render: scheduleConversationListRender,
+            }),
+        }),
+        alignment: 'end',
+    });
+}
+
+function openConversationMainMenu(trigger) {
+    openActionMenu({
+        trigger,
+        title: 'Main Menu',
+        sections: buildMainMenuSections({
+            markAllRead: runFromMenu('mark-all-read'),
+            manageFolders: () => void import('./conversation-folder-manager.js').then(({ openConversationFolderManager }) => openConversationFolderManager()),
+            openPreferences: () => void openConversationPreferences(),
+            openHelp: () => void import('../sillybunny-home/windows.js').then(({ openHelp }) => openHelp({ topic: 'start-a-conversation' })),
+        }),
+        alignment: 'end',
     });
 }
 
@@ -571,24 +524,40 @@ function openConversationNewMenu(trigger) {
  * @param {HTMLElement|null} [target]
  * @param {Event|null} [event]
  */
+/** The actions that write to, or start work in, the conversation that the state selects, which is not the one on screen while the composer is held. */
+const ACTIONS_ON_THE_CONVERSATION_ON_SCREEN = new Set(['new-chat', 'quick-selfie', 'quick-remind', 'quick-summarize', 'force-response']);
+
 export async function runConversationAction(action, data = {}, target = null, event = null) {
+    if (ACTIONS_ON_THE_CONVERSATION_ON_SCREEN.has(action) && isComposerHeld()) {
+        scheduleInterfaceRefresh();
+        return;
+    }
     switch (action) {
         case 'zoom-avatar':
             event?.preventDefault?.();
             event?.stopPropagation?.();
-            showConversationZoomedAvatar(target);
+            void showZoomedAvatar(data.avatarFile);
             break;
         case 'toggle-search':
             toggleConversationSearchBar();
             break;
-        case 'open-branch-menu':
-            openConversationBranchMenu(target);
+        case 'open-details': {
+            const conversationId = getOpenConversationId();
+            if (conversationId) {
+                await openConversationDetails(conversationId);
+            }
             break;
+        }
         case 'open-conversation-menu':
             openConversationOverflowMenu(target);
             break;
         case 'open-composer-menu':
             openConversationComposerMenu(target);
+            break;
+        case 'open-emoji-chooser':
+            if (target) {
+                await openComposerEmojiChooser(target);
+            }
             break;
         case 'open-persona-menu':
             openConversationPersonaMenu(target);
@@ -596,39 +565,32 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'open-new-menu':
             openConversationNewMenu(target);
             break;
-        case 'toggle-pals':
-            togglePalsRail();
+        case 'open-main-menu':
+            openConversationMainMenu(target);
             break;
-        case 'close-pals':
-            closePalsRail();
+        case 'toggle-list':
+            toggleConversationList();
+            break;
+        case 'close-list':
+            closeConversationList();
             document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-            break;
-        case 'open-settings':
-            hideConversationPickers();
-            openConversationSettings();
-            break;
-        case 'close-settings':
-            closeConversationSettings();
             break;
         case 'polish-character-message':
             await handleCharacterMessagePolish(data.messageId, target);
             break;
-        case 'open-add-member':
-            openAddMemberPicker();
-            break;
-        case 'open-add-dm':
-            toggleAddDmPicker(target);
+        case 'open-start-direct-conversation':
+            toggleStartDirectConversationPicker(target);
             break;
         case 'open-new-group-chat':
             toggleConversationGroupPicker({ anchor: target });
             break;
         case 'mark-all-read': {
-            const { cleared, removedLegacy } = clearAllConversationUnreadCounts();
-            schedulePalsRailRender();
+            const { cleared, removedLegacy } = await clearAllConversationUnreadCounts();
+            scheduleConversationListRender();
             if (cleared > 0 || removedLegacy > 0) {
-                toastr.success('Marked all Conversation pings as read');
+                toastr.success('Marked all conversations as read');
             } else {
-                toastr.info('No Conversation pings to clear');
+                toastr.info('No unread conversations');
             }
             break;
         }
@@ -645,15 +607,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'clear-reply-target':
             clearConversationReplyTarget();
             break;
-        case 'create-memory':
-            await forceCreateMemoryFromPanel();
-            break;
-        case 'refresh-memory':
-            await refreshConversationMemoryFromPanel();
-            break;
-        case 'clear-memory':
-            await clearConversationMemoryFromPanel();
-            break;
         case 'stop-image-generation':
             conversationState.imageGenerationAbortController?.abort?.();
             conversationState.imageGenerationActive = false;
@@ -661,7 +614,7 @@ export async function runConversationAction(action, data = {}, target = null, ev
             scheduleTimelineRender();
             toastr.info('Image generation stopped');
             break;
-        case 'add-character-dm': {
+        case 'start-direct-conversation': {
             const index = parsePositiveInt(data.characterIndex, -1, 0);
             if (index >= 0) {
                 const char = characters[index];
@@ -670,164 +623,110 @@ export async function runConversationAction(action, data = {}, target = null, ev
                         focusConversationInput();
                     }
 
-                    const charSettings = getSettings(char.avatar, { groupId: '' });
-                    charSettings.enabled = true;
-                    saveSettings(char.avatar, charSettings, { groupId: '' });
-                    hideConversationPickers();
-                    closePalsRail();
-                    await selectConversationThread(char.avatar, {
-                        groupId: null,
-                        showToast: false,
+                    // The selection changes only after the server has made the conversation, and the open conversation stays on screen until then.
+                    await withConversationSwitch(async () => {
+                        await ensureDirectConversation(char.avatar);
+                        hideConversationPickers();
+                        closeConversationList();
+                        await selectConversation(char.avatar, {
+                            groupId: null,
+                            showToast: false,
+                        });
                     });
-                    schedulePalsRailRender();
+                    scheduleConversationListRender();
                 }
             }
             break;
         }
-        case 'select-branch': {
+        case 'rename-chat': {
             const avatar = data.avatar;
             const groupId = data.groupId || '';
-            const branchId = data.branchId;
-            if (avatar && branchId) {
-                setActiveConversationBranch(avatar, branchId, { groupId });
-                openConversationWorkspaceForAvatar(avatar, {
-                    groupId: groupId || null,
-                    showToast: false,
-                });
-                scheduleInterfaceRefresh({ syncControls: false });
-                renderConversationMemoryPanel();
-                document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-            }
-            break;
-        }
-        case 'new-branch': {
-            const avatar = data.avatar;
-            const groupId = data.groupId || '';
-            const character = getCharacterForAvatar(avatar);
-            if (!avatar) {
-                break;
-            }
-            const fallbackName = `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`;
-            const enteredName = await promptConversationText({
-                title: 'New Branch',
-                text: `Name this Conversation branch for ${character?.name || 'this character'}`,
-                defaultValue: fallbackName,
-                confirmLabel: 'Create',
-            });
-            if (enteredName === null) {
-                break;
-            }
-            const name = enteredName.trim() || fallbackName;
-            createConversationBranchForAvatar(avatar, name, { groupId });
-            openConversationWorkspaceForAvatar(avatar, {
-                groupId: groupId || null,
-                showToast: false,
-            });
-            scheduleInterfaceRefresh({ syncControls: false });
-            renderConversationMemoryPanel();
-            document.getElementById(CHROME_IDS.input)?.focus?.({ preventScroll: true });
-            break;
-        }
-        case 'rename-branch': {
-            const avatar = data.avatar;
-            const groupId = data.groupId || '';
-            const branchId = data.branchId;
-            const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
-            if (avatar && branchId && branch) {
+            const chatId = data.chatId;
+            const chat = getConversationChats(avatar, { groupId }).find(item => item.id === chatId);
+            if (avatar && chatId && chat) {
                 const name = await promptConversationText({
-                    title: 'Rename Branch',
-                    defaultValue: branch.name || 'Conversation',
+                    title: 'Rename Chat',
+                    defaultValue: chat.name || 'Conversation',
                     confirmLabel: 'Rename',
                 });
                 if (name?.trim()) {
-                    renameConversationBranch(avatar, branchId, name, { groupId });
-                    schedulePalsRailRender();
-                    if (isConversationActiveThread(avatar, groupId)) {
+                    renameConversationChat(avatar, chatId, name, { groupId });
+                    scheduleConversationListRender();
+                    if (isConversationActive(avatar, groupId)) {
                         updateConversationHeader(getSettings(avatar, { groupId }));
-                        renderConversationMemoryPanel();
                     }
                 }
             }
             break;
         }
-        case 'delete-branch': {
+        case 'delete-chat': {
+            // Delete Chat: the user stays in the conversation (R5-24). The chat that takes the place of the deleted one opens.
             const avatar = data.avatar;
             const groupId = data.groupId || '';
-            const branchId = data.branchId;
-            const branch = getConversationBranches(avatar, { groupId }).find(item => item.id === branchId);
-            if (avatar && branchId && branch) {
+            const chatId = data.chatId;
+            const chat = getConversationChats(avatar, { groupId }).find(item => item.id === chatId);
+            if (avatar && chatId && chat) {
                 const confirmed = await confirmConversationAction({
-                    title: `Delete the "${branch.name || 'Conversation'}" branch?`,
-                    text: 'This cannot be undone',
+                    title: `Delete the "${chat.name || 'Conversation'}" chat?`,
+                    text: DELETE_ALERT_BODY,
                 });
                 if (confirmed) {
-                    deleteConversationBranch(avatar, branchId, { groupId });
-                    if (isConversationActiveThread(avatar, groupId)) {
-                        scheduleInterfaceRefresh({ syncControls: false });
-                        renderConversationMemoryPanel();
+                    try {
+                        await deleteConversationChat(avatar, chatId, { groupId });
+                    } catch (error) {
+                        console.error('Conversation Mode: the chat could not be deleted', error);
+                        toastr.error('The chat could not be deleted');
+                        break;
+                    }
+                    if (isConversationActive(avatar, groupId)) {
+                        scheduleInterfaceRefresh();
                     } else {
-                        schedulePalsRailRender();
+                        scheduleConversationListRender();
                     }
                 }
             }
             break;
         }
-        case 'delete-dm': {
+        case 'delete-conversation': {
+            // Delete Conversation: the user goes to the list, not Home (R5-24).
             const avatar = data.avatar;
             const groupId = data.groupId || '';
-            const character = getCharacterForAvatar(avatar);
             if (!avatar) {
                 break;
             }
-            const name = character?.name || 'this character';
-            const historyLabel = groupId ? `group Conversation history with ${name}` : `solo DM history with ${name}`;
             const confirmed = await confirmConversationAction({
-                title: `Delete your previous ${historyLabel}?`,
-                text: 'This cannot be undone',
+                title: `Delete the conversation with ${getNameOfConversation(avatar, groupId)}?`,
+                text: DELETE_ALERT_BODY,
             });
-            if (confirmed) {
-                resetCharacterConversationBranches(avatar, { groupId });
-                setLastConversationPreview(avatar, 'Conversation ready', { groupId });
-                clearUnreadCount(avatar, { groupId });
-                resetFollowupCount(avatar, { groupId });
-
-                if (!groupId) {
-                    const charSettings = getSettings(avatar, { groupId: '' });
-                    charSettings.enabled = false;
-                    saveSettings(avatar, charSettings, { groupId: '' });
-                }
-
-                if (isConversationActiveThread(avatar, groupId)) {
-                    const remainingPals = getConversationRailItems()
-                        .filter(item => !(item.character.avatar === avatar && item.groupId === groupId));
-                    if (remainingPals.length > 0) {
-                        const nextPal = remainingPals[0];
-                        openConversationWorkspaceForAvatar(nextPal.character.avatar, { groupId: nextPal.groupId || null, showToast: false });
-                        scheduleInterfaceRefresh({ syncControls: true });
-                    } else {
-                        conversationState.conversationWorkspaceOpen = false;
-                        emitConversationWorkspaceStateChange();
-                        scheduleInterfaceRefresh({ syncControls: false });
-                    }
-                } else {
-                    schedulePalsRailRender();
-                }
-                toastr.success(`Deleted ${historyLabel}`);
+            if (!confirmed) {
+                break;
             }
+            try {
+                await deleteConversationByAvatar(avatar, { groupId });
+            } catch (error) {
+                console.error('Conversation Mode: the conversation could not be deleted', error);
+                toastr.error('The conversation could not be deleted');
+                break;
+            }
+            hideConversationPickers();
+            if (conversationState.conversationWorkspaceOpen && isConversationSelectedInWorkspace(avatar, groupId)) {
+                await openConversationWorkspaceForAvatar(null, { showToast: false });
+                openConversationList();
+            }
+            scheduleConversationListRender();
             break;
         }
         case 'new-chat': {
             const avatar = getCurrentCharAvatar();
             if (!avatar) {
-                toastr.warning('Pick a DM first');
+                toastr.warning('Pick a conversation first');
                 break;
             }
             const groupId = getConversationGroupIdForAvatar(avatar);
-            createConversationBranchForAvatar(avatar, `Chat ${getConversationBranches(avatar, { groupId }).length + 1}`, { groupId });
+            createConversationChat(avatar, `Chat ${getConversationChats(avatar, { groupId }).length + 1}`, { groupId });
             updateLastUserActivity(avatar, { groupId });
-            scheduleInterfaceRefresh({ syncControls: false });
-            renderConversationMemoryPanel();
-            toastr.success('New Conversation branch started');
+            scheduleInterfaceRefresh();
+            toastr.success('New chat started');
             break;
         }
         case 'edit-message':
@@ -839,17 +738,32 @@ export async function runConversationAction(action, data = {}, target = null, ev
         case 'copy-message':
             await copyConversationMessage(data.messageId);
             break;
+        case 'select-message':
+            enterConversationSelection(data.messageId, resolveSelectionFocusTarget(target));
+            break;
+        case 'select-messages':
+            enterConversationSelection(null, target);
+            break;
         case 'speak-message':
             await speakConversationMessage(data.messageId);
             break;
         case 'toggle-message-pin':
             toggleConversationMessagePin(data.messageId);
             break;
+        case PIN_EVENT_ACTIONS.show:
+            showMessageInOpenTimeline(data.messageId);
+            break;
+        case PIN_EVENT_ACTIONS.openPinned:
+            await openConversationDetails(getOpenConversationId(), { page: 'pinned' });
+            break;
         case 'react-message':
             reactConversationMessage(data.messageId, data.reaction);
             break;
+        case 'open-reaction-chooser':
+            await openReactionChooser(data.messageId, target);
+            break;
         case 'branch-from-message':
-            branchConversationFromMessage(data.messageId);
+            await branchConversationFromMessage(data.messageId);
             break;
         case 'regenerate-message':
             await regenerateConversationMessage(data.messageId);
@@ -878,51 +792,18 @@ export async function runConversationAction(action, data = {}, target = null, ev
             if (avatar) {
                 const groupId = conversationState.conversationSelectedGroupId || '';
                 const personaId = getConversationPersonaId();
-                const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-                const branchId = threadStore?.activeBranchId || '';
-                const messages = getConversationThread(avatar, { branchId, create: false, groupId, personaId });
+                const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+                const chatId = conversationRecord?.activeChatId || '';
+                const messages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
                 sendQueue.push(createForcedConversationQueueItem({
                     avatar,
-                    branchId,
+                    chatId,
                     groupId,
                     personaId,
-                    threadKey: getConversationThreadKey(avatar, groupId, { personaId }),
+                    conversationKey: getConversationKey(avatar, groupId, { personaId }),
                     createdAt: Date.now(),
                 }, messages));
                 void processSendQueue();
-            }
-            break;
-        }
-        case 'set-channel':
-            setConversationTimelineChannel(data.channel);
-            break;
-        case 'weekly-add':
-            addWeeklyScheduleRow();
-            break;
-        case 'edit-schedule': {
-            const avatar = getCurrentCharAvatar();
-            if (avatar || getCurrentGroupConversationMembers().length) {
-                openScheduleEditorModal(avatar);
-            }
-            break;
-        }
-        case 'reset-prompt': {
-            const area = document.getElementById('sb_conv_geechan_chatroom_prompt');
-            if (area instanceof HTMLTextAreaElement) {
-                area.value = GEECHAN_DEFAULT_PROMPT;
-                area.dispatchEvent(new Event('input', { bubbles: true }));
-                toastr.success('System prompt reset to default Geechan preset');
-            }
-            break;
-        }
-        case 'edit-grounded-dialogue-rules':
-            openGroundedDialogueRulesEditor();
-            break;
-        case 'weekly-remove': {
-            const row = target?.closest?.('.sb-conversation-weekly-row');
-            if (row instanceof HTMLElement) {
-                row.remove();
-                saveCurrentPanelSettings();
             }
             break;
         }
@@ -958,53 +839,6 @@ export async function runConversationAction(action, data = {}, target = null, ev
             }
             break;
         }
-        case 'generate-schedule': {
-            if (conversationState.scheduleGenerationBusy) {
-                break;
-            }
-            const character = getCurrentCharacter();
-            const genAvatar = getCurrentCharAvatar();
-            if (!character || !genAvatar) {
-                toastr.warning('No character selected');
-                break;
-            }
-            conversationState.scheduleGenerationBusy = true;
-            const genBtn = target instanceof HTMLElement ? target : document.createElement('button');
-            const personaId = getConversationPersonaId();
-            genBtn.setAttribute('disabled', '');
-            toastr.info(`Generating schedule for ${character.name}…`);
-            try {
-                const groupId = getConversationGroupIdForAvatar(genAvatar);
-                const schedule = await generateCharacterSchedule(character, { groupId, personaId });
-                if (schedule) {
-                    saveStoredSchedule(genAvatar, schedule, { personaId });
-                    const genSettings = getSettings(genAvatar, { groupId, personaId });
-                    genSettings.auto_schedule = JSON.stringify(schedule);
-                    genSettings.talkativeness = schedule.talkativeness;
-                    genSettings.inactivity_threshold = schedule.inactivityThresholdMinutes;
-                    genSettings.schedule_generated_at = Date.now();
-                    if (groupId) {
-                        saveGroupConversationSettings(groupId, genSettings, { personaId });
-                    }
-                    saveSettings(genAvatar, genSettings, { groupId, personaId });
-                    if (isConversationActiveThread(genAvatar, groupId, { personaId })) {
-                        applySettingsToPanel(genSettings);
-                        renderScheduleDisplay();
-                        updateConversationChrome(genSettings);
-                    }
-                    toastr.success(`Schedule generated for ${character.name}`);
-                } else {
-                    toastr.warning('Schedule generation returned no data. Try again.');
-                }
-            } catch (err) {
-                console.error('Schedule generation error:', err);
-                toastr.error('Schedule generation failed');
-            } finally {
-                conversationState.scheduleGenerationBusy = false;
-                genBtn.removeAttribute('disabled');
-            }
-            break;
-        }
         default:
             break;
     }
@@ -1016,23 +850,24 @@ export function bindConversationChromeControls(sheld) {
     }
 
     sheld.dataset.sbConversationChromeBound = 'true';
-    bindConversationZoomEscape();
+    // The folders are read on the first open, in step with the list, and never at startup.
+    installConversationFoldersHooks();
+    conversationFolders.subscribe((event) => {
+        if (event.type === 'folders' || event.type === 'status') {
+            scheduleConversationListRender();
+        }
+    });
+    void conversationFolders.load();
+    bindMessageLongPress({ onLongPress: openConversationMessageMenuAt });
     sheld.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) {
             return;
         }
 
-        const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
-        if (drawer instanceof HTMLElement && !drawer.hidden && event.target instanceof Node && drawer.contains(event.target)) {
+        const conversationList = document.getElementById(CHROME_IDS.conversationList);
+        if (sheld.dataset.sbConversationPage === 'list' && getCurrentCharAvatar() && conversationList instanceof HTMLElement && event.target instanceof Node && conversationList.contains(event.target)) {
             event.preventDefault();
-            dismissConversationSettings();
-            return;
-        }
-
-        const palsRail = document.getElementById(CHROME_IDS.palsRail);
-        if (sheld.dataset.sbConversationPage === 'pals' && getCurrentCharAvatar() && palsRail instanceof HTMLElement && event.target instanceof Node && palsRail.contains(event.target)) {
-            event.preventDefault();
-            void runConversationAction('close-pals');
+            void runConversationAction('close-list');
             return;
         }
 
@@ -1041,12 +876,6 @@ export function bindConversationChromeControls(sheld) {
             event.preventDefault();
             toggleConversationSearchBar(false);
             document.querySelector(`#${CHROME_IDS.header} [data-sb-conversation-action="toggle-search"]`)?.focus?.({ preventScroll: true });
-        }
-    });
-    // After the handlers above, so an open search or the rail still takes its Escape first.
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !event.isComposing && !event.defaultPrevented && dismissConversationSettingsOnEscape(event.target)) {
-            event.preventDefault();
         }
     });
     sheld.addEventListener('keydown', (event) => {
@@ -1065,18 +894,18 @@ export function bindConversationChromeControls(sheld) {
 
     sheld.addEventListener('click', async (event) => {
         // Message menu triggers are handled by sillybunny-conversation/message-menu.js.
-        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-pal') : null;
+        const target = event.target instanceof Element ? event.target.closest('[data-sb-conversation-action], .sb-conversation-list-item') : null;
 
         if (!(target instanceof HTMLElement)) {
             return;
         }
 
-        if (target.classList.contains('sb-conversation-pal')) {
+        if (target.classList.contains('sb-conversation-list-item')) {
             const avatar = target.dataset.avatar || characters[parsePositiveInt(target.dataset.characterIndex, -1, 0)]?.avatar;
             const groupId = target.dataset.groupId || '';
             if (avatar) {
-                closePalsRail();
-                await selectConversationThread(avatar, {
+                closeConversationList();
+                await selectConversation(avatar, {
                     groupId: groupId || null,
                     showToast: false,
                 });
@@ -1100,6 +929,16 @@ export function bindConversationChromeControls(sheld) {
     if (input instanceof HTMLTextAreaElement && input.dataset.sbConversationBound !== 'true') {
         input.dataset.sbConversationBound = 'true';
         input.addEventListener('keydown', (event) => {
+            const emojiButton = document.getElementById(CHROME_IDS.emoji);
+            if (isEmojiShortcut(event) && !hasNativeEmojiPicker(navigator.userAgent) && emojiButton instanceof HTMLElement && !input.disabled) {
+                event.preventDefault();
+                // The Emoji button is not drawn in a narrow composer, and the "+" button, which always is, takes its place.
+                const anchor = getComputedStyle(emojiButton).display === 'none' ? input.closest('form')?.querySelector('.sb-conversation-composer-more') : emojiButton;
+                if (anchor instanceof HTMLElement) {
+                    void openComposerEmojiChooser(anchor, { fromEntry: true });
+                }
+                return;
+            }
             if (event.isComposing || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || !shouldSendOnEnter()) {
                 return;
             }
@@ -1124,12 +963,6 @@ export function bindConversationChromeControls(sheld) {
     if (fileInput instanceof HTMLInputElement && fileInput.dataset.sbConversationBound !== 'true') {
         fileInput.dataset.sbConversationBound = 'true';
         fileInput.addEventListener('change', updateConversationAttachmentPreview);
-    }
-
-    const drawer = document.getElementById(CHROME_IDS.settingsDrawer);
-    if (drawer instanceof HTMLElement && drawer.dataset.sbConversationBound !== 'true') {
-        drawer.dataset.sbConversationBound = 'true';
-        drawer.addEventListener('change', saveCurrentPanelSettings);
     }
 
     const searchInput = document.getElementById(CHROME_IDS.search);
@@ -1169,35 +1002,27 @@ export function bindConversationChromeControls(sheld) {
         });
     }
 
-    const backdrop = document.getElementById(CHROME_IDS.settingsBackdrop);
-    if (backdrop instanceof HTMLElement && backdrop.dataset.sbConversationBound !== 'true') {
-        backdrop.dataset.sbConversationBound = 'true';
-        backdrop.addEventListener('click', () => {
-            dismissConversationSettings();
-            closePalsRail();
-        });
+    const listSearch = document.getElementById('sb_conversation_list_search');
+    if (listSearch instanceof HTMLInputElement && listSearch.dataset.sbConversationBound !== 'true') {
+        listSearch.dataset.sbConversationBound = 'true';
+        const debouncedListFilter = debounce(() => {
+            if (setConversationListQuery(listSearch.value)) {
+                scheduleConversationListRender();
+            }
+        }, debounce_timeout.short);
+        listSearch.addEventListener('input', debouncedListFilter);
     }
 
-    const palsSearch = document.getElementById('sb_conversation_pals_search');
-    if (palsSearch instanceof HTMLInputElement && palsSearch.dataset.sbConversationBound !== 'true') {
-        palsSearch.dataset.sbConversationBound = 'true';
-        const debouncedPalsFilter = debounce(() => {
-            const query = palsSearch.value.toLowerCase().trim();
-            const pals = document.querySelectorAll('.sb-conversation-pal');
-            pals.forEach(pal => {
-                if (pal instanceof HTMLElement) {
-                    const palName = pal.querySelector('.sb-conversation-pal-name')?.textContent?.toLowerCase() || '';
-                    const row = pal.closest('.sb-conversation-pal-row');
-                    const targetElement = row instanceof HTMLElement ? row : pal;
-                    if (palName.includes(query)) {
-                        targetElement.classList.remove('sb-conversation-hidden');
-                    } else {
-                        targetElement.classList.add('sb-conversation-hidden');
-                    }
-                }
-            });
-        }, debounce_timeout.short);
-        palsSearch.addEventListener('input', debouncedPalsFilter);
+    const listItems = document.getElementById(CHROME_IDS.listItems);
+    if (listItems instanceof HTMLElement) {
+        bindConversationListControls(listItems, {
+            getEntries: getConversationListEntries,
+            runAction: runConversationAction,
+            openDetails: openConversationDetails,
+            render: scheduleConversationListRender,
+            folders: conversationFolders,
+            getPersonaId: getConversationPersonaId,
+        });
     }
 
     const personaPicker = document.getElementById(CHROME_IDS.personaPicker);
@@ -1219,10 +1044,10 @@ export function bindConversationChromeControls(sheld) {
             const selectedIds = Array.from(personaPicker.querySelectorAll('.sb-conversation-persona-note-checkbox'))
                 .filter(input => input instanceof HTMLInputElement && input.dataset.personaAvatar === avatarId && input.checked)
                 .map(input => input.value);
-            const threadAvatar = getCurrentCharAvatar();
+            const anchorAvatar = getCurrentCharAvatar();
             setActiveConversationPersonaAppendixIds(avatarId, selectedIds, {
-                avatar: threadAvatar,
-                groupId: getConversationGroupIdForAvatar(threadAvatar),
+                avatar: anchorAvatar,
+                groupId: getConversationGroupIdForAvatar(anchorAvatar),
                 personaId: avatarId,
             });
             renderConversationPersonaPicker(personaPicker);
@@ -1236,9 +1061,9 @@ export function getDefaultConversationAvatar() {
         return conversationState.conversationSelectedAvatar;
     }
 
-    const pal = getConversationPals().find(item => item.character?.avatar);
-    if (pal?.character?.avatar) {
-        return pal.character.avatar;
+    const conversation = getDirectConversations().find(item => item.character?.avatar);
+    if (conversation?.character?.avatar) {
+        return conversation.character.avatar;
     }
 
     const currentAvatar = getRoleplayCurrentCharacter()?.avatar;
@@ -1257,79 +1082,79 @@ function emitConversationWorkspaceStateChange() {
     }));
 }
 
-export function openConversationWorkspaceForAvatar(avatar, { branchId = '', groupId = null, showToast = true, enable = false } = {}) {
-    closeConversationSettings();
+/**
+ * Opens the workspace on a conversation. The workspace and its chrome change at once; the returned promise settles
+ * when the conversation is known to exist: with `enable` a direct conversation that is not there yet is made first.
+ * @returns {Promise<boolean>} False when there is no such character, chat or conversation to open.
+ */
+export function openConversationWorkspaceForAvatar(avatar, { chatId = '', groupId = null, showToast = true, enable = false } = {}) {
     const character = avatar ? getCharacterForAvatar(avatar) : null;
     const targetAvatar = character?.avatar || null;
     const targetGroupId = groupId && targetAvatar && isAvatarInConversationGroup(targetAvatar, groupId) ? String(groupId) : null;
-    if (branchId && targetAvatar && !getConversationBranches(targetAvatar, { groupId: targetGroupId }).some(branch => branch.id === String(branchId))) {
-        return false;
+    if (chatId && targetAvatar && !getConversationChats(targetAvatar, { groupId: targetGroupId }).some(chat => chat.id === String(chatId))) {
+        return Promise.resolve(false);
     }
     const wasWorkspaceOpen = Boolean(conversationState.conversationWorkspaceOpen);
-    const threadChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
+    const conversationChanged = conversationState.conversationSelectedAvatar !== targetAvatar || conversationState.conversationSelectedGroupId !== targetGroupId;
     conversationState.conversationWorkspaceOpen = true;
     emitConversationWorkspaceStateChange();
     conversationState.conversationSelectedAvatar = targetAvatar;
     conversationState.conversationSelectedGroupId = targetGroupId;
     conversationState.conversationUnavailableGroupId = null;
-    if (threadChanged) {
+    if (conversationChanged) {
         conversationState.conversationTimelineChannel = 'main';
         conversationState.conversationTimelineSearchQuery = '';
     }
-    if (!wasWorkspaceOpen || threadChanged) {
+    if (!wasWorkspaceOpen || conversationChanged) {
         conversationState.timelineBottomScrollPending = true;
     }
     ensureConversationStylesheet();
+    applyEmojiFont({ useDeviceEmoji: Boolean(getGlobalConversationSettings().use_device_emoji) });
 
     if (!targetAvatar) {
-        scheduleInterfaceRefresh({ syncControls: false });
-        return false;
+        scheduleInterfaceRefresh();
+        return Promise.resolve(false);
     }
 
     // Every way into a thread ends here, and Conversation opens no chat of the app, so Home hears about it from this event (Getting Started, step 3).
-    window.dispatchEvent(new CustomEvent(CONVERSATION_THREAD_OPENED_EVENT, { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
+    window.dispatchEvent(new CustomEvent(CONVERSATION_OPENED_EVENT, { detail: { avatar: targetAvatar, groupId: targetGroupId } }));
 
-    if (branchId) {
-        setActiveConversationBranch(targetAvatar, String(branchId), { groupId: targetGroupId });
+    const wasEnabled = Boolean(getConversationRecord(targetAvatar, { groupId: targetGroupId }));
+    const finish = () => {
+        if (chatId) {
+            setActiveConversationChat(targetAvatar, String(chatId), { groupId: targetGroupId });
+        }
+        requestConversationRuntimeStart();
+        scheduleInterfaceRefresh();
+        if (showToast && enable && !wasEnabled) {
+            toastr.info(`Conversation Mode activated for ${character.name || 'Character'}`);
+        }
+        focusConversationInputAfterRender();
+        return true;
+    };
+    if (enable && !targetGroupId && !wasEnabled) {
+        return withConversationSwitch(() => ensureDirectConversation(targetAvatar)).then(finish, (error) => {
+            console.error('Conversation Mode: the conversation could not be made', error);
+            return false;
+        });
     }
-
-    const settings = getSettings(targetAvatar, { groupId: targetGroupId });
-    const wasEnabled = Boolean(settings.enabled);
-    if (enable && !settings.enabled) {
-        settings.enabled = true;
-        saveSettings(targetAvatar, settings, { groupId: targetGroupId });
-    }
-    requestConversationRuntimeStart();
-    applySettingsToPanel(settings);
-    scheduleInterfaceRefresh({ syncControls: true });
-    if (showToast && enable && !wasEnabled) {
-        toastr.info(`Conversation Mode activated for ${character.name || 'Character'}`);
-    }
-    focusConversationInputAfterRender();
-    return true;
+    return Promise.resolve(finish());
 }
 
 export function openConversationWorkspaceFromWelcome() {
     const avatar = conversationState.conversationSelectedAvatar || getDefaultConversationAvatar();
     const selectedGroupId = conversationState.conversationSelectedGroupId || '';
     const groupId = selectedGroupId && avatar && isAvatarInConversationGroup(avatar, selectedGroupId) ? selectedGroupId : null;
-    if (!avatar || !openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false })) {
+    if (!avatar || !getCharacterForAvatar(avatar)) {
         toastr.warning('Pick or import a character before opening Conversation Mode');
         return false;
     }
 
+    void openConversationWorkspaceForAvatar(avatar, { groupId, showToast: false });
     return true;
 }
 
-export function getRoleplayAvatarForWelcome() {
-    return conversationState.conversationSelectedAvatar || getRoleplayCurrentCharacter()?.avatar || null;
-}
-
 export function disableConversationModeForCurrentCharacter({ focusRoleplay = true } = {}) {
-    const avatar = getCurrentCharAvatar();
-    const personaId = getConversationPersonaId();
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    closeConversationSettings({ avatar, groupId, personaId });
     conversationState.conversationWorkspaceOpen = false;
     conversationState.conversationSelectedAvatar = null;
     conversationState.conversationSelectedGroupId = null;
@@ -1337,7 +1162,7 @@ export function disableConversationModeForCurrentCharacter({ focusRoleplay = tru
     conversationState.conversationTimelineChannel = 'main';
     conversationState.conversationTimelineSearchQuery = '';
     emitConversationWorkspaceStateChange();
-    scheduleInterfaceRefresh({ syncControls: false });
+    scheduleInterfaceRefresh();
     if (focusRoleplay) {
         document.getElementById('send_textarea')?.focus?.({ preventScroll: false });
     }
@@ -1351,12 +1176,12 @@ export function setConversationInterfaceActive(active) {
 
     if (!active) {
         chrome.sheld.removeAttribute('data-sb-conversation-mode');
-        closeConversationSettings();
-        closePalsRail();
+        closeActionMenu({ animate: false, restoreFocus: false });
+        closeConversationList();
         hideConversationPickers();
         observeConversationLayout(false);
         chrome.sheld.removeAttribute('data-sb-conversation-page');
-        for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
+        for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.conversationList]) {
             const element = document.getElementById(id);
             if (element instanceof HTMLElement) {
                 element.hidden = true;
@@ -1364,12 +1189,14 @@ export function setConversationInterfaceActive(active) {
         }
         const timeline = document.getElementById(CHROME_IDS.timeline);
         if (timeline instanceof HTMLElement) {
+            // The composer stays in the page while the workspace is closed, and the conversation that opens next must not find this draft in it.
+            stashComposerDraft(conversationState.lastRenderedConversationKey);
             // Mobile Safari keeps hidden DOM expensive; rebuild the timeline lazily on next open.
             timeline.replaceChildren();
             timeline.removeAttribute('data-sb-conversation-fingerprint');
             conversationState.lastTimelineFingerprint = '';
             conversationState.lastRenderedAvatar = null;
-            conversationState.lastRenderedThreadKey = '';
+            conversationState.lastRenderedConversationKey = '';
             conversationState.lastRenderedMessageCount = 0;
             conversationState.timelineBottomScrollPending = false;
         }
@@ -1377,7 +1204,7 @@ export function setConversationInterfaceActive(active) {
     }
 
     chrome.sheld.dataset.sbConversationMode = 'on';
-    for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.palsRail]) {
+    for (const id of [CHROME_IDS.header, CHROME_IDS.stage, CHROME_IDS.conversationList]) {
         const element = document.getElementById(id);
         if (element instanceof HTMLElement) {
             element.hidden = false;

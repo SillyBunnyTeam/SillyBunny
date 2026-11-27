@@ -8,6 +8,7 @@ import { CHAT_BACKUPS_PREFIX } from './chats.js';
 import { isPathUnderParent, recoverFileWriteSync, tryParse } from '../util.js';
 import { SETTINGS_FILE } from '../constants.js';
 import { getKeptExternalMediaPaths } from '../external-media-manifest.js';
+import { readConversationChatMessages } from '../conversation-media-references.js';
 // SillyBunny: NovelAI Precise Reference PNGs stored as user files are listed in settings.json.
 import { normalizeNovelAIPreciseReferencePath } from '../../public/scripts/novelai-precise-reference.js';
 
@@ -601,6 +602,9 @@ export class DataMaidService {
                     }
                 }
             }
+
+            // SillyBunny: conversation chats live in conversations/<id>/chats, which the two scans above do not read.
+            allChats.push(...(await readConversationChatMessages(this.directories)).filter(filterFn));
 
             return allChats;
         } catch (error) {
