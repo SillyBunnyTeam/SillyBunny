@@ -617,8 +617,14 @@ describe('Track A: Macro Engine 512-entry CST LRU, {{if}} fast-path, and Handleb
     });
 });
 
-describe('Track A: Parallel independent pre-reply In-Chat Agents', () => {
-    test('runs consecutive additive pre-generation intercept agents concurrently and applies results in deterministic order', async () => {
+describe('In-Chat Agents patch interceptors run in sequence', () => {
+    let restoreGlobals = () => {};
+
+    afterEach(() => {
+        restoreGlobals();
+    });
+
+    async function loadAgentRunner() {
         jest.resetModules();
         const listeners = new Map();
         const eventTypes = {
@@ -653,32 +659,10 @@ describe('Track A: Parallel independent pre-reply In-Chat Agents', () => {
         };
 
         let enabledAgents = [];
+        // The default value of the setting that governs append agents: it must not change how patch interceptors run.
         const globalSettings = { appendAgentsExecutionMode: 'parallel' };
-        const gateFirst = deferred();
-        const gateSecond = deferred();
-        const startedOrder = [];
-
-        const generateQuietPrompt = jest.fn(async ({ quietPrompt }) => {
-            if (quietPrompt.includes('First patch prompt')) {
-                startedOrder.push('first');
-                await gateFirst.promise;
-                return 'first patch note';
-            }
-            if (quietPrompt.includes('Second patch prompt')) {
-                startedOrder.push('second');
-                await gateSecond.promise;
-                return 'second patch note';
-            }
-            if (quietPrompt.includes('Replace pass one')) {
-                startedOrder.push('replace-1');
-                return 'replaced-step-1';
-            }
-            if (quietPrompt.includes('Replace pass two')) {
-                startedOrder.push('replace-2');
-                return `saw:${quietPrompt.includes('replaced-step-1')}`;
-            }
-            return '';
-        });
+        let respond = async () => '';
+        const generateQuietPrompt = jest.fn(async ({ quietPrompt }) => respond(quietPrompt));
 
         await jest.unstable_mockModule('../public/script.js', () => ({
             chat: [],
@@ -851,95 +835,172 @@ describe('Track A: Parallel independent pre-reply In-Chat Agents', () => {
             removeEventListener: jest.fn(),
         };
 
-        try {
-            const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
-            initAgentRunner();
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
 
-            enabledAgents = [
-                {
-                    id: 'patch-second',
-                    name: 'Patch Second',
-                    phase: 'pre',
-                    prompt: 'Second patch prompt',
-                    injection: { order: 20, role: 0 },
-                    preProcess: { mode: 'intercept', applyMode: 'patch', patchStartTag: '<p2>', patchEndTag: '</p2>' },
-                    conditions: {},
-                },
-                {
-                    id: 'patch-first',
-                    name: 'Patch First',
-                    phase: 'pre',
-                    prompt: 'First patch prompt',
-                    injection: { order: 10, role: 0 },
-                    preProcess: { mode: 'intercept', applyMode: 'patch', patchStartTag: '<p1>', patchEndTag: '</p1>' },
-                    conditions: {},
-                },
-            ];
-
-            await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
-            const eventData = { chat: [{ role: 'user', content: 'Base prompt' }], dryRun: false };
-            const pendingRun = eventSource.emit(eventTypes.CHAT_COMPLETION_PROMPT_READY, eventData);
-
-            // Wait a tick for both parallel LLM requests to launch before either gate resolves.
-            await new Promise(resolve => setImmediate(resolve));
-            expect(startedOrder).toEqual(['first', 'second']);
-
-            // Resolve second BEFORE first to prove application order stays deterministic (order 10 before order 20).
-            gateSecond.resolve();
-            await new Promise(resolve => setImmediate(resolve));
-            gateFirst.resolve();
-            await pendingRun;
-
-            expect(eventData.chat).toEqual([
-                { role: 'user', content: 'Base prompt' },
-                { role: 'system', content: '<p1>\nfirst patch note\n</p1>' },
-                { role: 'system', content: '<p2>\nsecond patch note\n</p2>' },
-            ]);
-
-            // Replace interceptors must still run sequentially so agent 2 sees agent 1's rewritten context.
-            startedOrder.length = 0;
-            enabledAgents = [
-                {
-                    id: 'rep-1',
-                    name: 'Replace 1',
-                    phase: 'pre',
-                    prompt: 'Replace pass one',
-                    injection: { order: 10, role: 0 },
-                    preProcess: { mode: 'intercept', applyMode: 'replace' },
-                    conditions: {},
-                },
-                {
-                    id: 'rep-2',
-                    name: 'Replace 2',
-                    phase: 'pre',
-                    prompt: 'Replace pass two',
-                    injection: { order: 20, role: 0 },
-                    preProcess: { mode: 'intercept', applyMode: 'replace' },
-                    conditions: {},
-                },
-            ];
-            await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
-            const textData = { prompt: 'Original text', dryRun: false };
-            await eventSource.emit(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, textData);
-            expect(startedOrder).toEqual(['replace-1', 'replace-2']);
-            expect(textData.prompt).toBe('saw:true');
-        } finally {
-            if (prevDocument === undefined) {
-                delete globalThis.document;
-            } else {
-                globalThis.document = prevDocument;
+        restoreGlobals = () => {
+            for (const [key, previous] of [['document', prevDocument], ['window', prevWindow], ['$', prevJquery]]) {
+                if (previous === undefined) {
+                    delete globalThis[key];
+                } else {
+                    globalThis[key] = previous;
+                }
             }
-            if (prevWindow === undefined) {
-                delete globalThis.window;
-            } else {
-                globalThis.window = prevWindow;
+        };
+
+        return {
+            eventSource,
+            eventTypes,
+            generateQuietPrompt,
+            setAgents: agents => { enabledAgents = agents; },
+            setResponder: fn => { respond = fn; },
+        };
+    }
+
+    const patchAgent = (id, order, tag, prompt, timing = 'pre-generation') => ({
+        id,
+        name: id,
+        phase: 'pre',
+        prompt,
+        injection: { order, role: 0 },
+        preProcess: { mode: 'intercept', interceptTiming: timing, applyMode: 'patch', patchStartTag: `<${tag}>`, patchEndTag: `</${tag}>` },
+        conditions: {},
+    });
+
+    /** Answers each patch agent once its gate opens, and records what the second one was shown. */
+    function createGatedResponder() {
+        const gateFirst = deferred();
+        const gateSecond = deferred();
+        const started = [];
+        const prompts = {};
+        const respond = async (quietPrompt) => {
+            if (quietPrompt.includes('First patch prompt')) {
+                started.push('first');
+                prompts.first = quietPrompt;
+                await gateFirst.promise;
+                return 'first patch note';
             }
-            if (prevJquery === undefined) {
-                delete globalThis.$;
-            } else {
-                globalThis.$ = prevJquery;
+            if (quietPrompt.includes('Second patch prompt')) {
+                started.push('second');
+                prompts.second = quietPrompt;
+                await gateSecond.promise;
+                return 'second patch note';
             }
-        }
+            return '';
+        };
+        return { respond, gateFirst, gateSecond, started, prompts };
+    }
+
+    const nextTick = () => new Promise(resolve => setImmediate(resolve));
+
+    test('the second patch agent waits for the first and sees its patch in the chat context', async () => {
+        const runner = await loadAgentRunner();
+        const { respond, gateFirst, gateSecond, started, prompts } = createGatedResponder();
+        runner.setResponder(respond);
+        // The list is out of order on purpose: the injection order decides who runs first.
+        runner.setAgents([
+            patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+            patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+        ]);
+
+        await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const eventData = { chat: [{ role: 'user', content: 'Base prompt' }], dryRun: false };
+        const pendingRun = runner.eventSource.emit(runner.eventTypes.CHAT_COMPLETION_PROMPT_READY, eventData);
+
+        await nextTick();
+        expect(started).toEqual(['first']);
+
+        gateFirst.resolve();
+        await nextTick();
+        expect(started).toEqual(['first', 'second']);
+        gateSecond.resolve();
+        await pendingRun;
+
+        expect(prompts.first).not.toContain('first patch note');
+        expect(prompts.second).toContain('first patch note');
+        expect(eventData.chat).toEqual([
+            { role: 'user', content: 'Base prompt' },
+            { role: 'system', content: '<p1>\nfirst patch note\n</p1>' },
+            { role: 'system', content: '<p2>\nsecond patch note\n</p2>' },
+        ]);
+    });
+
+    test('the second patch agent sees the first patch in a text prompt', async () => {
+        const runner = await loadAgentRunner();
+        const { respond, gateFirst, gateSecond, started, prompts } = createGatedResponder();
+        runner.setResponder(respond);
+        runner.setAgents([
+            patchAgent('patch-first', 10, 'p1', 'First patch prompt'),
+            patchAgent('patch-second', 20, 'p2', 'Second patch prompt'),
+        ]);
+
+        await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const textData = { prompt: 'Original text', dryRun: false };
+        const pendingRun = runner.eventSource.emit(runner.eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, textData);
+
+        await nextTick();
+        expect(started).toEqual(['first']);
+        gateFirst.resolve();
+        await nextTick();
+        gateSecond.resolve();
+        await pendingRun;
+
+        expect(prompts.second).toContain('first patch note');
+        expect(textData.prompt.indexOf('first patch note')).toBeGreaterThan(-1);
+        expect(textData.prompt.indexOf('first patch note')).toBeLessThan(textData.prompt.indexOf('second patch note'));
+    });
+
+    test('post-main patch agents run in sequence too, and the second sees the first patch in the generated text', async () => {
+        const runner = await loadAgentRunner();
+        const { respond, gateFirst, gateSecond, started, prompts } = createGatedResponder();
+        runner.setResponder(respond);
+        runner.setAgents([
+            patchAgent('patch-first', 10, 'p1', 'First patch prompt', 'post-main-generation'),
+            patchAgent('patch-second', 20, 'p2', 'Second patch prompt', 'post-main-generation'),
+        ]);
+
+        await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const data = { text: 'Generated reply' };
+        const pendingRun = runner.eventSource.emit(runner.eventTypes.MAIN_GENERATION_OUTPUT_READY, data);
+
+        await nextTick();
+        expect(started).toEqual(['first']);
+        gateFirst.resolve();
+        await nextTick();
+        expect(started).toEqual(['first', 'second']);
+        gateSecond.resolve();
+        await pendingRun;
+
+        expect(prompts.second).toContain('first patch note');
+        expect(data.text.indexOf('first patch note')).toBeGreaterThan(-1);
+        expect(data.text.indexOf('first patch note')).toBeLessThan(data.text.indexOf('second patch note'));
+    });
+
+    test('replace interceptors still run in sequence, and the second sees the rewritten text', async () => {
+        const runner = await loadAgentRunner();
+        const started = [];
+        runner.setResponder(async quietPrompt => {
+            if (quietPrompt.includes('Replace pass one')) {
+                started.push('replace-1');
+                return 'replaced-step-1';
+            }
+            if (quietPrompt.includes('Replace pass two')) {
+                started.push('replace-2');
+                return `saw:${quietPrompt.includes('replaced-step-1')}`;
+            }
+            return '';
+        });
+        const replaceAgent = (id, order, prompt) => ({
+            id, name: id, phase: 'pre', prompt, injection: { order, role: 0 }, preProcess: { mode: 'intercept', applyMode: 'replace' }, conditions: {},
+        });
+        runner.setAgents([replaceAgent('rep-1', 10, 'Replace pass one'), replaceAgent('rep-2', 20, 'Replace pass two')]);
+
+        await runner.eventSource.emit(runner.eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        const textData = { prompt: 'Original text', dryRun: false };
+        await runner.eventSource.emit(runner.eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, textData);
+
+        expect(started).toEqual(['replace-1', 'replace-2']);
+        expect(textData.prompt).toBe('saw:true');
     });
 });
 
