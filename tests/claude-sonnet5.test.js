@@ -168,6 +168,21 @@ describe('Claude 5 backend request handling', () => {
         expect(getBody().output_config?.format).toBeUndefined();
     });
 
+    test.each(['claude-haiku-4-5', 'claude-sonnet-4-5'])('%s with json_schema and omitted reasoning_effort keeps forced tool without thinking', async (model) => {
+        const getBody = captureClaudePayload();
+        const schema = { type: 'object', properties: { answer: { type: 'string' } } };
+        const res = await makeRequest({
+            model,
+            max_tokens: 512,
+            json_schema: { name: 'answer', value: schema },
+        });
+        expect(res.status).toBe(200);
+        const body = getBody();
+        expect(body.tool_choice).toEqual({ type: 'tool', name: 'answer' });
+        expect(body.thinking).toBeUndefined();
+        expect(body.max_tokens).toBe(512);
+    });
+
     test.each([
         ['claude-sonnet-5', 'xhigh'],
         ['claude-opus-5', 'xhigh'],

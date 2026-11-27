@@ -1077,11 +1077,16 @@ export function cachingSystemPromptForOpenRouter(messages, ttl = undefined) {
  * @returns {number|string|null} Budget tokens, effort string, or null
  */
 export function calculateClaudeBudgetTokens(maxTokens, reasoningEffort, stream, isAdaptiveModel) {
+    // SillyBunny: treat a missing reasoning_effort as auto so non-adaptive Claude models do not allocate a default thinking budget (ST #6144).
+    if (!reasoningEffort) {
+        return null;
+    }
+
     // Adaptive thinking for Opus 4.6+: return effort string (like Gemini 3)
     if (isAdaptiveModel) {
         // SillyBunny divergence: the picked effort is forwarded as-is rather than folded onto the
         // rungs a given adaptive model is known to list, so a refusal is reported, not hidden.
-        if (!reasoningEffort || [REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
+        if ([REASONING_EFFORT.auto, REASONING_EFFORT.none].includes(reasoningEffort)) {
             return null;
         }
         return toWireReasoningEffort(reasoningEffort);

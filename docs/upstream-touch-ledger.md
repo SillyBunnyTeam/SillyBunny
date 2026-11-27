@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `src/prompt-converters.js` - treat missing reasoning_effort as auto in Claude budget calculation
+| Field | Value |
+| --- | --- |
+| File | `src/prompt-converters.js` (`calculateClaudeBudgetTokens`). |
+| Area | Claude thinking budget calculation when callers omit `reasoning_effort`. |
+| Divergence reason | Early port of upstream SillyTavern PR #6144 before the next full upstream sync, adapted around SillyBunny's reworked adaptive-thinking branch. Returning `null` when `reasoningEffort` is absent prevents non-adaptive Claude models from receiving a 1024-token thinking budget alongside a forced `json_schema` tool call. |
+| Target seam | `calculateClaudeBudgetTokens()` in `src/prompt-converters.js` (early port of upstream SillyTavern PR #6144, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Return `null` immediately when `!reasoningEffort` so non-adaptive Claude models match `auto` instead of falling through to a 1024-token thinking budget that conflicts with forced `tool_choice`. |
+| Protecting tests | `tests/prompt-converters.test.js`, `tests/claude-sonnet5.test.js`, `tests/reasoning-effort-none.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- prompt-converters.test.js claude-sonnet5.test.js reasoning-effort-none.test.js`. |
+| Rollback path | Remove the early `if (!reasoningEffort) { return null; }` guard from `calculateClaudeBudgetTokens()` in `src/prompt-converters.js` and remove the missing-effort test cases from `tests/prompt-converters.test.js` and `tests/claude-sonnet5.test.js`. Saved presets and settings are unaffected. Drop this entry on the upstream sync that brings ST #6144. |
+| Last reviewed | 2026-11-27 (early port of ST #6144). |
+| Owner | Server and API compatibility integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
