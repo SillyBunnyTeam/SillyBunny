@@ -7,7 +7,6 @@
  * `onMount`, when the frame's header and body exist.
  */
 
-import { createIconButton } from '../../sillybunny-editor/dialog.js';
 import { createListShowMore } from '../../sillybunny-editor/list-show-more.js';
 import { createSelectionMode } from '../../sillybunny-editor/selection-mode.js';
 import { nextShownCount } from './bulk-logic.js';
@@ -65,7 +64,10 @@ export function createBulkSelection({ getList, rowSelector, getKey, getAllKeys, 
     }));
 
     const controller = {
-        /** @param {{ frame: Record<string, any> }} context What `onMount` of a page receives. */
+        /**
+         * @param {{ frame: Record<string, any> }} context What `onMount` of a page receives. Its frame brings the dialog's
+         * `createIconButton`, so that this module does not import the dialog and loads without it.
+         */
         mount(context) {
             frame = context.frame;
             bar = document.createElement('div');
@@ -94,7 +96,7 @@ export function createBulkSelection({ getList, rowSelector, getKey, getAllKeys, 
                 },
                 canEnter: () => !busy && (gestures || startedFromMenu),
             });
-            selectButton = createIconButton(selectLabel, 'check-double', 'sb-details-select');
+            selectButton = frame.createIconButton(selectLabel, 'check-double', 'sb-details-select');
             selectButton.addEventListener('click', () => controller.enter(null, selectButton));
             frame.headerEnd.prepend(selectButton);
         },
@@ -123,11 +125,12 @@ export function createBulkSelection({ getList, rowSelector, getKey, getAllKeys, 
 
         /** Shows or hides the Select button: a page with nothing to select has no use for it. */
         setSelectable(selectable) {
-            if (selectButton) {
-                selectButton.hidden = !selectable;
-            }
+            // Leaving selection mode puts the header buttons back as they were when it started, so it comes first.
             if (!selectable) {
                 selection?.exit();
+            }
+            if (selectButton) {
+                selectButton.hidden = !selectable;
             }
         },
 

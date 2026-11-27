@@ -9,7 +9,7 @@
  * before they pop the page, and `leaveSelection`, which the window calls before another page is pushed over it.
  */
 
-import { openDialog } from '../../sillybunny-editor/dialog.js';
+import { createIconButton, openDialog } from '../../sillybunny-editor/dialog.js';
 import { CONVERSATION_DETAILS_CLOSE_EVENT } from '../constants.js';
 import { releaseRowIds } from '../../sillybunny-editor/rows.js';
 import { getView } from './access.js';
@@ -102,6 +102,7 @@ function pushPage(current, id, args = {}) {
             titleNode: handle.titleNode,
             closeButton: handle.closeButton,
             search: handle.search,
+            createIconButton,
         },
     });
     handle.closed.then(({ response }) => {
