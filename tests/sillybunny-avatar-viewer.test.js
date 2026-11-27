@@ -12,7 +12,7 @@ const MOVING_UI = '../public/scripts/RossAscends-mods.js';
 const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const jquerySource = readFileSync(new URL('../public/lib/jquery-3.5.1.min.js', import.meta.url), 'utf8');
 // The markup of the app itself, so that the test follows the template when the template changes.
-const templateHtml = indexHtml.match(/<(?:div|template) id="zoomed_avatar_template"[\s\S]*?\n {8}<\/(?:div|template)>\n/)?.[0] ?? '';
+const templateHtml = indexHtml.match(/<div id="zoomed_avatar_template"[\s\S]*?\n {8}<\/div>\n/)?.[0] ?? '';
 
 let viewer;
 let powerUser;

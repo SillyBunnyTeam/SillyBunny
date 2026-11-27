@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest unit tests for PR 14 perf optimizations. */
-import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, describe, expect, test } from '@jest/globals';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,13 +10,6 @@ import {
     VIEWPORT_DELTA_THRESHOLD_PX,
     VIEWPORT_CSS_DELTA_THRESHOLD_PX,
 } from '../public/scripts/viewport-coordinator.js';
-import {
-    cloneTemplate,
-    cloneTemplateNode,
-    getTemplateJQuery,
-    getTemplateRoot,
-    queryTemplateElement,
-} from '../public/scripts/dom-template.js';
 import { createMobileViewportObserver } from '../public/scripts/chat-render-lifecycle/mobile-viewport.js';
 import {
     createMobileShellLifecycle,
@@ -341,119 +334,6 @@ describe('PR 14A: Unified ViewportCoordinator and Trap #13', () => {
         // Unconditional edit-focus guard protects IME composition even on forced orientationchange.
         expect(browserFixesSource).toMatch(/if \(isEditableFocusTarget\(document\.activeElement\)\) \{\s*return;\s*\}/);
         expect(browserFixesSource).not.toContain('if (!force && isEditableFocusTarget(document.activeElement))');
-    });
-});
-
-describe('PR 14B: Safe public/index.html <template> Diet and Trap #10', () => {
-    const indexHtml = readRepoFile('public', 'index.html');
-    const parsedDoc = new DOMParser().parseFromString(indexHtml, 'text/html');
-
-    const convertedTemplateIds = [
-        'zoomed_avatar_template',
-        'user_avatar_template',
-        'character_world_template',
-        'past_chat_template',
-        'tag_view_template',
-        'entry_edit_template',
-        'character_template',
-        'tag_template',
-        'openai_logit_bias_template',
-        'logit_bias_template',
-        'message_template',
-        'group_avatars_template',
-        'group_list_template',
-        'bogus_folder_template',
-        'bogus_folder_back_template',
-        'inline_avatar_template',
-        'alternate_greetings_template',
-        'alternate_greeting_form_template',
-        'message_file_template',
-        'message_image_template',
-        'message_video_template',
-        'message_gallery_controls',
-        'message_audio_template',
-    ];
-
-    test('converts all 23 safe inert template_element blocks to HTML <template> elements, cutting >520 live DOM nodes', () => {
-        let totalInertTemplateElements = 0;
-
-        for (const id of convertedTemplateIds) {
-            const el = parsedDoc.getElementById(id);
-            expect(el).not.toBeNull();
-            expect(el.tagName).toBe('TEMPLATE');
-            expect(el.classList.contains('template_element')).toBe(true);
-            expect(el.children.length).toBe(0);
-            const inertCount = el.content.querySelectorAll('*').length;
-            expect(inertCount).toBeGreaterThan(0);
-            totalInertTemplateElements += inertCount;
-        }
-
-        // Removing 23 inert subtrees takes 520+ elements out of the live document tree.
-        expect(totalInertTemplateElements).toBeGreaterThanOrEqual(520);
-        const liveElements = parsedDoc.querySelectorAll('*').length;
-        expect(liveElements).toBeLessThan(6000);
-    });
-
-    test('Trap #10: preserves all raw upstream settings form inputs, live onboarding select, and extension-facing #group_member_template in live DOM', () => {
-        const requiredLiveIds = [
-            'max_context',
-            'amount_gen',
-            'rm_api_block',
-            'extensions_settings',
-            'extensions_settings2',
-            'main_api',
-            'send_textarea',
-            'user-settings-block',
-            'world_info',
-            'onboarding_template',
-            'onboarding_ui_language_select',
-            'background_template',
-            'group_member_template',
-        ];
-
-        for (const id of requiredLiveIds) {
-            const el = parsedDoc.getElementById(id);
-            expect(el).not.toBeNull();
-            expect(el.tagName).not.toBe('TEMPLATE');
-        }
-
-        expect(parsedDoc.getElementById('onboarding_ui_language_select')?.closest('#onboarding_template')).not.toBeNull();
-    });
-
-    test('dom-template helper clones <template> content and legacy <div> containers identically', () => {
-        const minimalDollar = jest.fn((input) => ({
-            el: input ?? null,
-            length: input ? 1 : 0,
-            clone() {
-                return minimalDollar(input ? input.cloneNode(true) : null);
-            },
-        }));
-        window.$ = minimalDollar;
-
-        // Verify cloning real <template> entries parsed from public/index.html.
-        const mesNode = cloneTemplateNode('message_template', '.mes', parsedDoc);
-        expect(mesNode).not.toBeNull();
-        expect(mesNode.classList.contains('mes')).toBe(true);
-        expect(mesNode.ownerDocument).toBe(parsedDoc);
-        // Must be a fresh clone, not the prototype inside template.content.
-        expect(mesNode).not.toBe(queryTemplateElement('message_template', '.mes', parsedDoc));
-
-        const wiHeader = getTemplateJQuery('entry_edit_template', '.world_entry', parsedDoc);
-        const wiEdit = getTemplateJQuery('entry_edit_template', '.world_entry_edit', parsedDoc);
-        expect(wiHeader.length).toBe(1);
-        expect(wiEdit.length).toBe(1);
-        expect(wiHeader.clone().el).not.toBe(wiHeader.el);
-
-        const tagWrap = cloneTemplate('tag_template', '.tag', parsedDoc);
-        expect(tagWrap.length).toBe(1);
-        expect(tagWrap.el.classList.contains('tag')).toBe(true);
-
-        // Legacy <div> container fallback still works cleanly (e.g. unit-test fixtures).
-        document.body.innerHTML = '<div id="legacy_tpl" class="template_element"><span class="chip">hi</span></div>';
-        expect(getTemplateRoot('legacy_tpl', document)).toBe(document.getElementById('legacy_tpl'));
-        const legacyClone = cloneTemplateNode('#legacy_tpl', '.chip', document);
-        expect(legacyClone?.textContent).toBe('hi');
-        expect(legacyClone).not.toBe(document.querySelector('#legacy_tpl .chip'));
     });
 });
 
