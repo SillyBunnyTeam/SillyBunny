@@ -260,16 +260,26 @@ export async function readCdpPerfMetrics(cdpSession) {
         await cdpSession.send('Performance.enable');
         const response = await cdpSession.send('Performance.getMetrics');
         const map = Object.fromEntries((response?.metrics ?? []).map(metric => [metric.name, metric.value]));
+        // A metric that the browser did not report stays undefined. A default of zero would pass every upper bound.
         return {
-            RecalcStyleCount: Number(map.RecalcStyleCount ?? 0),
-            RecalcStyleDuration: Number(map.RecalcStyleDuration ?? 0),
-            LayoutCount: Number(map.LayoutCount ?? 0),
-            LayoutDuration: Number(map.LayoutDuration ?? 0),
-            ScriptDuration: Number(map.ScriptDuration ?? 0),
+            RecalcStyleCount: map.RecalcStyleCount,
+            RecalcStyleDuration: map.RecalcStyleDuration,
+            LayoutCount: map.LayoutCount,
+            LayoutDuration: map.LayoutDuration,
+            ScriptDuration: map.ScriptDuration,
         };
     } catch {
         return null;
     }
+}
+
+/** The non-negative change of a counter, or null when either reading is not a finite number. */
+function counterDelta(before, after, scale = 1, digits = null) {
+    if (!Number.isFinite(before) || !Number.isFinite(after)) {
+        return null;
+    }
+    const delta = Math.max(0, (after - before) * scale);
+    return digits === null ? delta : +delta.toFixed(digits);
 }
 
 export function diffCdpPerfMetrics(before, after) {
@@ -278,11 +288,11 @@ export function diffCdpPerfMetrics(before, after) {
     }
 
     return {
-        recalcStyleCount: Math.max(0, after.RecalcStyleCount - before.RecalcStyleCount),
-        recalcStyleMs: +Math.max(0, (after.RecalcStyleDuration - before.RecalcStyleDuration) * 1000).toFixed(2),
-        layoutCount: Math.max(0, after.LayoutCount - before.LayoutCount),
-        layoutMs: +Math.max(0, (after.LayoutDuration - before.LayoutDuration) * 1000).toFixed(2),
-        scriptMs: +Math.max(0, (after.ScriptDuration - before.ScriptDuration) * 1000).toFixed(2),
+        recalcStyleCount: counterDelta(before.RecalcStyleCount, after.RecalcStyleCount),
+        recalcStyleMs: counterDelta(before.RecalcStyleDuration, after.RecalcStyleDuration, 1000, 2),
+        layoutCount: counterDelta(before.LayoutCount, after.LayoutCount),
+        layoutMs: counterDelta(before.LayoutDuration, after.LayoutDuration, 1000, 2),
+        scriptMs: counterDelta(before.ScriptDuration, after.ScriptDuration, 1000, 2),
     };
 }
 

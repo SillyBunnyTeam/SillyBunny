@@ -1,6 +1,7 @@
 /* global globalThis */
 import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
+import { requireMetric } from './helpers/require-metric.js';
 import {
     createStreamingReasoningFixture,
     measureIdleActivity,
@@ -162,11 +163,12 @@ test.describe('frontend performance smoke', () => {
             });
 
             const idle = await measureIdleActivity(page, { cdpSession, durationMs: 1500 });
+            const label = 'idle behind Settings';
             expect(idle.available).toBe(true);
-            expect(idle.runningAnimations).toBe(0);
-            expect(idle.mutationCallbacks).toBeLessThanOrEqual(10);
-            expect(idle.cdp?.recalcStyleCount ?? 0).toBeLessThanOrEqual(6);
-            expect(idle.cdp?.layoutCount ?? 0).toBeLessThanOrEqual(6);
+            expect(requireMetric(idle, 'runningAnimations', label)).toBe(0);
+            expect(requireMetric(idle, 'mutationCallbacks', label)).toBeLessThanOrEqual(10);
+            expect(requireMetric(idle, 'cdp.recalcStyleCount', label)).toBeLessThanOrEqual(6);
+            expect(requireMetric(idle, 'cdp.layoutCount', label)).toBeLessThanOrEqual(6);
             expect(pageErrors).toEqual([]);
         } finally {
             await cdpSession?.detach().catch(() => {});
@@ -197,15 +199,16 @@ test.describe('frontend performance smoke', () => {
         try {
             const fixture = createStreamingReasoningFixture({ stepCount: 20, reasoningRepeat: 320, responseRepeat: 24 });
             const stream = await measureStreamingWithReasoning(page, fixture, { cdpSession });
+            const label = 'streaming after reasoning';
             expect(stream.available, `streaming measurement unavailable: ${stream.reason}`).toBe(true);
-            expect(stream.reasoningBytes).toBeGreaterThan(8000);
+            expect(requireMetric(stream, 'reasoningBytes', label)).toBeGreaterThan(8000);
             // The reasoning UI must have run on every step and rendered the reasoning, or the counters below measure
             // a loop that never reached the code under guard.
-            expect(stream.reasoningUpdateCount).toBe(fixture.stepCount);
-            expect(stream.reasoningRenderedChars).toBeGreaterThan(8000);
-            expect(stream.getBoundingClientRectCount).toBeLessThanOrEqual(250);
-            expect(stream.querySelectorAllCount).toBeLessThanOrEqual(STREAMING_QUERY_SELECTOR_ALL_LIMIT);
-            expect(stream.cdp?.recalcStyleCount ?? 0).toBeLessThanOrEqual(120);
+            expect(requireMetric(stream, 'reasoningUpdateCount', label)).toBe(fixture.stepCount);
+            expect(requireMetric(stream, 'reasoningRenderedChars', label)).toBeGreaterThan(8000);
+            expect(requireMetric(stream, 'getBoundingClientRectCount', label)).toBeLessThanOrEqual(250);
+            expect(requireMetric(stream, 'querySelectorAllCount', label)).toBeLessThanOrEqual(STREAMING_QUERY_SELECTOR_ALL_LIMIT);
+            expect(requireMetric(stream, 'cdp.recalcStyleCount', label)).toBeLessThanOrEqual(120);
             expect(pageErrors).toEqual([]);
         } finally {
             await cdpSession?.detach().catch(() => {});
@@ -238,10 +241,12 @@ test.describe('frontend performance smoke', () => {
             expect(interaction.available).toBe(true);
             expect(interaction.tabsVisited).toEqual(expect.arrayContaining(['extensions', 'editor', 'appearance']));
             expect(interaction.idleBehindSettings?.available).toBe(true);
-            expect(interaction.idleBehindSettings.runningAnimations).toBe(0);
-            expect(interaction.idleBehindSettings.mutationCallbacks).toBeLessThanOrEqual(10);
-            expect(interaction.idleBehindSettings.cdp?.recalcStyleCount ?? 0).toBeLessThanOrEqual(6);
-            expect(interaction.idleBehindSettings.cdp?.layoutCount ?? 0).toBeLessThanOrEqual(6);
+            const idle = interaction.idleBehindSettings;
+            const label = 'idle after Settings interactions';
+            expect(requireMetric(idle, 'runningAnimations', label)).toBe(0);
+            expect(requireMetric(idle, 'mutationCallbacks', label)).toBeLessThanOrEqual(10);
+            expect(requireMetric(idle, 'cdp.recalcStyleCount', label)).toBeLessThanOrEqual(6);
+            expect(requireMetric(idle, 'cdp.layoutCount', label)).toBeLessThanOrEqual(6);
             expect(pageErrors).toEqual([]);
         } finally {
             await cdpSession?.detach().catch(() => {});
