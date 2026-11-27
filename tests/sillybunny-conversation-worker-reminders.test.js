@@ -118,6 +118,77 @@ describe('a reminder that is due', () => {
 
         expect(view.reminders.map(item => item.fired)).toEqual([true, true]);
     });
+
+    test('skips an earlier reminder whose character card is deleted, marks it invalid, and delivers the next due reminder in the same tick', async () => {
+        const broken = world.addConversation('conv_1_broken', { characters: ['gone.png'], reminders: [remind({ id: 'rem_1_broken', avatar: 'gone.png', triggerAt: NOW - 500 })] });
+        world.cards.delete('gone.png');
+        const healthy = world.addConversation('conv_2_ok', { characters: ['char.png'], reminders: [remind({ id: 'rem_2_ok', avatar: 'char.png', triggerAt: NOW - 100, text: 'call mom' })] });
+        world.railItems = [world.railItemFor(healthy)];
+
+        await expect(checkConversationReminders(NOW)).resolves.toBe(true);
+
+        expect(broken.reminders[0]).toMatchObject({ invalidAt: NOW, fired: false });
+        expect(healthy.reminders[0].fired).toBe(true);
+        expect(generateConversationReply).toHaveBeenCalledTimes(1);
+        expect(generateConversationReply.mock.calls[0][0]).toContain('call mom');
+    });
+
+    test('uses the current direct conversation character when reminder.avatar is stale', async () => {
+        const view = conversationWith([remind({ avatar: 'old-name.png' })]);
+
+        await expect(checkConversationReminders(NOW)).resolves.toBe(true);
+
+        expect(generateConversationReply.mock.calls[0][2]).toMatchObject({ anchorAvatar: 'char.png', speakerAvatar: 'char.png' });
+        expect(view.reminders[0].fired).toBe(true);
+    });
+
+    test('in a group falls back to the group anchor when the reminder member left or lost its card', async () => {
+        const view = world.addConversation('conv_2_group001', {
+            kind: 'group',
+            characters: ['char.png', 'birch.png'],
+            reminders: [remind({ avatar: 'departed.png' })],
+        });
+        world.railItems = [world.railItemFor(view)];
+
+        await expect(checkConversationReminders(NOW)).resolves.toBe(true);
+
+        expect(generateConversationReply.mock.calls[0][2]).toMatchObject({ groupId: 'conv_2_group001', anchorAvatar: 'char.png', speakerAvatar: 'char.png' });
+        expect(view.reminders[0].fired).toBe(true);
+    });
+
+    test('in a group delivers through the non-anchor member that set it, anchored on the group anchor', async () => {
+        const view = world.addConversation('conv_2_group001', {
+            kind: 'group',
+            characters: ['char.png', 'birch.png'],
+            reminders: [remind({ avatar: 'birch.png' })],
+        });
+        world.railItems = [world.railItemFor(view)];
+
+        await expect(checkConversationReminders(NOW)).resolves.toBe(true);
+
+        expect(generateConversationReply.mock.calls[0][2]).toMatchObject({ groupId: 'conv_2_group001', anchorAvatar: 'char.png', speakerAvatar: 'birch.png' });
+        expect(world.spies.postMemberConversationReply).toHaveBeenCalledTimes(1);
+        expect(view.reminders[0].fired).toBe(true);
+    });
+
+    test('does not starve later due reminders when an earlier one fails to start transiently', async () => {
+        const first = world.addConversation('conv_1_first', { characters: ['birch.png'], reminders: [remind({ id: 'rem_1_first', avatar: 'birch.png', triggerAt: NOW - 500 })] });
+        const second = world.addConversation('conv_2_second', { characters: ['char.png'], reminders: [remind({ id: 'rem_2_second', avatar: 'char.png', triggerAt: NOW - 100, text: 'stretch' })] });
+        world.spies.ensureConversationChatLoaded.mockImplementation(async (avatar, { chatId = 'main', groupId = '' } = {}) => {
+            if (avatar === 'birch.png') {
+                throw new Error('temporary network hiccup');
+            }
+            const view = world.findView(groupId, avatar);
+            return view ? { conversationId: view.id, chatId } : null;
+        });
+
+        await expect(checkConversationReminders(NOW)).resolves.toBe(true);
+
+        expect(first.reminders[0]).not.toHaveProperty('invalidAt');
+        expect(first.reminders[0]).not.toHaveProperty('attempts');
+        expect(second.reminders[0].fired).toBe(true);
+        expect(generateConversationReply).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe('a reminder that cannot be delivered', () => {
@@ -237,6 +308,39 @@ describe('a reminder that the server wrote or that a page wrote already', () => 
 
         expect(postCharacterReply).not.toHaveBeenCalled();
         expect(view.reminders[0].fired).toBe(true);
+    });
+
+    test('treats a missing server-owned reply as delivered when reloading shows its token on disk', async () => {
+        const reminder = remind();
+        const view = conversationWith([reminder]);
+        generateConversationReply.mockImplementation(async (_directive, _settings, { commit }) => {
+            commit.state = 'missing';
+            throw Object.assign(new TypeError('Load failed'), { serverOwnedReplyMissing: true });
+        });
+        world.spies.reloadConversationChat.mockImplementation(async () => {
+            world.say(view, { id: 'server-landed', role: 'character', extra: { reply_token: getReminderToken(reminder) } });
+            return { conversationId: view.id, chatId: 'main' };
+        });
+
+        await expect(checkConversationReminders(NOW)).resolves.toBe(true);
+
+        expect(world.spies.reloadConversationChat).toHaveBeenCalledTimes(1);
+        expect(world.spies.reportConversationGenerationError).not.toHaveBeenCalled();
+        expect(view.reminders[0].fired).toBe(true);
+    });
+
+    test('still reports failure for a missing server-owned reply when reloading finds no message with its token', async () => {
+        const view = conversationWith([remind()]);
+        generateConversationReply.mockImplementation(async (_directive, _settings, { commit }) => {
+            commit.state = 'missing';
+            throw Object.assign(new TypeError('Load failed'), { serverOwnedReplyMissing: true });
+        });
+
+        await expect(checkConversationReminders(NOW)).resolves.toBe(false);
+
+        expect(world.spies.reloadConversationChat).toHaveBeenCalledTimes(1);
+        expect(world.spies.reportConversationGenerationError).toHaveBeenCalledTimes(1);
+        expect(view.reminders[0].fired).toBe(false);
     });
 });
 

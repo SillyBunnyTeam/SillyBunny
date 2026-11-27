@@ -180,12 +180,13 @@ export async function sendAutomaticMessage({ origin, anchorAvatar, speaker, grou
 
     // The flag is set before the first wait, so that a reply to the user does not start in between; it keeps the reply of the user behind this message.
     conversationState.autoWorkerBusy = true;
+    const scope = { chatId, groupId, personaId };
+    let commit = null;
     try {
-        const target = createAutomaticTargetCheck(anchorAvatar, { chatId, groupId, personaId }, { needsUserMessage });
+        const target = createAutomaticTargetCheck(anchorAvatar, scope, { needsUserMessage });
         if (!target) {
             return 'not-started';
         }
-        const scope = { chatId, groupId, personaId };
         const validateTarget = () => target.check() && isStillWanted();
 
         // The chat is read for the prompt and written to with the reply. It also lands a reply that the server wrote into it while no page was open.
@@ -205,7 +206,7 @@ export async function sendAutomaticMessage({ origin, anchorAvatar, speaker, grou
         }
 
         onStart();
-        const commit = {
+        commit = {
             createPlan: route => createAutomaticReplyPlan({
                 address: target.address,
                 speaker: { avatar: speaker.avatar, name: speaker.name },
@@ -256,6 +257,13 @@ export async function sendAutomaticMessage({ origin, anchorAvatar, speaker, grou
         }
         return 'posted';
     } catch (error) {
+        if (commit?.state === 'missing' || error?.serverOwnedReplyMissing) {
+            // The server retention window expired after the stream broke, so the reply may already be on disk.
+            await reloadConversationChat(anchorAvatar, scope);
+            if (hasMessageOfReply(anchorAvatar, token, scope)) {
+                return 'committed';
+            }
+        }
         reportConversationGenerationError(origin === 'reminder' ? 'reminder' : origin === 'auto_chat' ? 'character-to-character chat' : 'auto-message', error, { level: 'warning', toast: origin !== 'auto_chat' });
         return 'failed';
     } finally {
@@ -657,9 +665,9 @@ function giveUpExhaustedReminders(now) {
 }
 
 /**
- * Delivers the first reminder that is due. A reminder is tried at most `MAX_REMINDER_ATTEMPTS` times; the attempt is
- * written before its request starts, and a reminder that the server wrote while no page was open is marked delivered by
- * the page that lands it (`reply-finalizer.js`), so that the next page does not send it again.
+ * Delivers the first due reminder that can start. A reminder is tried at most `MAX_REMINDER_ATTEMPTS` times; the
+ * attempt is written before its request starts, and a reminder that the server wrote while no page was open is marked
+ * delivered by the page that lands it (`reply-finalizer.js`), so that the next page does not send it again.
  * @returns {Promise<boolean>} Whether a reminder was delivered.
  */
 export async function checkConversationReminders(now) {
@@ -668,49 +676,55 @@ export async function checkConversationReminders(now) {
     const due = conversationData.list({ personaId })
         .flatMap(view => view.reminders.filter(reminder => isReminderDue(reminder, now)).map(reminder => ({ view, reminder })))
         .sort((first, second) => first.reminder.triggerAt - second.reminder.triggerAt);
-    if (!due.length) {
-        return false;
-    }
 
-    const { view, reminder } = due[0];
-    const anchorAvatar = reminder.avatar;
-    const groupId = view.kind === 'group' ? view.id : '';
-    const chatId = resolveConversationReminderChatId(reminder, view);
-    if (!chatId) {
-        conversationData.patchReminder(view.id, reminder.id, { invalidAt: now });
-        return false;
-    }
-
-    const stored = () => conversationData.get(view.id)?.reminders.find(item => item.id === reminder.id);
-    const outcome = await sendAutomaticMessage({
-        origin: 'reminder',
-        anchorAvatar,
-        speaker: { avatar: anchorAvatar, name: getCharacterForAvatar(anchorAvatar)?.name || 'Character' },
-        groupId,
-        personaId,
-        chatId,
-        settings: getSettings(anchorAvatar, { groupId, personaId }),
-        directive: `[System directive: This is a scheduled reminder. Send a DM to the user reminding them about: "${reminder.text}". Do not mention system/bracketed code, just say it naturally in-character as a DM ping.]`,
-        token: getReminderToken(reminder),
-        reminderId: reminder.id,
-        needsUserMessage: false,
-        extra: { reminder_text: reminder.text },
-        isStillWanted: () => Boolean(stored()) && !stored().fired,
-        onStart: () => conversationData.patchReminder(view.id, reminder.id, { chatId, ...claimReminderAttempt(reminder, now) }),
-    });
-
-    if (outcome === 'not-started') {
-        return false;
-    }
-    if (outcome === 'failed') {
-        const current = stored();
-        if (current) {
-            conversationData.patchReminder(view.id, reminder.id, settleFailedReminderAttempt(current, Date.now()));
+    for (const { view, reminder } of due) {
+        const groupId = view.kind === 'group' ? view.id : '';
+        const chatId = resolveConversationReminderChatId(reminder, view);
+        const groupAnchor = view.kind === 'group' ? (view.characters.find(avatar => getCharacterForAvatar(avatar)) ?? '') : '';
+        const anchorAvatar = view.kind === 'group' ? groupAnchor : (view.characters[0] ?? '');
+        const speakerAvatar = view.kind === 'group'
+            ? (view.characters.includes(reminder.avatar) && getCharacterForAvatar(reminder.avatar) ? reminder.avatar : groupAnchor)
+            : anchorAvatar;
+        const speakerCard = speakerAvatar ? getCharacterForAvatar(speakerAvatar) : null;
+        const address = chatId && anchorAvatar ? getConversationAddress(anchorAvatar, { chatId, groupId, personaId }) : null;
+        if (!chatId || !anchorAvatar || !getCharacterForAvatar(anchorAvatar) || !speakerCard || !address) {
+            conversationData.patchReminder(view.id, reminder.id, { invalidAt: now });
+            continue;
         }
-        return false;
+
+        const stored = () => conversationData.get(view.id)?.reminders.find(item => item.id === reminder.id);
+        const outcome = await sendAutomaticMessage({
+            origin: 'reminder',
+            anchorAvatar,
+            speaker: { avatar: speakerAvatar, name: speakerCard.name || 'Character' },
+            groupId,
+            personaId,
+            chatId,
+            settings: getSettings(speakerAvatar, { groupId, personaId }),
+            directive: `[System directive: This is a scheduled reminder. Send a DM to the user reminding them about: "${reminder.text}". Do not mention system/bracketed code, just say it naturally in-character as a DM ping.]`,
+            token: getReminderToken(reminder),
+            reminderId: reminder.id,
+            needsUserMessage: false,
+            extra: { reminder_text: reminder.text },
+            isStillWanted: () => Boolean(stored()) && !stored().fired,
+            onStart: () => conversationData.patchReminder(view.id, reminder.id, { chatId, ...claimReminderAttempt(reminder, now) }),
+        });
+
+        if (outcome === 'not-started') {
+            continue;
+        }
+        if (outcome === 'failed') {
+            const current = stored();
+            if (current) {
+                conversationData.patchReminder(view.id, reminder.id, settleFailedReminderAttempt(current, Date.now()));
+            }
+            return false;
+        }
+        conversationData.patchReminder(view.id, reminder.id, markReminderDelivered(Date.now()));
+        return true;
     }
-    conversationData.patchReminder(view.id, reminder.id, markReminderDelivered(Date.now()));
-    return true;
+
+    return false;
 }
 
 /**

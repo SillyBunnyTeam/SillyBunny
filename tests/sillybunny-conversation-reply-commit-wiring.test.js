@@ -12,7 +12,9 @@ const PAGE = 'page-under-test';
 const generateConversationReply = jest.fn();
 const postCharacterReply = jest.fn();
 const postMemberConversationReply = jest.fn();
+const reportConversationGenerationError = jest.fn();
 const appendConversationMessage = jest.fn();
+const ensureConversationChatLoaded = jest.fn(async () => ({ conversationId: CONVERSATION, chatId: 'main' }));
 const reloadConversationChat = jest.fn(async () => ({ conversationId: CONVERSATION, chatId: 'main' }));
 const generateConversationImage = jest.fn();
 let settings = { enabled: true };
@@ -41,7 +43,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/genera
     generateConversationReply,
     postCharacterReply,
     postMemberConversationReply,
-    reportConversationGenerationError: jest.fn(),
+    reportConversationGenerationError,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({
     buildCharacterImagePrompt: () => 'a prompt',
@@ -70,7 +72,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timeli
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
     appendConversationChatMessage: jest.fn(),
     buildConversationMessageReplyReference: message => (message ? { messageId: message.id, text: message.mes } : null),
-    ensureConversationChatLoaded: jest.fn(async () => ({ conversationId: CONVERSATION, chatId: 'main' })),
+    ensureConversationChatLoaded,
     getConversationAttachmentSummary: () => '',
     getConversationFileAttachments: () => [],
     getConversationMediaAttachments: () => [],
@@ -89,7 +91,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ appendConversationMessage }));
 
-const { enqueueConversationReply, processQueuedConversationReply, queueForcedConversationReply } = await import('../public/scripts/sillybunny-conversation/send-queue.js');
+const { enqueueConversationReply, processQueuedConversationReply, processSendQueue, queueForcedConversationReply } = await import('../public/scripts/sillybunny-conversation/send-queue.js');
 const { sendQueue } = await import('../public/scripts/sillybunny-conversation/state.js');
 
 const USER_MESSAGE = { id: 'u1', role: 'user', name: 'You', mes: 'hello', created_at: 2, extra: {} };
@@ -120,9 +122,11 @@ function answerWith(state, text = 'Hello there.') {
 }
 
 beforeEach(() => {
-    for (const mock of [generateConversationReply, postCharacterReply, postMemberConversationReply, appendConversationMessage, reloadConversationChat, generateConversationImage]) {
+    for (const mock of [generateConversationReply, postCharacterReply, postMemberConversationReply, reportConversationGenerationError, appendConversationMessage, ensureConversationChatLoaded, reloadConversationChat, generateConversationImage]) {
         mock.mockClear();
     }
+    ensureConversationChatLoaded.mockImplementation(async () => ({ conversationId: CONVERSATION, chatId: 'main' }));
+    reloadConversationChat.mockImplementation(async () => ({ conversationId: CONVERSATION, chatId: 'main' }));
     postCharacterReply.mockResolvedValue('Hello there.');
     postMemberConversationReply.mockResolvedValue(true);
     settings = { enabled: true };
@@ -257,6 +261,48 @@ describe('a queued reply of a direct conversation', () => {
         await processQueuedConversationReply(queueItem());
 
         expect(seen[0].profile.reply.token).not.toBe(seen[1].profile.reply.token);
+    });
+
+    test('suppresses the error toast when a missing server-owned reply already landed on disk after reload', async () => {
+        let token = '';
+        generateConversationReply.mockImplementation(async (_directive, _settings, options) => {
+            token = options.commit.createPlan('raw').reply.token;
+            options.commit.state = 'missing';
+            throw Object.assign(new TypeError('Load failed'), { serverOwnedReplyMissing: true });
+        });
+        reloadConversationChat.mockImplementation(async () => {
+            messages = [...messages, { id: 'server-1', role: 'character', name: 'Aster', mes: 'Landed.', extra: { reply_token: token } }];
+            return { conversationId: CONVERSATION, chatId: 'main' };
+        });
+
+        await processQueuedConversationReply(queueItem());
+
+        expect(reloadConversationChat).toHaveBeenCalledWith('char.png', { chatId: 'main', groupId: '', personaId: PERSONA });
+        expect(postCharacterReply).not.toHaveBeenCalled();
+        expect(reportConversationGenerationError).not.toHaveBeenCalled();
+    });
+
+    test('still reports an error when a missing server-owned reply is not found on disk after reload', async () => {
+        generateConversationReply.mockImplementation(async (_directive, _settings, options) => {
+            options.commit.state = 'missing';
+            throw Object.assign(new TypeError('Load failed'), { serverOwnedReplyMissing: true });
+        });
+
+        await processQueuedConversationReply(queueItem());
+
+        expect(reloadConversationChat).toHaveBeenCalledTimes(1);
+        expect(reportConversationGenerationError).toHaveBeenCalledTimes(1);
+    });
+
+    test('drops the queued item without throwing when ensureConversationChatLoaded rejects', async () => {
+        ensureConversationChatLoaded.mockRejectedValueOnce(new Error('chat 404'));
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+        await expect(processQueuedConversationReply(queueItem())).resolves.toBeUndefined();
+
+        expect(generateConversationReply).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
     });
 });
 
@@ -534,6 +580,31 @@ describe('a reply that is put in the queue and waited for', () => {
         answerWith('claimed', '');
 
         await expect(enqueueConversationReply(queueItem({ groupId: CONVERSATION, text: 'Birch, hello', coalesced: true, messageIds: ['gone'] }))).resolves.toBeUndefined();
+    });
+
+    test('invokes onProcessed and drains later items even if processItem throws unexpectedly', async () => {
+        const firstProcessed = jest.fn();
+        const secondProcessed = jest.fn();
+        const first = queueItem({ coalesced: true, text: 'first' });
+        const second = queueItem({ coalesced: true, text: 'second' });
+        first.onProcessed = firstProcessed;
+        second.onProcessed = secondProcessed;
+        sendQueue.push(first, second);
+        const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const processItem = jest.fn(async (item) => {
+            if (item === first) {
+                throw new Error('unexpected queue error');
+            }
+        });
+
+        await processSendQueue({ processItem });
+
+        expect(firstProcessed).toHaveBeenCalledTimes(1);
+        expect(secondProcessed).toHaveBeenCalledTimes(1);
+        expect(processItem).toHaveBeenCalledTimes(2);
+        expect(sendQueue).toHaveLength(0);
+        expect(errorLog).toHaveBeenCalled();
+        errorLog.mockRestore();
     });
 });
 

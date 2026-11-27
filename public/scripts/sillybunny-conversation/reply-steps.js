@@ -21,7 +21,7 @@ import {
     splitChatroomMessages,
 } from './generation-utils.js';
 import { getSpeakerPrefixMatch, stripSpeakerPrefixText } from './members-utils.js';
-import { createRoundMarker } from './rounds.js';
+import { createRoundMarker, findRoundToResume } from './rounds.js';
 
 /** One message per line, for a member that answers like a chatroom; paragraphs when every line is empty after clean-up. */
 export function splitMemberChatroomMessages(text) {
@@ -192,9 +192,52 @@ export function buildPendingBubbles(message, reply, groups, { anchorAvatar, refe
         }
     });
 
-    if (bubbles.length && reply.round.length) {
-        bubbles[bubbles.length - 1].extra.conversation_round = createRoundMarker({ remaining: reply.round, started: reply.roundStarted, triggers: reply.triggers });
+    const roundMarker = getPendingReplyRoundMarker(reply);
+    if (bubbles.length && roundMarker) {
+        bubbles[bubbles.length - 1].extra.conversation_round = roundMarker;
     }
 
     return { bubbles, selfieRequests, sideEffects };
+}
+
+/**
+ * The round marker carried by a pending reply when more group members still have to speak.
+ * @param {import('./pending-reply.js').PendingReply|null|undefined} reply
+ * @returns {{ remaining: string[], started: number, triggers: string[] }|null}
+ */
+export function getPendingReplyRoundMarker(reply) {
+    if (!reply?.round?.length) {
+        return null;
+    }
+    return createRoundMarker({ remaining: reply.round, started: reply.roundStarted, triggers: reply.triggers });
+}
+
+/**
+ * Finds a cut-off group round from replies that just landed with no bubbles (such as a reaction-only turn),
+ * where `buildPendingBubbles()` had no bubble to attach `extra.conversation_round` to.
+ * @param {import('./reply-finalizer.js').LandedReply[]} landed
+ * @param {Record<string, any>[]} messages Chat messages after pending replies landed.
+ * @param {number} now
+ * @returns {{ remaining: string[], started: number, triggers: string[] }|null}
+ */
+export function findLandedRoundToResume(landed, messages, now) {
+    const lastLanded = Array.isArray(landed) ? landed.at(-1) : null;
+    if (!lastLanded || lastLanded.bubbleIds?.length) {
+        return null;
+    }
+    const { reply } = lastLanded;
+    const marker = getPendingReplyRoundMarker(reply);
+    if (!marker || !marker.triggers.length) {
+        return null;
+    }
+    // A duplicate pending reply whose bubbles were already in the chat is not a reaction-only turn.
+    if (reply.token && messages.some(message => message?.extra?.reply_token === reply.token)) {
+        return null;
+    }
+    // Any message written after the trigger means the conversation moved on past the reaction-only turn.
+    const lastMessage = messages.at(-1);
+    if (!lastMessage || lastMessage.role !== 'user' || !marker.triggers.includes(lastMessage.id)) {
+        return null;
+    }
+    return findRoundToResume([...messages, { extra: { conversation_round: marker } }], now);
 }

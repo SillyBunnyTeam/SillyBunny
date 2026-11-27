@@ -5,7 +5,18 @@ import { seedConversations, settle, startConversationServer } from './util/conve
 import { addCharacters, PERSONA } from './util/conversation-store-sandbox.js';
 
 let data;
-const conversationData = new Proxy({}, { get: (_target, key) => data[key] });
+const chatReadListeners = [];
+const conversationData = new Proxy({}, {
+    get: (_target, key) => {
+        if (key === 'onChatRead') {
+            return (listener) => {
+                chatReadListeners.push(listener);
+                return data?.onChatRead(listener);
+            };
+        }
+        return data[key];
+    },
+});
 const enqueueConversationReply = jest.fn(async () => {});
 const finalizePendingReplies = jest.fn(async () => []);
 const sendQueue = [];
@@ -28,7 +39,7 @@ beforeEach(async () => {
     server = await startConversationServer();
     addCharacters(server.user, ['Nova.png', 'Orion.png']);
     enqueueConversationReply.mockClear();
-    finalizePendingReplies.mockClear();
+    finalizePendingReplies.mockReset().mockResolvedValue([]);
     sendQueue.length = 0;
     roundMemory.clear();
 });
@@ -41,14 +52,15 @@ afterEach(async () => {
 const now = Date.now();
 const record = (id, role, extra = {}) => ({ record: { id, role, name: 'x', is_user: role === 'user', is_system: false, mes: id, send_date: new Date(now).toISOString(), created_at: now - 1000, extra } });
 
-async function startData(extra = {}) {
-    seedConversations(server, [{ id: ADDRESS.conversationId, kind: 'group', characters: ['Nova.png', 'Orion.png'], chats: [{ id: 'main', messages: [record('u1', 'user'), record('c1', 'character', { conversation_round: { remaining: ['Orion.png'], started: now - 60_000, triggers: ['u1'], ...extra } })], readThrough: 'c1' }] }]);
+async function startData(extra = {}, messages = null) {
+    const seededMessages = messages ?? [record('u1', 'user'), record('c1', 'character', { conversation_round: { remaining: ['Orion.png'], started: now - 60_000, triggers: ['u1'], ...extra } })];
+    seedConversations(server, [{ id: ADDRESS.conversationId, kind: 'group', characters: ['Nova.png', 'Orion.png'], chats: [{ id: 'main', messages: seededMessages, readThrough: 'u1' }] }]);
     data = createConversationData(server.adapter());
+    chatReadListeners.forEach(listener => data.onChatRead(listener));
     await data.start();
 }
 
 describe('the round resumer of this page', () => {
-    // The hook is installed once per page and listens on the data module that exists then, so one test runs the whole path.
     test('carries a cut-off round on when the data module reads the chat, after the replies of the server are landed, anchored on the first member that has a card', async () => {
         await startData();
         installRoundResume();
@@ -57,10 +69,67 @@ describe('the round resumer of this page', () => {
         await data.loadChat(ADDRESS);
         await settle();
 
+        expect(chatReadListeners).toHaveLength(1);
         expect(finalizePendingReplies).toHaveBeenCalledWith(ADDRESS);
         expect(enqueueConversationReply).toHaveBeenCalledTimes(1);
         const [item] = enqueueConversationReply.mock.calls[0];
         expect(item).toMatchObject({ avatar: 'Orion.png', groupId: ADDRESS.conversationId, chatId: 'main', personaId: PERSONA, coalesced: true, round: { remaining: ['Orion.png'] } });
+    });
+
+    test('falls back to the landed reply round marker when Speaker 1 produced a reaction-only turn with no bubbles', async () => {
+        const started = Date.now() - 60_000;
+        await startData({}, [record('u1', 'user', { conversation_reactions: [{ emoji: '👍', by: 'Nova.png', at: started }] })]);
+        installRoundResume();
+        finalizePendingReplies.mockResolvedValueOnce([{
+            reply: {
+                generationId: 'gen-react-1',
+                token: '1111222233334444',
+                origin: 'reply',
+                route: 'raw',
+                speaker: 'Nova.png',
+                anchor: 'Nova.png',
+                round: ['Orion.png'],
+                roundStarted: started,
+                triggers: ['u1'],
+                target: null,
+                reminder: '',
+            },
+            bubbleIds: [],
+        }]);
+
+        await data.loadChat(ADDRESS);
+        await settle();
+
+        expect(enqueueConversationReply).toHaveBeenCalledTimes(1);
+        const [item] = enqueueConversationReply.mock.calls[0];
+        expect(item).toMatchObject({ avatar: 'Orion.png', groupId: ADDRESS.conversationId, chatId: 'main', personaId: PERSONA, coalesced: true, messageIds: ['u1'], round: { remaining: ['Orion.png'], started } });
+    });
+
+    test('does not resume a reaction-only landed reply whose round is older than 30 minutes', async () => {
+        const expired = Date.now() - 31 * 60_000;
+        await startData({}, [record('u1', 'user')]);
+        installRoundResume();
+        finalizePendingReplies.mockResolvedValueOnce([{
+            reply: {
+                generationId: 'gen-react-old',
+                token: '5555666677778888',
+                origin: 'reply',
+                route: 'raw',
+                speaker: 'Nova.png',
+                anchor: 'Nova.png',
+                round: ['Orion.png'],
+                roundStarted: expired,
+                triggers: ['u1'],
+                target: null,
+                reminder: '',
+            },
+            bubbleIds: [],
+        }]);
+
+        await data.loadChat(ADDRESS);
+        await settle();
+
+        expect(enqueueConversationReply).not.toHaveBeenCalled();
     });
 });
 

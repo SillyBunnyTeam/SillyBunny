@@ -2,11 +2,12 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
-const listeners = { visibility: [], active: [], data: [] };
+const listeners = { visibility: [], active: [], missing: [], data: [] };
 const state = { usage: true, active: [] };
 let chatMessages = [{ id: 'u1', role: 'user', extra: {} }];
+let loadedChat = true;
 const data = {
-    chat: jest.fn(() => ({ messages: chatMessages })),
+    chat: jest.fn(() => (loadedChat ? { messages: chatMessages } : null)),
     get: jest.fn(() => ({ id: 'conv_2', kind: 'group', characters: ['Nova.png', 'Orion.png'], personaId: 'p.png' })),
     loadChat: jest.fn(async () => ({ messages: [{ id: 'u1', role: 'user', extra: {} }] })),
     refresh: jest.fn(async () => {}),
@@ -26,6 +27,10 @@ await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () =
         listeners.active.push(listener);
         return () => {};
     },
+    onServerOwnedReplyMissing: (listener) => {
+        listeners.missing.push(listener);
+        return () => {};
+    },
     pageId: 'page-under-test',
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/send-queue.js', () => ({ queueForcedConversationReply }));
@@ -35,6 +40,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-finalizer-browser.js', () => ({ acknowledgeGenerations, finalizePendingReplies, wasReplyLanded: () => false }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({ hasAnyConversationModeUsage: () => state.usage }));
 
+const { event_types, eventSource } = await import('../public/scripts/events.js');
 const { installReplyEvents, showLostReplyNotice, showFailedReplyNotice } = await import('../public/scripts/sillybunny-conversation/reply-events-browser.js');
 
 class FakeEventSource {
@@ -91,6 +97,7 @@ beforeEach(() => {
     globalThis.toastr = toastr;
     state.usage = true;
     state.active = [];
+    loadedChat = true;
     chatMessages = [{ id: 'u1', role: 'user', extra: {} }];
     for (const mock of [queueForcedConversationReply, finalizePendingReplies, acknowledgeGenerations, data.reloadChat, data.refresh]) {
         mock.mockClear();
@@ -124,6 +131,47 @@ describe('the event stream of this page', () => {
         listeners.active.forEach(listener => listener());
         expect(FakeEventSource.instances.filter(source => !source.closed)).toHaveLength(1);
         expect(FakeEventSource.instances).toHaveLength(2);
+    });
+
+    test('re-syncs the stream when PERSONA_CHANGED flips whether the active persona has conversations', async () => {
+        installReplyEvents();
+        // Close any open stream by switching to a persona without usage.
+        state.usage = false;
+        await eventSource.emit(event_types.PERSONA_CHANGED);
+        expect(FakeEventSource.instances.filter(source => !source.closed)).toHaveLength(0);
+
+        // Switching to a persona with conversations opens the stream immediately.
+        state.usage = true;
+        await eventSource.emit(event_types.PERSONA_CHANGED);
+        expect(FakeEventSource.instances.filter(source => !source.closed)).toHaveLength(1);
+    });
+
+    test('reloads and finalizes a loaded conversation chat when a server-owned reply goes missing, and refreshes when unloaded', async () => {
+        installReplyEvents();
+        expect(listeners.missing).toHaveLength(1);
+
+        // Non-conversation (roleplay) plan is ignored.
+        listeners.missing[0]({ chat: { avatar: 'roleplay.png' }, file: 'main' });
+        await new Promise(resolve => setImmediate(resolve));
+        expect(data.reloadChat).not.toHaveBeenCalled();
+        expect(data.refresh).not.toHaveBeenCalled();
+
+        // Loaded conversation chat reloads and finalizes.
+        loadedChat = true;
+        listeners.missing[0]({ chat: { conversation: 'conv_2' }, file: 'main' });
+        await new Promise(resolve => setImmediate(resolve));
+        expect(data.reloadChat).toHaveBeenCalledWith({ conversationId: 'conv_2', chatId: 'main' });
+        expect(finalizePendingReplies).toHaveBeenCalledWith({ conversationId: 'conv_2', chatId: 'main' });
+        expect(data.refresh).not.toHaveBeenCalled();
+
+        // Unloaded conversation chat refreshes list summaries and unread badges.
+        data.reloadChat.mockClear();
+        finalizePendingReplies.mockClear();
+        loadedChat = false;
+        listeners.missing[0]({ chat: { conversation: 'conv_2' }, file: 'main' });
+        await new Promise(resolve => setImmediate(resolve));
+        expect(data.reloadChat).not.toHaveBeenCalled();
+        expect(data.refresh).toHaveBeenCalledTimes(1);
     });
 });
 

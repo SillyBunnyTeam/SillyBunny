@@ -3,7 +3,8 @@
  * notices. The stream is one connection per visible page for every conversation of the user.
  */
 
-import { getActiveGenerationIds, onActiveGenerationsChange, pageId } from '../resumable-generation.js';
+import { event_types, eventSource } from '../events.js';
+import { getActiveGenerationIds, onActiveGenerationsChange, onServerOwnedReplyMissing, pageId } from '../resumable-generation.js';
 import { queueForcedConversationReply } from './send-queue.js';
 import { SAFE_TOAST_OPTIONS } from './constants.js';
 import { conversationData } from './conversation-data-browser.js';
@@ -88,14 +89,39 @@ const events = createReplyEvents({
 
 let installed = false;
 
+/**
+ * When a stream breaks and the server no longer holds the reply (for example, a frozen tab wakes past retention), the
+ * server may have written the reply to disk already: reload and land a loaded chat, or refresh the list for an unloaded one.
+ * @param {import('../generation-commit-plan.js').GenerationCommitPlan} plan
+ */
+function onMissingServerReply(plan) {
+    const conversationId = plan?.chat?.conversation;
+    const chatId = plan?.file;
+    if (typeof conversationId !== 'string' || !conversationId || typeof chatId !== 'string' || !chatId) {
+        return;
+    }
+    const address = { conversationId, chatId };
+    if (conversationData.chat(address)) {
+        conversationData.reloadChat(address)
+            .then(() => finalizePendingReplies(address))
+            .catch(error => console.warn('Conversation Mode: could not reload chat after a missing server reply', error));
+        return;
+    }
+    Promise.resolve(conversationData.refresh())
+        .catch(error => console.warn('Conversation Mode: could not refresh conversations after a missing server reply', error));
+}
+
 /** Follows the replies of the conversations over the event stream, for as long as the page is visible or reads a reply. Runs once. */
 export function installReplyEvents() {
     if (installed) {
+        events.sync();
         return;
     }
     installed = true;
     document.addEventListener('visibilitychange', events.sync);
     onActiveGenerationsChange(events.sync);
+    onServerOwnedReplyMissing(onMissingServerReply);
+    eventSource.on(event_types.PERSONA_CHANGED, events.sync);
     conversationData.subscribe((event) => {
         if (event.type === 'list' || event.type === 'status') {
             events.sync();

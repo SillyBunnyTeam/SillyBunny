@@ -129,12 +129,18 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
      * written late). The chat holds the reply already, so the pending message goes and nothing is written twice.
      */
     async function dropDuplicate(address, message, reply) {
+        if (!data.chat(address)?.messages.some(item => item.id === message.id)) {
+            return null;
+        }
+        let removed = false;
         try {
             data.commitChat(address, (draft) => {
                 const index = draft.messages.findIndex(item => item.id === message.id);
-                if (index >= 0) {
-                    draft.messages.splice(index, 1);
+                if (index < 0) {
+                    return;
                 }
+                draft.messages.splice(index, 1);
+                removed = true;
             }, { shrink: true });
         } catch (error) {
             if (error?.name === 'ChatNotLoadedError') {
@@ -142,7 +148,13 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
             }
             throw error;
         }
-        await data.saveChat(address);
+        if (!removed) {
+            return null;
+        }
+        const saved = await data.saveChat(address);
+        if (!saved) {
+            return null;
+        }
         reportReminderDelivered(address, reply);
         page.acknowledge([reply.generationId]);
         landedGenerationIds.add(reply.generationId);
@@ -186,6 +198,10 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
         // Only a reply to a message of the user reacts to it, and only when the conversation lets its characters react.
         const reactions = reply.origin === 'reply' && settings.characters_react && triggerMessage ? collectReplyReactions(groups) : [];
 
+        if (!data.chat(address)?.messages.some(item => item.id === message.id)) {
+            return null;
+        }
+        let replaced = false;
         try {
             // One commit, so that the reaction and the reply land together or not at all, and so that a page that finds the
             // pending message gone (another page landed it) writes neither a second time.
@@ -199,6 +215,7 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
                 if (target) {
                     writeReactions(target, reactions.reduce((entries, { speakerAvatar: reactor, emoji }) => addCharacterReaction(entries, emoji, reactor, message.created_at), readReactions(target)));
                 }
+                replaced = true;
             }, { shrink: bubbles.length === 0 });
         } catch (error) {
             if (error?.name === 'ChatNotLoadedError') {
@@ -206,13 +223,20 @@ export function createReplyFinalizer({ data, page, getLocks = () => globalThis.n
             }
             throw error;
         }
+        if (!replaced) {
+            return null;
+        }
+
+        // The lock is held until the replacement is on the server, so that the next tab to take it reads the chat without the pending message.
+        const saved = await data.saveChat(address);
+        if (!saved) {
+            return null;
+        }
 
         const lastIndex = bubbles.length - 1;
         bubbles.forEach((bubble, index) => {
             page.afterIncoming(anchorAvatar, bubble, { address, chatId: address.chatId, groupId, personaId, notify: index === lastIndex, scheduleMemory: index === lastIndex });
         });
-        // The lock is held until the replacement is on the server, so that the next tab to take it reads the chat without the pending message.
-        await data.saveChat(address);
 
         for (const effect of sideEffects) {
             page.runCommands(effect.commandParts, effect.speakerAvatar, { chatId: address.chatId, groupId, personaId, reminderAvatar: anchorAvatar, reminderIdPrefix: effect.idPrefix });

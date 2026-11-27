@@ -9,6 +9,7 @@ import { conversationData } from './conversation-data-browser.js';
 import { buildConversationMessageReplyReference } from './conversation-store.js';
 import { createTargetCheck } from './deletion-guards.js';
 import { commitCharacterReplyCommands, generateSelfieFromContext, getConversationReplySpeakers } from './generation.js';
+import { getCharacterForAvatar } from './media.js';
 import { getConversationMemberSettings } from './members.js';
 import { afterIncomingMessage } from './message-writer.js';
 import { markReminderDelivered } from './reminders.js';
@@ -50,7 +51,10 @@ const finalizer = createReplyFinalizer({
     data: conversationData,
     page: {
         context(view, reply) {
-            const anchorAvatar = reply.anchor || view.characters[0] || '';
+            // Resolve from the live conversation view so renamed characters or removed group members do not pin a stale anchor.
+            const anchorAvatar = view.kind === 'direct'
+                ? (view.characters[0] || '')
+                : (view.characters.find(avatar => getCharacterForAvatar(avatar)) ?? view.characters[0] ?? reply.anchor ?? '');
             const groupId = view.kind === 'group' ? view.id : '';
             const personaId = view.personaId;
             const hostSettings = getSettings(anchorAvatar, { groupId, personaId });

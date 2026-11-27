@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 
 import { parseCommandArgs } from '../public/scripts/sillybunny-conversation/generation-utils.js';
-import { buildPendingBubbles, buildReplySteps, collectReplyReactions, splitMemberChatroomMessages } from '../public/scripts/sillybunny-conversation/reply-steps.js';
+import { buildPendingBubbles, buildReplySteps, collectReplyReactions, findLandedRoundToResume, getPendingReplyRoundMarker, splitMemberChatroomMessages } from '../public/scripts/sillybunny-conversation/reply-steps.js';
 import { readPendingReply } from '../public/scripts/sillybunny-conversation/pending-reply.js';
 import { pendingReply } from './util/conversation-pending-reply.js';
 
@@ -272,5 +272,46 @@ describe('the bubbles that a pending reply becomes', () => {
 
     test('are none for a reply that was only whitespace', () => {
         expect(land({ text: '   ' })).toMatchObject({ bubbles: [], selfieRequests: [], sideEffects: [] });
+    });
+});
+
+describe('recovering a cut-off round from a reaction-only landed reply', () => {
+    const NOW = Date.UTC(2026, 10, 25, 12, 0, 0);
+    const MINUTE = 60_000;
+    const userMessage = (id = 'u1') => ({ id, role: 'user', name: 'You', mes: 'hi', extra: {} });
+    const landedReply = (overrides = {}, bubbleIds = []) => [{
+        reply: {
+            generationId: 'g1',
+            token: 'aaaaaaaaaaaaaaaa',
+            origin: 'reply',
+            route: 'raw',
+            speaker: 'aster.png',
+            anchor: 'aster.png',
+            round: ['nova.png'],
+            roundStarted: NOW - 5 * MINUTE,
+            triggers: ['u1'],
+            target: null,
+            reminder: '',
+            ...overrides,
+        },
+        bubbleIds,
+    }];
+
+    test('reads the round marker when Speaker 1 landed with no bubbles and the chat still ends at its trigger', () => {
+        expect(getPendingReplyRoundMarker(landedReply()[0].reply)).toEqual({ remaining: ['nova.png'], started: NOW - 5 * MINUTE, triggers: ['u1'] });
+        expect(findLandedRoundToResume(landedReply(), [userMessage('u1')], NOW)).toEqual({ remaining: ['nova.png'], started: NOW - 5 * MINUTE, triggers: ['u1'] });
+    });
+
+    test('returns null when the landed reply had bubbles, had no remaining speakers, or expired past 30 minutes', () => {
+        expect(findLandedRoundToResume(landedReply({}, ['p1.0']), [userMessage('u1')], NOW)).toBeNull();
+        expect(findLandedRoundToResume(landedReply({ round: [] }), [userMessage('u1')], NOW)).toBeNull();
+        expect(findLandedRoundToResume(landedReply({ roundStarted: NOW - 31 * MINUTE }), [userMessage('u1')], NOW)).toBeNull();
+    });
+
+    test('returns null when the reply was a dropped duplicate or another message arrived after the trigger', () => {
+        const duplicateMessages = [userMessage('u1'), { id: 'live-1', role: 'character', extra: { reply_token: 'aaaaaaaaaaaaaaaa' } }];
+        expect(findLandedRoundToResume(landedReply(), duplicateMessages, NOW)).toBeNull();
+        expect(findLandedRoundToResume(landedReply(), [userMessage('u1'), userMessage('u2')], NOW)).toBeNull();
+        expect(findLandedRoundToResume(landedReply(), [userMessage('u1'), { id: 'c2', role: 'character', extra: {} }], NOW)).toBeNull();
     });
 });

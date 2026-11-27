@@ -479,6 +479,104 @@ describe('landing more than once', () => {
 
         expect(page.acknowledge).not.toHaveBeenCalled();
     });
+
+    test('skips commitChat and every side effect when the pending message vanished before commit', async () => {
+        const pending = pendingReply({ text: 'Later [reminder: 15m | tea] [selfie: context="beach"]', origin: 'reminder', reminder: 'rem_1_aaaaaa', generationId: 'g-vanished', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const markReminderDelivered = jest.fn();
+        const { data } = await openPage();
+        await data.loadChat(ADDRESS);
+        const commitChat = jest.fn((...args) => data.commitChat(...args));
+        const saveChat = jest.fn((...args) => data.saveChat(...args));
+        const page = makePage({
+            markReminderDelivered,
+            cleanUpText: jest.fn((_route, text) => {
+                // Another reload or tab removed the pending message while this one cleaned it.
+                const index = data.chat(ADDRESS).messages.findIndex(item => item.id === pending.id);
+                if (index >= 0) {
+                    data.chat(ADDRESS).messages.splice(index, 1);
+                }
+                return text;
+            }),
+        });
+        const finalizer = createReplyFinalizer({ data: { ...data, commitChat, saveChat }, page, getLocks: () => locks });
+
+        await expect(finalizer.finalize(ADDRESS)).resolves.toEqual([]);
+        await finalizer.idle();
+
+        expect(commitChat).not.toHaveBeenCalled();
+        expect(saveChat).not.toHaveBeenCalled();
+        expect(page.afterIncoming).not.toHaveBeenCalled();
+        expect(page.runCommands).not.toHaveBeenCalled();
+        expect(markReminderDelivered).not.toHaveBeenCalled();
+        expect(page.acknowledge).not.toHaveBeenCalled();
+        expect(page.makeSelfie).not.toHaveBeenCalled();
+        expect(finalizer.wasLanded('g-vanished')).toBe(false);
+    });
+
+    test('skips side effects when commitChat finds the pending message already gone inside its draft', async () => {
+        const pending = pendingReply({ text: 'Later [reminder: 15m | tea]', generationId: 'g-gone-in-draft', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const { data } = await openPage();
+        await data.loadChat(ADDRESS);
+        const saveChat = jest.fn(async () => true);
+        const commitChat = jest.fn((address, edit) => {
+            edit({ messages: [] });
+        });
+        const page = makePage({ markReminderDelivered: jest.fn() });
+        const finalizer = createReplyFinalizer({ data: { ...data, commitChat, saveChat }, page, getLocks: () => locks });
+
+        await expect(finalizer.finalize(ADDRESS)).resolves.toEqual([]);
+
+        expect(commitChat).toHaveBeenCalledTimes(1);
+        expect(saveChat).not.toHaveBeenCalled();
+        expect(page.afterIncoming).not.toHaveBeenCalled();
+        expect(page.runCommands).not.toHaveBeenCalled();
+        expect(page.acknowledge).not.toHaveBeenCalled();
+        expect(finalizer.wasLanded('g-gone-in-draft')).toBe(false);
+    });
+
+    test('does not acknowledge, run commands, deliver reminders, or start selfies when saveChat fails', async () => {
+        const pending = pendingReply({ text: 'Later [reminder: 15m | tea] [selfie: context="beach"]', origin: 'reminder', reminder: 'rem_1_aaaaaa', generationId: 'g-save-fail', triggers: ['main-1'] });
+        seedConversations(server, [DIRECT(pending)]);
+        const markReminderDelivered = jest.fn();
+        const page = makePage({ markReminderDelivered });
+        const { data } = await openPage(page);
+        await data.loadChat(ADDRESS);
+        const saveChat = jest.fn(async () => false);
+        const finalizer = createReplyFinalizer({ data: { ...data, saveChat }, page, getLocks: () => locks });
+
+        await expect(finalizer.finalize(ADDRESS)).resolves.toEqual([]);
+        await finalizer.idle();
+
+        expect(saveChat).toHaveBeenCalledTimes(1);
+        expect(page.afterIncoming).not.toHaveBeenCalled();
+        expect(page.runCommands).not.toHaveBeenCalled();
+        expect(markReminderDelivered).not.toHaveBeenCalled();
+        expect(page.acknowledge).not.toHaveBeenCalled();
+        expect(page.makeSelfie).not.toHaveBeenCalled();
+        expect(finalizer.wasLanded('g-save-fail')).toBe(false);
+    });
+
+    test('does not acknowledge or mark a duplicate reminder delivered when saveChat fails', async () => {
+        const token = 'feedfacefeedface';
+        const pending = pendingReply({ text: 'Time to water the plants.', origin: 'reminder', reminder: 'rem_1_aaaaaa', token, generationId: 'g-dup-save-fail' });
+        const bubble = { ...pendingReply({ text: 'Time to water the plants.', token, finishedAt: Date.UTC(2026, 5, 1, 12, 29, 0) }), id: 'live-1', extra: { conversation_mode_reminder: true, reply_token: token } };
+        seedConversations(server, [DIRECT(pending, [{ record: bubble }])]);
+        const markReminderDelivered = jest.fn();
+        const page = makePage({ markReminderDelivered });
+        const { data } = await openPage(page);
+        await data.loadChat(ADDRESS);
+        const saveChat = jest.fn(async () => false);
+        const finalizer = createReplyFinalizer({ data: { ...data, saveChat }, page, getLocks: () => locks });
+
+        await expect(finalizer.finalize(ADDRESS)).resolves.toEqual([]);
+
+        expect(saveChat).toHaveBeenCalledTimes(1);
+        expect(markReminderDelivered).not.toHaveBeenCalled();
+        expect(page.acknowledge).not.toHaveBeenCalled();
+        expect(finalizer.wasLanded('g-dup-save-fail')).toBe(false);
+    });
 });
 
 describe('a selfie that a reply asks for', () => {

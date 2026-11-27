@@ -235,23 +235,35 @@ async function processConversationSpeakerReply(queueItem, { anchorAvatar, groupI
     const systemDirective = queueItem?.force
         ? '[System directive: Generate a response/reply to the user in the Conversation Mode thread.]'
         : '[System directive: The user sent the latest DM(s). Reply directly to them in the Conversation Mode thread.]';
-    const response = await withTypingParticipant(replyCharacter || { avatar: replyAvatar, name: speakerName }, () => generateConversationReply(
-        [
-            systemDirective,
-            attachmentContext ? `Latest user attachment context:\n${attachmentContext}` : '',
-        ].filter(Boolean).join('\n\n'),
-        replySettings,
-        {
-            avatar: replyAvatar,
-            anchorAvatar,
-            speakerAvatar: replyAvatar,
-            speakerName,
-            chatId,
-            groupId,
-            personaId,
-            commit,
-        },
-    ), anchorAvatar, { chatId, groupId, personaId });
+    let response;
+    try {
+        response = await withTypingParticipant(replyCharacter || { avatar: replyAvatar, name: speakerName }, () => generateConversationReply(
+            [
+                systemDirective,
+                attachmentContext ? `Latest user attachment context:\n${attachmentContext}` : '',
+            ].filter(Boolean).join('\n\n'),
+            replySettings,
+            {
+                avatar: replyAvatar,
+                anchorAvatar,
+                speakerAvatar: replyAvatar,
+                speakerName,
+                chatId,
+                groupId,
+                personaId,
+                commit,
+            },
+        ), anchorAvatar, { chatId, groupId, personaId });
+    } catch (error) {
+        if (commit.state === 'missing' || error?.serverOwnedReplyMissing) {
+            // The server retention window expired after the stream broke, so the reply may already be on disk.
+            await reloadConversationChat(anchorAvatar, { chatId, groupId, personaId });
+            if (getConversationMessages(anchorAvatar, { chatId, create: false, groupId, personaId }).some(message => message?.extra?.reply_token === token)) {
+                return true;
+            }
+        }
+        throw error;
+    }
     if (commit.state === 'committed') {
         // The server wrote the reply while this page waited, and it could not be taken back. It is a pending message in
         // the chat now: reading the chat again lands it as bubbles, which this page must not write a second time.
@@ -416,7 +428,12 @@ export async function processQueuedConversationReply(queueItem) {
     if (!chatId || !conversationRecord?.chats.some(entry => entry.id === chatId)) {
         return;
     }
-    if (!await ensureConversationChatLoaded(avatar, { chatId, groupId, personaId })) {
+    try {
+        if (!await ensureConversationChatLoaded(avatar, { chatId, groupId, personaId })) {
+            return;
+        }
+    } catch (error) {
+        console.warn('Conversation Mode: queued reply dropped because its chat could not be loaded', error);
         return;
     }
     const chatMessages = getConversationMessages(avatar, { chatId, create: false, groupId, personaId });
@@ -518,9 +535,16 @@ export async function processSendQueue({ processItem = processQueuedConversation
                 if (!queueItem) {
                     continue;
                 }
-                const result = await processItem(queueItem);
-                if (result !== CONVERSATION_QUEUE_RETRY) {
-                    queueItem.onProcessed?.();
+                let result;
+                try {
+                    result = await processItem(queueItem);
+                } catch (error) {
+                    console.error('Conversation Mode: failed to process queued reply', error);
+                    continue;
+                } finally {
+                    if (result !== CONVERSATION_QUEUE_RETRY) {
+                        queueItem.onProcessed?.();
+                    }
                 }
                 if (result === CONVERSATION_QUEUE_RETRY) {
                     requeueConversationQueueItem(sendQueue, queueItem);

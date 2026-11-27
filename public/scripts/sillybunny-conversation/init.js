@@ -14,7 +14,6 @@ import {
     openConversationWorkspaceFromRequest,
     selectConversation,
     startConversationWorker,
-    stopConversationWorker,
 } from './lazy-parts.js';
 import { getActiveConversationKey, updateConversationNotificationIndicators, updateModeToggleUnread } from './notifications.js';
 import { scheduleConversationListRender, scheduleInterfaceRefresh } from './render-scheduler.js';
@@ -139,7 +138,6 @@ export function init() {
     window.addEventListener('sb:conversation-runtime-needed', ensureConversationRuntimeStarted);
     // The badge on the chat mode button shows only while the workspace is closed, so it follows the workspace opening and closing.
     window.addEventListener('sb:conversation-workspace-state-changed', () => updateModeToggleUnread());
-    window.addEventListener('beforeunload', stopConversationWorker);
     bindWorkspacePrefetch(window);
 
     // The page does not wait for the conversations: the rest of the mode starts when the list has arrived.

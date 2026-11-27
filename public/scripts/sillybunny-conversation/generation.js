@@ -1,6 +1,6 @@
-import { characters, generateRaw } from '../../script.js';
+import { characters, generateRaw, main_api } from '../../script.js';
 import { extractProfileResponseText } from '../extensions/in-chat-agents/llm-utils.js';
-import { registerGenerationCommitPlan, settleGenerationCommit } from '../resumable-generation.js';
+import { onServerOwnedReplyMissing, registerGenerationCommitPlan, settleGenerationCommit } from '../resumable-generation.js';
 import { isAbortLikeError } from '../util/abort-error.js';
 import { extractProviderMessage } from '../sillybunny-provider-message.js';
 import {
@@ -73,66 +73,113 @@ export { splitMemberChatroomMessages } from './reply-steps.js';
  * @param {Object} settings - Conversation settings holding connection_profile (a profile NAME).
  * @returns {Promise<string>}
  */
+function markServerOwnedReplyMissingError(error) {
+    if (error && typeof error === 'object') {
+        try {
+            error.serverOwnedReplyMissing = true;
+            return error;
+        } catch {
+            // Fall through to a wrapper when the thrown object is non-extensible.
+        }
+    }
+    const wrapped = new Error(typeof error === 'string' ? error : 'Server-owned reply missing');
+    wrapped.cause = error;
+    wrapped.serverOwnedReplyMissing = true;
+    return wrapped;
+}
+
 export async function generateConversationRaw(options, settings) {
     const profileName = String(settings?.connection_profile || '').trim();
     const ctx = window?.SillyTavern?.getContext?.();
     const CMRS = ctx?.ConnectionManagerRequestService;
     const commit = options.commit ?? null;
-
-    if (profileName && CMRS) {
-        const profile = getConnectionProfiles().find(candidate => candidate?.name === profileName);
-        if (profile?.id) {
-            const messages = [];
-            if (options.systemPrompt) {
-                messages.push({ role: 'system', content: options.systemPrompt });
+    let activePlan = null;
+    let missingServerReply = false;
+    const unsubscribeMissing = commit
+        ? onServerOwnedReplyMissing((plan) => {
+            if (plan && plan === activePlan) {
+                missingServerReply = true;
             }
-            if (Array.isArray(options.prompt)) {
-                for (const message of options.prompt) {
-                    if (message && typeof message === 'object') {
-                        messages.push({ role: String(message.role || 'user'), content: message.content });
+        })
+        : null;
+
+    try {
+        if (profileName && CMRS) {
+            const profile = getConnectionProfiles().find(candidate => candidate?.name === profileName);
+            if (profile?.id) {
+                const messages = [];
+                if (options.systemPrompt) {
+                    messages.push({ role: 'system', content: options.systemPrompt });
+                }
+                if (Array.isArray(options.prompt)) {
+                    for (const message of options.prompt) {
+                        if (message && typeof message === 'object') {
+                            messages.push({ role: String(message.role || 'user'), content: message.content });
+                        }
                     }
+                } else {
+                    messages.push({ role: 'user', content: options.prompt });
                 }
-            } else {
-                messages.push({ role: 'user', content: options.prompt });
-            }
 
-            try {
-                // A request that names no length asks for the length of the preset of the profile, which is the length
-                // that a normal chat with that profile asks for.
-                const profileResponseLength = options.responseLength > 0 ? options.responseLength : await getProfileResponseLength(profile);
-                if (commit) {
-                    registerGenerationCommitPlan(options.signal, commit.createPlan('profile'));
+                try {
+                    // A request that names no length asks for the length of the preset of the profile, which is the length
+                    // that a normal chat with that profile asks for.
+                    const profileResponseLength = options.responseLength > 0 ? options.responseLength : await getProfileResponseLength(profile);
+                    if (commit) {
+                        activePlan = commit.createPlan('profile');
+                        missingServerReply = false;
+                        registerGenerationCommitPlan(options.signal, activePlan);
+                    }
+                    const result = await CMRS.sendRequest(profile.id, messages, profileResponseLength, {
+                        extractData: true,
+                        includePreset: true,
+                        stream: false,
+                        signal: options.signal ?? null,
+                    });
+                    if (commit) {
+                        commit.state = await settleGenerationCommit(options.signal);
+                    }
+                    return typeof result === 'string' ? result : extractProfileResponseText(result);
+                } catch (error) {
+                    if (isAbortLikeError(error, options.signal)) {
+                        throw error;
+                    }
+                    if (missingServerReply && commit) {
+                        // The server may already have written this reply after retention expired, so do not fire a duplicate on the active profile.
+                        commit.state = 'missing';
+                        throw markServerOwnedReplyMissingError(error);
+                    }
+                    console.warn(`Conversation Mode: scoped profile "${profileName}" request failed, falling back to the active profile`, error);
                 }
-                const result = await CMRS.sendRequest(profile.id, messages, profileResponseLength, {
-                    extractData: true,
-                    includePreset: true,
-                    stream: false,
-                    signal: options.signal ?? null,
-                });
-                if (commit) {
-                    commit.state = await settleGenerationCommit(options.signal);
-                }
-                return typeof result === 'string' ? result : extractProfileResponseText(result);
-            } catch (error) {
-                if (isAbortLikeError(error, options.signal)) {
-                    throw error;
-                }
-                console.warn(`Conversation Mode: scoped profile "${profileName}" request failed, falling back to the active profile`, error);
             }
         }
-    }
 
-    options = {
-        ...options,
-        responseLength: await getActiveApiResponseLength(options.responseLength),
-        commit: commit ? { plan: commit.createPlan('raw'), state: null } : null,
-    };
+        const effectiveApi = options.api || main_api;
+        const rawPlan = commit && effectiveApi !== 'koboldhorde' ? commit.createPlan('raw') : null;
+        activePlan = rawPlan;
+        missingServerReply = false;
+        options = {
+            ...options,
+            responseLength: await getActiveApiResponseLength(options.responseLength),
+            commit: rawPlan ? { plan: rawPlan, state: null } : null,
+        };
 
-    const reply = await generateRaw(options);
-    if (commit) {
-        commit.state = options.commit.state;
+        try {
+            const reply = await generateRaw(options);
+            if (commit) {
+                commit.state = options.commit?.state ?? null;
+            }
+            return reply;
+        } catch (error) {
+            if (missingServerReply && commit) {
+                commit.state = 'missing';
+                throw markServerOwnedReplyMissingError(error);
+            }
+            throw error;
+        }
+    } finally {
+        unsubscribeMissing?.();
     }
-    return reply;
 }
 
 /**

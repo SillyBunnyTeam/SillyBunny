@@ -226,4 +226,10 @@ describe('conversation persona runtime', () => {
         handlers.get('online-status-changed')('Connected');
         expect(scheduleInterfaceRefresh).toHaveBeenCalledTimes(1);
     });
+
+    test('does not stop the auto-worker on beforeunload because a cancelled leave prompt keeps the page alive', () => {
+        init();
+
+        expect(windowHandlers.has('beforeunload')).toBe(false);
+    });
 });

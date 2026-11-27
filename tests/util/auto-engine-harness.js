@@ -63,7 +63,7 @@ export function createWorld(jest) {
         world.spies.postCharacterReply.mockResolvedValue('Hello there.');
         world.spies.postMemberConversationReply.mockResolvedValue(true);
         world.spies.ensureConversationChatLoaded.mockImplementation(async (avatar, { chatId = '', groupId = '' } = {}) => {
-            const view = world.findView(groupId);
+            const view = world.findView(groupId, avatar);
             const entry = view?.chats.find(item => item.id === (chatId || view.activeChatId));
             return entry ? { conversationId: view.id, chatId: entry.id } : null;
         });
@@ -82,7 +82,9 @@ export function createWorld(jest) {
         }
     };
 
-    world.findView = groupId => [...world.views.values()].find(view => (groupId ? view.id === groupId : view.kind === 'direct')) ?? null;
+    world.findView = (groupId, avatar = '') => [...world.views.values()].find(view => (groupId
+        ? view.id === groupId
+        : view.kind === 'direct' && (!avatar || view.characters[0] === avatar))) ?? null;
 
     /** A character card and the status that it has now. */
     world.addCharacter = (avatar, { name = avatar.replace('.png', ''), talkativeness = 0.5, status = 'online' } = {}) => {
@@ -143,24 +145,24 @@ export function createWorld(jest) {
  */
 export async function installAutoEngineMocks(jest, world) {
     const { spies } = world;
-    const viewFor = groupId => world.findView(groupId);
+    const viewFor = (groupId, avatar = '') => world.findView(groupId, avatar);
 
     await jest.unstable_mockModule('../public/script.js', () => ({ chat: [], is_send_press: false, name1: 'User' }));
     await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () => ({ pageId: 'page-test' }));
     await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-        getActiveConversationChat: (_avatar, { groupId = '' } = {}) => {
-            const view = viewFor(groupId);
+        getActiveConversationChat: (avatar, { groupId = '' } = {}) => {
+            const view = viewFor(groupId, avatar);
             return view ? world.entryOf(view) : null;
         },
-        getConversationAddress: (_avatar, { groupId = '', chatId = '' } = {}) => {
-            const view = viewFor(groupId);
+        getConversationAddress: (avatar, { groupId = '', chatId = '' } = {}) => {
+            const view = viewFor(groupId, avatar);
             const entry = view?.chats.find(item => item.id === (chatId || view.activeChatId));
             return entry ? { conversationId: view.id, chatId: entry.id } : null;
         },
         getConversationGroupIdForAvatar: () => '',
         getConversationPersonaId: value => String(typeof value === 'undefined' ? world.personaId : value || ''),
-        getConversationRecord: (_avatar, { groupId = '' } = {}) => viewFor(groupId),
+        getConversationRecord: (avatar, { groupId = '' } = {}) => viewFor(groupId, avatar),
         getCurrentCharAvatar: () => 'char.png',
         getCurrentCharName: () => 'Aster',
         getRoleplayCurrentCharacter: () => ({ avatar: 'char.png' }),
@@ -233,20 +235,20 @@ export async function installAutoEngineMocks(jest, world) {
     }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({ buildConversationRoleplayContext: () => '' }));
     await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
-        getFollowupCount: (_avatar, { groupId = '' } = {}) => {
-            const view = viewFor(groupId);
+        getFollowupCount: (avatar, { groupId = '' } = {}) => {
+            const view = viewFor(groupId, avatar);
             return view ? (world.entryOf(view).followupCount ?? 0) : 0;
         },
-        getLastUserActivity: (_avatar, fallback, { groupId = '' } = {}) => {
-            const view = viewFor(groupId);
+        getLastUserActivity: (avatar, fallback, { groupId = '' } = {}) => {
+            const view = viewFor(groupId, avatar);
             return view ? (world.entryOf(view).lastActivity ?? fallback) : fallback;
         },
         getSettings: (avatar, { groupId = '' } = {}) => {
-            const view = viewFor(groupId);
+            const view = viewFor(groupId, avatar);
             return { image_gen_enabled: false, spontaneous_selfies: false, ...view?.settings, availability: world.statuses.get(avatar) ?? 'online' };
         },
-        setFollowupCount: (_avatar, count, { groupId = '' } = {}) => {
-            const view = viewFor(groupId);
+        setFollowupCount: (avatar, count, { groupId = '' } = {}) => {
+            const view = viewFor(groupId, avatar);
             if (view) {
                 conversationData.patchConversation(view.id, { chats: { [view.activeChatId]: { followupCount: count } } });
             }
@@ -266,8 +268,8 @@ export async function installAutoEngineMocks(jest, world) {
         const { resolveConversationReminderChatId } = await import('../../public/scripts/sillybunny-conversation/conversation-store-utils.js');
         return {
             ensureConversationChatLoaded: spies.ensureConversationChatLoaded,
-            getConversationMessages: (_avatar, { chatId = '', groupId = '' } = {}) => {
-                const view = viewFor(groupId);
+            getConversationMessages: (avatar, { chatId = '', groupId = '' } = {}) => {
+                const view = viewFor(groupId, avatar);
                 if (!view) {
                     return [];
                 }

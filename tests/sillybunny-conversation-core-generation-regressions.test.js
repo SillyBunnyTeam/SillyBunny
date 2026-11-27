@@ -21,10 +21,17 @@ const getProfileResponseLength = jest.fn(async () => 700);
 const getConnectionProfiles = jest.fn(() => []);
 const registerGenerationCommitPlan = jest.fn();
 const settleGenerationCommit = jest.fn(async () => null);
+const missingReplyListeners = new Set();
+const onServerOwnedReplyMissing = jest.fn((listener) => {
+    missingReplyListeners.add(listener);
+    return () => missingReplyListeners.delete(listener);
+});
+let currentMainApi = 'openai';
 
 await jest.unstable_mockModule('../public/script.js', () => ({
     characters: [{ avatar: 'char.png', name: 'Aster' }],
     generateRaw,
+    main_api: currentMainApi,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/response-length.js', () => ({ getActiveApiResponseLength, getProfileResponseLength }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/llm-utils.js', () => ({
@@ -50,7 +57,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/member
 const confirmConversationAction = jest.fn(async () => true);
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({ confirmConversationAction }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/personas.js', () => ({ getConnectionProfiles }));
-await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () => ({ registerGenerationCommitPlan, settleGenerationCommit }));
+await jest.unstable_mockModule('../public/scripts/resumable-generation.js', () => ({ onServerOwnedReplyMissing, registerGenerationCommitPlan, settleGenerationCommit }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({
     buildConversationPromptMessages,
     buildConversationSystemPrompt,
@@ -134,6 +141,9 @@ describe('Conversation core generated reply regressions', () => {
         getConnectionProfiles.mockReset().mockReturnValue([]);
         registerGenerationCommitPlan.mockClear();
         settleGenerationCommit.mockReset().mockResolvedValue(null);
+        onServerOwnedReplyMissing.mockClear();
+        missingReplyListeners.clear();
+        currentMainApi = 'openai';
         getActiveApiResponseLength.mockClear();
         buildConversationPromptMessages.mockClear();
         buildConversationSystemPrompt.mockClear();
@@ -537,6 +547,80 @@ describe('Conversation core generated reply regressions', () => {
 
             expect(commit.createPlan).toHaveBeenCalledWith('raw');
             expect(generateRaw.mock.calls[0][0].commit.plan).toEqual({ route: 'raw' });
+        });
+
+        test('does not fall back to generateRaw when a scoped profile reply goes missing on the server, and marks the error and commit state', async () => {
+            const commit = handle();
+            let registeredPlan = null;
+            registerGenerationCommitPlan.mockImplementation((_signal, plan) => {
+                registeredPlan = plan;
+            });
+            sendRequest.mockImplementation(async () => {
+                for (const listener of [...missingReplyListeners]) {
+                    listener(registeredPlan);
+                }
+                throw new TypeError('Load failed');
+            });
+
+            await expect(generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal, commit }, profileSettings))
+                .rejects.toMatchObject({ message: 'Load failed', serverOwnedReplyMissing: true });
+
+            expect(generateRaw).not.toHaveBeenCalled();
+            expect(commit.state).toBe('missing');
+            expect(missingReplyListeners.size).toBe(0);
+        });
+
+        test('marks the error and commit state when an active-profile server-owned reply goes missing', async () => {
+            const commit = handle();
+            generateRaw.mockImplementation(async (options) => {
+                for (const listener of [...missingReplyListeners]) {
+                    listener(options.commit.plan);
+                }
+                throw new TypeError('Load failed');
+            });
+
+            await expect(generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal, commit }, { connection_profile: '' }))
+                .rejects.toMatchObject({ message: 'Load failed', serverOwnedReplyMissing: true });
+
+            expect(commit.state).toBe('missing');
+            expect(missingReplyListeners.size).toBe(0);
+        });
+
+        test('still falls back to generateRaw when a missing-reply notification was for an unrelated plan', async () => {
+            const commit = handle();
+            sendRequest.mockImplementation(async () => {
+                for (const listener of [...missingReplyListeners]) {
+                    listener({ route: 'other-plan' });
+                }
+                throw new Error('transient profile error');
+            });
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            generateRaw.mockImplementation(async (options) => {
+                options.commit.state = 'claimed';
+                return 'fallback reply';
+            });
+
+            await expect(generateConversationRaw({ prompt: 'p', responseLength: 50, signal: new AbortController().signal, commit }, profileSettings))
+                .resolves.toBe('fallback reply');
+
+            expect(generateRaw).toHaveBeenCalledTimes(1);
+            expect(commit.state).toBe('claimed');
+            warn.mockRestore();
+        });
+
+        test('skips attaching a commit plan on generateRaw when main_api is koboldhorde', async () => {
+            currentMainApi = 'koboldhorde';
+            jest.resetModules();
+            const { generateConversationRaw: generateForHorde } = await import('../public/scripts/sillybunny-conversation/generation.js');
+            const commit = handle();
+            generateRaw.mockResolvedValue('horde reply');
+
+            await expect(generateForHorde({ prompt: 'p', responseLength: 50, signal: new AbortController().signal, commit }, { connection_profile: '' }))
+                .resolves.toBe('horde reply');
+
+            expect(commit.createPlan).not.toHaveBeenCalled();
+            expect(generateRaw.mock.calls[0][0].commit).toBeNull();
+            expect(commit.state).toBeNull();
         });
     });
 

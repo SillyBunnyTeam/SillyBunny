@@ -24,8 +24,13 @@ function createRandomId() {
     return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/** The tab that started first ranks first; the id breaks a tie. */
+/** Visible tabs rank ahead of hidden ones so background timer throttling does not flap leadership; ties keep oldest-tab order. */
 function isBetterRank(candidate, other) {
+    const candidateVisible = candidate.visible !== false;
+    const otherVisible = other.visible !== false;
+    if (candidateVisible !== otherVisible) {
+        return candidateVisible;
+    }
     return candidate.startedAt < other.startedAt || (candidate.startedAt === other.startedAt && candidate.id < other.id);
 }
 
@@ -37,6 +42,7 @@ function isBetterRank(candidate, other) {
  * @param {(callback: () => void, delay: number) => any} [page.setTimer]
  * @param {(timer: any) => void} [page.clearTimer]
  * @param {() => string} [page.createId]
+ * @param {() => boolean} [page.isVisible] Whether this tab is foregrounded.
  */
 export function createWorkerLock({
     getLocks = () => globalThis.navigator?.locks,
@@ -45,6 +51,7 @@ export function createWorkerLock({
     setTimer = (callback, delay) => setTimeout(callback, delay),
     clearTimer = timer => clearTimeout(timer),
     createId = createRandomId,
+    isVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
 } = {}) {
     /** @type {'none'|'web-locks'|'election'} */
     let mode = 'none';
@@ -98,7 +105,8 @@ export function createWorkerLock({
         let watchTimer = null;
         let closed = false;
 
-        const post = message => channel.postMessage({ ...message, id: self.id, startedAt: self.startedAt });
+        const selfRank = () => ({ id: self.id, startedAt: self.startedAt, visible: Boolean(isVisible()) });
+        const post = message => channel.postMessage({ ...message, ...selfRank() });
 
         function becomeLeader() {
             role = 'leader';
@@ -136,22 +144,36 @@ export function createWorkerLock({
             if (closed || !data || data.id === self.id) {
                 return;
             }
-            const other = { id: String(data.id), startedAt: Number(data.startedAt) };
+            const other = { id: String(data.id), startedAt: Number(data.startedAt), visible: data.visible !== false };
+            const currentSelf = selfRank();
             if (data.type === 'who') {
                 if (role === 'leader') {
                     post({ type: 'beat' });
                 }
             } else if (data.type === 'beat') {
                 lastLifeAt = now();
-                if (role !== 'follower' && (role === 'candidate' || isBetterRank(other, self))) {
-                    stepDown();
+                if (role === 'candidate') {
+                    if (other.visible || !currentSelf.visible) {
+                        stepDown();
+                    }
+                } else if (role === 'leader') {
+                    if (isBetterRank(other, currentSelf)) {
+                        stepDown();
+                    } else {
+                        // Remind a lower-ranked leader (such as a throttled hidden tab waking late) to step down at once.
+                        post({ type: 'beat' });
+                    }
                 }
             } else if (data.type === 'claim') {
                 // A tab that claims will lead unless a better one claims too, so this one need not.
                 lastLifeAt = now();
                 if (role === 'leader') {
-                    post({ type: 'beat' });
-                } else if (role === 'candidate' && isBetterRank(other, self)) {
+                    if (isBetterRank(other, currentSelf)) {
+                        stepDown();
+                    } else {
+                        post({ type: 'beat' });
+                    }
+                } else if (role === 'candidate' && isBetterRank(other, currentSelf)) {
                     stepDown();
                 }
             } else if (data.type === 'resign') {

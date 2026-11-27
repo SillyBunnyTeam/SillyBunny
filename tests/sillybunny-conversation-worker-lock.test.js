@@ -145,7 +145,7 @@ beforeEach(() => {
     random = 0;
 });
 
-function openTab({ locks = null, channels = true } = {}) {
+function openTab({ locks = null, channels = true, isVisible = () => true } = {}) {
     return createWorkerLock({
         getLocks: () => locks ?? undefined,
         createChannel: channels ? name => hub.create(name) : null,
@@ -153,6 +153,7 @@ function openTab({ locks = null, channels = true } = {}) {
         setTimer: clock.setTimer,
         clearTimer: clock.clearTimer,
         createId: () => `tab-${++random}`,
+        isVisible,
     });
 }
 
@@ -354,6 +355,59 @@ describe('without Web Locks, which is a plain http address', () => {
         tab.stop();
 
         expect(tab.isLeader()).toBe(false);
+    });
+
+    test('prefers a visible newer tab over a hidden older tab when claims compete', async () => {
+        const olderHidden = openTab({ isVisible: () => false });
+        const newerVisible = openTab({ isVisible: () => true });
+        hub.holding = true;
+
+        olderHidden.start();
+        await clock.advance(50);
+        newerVisible.start();
+        await clock.advance(600);
+        hub.releaseHeld();
+        await clock.advance(5000);
+
+        expect([olderHidden.isLeader(), newerVisible.isLeader()]).toEqual([false, true]);
+    });
+
+    test('prevents a throttled hidden older leader from flapping leadership back from a visible newer leader', async () => {
+        let olderVisible = true;
+        const older = openTab({ isVisible: () => olderVisible });
+        const newer = openTab({ isVisible: () => true });
+        older.start();
+        await clock.advance(1000);
+        newer.start();
+        await clock.advance(1000);
+        expect([older.isLeader(), newer.isLeader()]).toEqual([true, false]);
+
+        // Older tab moves to background and gets timer-throttled long enough for the visible tab to take over.
+        olderVisible = false;
+        hub.channels[0].muted = true;
+        await clock.advance(60_000);
+        expect(newer.isLeader()).toBe(true);
+
+        // Older hidden tab wakes from throttling and emits a stale heartbeat; visible tab keeps leadership and older steps down.
+        hub.channels[0].muted = false;
+        await clock.advance(30_000);
+
+        expect([older.isLeader(), newer.isLeader()]).toEqual([false, true]);
+    });
+
+    test('still breaks ties by start time when two competing tabs are both hidden', async () => {
+        const first = openTab({ isVisible: () => false });
+        const second = openTab({ isVisible: () => false });
+        hub.partitioned = true;
+        first.start();
+        await clock.advance(50);
+        second.start();
+        await clock.advance(5000);
+
+        hub.partitioned = false;
+        await clock.advance(30_000);
+
+        expect([first.isLeader(), second.isLeader()]).toEqual([true, false]);
     });
 });
 

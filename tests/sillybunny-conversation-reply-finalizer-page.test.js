@@ -21,6 +21,8 @@ const generateSelfieFromContext = jest.fn(async () => true);
 const afterIncomingMessage = jest.fn();
 const getSettings = jest.fn(() => ({ schedule_command_enabled: true, selfie_command_enabled: true }));
 const getConversationMemberSettings = jest.fn((_avatar, host) => ({ ...host, member: true }));
+const availableCards = new Set(['Nova.png', 'Orion.png']);
+const getCharacterForAvatar = jest.fn(avatar => (availableCards.has(avatar) ? { avatar, name: avatar.replace('.png', '') } : null));
 
 await jest.unstable_mockModule('../public/script.js', () => ({ cleanUpMessage, getRequestHeaders: () => ({ 'Content-Type': 'application/json' }) }));
 await jest.unstable_mockModule('../public/scripts/reasoning.js', () => ({ removeReasoningFromString }));
@@ -33,6 +35,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/genera
     generateSelfieFromContext,
     getConversationReplySpeakers: (anchorAvatar, fallback) => [fallback, { avatar: 'Orion.png', name: 'Orion' }],
 }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({ getConversationMemberSettings }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/message-writer.js', () => ({ afterIncomingMessage }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({ getSettings }));
@@ -46,7 +49,10 @@ const originalFetch = globalThis.fetch;
 beforeEach(async () => {
     server = await startConversationServer();
     addCharacters(server.user, ['Nova.png', 'Orion.png']);
-    for (const mock of [cleanUpMessage, removeReasoningFromString, commitCharacterReplyCommands, generateSelfieFromContext, afterIncomingMessage, getSettings, getConversationMemberSettings]) {
+    availableCards.clear();
+    availableCards.add('Nova.png');
+    availableCards.add('Orion.png');
+    for (const mock of [cleanUpMessage, removeReasoningFromString, commitCharacterReplyCommands, generateSelfieFromContext, afterIncomingMessage, getSettings, getConversationMemberSettings, getCharacterForAvatar]) {
         mock.mockClear();
     }
     fetchCalls = [];
@@ -156,6 +162,32 @@ describe('the finalizer of this page', () => {
 
         expect(data.chat(ADDRESS).messages.map(message => message.id)).toEqual(['main-0', 'main-1', `${pending.id}.0`]);
         expect(afterIncomingMessage).toHaveBeenCalledTimes(1);
+    });
+
+    test('resolves anchorAvatar from the live direct conversation view instead of a stale reply.anchor', async () => {
+        cleanUpMessage.mockImplementation(({ getMessage }) => getMessage);
+        const pending = pendingReply({ text: 'hello [reminder: 10m | stretch]', route: 'raw', speaker: 'Nova.png', anchor: 'StaleNova.png', triggers: ['main-1'] });
+        await startData([{ id: ADDRESS.conversationId, characters: ['Nova.png'], chats: [{ id: 'main', messages: ['hello', 'hi there', { record: pending }] }] }]);
+        await data.loadChat(ADDRESS);
+
+        await finalizePendingReplies(ADDRESS);
+
+        expect(getSettings).toHaveBeenCalledWith('Nova.png', { groupId: '', personaId: PERSONA });
+        expect(afterIncomingMessage.mock.calls[0][0]).toBe('Nova.png');
+        expect(commitCharacterReplyCommands.mock.calls[0][2]).toMatchObject({ reminderAvatar: 'Nova.png' });
+    });
+
+    test('resolves group anchorAvatar from the first current member with a card instead of a stale reply.anchor', async () => {
+        cleanUpMessage.mockImplementation(({ getMessage }) => getMessage);
+        availableCards.delete('Nova.png');
+        const pending = pendingReply({ text: 'from Orion', route: 'raw', speaker: 'Orion.png', anchor: 'Departed.png', name: 'Orion', triggers: ['main-1'] });
+        await startData([{ id: GROUP_ADDRESS.conversationId, kind: 'group', characters: ['Nova.png', 'Orion.png'], chats: [{ id: 'main', messages: ['hello', 'hi there', { record: pending }] }] }]);
+        await data.loadChat(GROUP_ADDRESS);
+
+        await finalizePendingReplies(GROUP_ADDRESS);
+
+        expect(afterIncomingMessage.mock.calls[0][0]).toBe('Orion.png');
+        expect(data.chat(GROUP_ADDRESS).messages.at(-1)).toMatchObject({ role: 'character', name: 'Orion' });
     });
 });
 
