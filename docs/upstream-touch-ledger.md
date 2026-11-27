@@ -2967,17 +2967,17 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-26, Wave-2 Track B (`perf/pr16-memory-media-platform`). |
 | Owner | Server runtime and media pipeline integrator. |
 
-### `src/server-startup.js` and `src/plugin-loader.js` - lazy router mounting and deferred plugin tooling
+### `src/server-startup.js` and `src/plugin-loader.js` - lazy router mounting and deferred plugin update imports
 | Field | Value |
 | --- | --- |
 | File | `src/server-startup.js`, `src/plugin-loader.js`. |
-| Area | Server startup memory footprint and router/plugin initialization. |
-| Divergence reason | Upstream eagerly imports all non-boot Express routers plus `plugin-loader.js` (and `simple-git`/`command-exists`) at cold start even when `enableServerPlugins` is disabled, adding permanent idle RSS and cold-start latency on low-memory devices. |
-| Target seam | `createLazyRouter()` and `loadServerPluginsLazy()` in `src/server-startup.js`; deferred `simple-git` and `command-exists` imports inside `updatePlugins()` in `src/plugin-loader.js`. |
-| Adapter shape | `src/server-startup.js` keeps boot-hot routers eager, mounts 28 non-boot Express routers through `createLazyRouter()` (importing and caching each module on first request), and exports `loadServerPluginsLazy()` so `plugin-loader.js` is only imported when `enableServerPlugins` is enabled. `src/plugin-loader.js` inlines its three reserved marker constants and defers `simple-git` and `command-exists` imports to `updatePlugins()`. |
-| Protecting tests | `tests/perf-memory-media-platform.test.js` (`loadServerPluginsLazy and createLazyRouter defer module loading until enabled or requested`), `tests/plugin-loader.test.js`, `tests/conversation-mode-scoped-profile.test.js`. |
+| Area | Server startup memory footprint and router initialization. |
+| Divergence reason | Upstream eagerly imports all non-boot Express routers at cold start, adding permanent idle RSS and cold-start latency on low-memory devices. |
+| Target seam | `createLazyRouter()` in `src/server-startup.js`; deferred `simple-git` and `command-exists` imports inside `updatePlugins()` in `src/plugin-loader.js`. |
+| Adapter shape | `src/server-startup.js` keeps boot-hot routers eager, mounts 28 non-boot Express routers through `createLazyRouter()` (importing and caching each module on first request). `src/plugin-loader.js` inlines its three reserved marker constants and defers `simple-git` and `command-exists` imports to `updatePlugins()`. Plugin loading itself is not deferred: `src/server-main.js` still imports `src/plugin-loader.js` statically and calls `loadPlugins()` at the same point, which also prints the warning about plugins in the folder while server plugins are disabled. `src/util.js` imports `simple-git` and `command-exists` at the top, so the deferred imports in `updatePlugins()` do not change what loads at startup. |
+| Protecting tests | `tests/perf-memory-media-platform.test.js` (`createLazyRouter defers module loading until the first request`), `tests/plugin-loader.test.js`, `tests/conversation-mode-scoped-profile.test.js`. |
 | Validation | 2026-11-26: root and `tests/` ESLint (0 errors), focused Jest suites, Bun 1.4.4 and Node.js 24.22.1 direct and supervised boot smokes (`/version` 200, `/` 200, `/style.css` 200 over `zstd`). |
-| Rollback path | Restore static top-level imports for the 28 routers and `plugin-loader.js` in `src/server-startup.js` and top-level `simple-git`/`command-exists` imports in `src/plugin-loader.js`. All route mount paths and plugin contracts remain identical. |
+| Rollback path | Restore static top-level imports for the 28 routers in `src/server-startup.js` and top-level `simple-git`/`command-exists` imports in `src/plugin-loader.js`. All route mount paths and plugin contracts remain identical. |
 | Last reviewed | 2026-11-26, Wave-2 Track B (`perf/pr16-memory-media-platform`). |
 | Owner | Server runtime integrator. |
 

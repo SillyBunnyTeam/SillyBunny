@@ -91,10 +91,7 @@ const {
     getThumbnailDimensions,
 } = await import('../src/endpoints/image-metadata.js');
 
-const {
-    createLazyRouter,
-    loadServerPluginsLazy,
-} = await import('../src/server-startup.js');
+const { createLazyRouter } = await import('../src/server-startup.js');
 
 const {
     clearGroupsCache,
@@ -646,27 +643,7 @@ describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', 
         fs.rmSync(tempRoot, { recursive: true, force: true });
     });
 
-    test('loadServerPluginsLazy and createLazyRouter defer module loading until enabled or requested', async () => {
-        const importMock = jest.fn(async () => ({
-            loadPlugins: jest.fn(async () => () => {}),
-            getLoadedServerPlugins: () => [{ id: 'demo', directoryPath: '/plugins/demo' }],
-        }));
-
-        const disabledResult = await loadServerPluginsLazy({}, tempRoot, {
-            enableServerPlugins: false,
-            importPluginLoader: importMock,
-        });
-        expect(disabledResult.imported).toBe(false);
-        expect(importMock).not.toHaveBeenCalled();
-
-        const enabledResult = await loadServerPluginsLazy({}, tempRoot, {
-            enableServerPlugins: true,
-            importPluginLoader: importMock,
-        });
-        expect(enabledResult.imported).toBe(true);
-        expect(enabledResult.loadedPlugins).toEqual([{ id: 'demo', directoryPath: '/plugins/demo' }]);
-        expect(importMock).toHaveBeenCalledTimes(1);
-
+    test('createLazyRouter defers module loading until the first request', async () => {
         const routerLoader = jest.fn(async () => {
             const router = express.Router();
             router.get('/ping', (_req, res) => res.json({ pong: true }));

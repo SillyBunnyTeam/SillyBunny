@@ -3,9 +3,9 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { APP_NAME } from './runtime.js';
 import { BUN_SOCKET_INHERIT_ISSUE_URL, hasBunSocketInheritBug, isAddressInUseError, reportPortHolders, retryOnAddressInUse, trackListeningServer, diagnosePortConflict, formatPortConflictBanner } from './server-listen.js';
-import { color, getConfigValue, urlHostnameToIPv6, getHasIP } from './util.js';
+import { color, urlHostnameToIPv6, getHasIP } from './util.js';
 
-// SillyBunny: boot-hot routers stay eager while non-boot routers and plugin-loader lazy-load on demand.
+// SillyBunny: boot-hot routers stay eager while non-boot routers lazy-load on demand.
 import { router as userDataRouter } from './users.js';
 import { router as usersPrivateRouter } from './endpoints/users-private.js';
 import { router as movingUIRouter } from './endpoints/moving-ui.js';
@@ -65,40 +65,6 @@ export function createLazyRouter(loader) {
             });
 
         return pendingLoad.then(router => router(req, res, next), next);
-    };
-}
-
-// SillyBunny: lazy-load plugin-loader.js only when server plugins are enabled to avoid loading plugin tooling on default installs.
-/**
- * Dynamically imports and runs plugin-loader.js only when `enableServerPlugins` is enabled.
- * @param {import('express').Express} app Express app
- * @param {string} pluginsPath Path to plugins directory
- * @param {object} [options] Optional test overrides
- * @param {boolean} [options.enableServerPlugins] Explicit plugin toggle override
- * @param {() => Promise<{ loadPlugins: Function, getLoadedServerPlugins?: Function }>} [options.importPluginLoader]
- * @returns {Promise<{ cleanup: Function, loadedPlugins: Array<{ id: string, directoryPath: string }>, imported: boolean }>}
- */
-export async function loadServerPluginsLazy(app, pluginsPath, {
-    enableServerPlugins = !!getConfigValue('enableServerPlugins', false, 'boolean'),
-    importPluginLoader = () => import('./plugin-loader.js'),
-} = {}) {
-    if (!enableServerPlugins) {
-        return {
-            cleanup: () => { },
-            loadedPlugins: [],
-            imported: false,
-        };
-    }
-
-    const pluginLoader = await importPluginLoader();
-    const cleanup = await pluginLoader.loadPlugins(app, pluginsPath);
-    const loadedPlugins = typeof pluginLoader.getLoadedServerPlugins === 'function'
-        ? pluginLoader.getLoadedServerPlugins()
-        : [];
-    return {
-        cleanup: typeof cleanup === 'function' ? cleanup : () => { },
-        loadedPlugins,
-        imported: true,
     };
 }
 
