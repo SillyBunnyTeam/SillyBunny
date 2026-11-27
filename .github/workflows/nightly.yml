@@ -174,9 +174,104 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  e2e-browsers:
+    name: 🌙 E2E (${{ matrix.browser }})
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [webkit, firefox]
+    env:
+      CI: 'true'
+      PLAYWRIGHT_HTML_OPEN: never
+      SILLYBUNNY_TEST_BASE_URL: http://127.0.0.1:4444
+
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install test dependencies
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc
+        run: npm ci --ignore-scripts --prefix tests
+
+      - name: Install browser
+        working-directory: tests
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: npx --no-install playwright install --with-deps "$BROWSER"
+
+      - name: Initialize server state
+        run: npm run init
+
+      - name: Run browser e2e
+        env:
+          BROWSER: ${{ matrix.browser }}
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/sillybunny-server.log"
+          bun server.js --browserLaunchEnabled=false > "$log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          deadline=$((SECONDS + 120))
+          until curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/" > /dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null || (( SECONDS >= deadline )); then
+              echo 'Bun server did not become ready.' >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          node tests/e2e-servers-prime.js --browser="$BROWSER"
+          npm run "test:e2e:$BROWSER" --prefix tests -- --workers=2 --reporter=line,html
+
+      - name: Print server log on failure
+        # A job-level timeout cancels the job, where `failure()` is false; without this the log is lost.
+        if: failure() || cancelled()
+        run: |
+          if [ -f "$RUNNER_TEMP/sillybunny-server.log" ]; then
+            cat "$RUNNER_TEMP/sillybunny-server.log"
+          fi
+
+      - name: Upload failure diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-${{ matrix.browser }}-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/sillybunny-server.log
+            tests/playwright-report/
+            tests/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
   report:
     name: 🌙 Report result
-    needs: [gate, checks]
+    needs: [gate, checks, e2e-browsers]
     if: always() && needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -189,15 +284,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SHA: ${{ needs.gate.outputs.sha }}
-          RESULT: ${{ needs.checks.result }}
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          BROWSERS_RESULT: ${{ needs.e2e-browsers.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          case "$RESULT" in
-            success) state=success ;;
-            cancelled) state=error ;;
-            *) state=failure ;;
-          esac
+          if [ "$CHECKS_RESULT" = "success" ] && [ "$BROWSERS_RESULT" = "success" ]; then
+            state=success
+          elif [ "$CHECKS_RESULT" = "failure" ] || [ "$BROWSERS_RESULT" = "failure" ]; then
+            state=failure
+          elif [ "$CHECKS_RESULT" = "cancelled" ] || [ "$BROWSERS_RESULT" = "cancelled" ]; then
+            state=error
+          else
+            state=failure
+          fi
           gh api "repos/$GH_REPO/statuses/$SHA" -f state="$state" -f context="$NIGHTLY_STATUS_CONTEXT" -f target_url="$RUN_URL" > /dev/null
 
           gh label create "$FAILURE_LABEL" --color B60205 > /dev/null 2>&1 || true
