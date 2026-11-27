@@ -36,6 +36,91 @@ function bestTimesMs(runSmall, runLarge, repetitions = 9) {
 // sixteenfold when it is quadratic, so this limit sits between the two.
 const MAX_LINEAR_GROWTH_FOR_4X_INPUT = 8;
 
+/** Splits a selector list at its top-level commas. */
+function splitSelectorList(list) {
+    const selectors = [];
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < list.length; index++) {
+        const char = list[index];
+        if (char === '(' || char === '[') depth++;
+        else if (char === ')' || char === ']') depth--;
+        else if (char === ',' && depth === 0) {
+            selectors.push(list.slice(start, index));
+            start = index + 1;
+        }
+    }
+    selectors.push(list.slice(start));
+    return selectors.map(selector => selector.trim()).filter(Boolean);
+}
+
+/** Orders two [ids, classes, types] triples as the cascade does. */
+function compareSpecificity(left, right) {
+    return left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+}
+
+/**
+ * Specificity of one complex selector as [ids, classes and attributes and pseudo-classes, types and pseudo-elements].
+ * `:where()` counts nothing; `:is()`, `:not()` and `:has()` count their most specific argument.
+ */
+function selectorSpecificity(selector) {
+    const total = [0, 0, 0];
+    const add = (triple) => { for (let i = 0; i < 3; i++) total[i] += triple[i]; };
+    let index = 0;
+    while (index < selector.length) {
+        const rest = selector.slice(index);
+        const token = /^(#[\w-]+|\.[\w-]+|::?[\w-]+|[A-Za-z][\w-]*)/.exec(rest);
+        if (rest[0] === '[') {
+            add([0, 1, 0]);
+            index = selector.indexOf(']', index) + 1;
+        } else if (!token) {
+            index++;
+        } else if (token[0][0] === '#') {
+            add([1, 0, 0]);
+            index += token[0].length;
+        } else if (token[0][0] === '.') {
+            add([0, 1, 0]);
+            index += token[0].length;
+        } else if (token[0][0] === ':') {
+            const name = token[0].replace(/^:+/, '').toLowerCase();
+            const isElement = token[0].startsWith('::') || ['before', 'after'].includes(name);
+            index += token[0].length;
+            if (selector[index] !== '(') {
+                add(isElement ? [0, 0, 1] : [0, 1, 0]);
+                continue;
+            }
+            let depth = 0;
+            let end = index;
+            for (; end < selector.length; end++) {
+                if (selector[end] === '(') depth++;
+                else if (selector[end] === ')' && --depth === 0) break;
+            }
+            const argument = selector.slice(index + 1, end);
+            index = end + 1;
+            if (name === 'where') continue;
+            if (['is', 'not', 'has'].includes(name)) {
+                add(splitSelectorList(argument).map(selectorSpecificity).sort(compareSpecificity).at(-1));
+            } else {
+                add([0, 1, 0]);
+            }
+        } else {
+            add([0, 0, 1]);
+            index += token[0].length;
+        }
+    }
+    return total;
+}
+
+/** Selectors of the style rules in a stylesheet, without comments and at-rule preludes. */
+function listStyleSelectors(css) {
+    const selectors = [];
+    for (const match of css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{};]+)\{/g)) {
+        const prelude = match[1].trim();
+        if (!prelude.startsWith('@')) selectors.push(...splitSelectorList(prelude));
+    }
+    return selectors;
+}
+
 // Seed minimal localStorage so i18n module load stays quiet in Node Jest.
 if (!global.localStorage) {
     global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
@@ -1175,6 +1260,24 @@ describe('Workstream 4: editor session, picker windowing, list-focus cleanup, mo
         // Leave clean paused=false state.
         scope.isConnected = false;
         reconnectExtensionSettingsObservers();
+    });
+
+    test('Quick Reply modal rules keep the specificity that :has(#qr--modalEditor) gave them', () => {
+        const qrSelectors = listStyleSelectors(readPublic('scripts/extensions/quick-reply/style.css'));
+        const markerSelectors = qrSelectors.filter(selector => selector.includes('sb-qr-modal-editor-popup'));
+        expect(markerSelectors.length).toBeGreaterThan(200);
+        for (const selector of markerSelectors) {
+            // The former :has(#qr--modalEditor) carried one ID; a bare class marker would lose to dialog chrome rules.
+            expect(`${selector} -> ${selectorSpecificity(selector)[0] >= 1}`).toBe(`${selector} -> true`);
+        }
+
+        // While a script runs, the popup hides its own button row; the dialog chrome rule that shows it must lose.
+        const themeSelectors = listStyleSelectors(readPublic('css/sillybunny-theme.css'));
+        const chromeControls = 'dialog.popup.sb-dialog > .sb-dialog__header > .popup-controls';
+        expect(themeSelectors).toContain(chromeControls);
+        const hidingRule = qrSelectors.find(selector => selector.includes('sb-qr-modal-editor-executing') && selector.endsWith('.popup-controls'));
+        expect(hidingRule).toBeDefined();
+        expect(compareSpecificity(selectorSpecificity(hidingRule), selectorSpecificity(chromeControls))).toBeGreaterThan(0);
     });
 
     test('picker windowing, folder/tag focus cleanup, settings panel memoization, agent-list visibility gate, QuickReply & CSS hazards', () => {
