@@ -976,17 +976,20 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
             'function scheduleDeferredStartupStylesheets(',
         );
 
-        const runSwScenario = async ({ hostname, userAgent = 'Mozilla/5.0 Chrome/130.0', isSecureContext = true, withController = false }) => {
+        const runSwScenario = async ({ hostname, userAgent = 'Mozilla/5.0 Chrome/130.0', isSecureContext = true, withController = false, extraRegistrations = [] }) => {
             const idleCallbacks = [];
             const deletedCaches = [];
             const controllerMessages = [];
             const unregisterSpy = jest.fn(async () => true);
+            const origin = `http://${hostname}`;
+            // The registration of this app: the script is /sw.js and the scope is the whole origin.
+            const ownRegistration = { scope: `${origin}/`, active: { scriptURL: `${origin}/sw.js?v=20261124a` }, unregister: unregisterSpy };
             const registerSpy = jest.fn(async () => ({ update: jest.fn(async () => undefined) }));
 
             const sandbox = {
                 window: {
                     isSecureContext,
-                    location: { hostname },
+                    location: { hostname, origin },
                     requestIdleCallback: (cb) => idleCallbacks.push(cb),
                     setTimeout: (cb) => idleCallbacks.push(cb),
                     addEventListener: jest.fn(),
@@ -998,10 +1001,11 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
                             postMessage: jest.fn((msg) => { controllerMessages.push(msg); }),
                         } : null,
                         register: registerSpy,
-                        getRegistrations: jest.fn(async () => [{ unregister: unregisterSpy }]),
+                        getRegistrations: jest.fn(async () => [...extraRegistrations, ownRegistration]),
                     },
                 },
                 document: { readyState: 'complete' },
+                URL,
                 caches: {
                     keys: jest.fn(async () => ['sillybunny-cache-v4', 'sillybunny-cache-v3', 'third-party-cache']),
                     delete: jest.fn(async (key) => {
@@ -1032,6 +1036,29 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
             expect(res.deletedCaches).toEqual(['sillybunny-cache-v4', 'sillybunny-cache-v3']);
         }
 
+        // Registrations of other scripts on the same origin (an extension's own worker) are left alone, whichever state they are in.
+        const thirdPartyUnregister = jest.fn(async () => true);
+        const thirdPartyRes = await runSwScenario({
+            hostname: '127.0.0.1',
+            extraRegistrations: [
+                { scope: 'http://127.0.0.1/scripts/extensions/third-party/offline/', active: { scriptURL: 'http://127.0.0.1/scripts/extensions/third-party/offline/sw.js' }, unregister: thirdPartyUnregister },
+                { scope: 'http://127.0.0.1/', waiting: { scriptURL: 'http://127.0.0.1/other/sw.js' }, unregister: thirdPartyUnregister },
+                { scope: 'http://127.0.0.1/', installing: { scriptURL: 'http://127.0.0.1/sw.js.map' }, unregister: thirdPartyUnregister },
+                { scope: 'http://127.0.0.1/', unregister: thirdPartyUnregister },
+            ],
+        });
+        expect(thirdPartyRes.unregisterSpy).toHaveBeenCalledTimes(1);
+        expect(thirdPartyUnregister).not.toHaveBeenCalled();
+
+        // A registration of /sw.js that is still installing or waiting is retired too.
+        const waitingUnregister = jest.fn(async () => true);
+        const waitingRes = await runSwScenario({
+            hostname: 'localhost',
+            extraRegistrations: [{ scope: 'http://localhost/', waiting: { scriptURL: 'http://localhost/sw.js?v=20260101a' }, unregister: waitingUnregister }],
+        });
+        expect(waitingUnregister).toHaveBeenCalledTimes(1);
+        expect(waitingRes.unregisterSpy).toHaveBeenCalledTimes(1);
+
         const webviewRes = await runSwScenario({
             hostname: 'companion.example.com',
             userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/UQ1A; wv) AppleWebKit/537.36 Version/4.0 Chrome/128.0 Mobile Safari/537.36',
@@ -1039,7 +1066,15 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(webviewRes.registerSpy).not.toHaveBeenCalled();
         expect(webviewRes.unregisterSpy).toHaveBeenCalledTimes(1);
 
-        // Non-Chrome Android browser containing Version/X.Y without wv/Chrome/SillyBunnyAndroid keeps remote SW registration.
+        // Android Chrome-based browsers that send Version/4.0 and Chrome/ without the wv token are not WebViews and keep remote SW registration.
+        const androidVersionChromeRes = await runSwScenario({
+            hostname: 'sillybunny.example.com',
+            userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.0.0 Mobile Safari/537.36',
+        });
+        expect(androidVersionChromeRes.registerSpy).toHaveBeenCalledWith('/sw.js?v=20261124a', { updateViaCache: 'none' });
+        expect(androidVersionChromeRes.unregisterSpy).not.toHaveBeenCalled();
+
+        // Non-Chrome Android browser containing Version/X.Y without wv/SillyBunnyAndroid keeps remote SW registration.
         const androidNonWebViewRes = await runSwScenario({
             hostname: 'sillybunny.example.com',
             userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Version/17.0 Mobile Safari/537.36',

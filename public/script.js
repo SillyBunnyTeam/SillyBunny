@@ -1187,8 +1187,23 @@ function isLoopbackOrAndroidWebView(hostname = window.location?.hostname, userAg
         return true;
     }
 
+    // The wv token marks an Android WebView. Other Android browsers can send Version/4.0 and Chrome/ and are not WebViews.
     const ua = String(userAgent || '');
-    return /Android/i.test(ua) && (/\bwv\b|SillyBunnyAndroid|Version\/\d+\.\d+.*Chrome\//i.test(ua));
+    return /Android/i.test(ua) && /\bwv\b|SillyBunnyAndroid/i.test(ua);
+}
+
+/**
+ * True for a registration of this app's own worker (`/sw.js`), in any state. The origin can hold registrations of other scripts, such as an extension's worker.
+ * @param {ServiceWorkerRegistration} registration
+ * @returns {boolean}
+ */
+function isSillyBunnyServiceWorkerRegistration(registration) {
+    const worker = registration?.active ?? registration?.waiting ?? registration?.installing;
+    try {
+        return new URL(worker?.scriptURL ?? '').pathname === '/sw.js';
+    } catch {
+        return false;
+    }
 }
 
 async function retireLoopbackServiceWorkerAndCaches() {
@@ -1228,7 +1243,9 @@ async function retireLoopbackServiceWorkerAndCaches() {
     try {
         if (navigator.serviceWorker && typeof navigator.serviceWorker.getRegistrations === 'function') {
             const registrations = await navigator.serviceWorker.getRegistrations();
-            await Promise.all(registrations.map(registration => registration.unregister().catch(() => false)));
+            await Promise.all(registrations
+                .filter(isSillyBunnyServiceWorkerRegistration)
+                .map(registration => registration.unregister().catch(() => false)));
         }
     } catch (error) {
         console.debug('Could not unregister loopback service worker.', error);

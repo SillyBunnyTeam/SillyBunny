@@ -1917,6 +1917,12 @@ This is the largest class by a wide margin.
 - **Limit:** `/api/tokenizers/count-batch` and `/api/tokenizers/openai/count?per_message=1` answer a server-side estimate in place of a failed count as a plain number, so the client cannot tell it from an exact count.
 - **Tests:** `tests/unit/perf-boot-waterfall-and-tokenizers.test.js` (prompts of 501, 1,000 and 2,000 messages stay cached over three generations; the persisted copy is bounded; a failed single count and a failed batch with its per-text fallback leave the cache empty and are counted again; long text that contains `;base64,` or starts with `data:` prose is hashed and estimated in full).
 
+### Service worker retirement on loopback and Android WebView
+
+- **Breaks:** `retireLoopbackServiceWorkerAndCaches()` in `public/script.js` unregistered every registration that `navigator.serviceWorker.getRegistrations()` returned, so a worker that an extension registered on the same origin went with SillyBunny's. The Android test also matched any Android browser that sends `Version/4.0 … Chrome/` without the `wv` token, and those browsers lost service worker registration on remote HTTPS.
+- **Guards:** `isSillyBunnyServiceWorkerRegistration()` keeps a registration only when its `active`, `waiting` or `installing` worker has the script path `/sw.js`. `isLoopbackOrAndroidWebView()` treats an Android user agent as a WebView only with the `wv` token (or the `SillyBunnyAndroid` token, which no file in this repository sets). Cache deletion stays limited to `sillybunny-cache-*`.
+- **Tests:** `tests/unit/perf-boot-waterfall-and-tokenizers.test.js` (retirement leaves registrations of other scripts alone and retires a waiting `/sw.js`; an Android browser without `wv` keeps its registration).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
