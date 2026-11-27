@@ -1080,10 +1080,18 @@ test.describe('desktop Escape at 1264x800', () => {
     test.use({ viewport: { width: 1264, height: 800 } });
 
     test('Escape closes one surface at a time, including floating portraits', async ({ page }) => {
-        await openQuietChatForSmoke(page, { selectCharacter: false });
+        await openQuietChatForSmoke(page);
         await clearToasts(page);
         const settingsPage = page.locator('#sb-settings-page');
         const search = page.locator('#sb-universal-search');
+        const chatSidebar = page.locator('.sb-side-panel[data-sb-side-panel-id="sb-chat-sidebar"]');
+
+        // Recent Chats is built the first time it opens, and only a chat can open it, so a chat is open here and the panel
+        // is opened and closed once before the presses, as a user does it. It then stays in the page, closed.
+        await page.evaluate(() => window.SillyBunnyShell.toggleChatSidebar());
+        await expect(chatSidebar).toBeVisible();
+        await page.evaluate(() => window.SillyBunnySidePanels.closeSidePanel('sb-chat-sidebar', { restoreFocus: false }));
+        await expect(chatSidebar).toBeHidden();
 
         // Leaving Characters on World Info keeps #WorldInfo laid out in the closed page.
         await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
@@ -1098,7 +1106,6 @@ test.describe('desktop Escape at 1264x800', () => {
             portrait.css('display', 'flex');
         });
         const portrait = page.locator('#zoomFor_smoke');
-        const chatSidebar = page.locator('.sb-side-panel[data-sb-side-panel-id="sb-chat-sidebar"]');
 
         // The open page hides the portrait, so Escape from outside the page leaves it alone.
         await page.evaluate(() => document.activeElement?.blur());
