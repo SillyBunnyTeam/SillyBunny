@@ -47,6 +47,8 @@ export const DIALOG_SPECS = [
 // Opt-in: `npm run test:e2e:webkit`. The default config stays Chromium only.
 export default defineConfig({
     ...baseConfig,
+    // WebKit boots the full app slower than Chromium and specs wait up to 60 s for `app_ready`.
+    timeout: 60_000,
     testMatch: DIALOG_SPECS.map(name => `**/${name}.e2e.js`),
     // Playwright's `page.route` does not see a request that a service worker handles. The app's worker claims
     // the page, so stubs are skipped for the requests it takes over, and a destructive call such as

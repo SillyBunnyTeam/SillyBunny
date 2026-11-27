@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { SERVER_LIST_VARIABLE } from '../e2e-servers.js';
 
 /*
  * After a server start, the first load of every browser clears the caches twice and reloads each time
@@ -65,12 +66,12 @@ export function buildClearedCookies({ bootCookie, progressCookie, passes }, { bo
 }
 
 /**
- * Playwright `globalSetup`: writes the storage state of a browser whose restart cache clear is done.
+ * Writes the cleared restart-cache-clear storage state for one server URL.
  * A server that does not ask for a clear gets an empty state.
- * @param {import('@playwright/test').FullConfig} config
+ * @param {string} baseURL
+ * @returns {Promise<string>} Path to the written storage state file
  */
-export default async function seedRestartCacheClear(config) {
-    const baseURL = config.projects[0].use.baseURL;
+export async function seedRestartCacheClearForUrl(baseURL) {
     const statePath = restartCacheClearStatePath(baseURL);
     const index = await fetch(`${baseURL}/`);
     const setCookies = index.headers.getSetCookie();
@@ -83,7 +84,7 @@ export default async function seedRestartCacheClear(config) {
     const bootLine = setCookies.find(line => line.startsWith(`${names.bootCookie}=`));
     if (!bootLine) {
         fs.writeFileSync(statePath, JSON.stringify({ cookies: [], origins: [] }));
-        return;
+        return statePath;
     }
 
     const cookies = buildClearedCookies(names, {
@@ -95,4 +96,20 @@ export default async function seedRestartCacheClear(config) {
         throw new Error('The server still asks for a cache clear after the cookies were seeded, so the cookie format no longer matches restartCacheClear.js.');
     }
     fs.writeFileSync(statePath, JSON.stringify({ cookies, origins: [] }));
+    return statePath;
+}
+
+/**
+ * Playwright `globalSetup`: writes the storage state of a browser whose restart cache clear is done.
+ * Seeds every server in `SILLYBUNNY_TEST_SERVER_LIST` when set, otherwise the project's base URL.
+ * @param {import('@playwright/test').FullConfig} config
+ */
+export default async function seedRestartCacheClear(config) {
+    const serverList = process.env[SERVER_LIST_VARIABLE];
+    if (serverList) {
+        const servers = JSON.parse(serverList);
+        await Promise.all(servers.map(({ url }) => seedRestartCacheClearForUrl(url)));
+        return;
+    }
+    await seedRestartCacheClearForUrl(config.projects[0].use.baseURL);
 }
