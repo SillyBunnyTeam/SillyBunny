@@ -344,19 +344,21 @@ async function sendClaudeRequest(request, response) {
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
         // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
-        const useNativeJsonOutput = /claude-(fable-5-1|opus-5-5)/.test(request.body.model);
-        // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
-        const isSonnetOrOpus5 = /claude-(?:sonnet|opus)-5/.test(request.body.model);
+        // SillyBunny: Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 5.5 use native JSON output (ST #6129 / #6213).
+        const useNativeJsonOutput = /claude-(fable-5-1|opus-5-5|sonnet-5-5|haiku-5-5)/.test(request.body.model);
+        // SillyBunny: Claude 5 models (Opus 5, Sonnet 5, Haiku 5) require adaptive thinking and reject sampling params and assistant prefill (ST #6129).
+        const isClaude5Model = /claude-(?:sonnet|opus|haiku)-5/.test(request.body.model);
         const isOpus55Model = /claude-opus-5-5(?:[-/:]|$)/.test(request.body.model);
-        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
-        const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5) && Boolean(request.body.enable_web_search);
+        const isSonnet55Model = /claude-sonnet-5-5(?:[-/:]|$)/.test(request.body.model);
+        const useThinking = /^claude-(3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isClaude5Model;
+        const useWebSearch = (/^claude-(3-5|3-7|opus-4|sonnet-4|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|sonnet-4-6)/.test(request.body.model) || isFableModel || isClaude5Model) && Boolean(request.body.enable_web_search);
         const isLimitedSampling = /^claude-(opus-4-1|sonnet-4-5|haiku-4-5|opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model);
-        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
-        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
+        const useVerbosity = /^claude-(opus-4-5|opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isClaude5Model;
+        const noPrefillModel = /^claude-(opus-4-6|opus-4-7|opus-4-8|sonnet-4-6)/.test(request.body.model) || isFableModel || isClaude5Model;
         // SillyBunny: read per request so a saved config applies without a restart.
         const enableAdaptiveThinking = getConfigValue('claude.enableAdaptiveThinking', true, 'boolean');
-        const isAdaptiveModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isSonnetOrOpus5 || (enableAdaptiveThinking && /^claude-(opus-4-6|sonnet-4-6)/.test(request.body.model));
-        const noSamplingModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isSonnetOrOpus5;
+        const isAdaptiveModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isClaude5Model || (enableAdaptiveThinking && /^claude-(opus-4-6|sonnet-4-6)/.test(request.body.model));
+        const noSamplingModel = /^claude-(opus-4-7|opus-4-8)/.test(request.body.model) || isFableModel || isClaude5Model;
         let fixThinkingPrefill = false;
         // Add custom stop sequences
         const stopSequences = [];
@@ -391,7 +393,8 @@ async function sendClaudeRequest(request, response) {
             requestBody.tools = claudeFunctionTools;
         }
 
-        // Fable 5.1 and Opus 5.5 reject forced tools, but support native JSON outputs.
+        // Fable 5.1, Opus 5.5 and Sonnet 5.5 reject forced tools. Haiku 5.5 accepts them, but a forced tool skips its thinking.
+        // All of them support native JSON outputs.
         if (request.body.json_schema) {
             if (useNativeJsonOutput) {
                 requestBody.output_config = {
@@ -467,7 +470,7 @@ async function sendClaudeRequest(request, response) {
             requestBody.output_config.effort = budgetTokens;
             // top_k is not allowed in adaptive mode
             delete requestBody.top_k;
-        } else if (useThinking && (isFableModel || isSonnetOrOpus5) && reasoningEffort === 'auto' && includeReasoning) {
+        } else if (useThinking && (isFableModel || isClaude5Model) && reasoningEffort === 'auto' && includeReasoning) {
             // Fable/Claude 5 auto thinking is already enabled, but readable summaries require an explicit display request.
             fixThinkingPrefill = true;
             requestBody.thinking = { type: 'adaptive', display: 'summarized' };
@@ -490,11 +493,17 @@ async function sendClaudeRequest(request, response) {
             delete requestBody.temperature;
             delete requestBody.top_p;
             delete requestBody.top_k;
-        } else if (isSonnetOrOpus5 && budgetTokens === null) {
-            // SillyBunny: Opus 5.5 rejects disabled thinking even when no effort is selected.
-            requestBody.thinking = { type: isOpus55Model ? 'adaptive' : 'disabled' };
-            if (isOpus55Model && includeReasoning) {
-                requestBody.thinking.display = 'summarized';
+        } else if (isClaude5Model && budgetTokens === null) {
+            // SillyBunny: Opus 5.5 requires adaptive thinking and Sonnet 5.5 uses between_tools when no effort is picked; other Claude 5 models allow disabled (ST #6129).
+            if (isOpus55Model) {
+                requestBody.thinking = { type: 'adaptive' };
+                if (includeReasoning) {
+                    requestBody.thinking.display = 'summarized';
+                }
+            } else if (isSonnet55Model) {
+                requestBody.thinking = { type: 'between_tools' };
+            } else {
+                requestBody.thinking = { type: 'disabled' };
             }
         }
 
@@ -4069,14 +4078,25 @@ async function handleChatCompletionsGenerate(request, response) {
             applyKimiK3ModelParameterConstraints(requestBody);
         }
 
-        // SillyBunny: Claude models that require adaptive thinking reject legacy thinking types supplied by Custom endpoint settings.
-        if (!isTextCompletion
-            && request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM
-            && /claude-(?:fable-5(?:-1|\.1)|opus-5-5)(?:[-/:]|$)/i.test(String(requestBody.model))) {
-            if (requestBody.thinking?.type !== 'adaptive') {
-                requestBody.thinking = { type: 'adaptive' };
+        // SillyBunny: Claude models that require adaptive thinking reject legacy thinking types supplied by Custom endpoint settings (ST #6129).
+        if (!isTextCompletion && request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
+            const customModel = String(requestBody.model);
+            if (/claude-(?:fable-5(?:-1|\.1)|opus-5-5)(?:[-/:]|$)/i.test(customModel)) {
+                if (requestBody.thinking?.type !== 'adaptive') {
+                    requestBody.thinking = { type: 'adaptive' };
+                }
+                delete requestBody.thinking.budget_tokens;
+            } else if (/claude-sonnet-5-5(?:[-/:]|$)/i.test(customModel)) {
+                if (!['adaptive', 'between_tools'].includes(requestBody.thinking?.type)) {
+                    requestBody.thinking = { type: 'adaptive' };
+                }
+                delete requestBody.thinking.budget_tokens;
+            } else if (/claude-haiku-5-5(?:[-/:]|$)/i.test(customModel) && requestBody.thinking) {
+                if (requestBody.thinking.type === 'enabled' || requestBody.thinking.budget_tokens !== undefined) {
+                    requestBody.thinking = { type: 'adaptive' };
+                }
+                delete requestBody.thinking.budget_tokens;
             }
-            delete requestBody.thinking.budget_tokens;
         }
 
         if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {

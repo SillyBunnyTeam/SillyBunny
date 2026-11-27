@@ -231,15 +231,21 @@ test('Claude pickers include current Claude 5 models and omit all retired Claude
     expect(mainPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(mainPicker).toContain('claude-fable-5-1');
     expect(mainPicker).toContain('claude-opus-5-5');
+    expect(mainPicker).toContain('claude-sonnet-5-5');
+    expect(mainPicker).toContain('claude-haiku-5-5');
     expect(captionPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(captionPicker).toContain('claude-fable-5-1');
     expect(captionPicker).toContain('claude-opus-5-5');
+    expect(captionPicker).toContain('claude-sonnet-5-5');
+    expect(captionPicker).toContain('claude-haiku-5-5');
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(openAiScript).toContain('claude_model: \'claude-opus-5\'');
     expect(claudeContextConfig).toContain('opus-5');
+    expect(claudeContextConfig).toContain('haiku-5');
     expect(claudeContextConfig).toContain('attr(\'max\', max_1mil)');
     expect(visionModels).toContain('\'claude-opus-5\'');
+    expect(visionModels).toContain('\'claude-haiku-5\'');
 });
 
 test('Other provider pickers omit confirmed-retired model IDs', () => {
