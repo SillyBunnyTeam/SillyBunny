@@ -109,6 +109,29 @@ test.describe('Chats', () => {
         await expect(shownPage(page).getByRole('list', { name: 'Chats' })).toHaveCount(0);
     });
 
+    test('the keyboard starts selection from the Select button, chooses rows with Space, selects all with Ctrl+A, and Escape returns focus to the button', async ({ page }) => {
+        await openChatsPage(page);
+        const chats = shownPage(page);
+        const select = chats.getByRole('button', { name: 'Select', exact: true });
+        await select.focus();
+        await page.keyboard.press('Enter');
+        await expect(selectionHeader(page).getByRole('button', { name: 'Cancel' })).toBeFocused();
+
+        await chats.getByRole('listitem', { name: 'Delta' }).focus();
+        await page.keyboard.press('Space');
+        await expect(selectionTitle(page)).toHaveText('1 Selected');
+        await page.keyboard.press('Space');
+        await expect(selectionTitle(page)).toHaveText('0 Selected');
+        await page.keyboard.press('Enter');
+        await expect(selectionTitle(page)).toHaveText('1 Selected');
+        await page.keyboard.press('Control+A');
+        await expect(selectionTitle(page)).toHaveText('5 Selected');
+
+        await page.keyboard.press('Escape');
+        await expect(selectionHeader(page)).toHaveCount(0);
+        await expect(select).toBeFocused();
+    });
+
     test('a change while selecting keeps the chosen chats, and drops a chat that is gone from the selection', async ({ page }) => {
         const { conversationId, chatIds } = await openChatsPage(page);
         const chats = shownPage(page);
@@ -534,6 +557,34 @@ const PIN_CHAT = [
     { id: 'n-3', role: 'character', name: 'Character', mes: 'Third pinned.', created_at: DAY + 180_000, extra: { conversation_pinned: true, conversation_pinned_at: PIN_TIMES[2] } },
     { id: 'n-4', role: 'user', name: 'Tester', mes: 'Not pinned.', created_at: DAY + 240_000 },
 ];
+
+test.describe('Files and Pinned in batches', () => {
+    test('Files shows fifty files, then the rest with Show More, and Select All covers the ones behind it', async ({ page }) => {
+        const files = Array.from({ length: 52 }, (_, index) => ({ url: '/robots.txt', name: `file-${String(index + 1).padStart(2, '0')}.txt`, size: 100 }));
+        await openSharedPage(page, 'files', [{ id: 'many-f', role: 'character', name: 'Character', mes: 'Many files.', created_at: DAY, extra: { files } }]);
+        const page_ = shownPage(page);
+        await expect(page_.getByRole('list', { name: 'Files' }).getByRole('listitem')).toHaveCount(50);
+        await page_.getByRole('button', { name: 'Select', exact: true }).click();
+        await selectionHeader(page).getByRole('button', { name: 'Select All' }).click();
+        await expect(selectionTitle(page)).toHaveText('52 Selected');
+        await page_.getByRole('button', { name: 'Show More' }).click();
+        await expect(page_.getByRole('list', { name: 'Files' }).getByRole('listitem')).toHaveCount(52);
+        await expect(page_.getByRole('checkbox', { name: 'Select file-01.txt' })).toBeChecked();
+    });
+
+    test('Pinned shows fifty messages, then the rest with Show More, and Unpin works on a message behind it', async ({ page }) => {
+        const pins = Array.from({ length: 52 }, (_, index) => ({ id: `pin-${index}`, role: 'character', name: 'Character', mes: `Pin ${String(index + 1).padStart(2, '0')}`, created_at: DAY + index * 60_000, extra: { conversation_pinned: true, conversation_pinned_at: DAY + index * 60_000 + 5 } }));
+        const { conversationId, chatIds } = await openSharedPage(page, 'pinned', pins);
+        const pinned = shownPage(page);
+        await expect(pinned.getByRole('list', { name: 'Pinned Messages' }).getByRole('listitem')).toHaveCount(50);
+        await pinned.getByRole('button', { name: 'Select', exact: true }).click();
+        await selectionHeader(page).getByRole('button', { name: 'Select All' }).click();
+        await expect(selectionTitle(page)).toHaveText('52 Selected');
+        await actionBar(page).getByRole('button', { name: 'Unpin' }).click();
+        await expect(pinned.getByText('No Pinned Messages')).toBeVisible();
+        await expect.poll(async () => (await readRecords(page, conversationId, chatIds[0])).filter(record => record.extra?.conversation_pinned).length).toBe(0);
+    });
+});
 
 test.describe('Pinned', () => {
     test('Unpin in the action bar unpins every chosen message, and one Undo gives them all back with their times', async ({ page }) => {
