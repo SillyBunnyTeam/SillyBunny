@@ -5,11 +5,29 @@ import { TextDecoder } from 'node:util';
 
 import sanitize from 'sanitize-filename';
 import { acquireChatFileLock } from './chat-file-lock.js';
-import { fsyncDirectorySync, recoverFileWriteSync, tryWriteFileSync } from './util.js';
+import {
+    chatInfoCache,
+    chatStateCache,
+    computeSha256,
+    confirmFileContentSync,
+    currentTimeNs,
+    extractStatTuple,
+    getEntryRawBuffer,
+    isReliableStatTuple,
+    isStatTupleRacy,
+    statTuplesEqual,
+    withValidationTime,
+    writeDurableAtomicFileSync,
+} from './chat-io-fastpath.js';
+import { fsyncDirectorySync, recoverFileWriteSync } from './util.js';
 
 export const CHAT_RECOVERY_DIRECTORY = '_chat_recovery';
 export const CHAT_RECOVERY_QUARANTINE_LIMIT = 3;
+export const CHAT_RAW_ROWS_SYMBOL = Symbol('chatRawRows');
+export const CHAT_HEADER_FIXED_UP_SYMBOL = Symbol('chatHeaderFixedUp');
 
+const CHAT_ORIGINAL_HEADER_SYMBOL = Symbol('chatOriginalHeader');
+const CHAT_IS_CANONICAL_SYMBOL = Symbol('chatIsCanonical');
 const GROUP_CHAT_OWNER = 'shared';
 const ROOT_DIRECTORY_LABELS = Object.freeze({
     character: 'Chats directory',
@@ -22,8 +40,47 @@ const ROOT_DIRECTORY_KEYS = Object.freeze({
     conversation: 'conversationsDirectory',
 });
 const RECOVERY_STATE_FILE_REGEXP = /^([a-f0-9]{64})\.(?:latest\.jsonl|deleted|corrupt-\d+\.jsonl)$/;
+const LATEST_SNAPSHOT_META_CACHE_MAX = 512;
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 const rekeyTransactions = new WeakMap();
+/** @type {Set<string>} */
+const tombstonesMayExist = new Set();
+/** @type {Map<string, number>} */
+const lastPrunedLimitByDir = new Map();
+/** @type {Map<string, { tuple: { dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }|null, sha256: string }>} */
+const latestSnapshotMetaCache = new Map();
+
+function getLatestSnapshotMeta(latestPath) {
+    const entry = latestSnapshotMetaCache.get(latestPath);
+    if (!entry) {
+        return null;
+    }
+    latestSnapshotMetaCache.delete(latestPath);
+    latestSnapshotMetaCache.set(latestPath, entry);
+    return entry;
+}
+
+function setLatestSnapshotMeta(latestPath, tuple, sha256) {
+    latestSnapshotMetaCache.delete(latestPath);
+    latestSnapshotMetaCache.set(latestPath, { tuple, sha256 });
+    while (latestSnapshotMetaCache.size > LATEST_SNAPSHOT_META_CACHE_MAX) {
+        const oldestKey = latestSnapshotMetaCache.keys().next().value;
+        latestSnapshotMetaCache.delete(oldestKey);
+    }
+}
+
+function deleteLatestSnapshotMeta(latestPath) {
+    latestSnapshotMetaCache.delete(latestPath);
+}
+
+/**
+ * Resets in-memory recovery tracking caches (for test isolation).
+ */
+export function clearChatRecoveryRuntimeCaches() {
+    tombstonesMayExist.clear();
+    lastPrunedLimitByDir.clear();
+    latestSnapshotMetaCache.clear();
+}
 
 function acquireRecoveryStateLock(target) {
     assertRecoveryDirectory(target, { create: true });
@@ -80,10 +137,12 @@ export function runChatRecoveryBestEffort(operation, warningMessage) {
     }
 }
 
-function readRegularFile(filePath) {
+function readRegularFile(filePath, { includeStats = false } = {}) {
+    // Taken before the read: a write that lands while the file is read can keep the timestamps the read ends with.
+    const validatedAtNs = currentTimeNs();
     let pathStats;
     try {
-        pathStats = fs.lstatSync(filePath);
+        pathStats = fs.lstatSync(filePath, includeStats ? { bigint: true } : undefined);
     } catch (error) {
         if (error?.code === 'ENOENT') {
             return { status: 'missing', data: null };
@@ -102,14 +161,31 @@ function readRegularFile(filePath) {
     try {
         const noFollow = fs.constants.O_NOFOLLOW ?? 0;
         descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | noFollow);
-        const descriptorStats = fs.fstatSync(descriptor);
+        const descriptorStats = fs.fstatSync(descriptor, includeStats ? { bigint: true } : undefined);
         if (!descriptorStats.isFile()) {
             return corruptResult('non-regular');
         }
         if (pathStats.ino && descriptorStats.ino && (pathStats.dev !== descriptorStats.dev || pathStats.ino !== descriptorStats.ino)) {
             return corruptResult('changed-during-read');
         }
-        return { status: 'ok', data: fs.readFileSync(descriptor) };
+        const data = fs.readFileSync(descriptor);
+        if (includeStats) {
+            const finalDescriptorStats = fs.fstatSync(descriptor, { bigint: true });
+            const descriptorChanged = finalDescriptorStats.dev !== descriptorStats.dev
+                || finalDescriptorStats.ino !== descriptorStats.ino
+                || finalDescriptorStats.size !== descriptorStats.size
+                || finalDescriptorStats.mtimeNs !== descriptorStats.mtimeNs
+                || finalDescriptorStats.ctimeNs !== descriptorStats.ctimeNs;
+            if (descriptorChanged) {
+                return corruptResult('changed-during-read');
+            }
+            return {
+                status: 'ok',
+                data,
+                statTuple: withValidationTime(extractStatTuple(finalDescriptorStats), validatedAtNs),
+            };
+        }
+        return { status: 'ok', data };
     } catch (error) {
         if (error?.code === 'ENOENT') {
             return { status: 'missing', data: null };
@@ -138,25 +214,42 @@ function toBuffer(data) {
     throw new TypeError('Chat JSONL data must be a string, Buffer, or Uint8Array.');
 }
 
+function attachChatFastMetadata(result, { rawRows, headerFixedUp, originalHeader, isCanonical }) {
+    Object.defineProperties(result, {
+        [CHAT_RAW_ROWS_SYMBOL]: { value: rawRows, enumerable: false, configurable: true },
+        [CHAT_HEADER_FIXED_UP_SYMBOL]: { value: headerFixedUp, enumerable: false, configurable: true },
+        [CHAT_ORIGINAL_HEADER_SYMBOL]: { value: originalHeader, enumerable: false, configurable: true },
+        [CHAT_IS_CANONICAL_SYMBOL]: { value: isCanonical, enumerable: false, configurable: true },
+    });
+    return result;
+}
+
 export function parseChatJsonl(data) {
+    const buffer = toBuffer(data);
+    const hasBom = buffer.byteLength >= 3 && buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF;
     let serialized;
     try {
-        serialized = utf8Decoder.decode(toBuffer(data));
+        serialized = utf8Decoder.decode(buffer);
     } catch {
         return corruptResult('invalid-utf8', data);
     }
 
     const records = [];
+    const rawRows = [];
     const lines = serialized.split('\n');
+    let hasBlankOrCr = false;
     for (let index = 0; index < lines.length; index++) {
         const line = lines[index];
         if (line.trim() === '') {
+            hasBlankOrCr = true;
             continue;
         }
 
+        const cleanLine = line.endsWith('\r') ? (hasBlankOrCr = true, line.slice(0, -1)) : line;
+
         let record;
         try {
-            record = JSON.parse(line);
+            record = JSON.parse(cleanLine);
         } catch {
             return corruptResult('invalid-json', data, { line: index + 1 });
         }
@@ -164,6 +257,7 @@ export function parseChatJsonl(data) {
             return corruptResult('non-object', data, { line: index + 1 });
         }
         records.push(record);
+        rawRows.push(cleanLine);
     }
 
     if (records.length === 0) {
@@ -172,15 +266,24 @@ export function parseChatJsonl(data) {
     if (!isRecognizedChatHeader(records[0])) {
         return corruptResult('missing-chat-metadata', data);
     }
+    const originalHeader = records[0];
+    let headerFixedUp = false;
     if (!isPlainObject(records[0].chat_metadata)) {
         records[0] = { ...records[0], chat_metadata: {} };
+        headerFixedUp = true;
     }
 
-    return {
+    const result = {
         status: 'ok',
         data,
         records,
     };
+    return attachChatFastMetadata(result, {
+        rawRows,
+        headerFixedUp,
+        originalHeader,
+        isCanonical: !hasBom && !hasBlankOrCr,
+    });
 }
 
 export function readChatJsonlStrict(filePath) {
@@ -378,7 +481,7 @@ function assertWritableRegularPath(filePath) {
 function atomicWriteRecoveryFile(target, filePath, data) {
     assertRecoveryDirectory(target, { create: true });
     assertWritableRegularPath(filePath);
-    tryWriteFileSync(filePath, data, undefined, { durable: true });
+    return writeDurableAtomicFileSync(filePath, data);
 }
 
 function removeRegularFile(filePath) {
@@ -398,10 +501,19 @@ function removeRegularFile(filePath) {
     }
 }
 
+function setLastPrunedLimit(recoveryDirectory, limit) {
+    lastPrunedLimitByDir.delete(recoveryDirectory);
+    lastPrunedLimitByDir.set(recoveryDirectory, limit);
+    while (lastPrunedLimitByDir.size > LATEST_SNAPSHOT_META_CACHE_MAX) {
+        const oldestKey = lastPrunedLimitByDir.keys().next().value;
+        lastPrunedLimitByDir.delete(oldestKey);
+    }
+}
+
 function pruneRecoveryStates(target) {
     const limit = target.maxRecoveryStates;
     if (limit === null || !assertRecoveryDirectory(target)) {
-        return;
+        return false;
     }
 
     /** @type {Map<string, {id: string, mtimeMs: number, paths: string[]}>} */
@@ -432,11 +544,19 @@ function pruneRecoveryStates(target) {
         }
         return right.mtimeMs - left.mtimeMs || left.id.localeCompare(right.id);
     });
+    let targetPruned = false;
     for (const group of sortedGroups.slice(limit)) {
+        if (group.id === target.id) {
+            targetPruned = true;
+        }
         for (const filePath of group.paths) {
             removeRegularFile(filePath);
+            deleteLatestSnapshotMeta(filePath);
+            tombstonesMayExist.delete(filePath);
         }
     }
+    setLastPrunedLimit(target.recoveryDirectory, limit);
+    return targetPruned;
 }
 
 function isTombstoned(target) {
@@ -447,12 +567,27 @@ function isTombstoned(target) {
     const { tombstonePath } = getChatRecoveryPaths(target);
     const result = readRegularFile(tombstonePath);
     if (result.status === 'missing') {
+        tombstonesMayExist.delete(tombstonePath);
         return false;
     }
     if (result.status !== 'ok') {
         throw new Error(`Unsafe chat recovery tombstone: ${tombstonePath}`);
     }
+    tombstonesMayExist.add(tombstonePath);
     return true;
+}
+
+function isTombstoneAbsentFast(tombstonePath) {
+    if (tombstonesMayExist.has(tombstonePath)) {
+        return false;
+    }
+    try {
+        fs.lstatSync(tombstonePath);
+        tombstonesMayExist.add(tombstonePath);
+        return false;
+    } catch (error) {
+        return error?.code === 'ENOENT';
+    }
 }
 
 function isStoredSnapshotCurrent(latestPath, data) {
@@ -460,33 +595,136 @@ function isStoredSnapshotCurrent(latestPath, data) {
     return existing.status === 'ok' && toBuffer(existing.data).equals(toBuffer(data));
 }
 
-function storeValidSnapshot(target, parsed) {
+function storeValidSnapshotInternal(target, dataBuffer, { dataSha = undefined, cachedLatestTuple = null, cachedLatestSha = null } = {}) {
     const { latestPath, tombstonePath } = getChatRecoveryPaths(target);
+    const sha = dataSha ?? computeSha256(dataBuffer);
     const release = acquireRecoveryStateLock(target);
     try {
+        let existingStats = null;
+        let createdNewRecoveryFile = false;
+        try {
+            existingStats = fs.lstatSync(latestPath, { bigint: true });
+            if (existingStats.isSymbolicLink() || !existingStats.isFile()) {
+                throw new Error(`Unsafe chat recovery file: ${latestPath}`);
+            }
+        } catch (error) {
+            if (error?.code === 'ENOENT') {
+                createdNewRecoveryFile = true;
+            } else {
+                throw error;
+            }
+        }
+
+        const knownMeta = (cachedLatestTuple && cachedLatestSha)
+            ? { tuple: cachedLatestTuple, sha256: cachedLatestSha }
+            : getLatestSnapshotMeta(latestPath);
+
+        let alreadyCurrent = false;
+        let latestTuple = null;
+
+        if (existingStats !== null) {
+            const existingTuple = extractStatTuple(existingStats);
+            const metaMatchesDisk = Boolean(
+                knownMeta
+                && isReliableStatTuple(knownMeta.tuple)
+                && statTuplesEqual(existingTuple, knownMeta.tuple),
+            );
+            let validatedAtNs = currentTimeNs();
+            if (metaMatchesDisk) {
+                alreadyCurrent = knownMeta.sha256 === sha;
+                if (alreadyCurrent && isStatTupleRacy(knownMeta.tuple)) {
+                    // The tuple cannot rule out an external write within the timestamp tick, and skipping
+                    // the write here would leave a snapshot that does not match the chat.
+                    const confirmed = confirmFileContentSync(latestPath, sha, existingTuple);
+                    alreadyCurrent = confirmed !== null;
+                    validatedAtNs = confirmed?.validatedAtNs ?? validatedAtNs;
+                } else if (alreadyCurrent) {
+                    validatedAtNs = knownMeta.tuple.validatedAtNs;
+                }
+            } else if (existingStats.size === BigInt(dataBuffer.byteLength)) {
+                alreadyCurrent = isStoredSnapshotCurrent(latestPath, dataBuffer);
+            }
+            if (alreadyCurrent) {
+                latestTuple = withValidationTime(existingTuple, validatedAtNs);
+            }
+        }
+
         // SillyBunny: every chat load refreshes this snapshot, so an unchanged one would mean a disk
         // write on each open. Only the redundant write is dropped; clearing the tombstone and pruning
         // still run, because skipping those would leave a recoverable chat looking deleted.
-        if (!isStoredSnapshotCurrent(latestPath, parsed.data)) {
-            atomicWriteRecoveryFile(target, latestPath, parsed.data);
+        if (!alreadyCurrent) {
+            latestTuple = atomicWriteRecoveryFile(target, latestPath, dataBuffer);
         }
+        setLatestSnapshotMeta(latestPath, latestTuple, sha);
+
         removeRegularFile(tombstonePath);
-        pruneRecoveryStates(target);
+        tombstonesMayExist.delete(tombstonePath);
+
+        const limit = target.maxRecoveryStates;
+        const previousLimit = lastPrunedLimitByDir.get(target.recoveryDirectory);
+        const shouldPrune = limit !== null
+            && (createdNewRecoveryFile || limit === 0 || previousLimit === undefined || limit < previousLimit);
+
+        let targetPruned = false;
+        if (shouldPrune) {
+            targetPruned = pruneRecoveryStates(target);
+        }
+
+        if (targetPruned) {
+            deleteLatestSnapshotMeta(latestPath);
+            latestTuple = null;
+        }
+
+        return {
+            stored: !targetPruned,
+            latestTuple,
+            latestSha: sha,
+        };
     } finally {
         release();
     }
 }
 
+function storeValidSnapshot(target, parsed, options = {}) {
+    return storeValidSnapshotInternal(target, toBuffer(parsed.data), options);
+}
+
+/**
+ * Writes a pre-validated chat JSONL snapshot without re-parsing JSONL rows, re-reading unchanged/changed
+ * snapshots when cached metadata matches, or performing a redundant post-write read-back or second file fsync.
+ * Callers must only supply bytes generated by validated serialization or previously verified disk bytes.
+ * @param {object} target Chat recovery target
+ * @param {string|Buffer|Uint8Array} data Pre-validated chat JSONL bytes
+ * @param {{ dataSha?: string, cachedLatestTuple?: object|null, cachedLatestSha?: string|null }} [options]
+ * @returns {{ status: 'ok', data: Buffer, stored: boolean, latestTuple: object|null, latestSha: string }}
+ */
+export function writeLatestChatSnapshotTrusted(target, data, { dataSha = undefined, cachedLatestTuple = null, cachedLatestSha = null } = {}) {
+    const normalizedTarget = normalizeChatRecoveryTarget(target);
+    const dataBuffer = toBuffer(data);
+    const result = storeValidSnapshotInternal(normalizedTarget, dataBuffer, {
+        dataSha,
+        cachedLatestTuple,
+        cachedLatestSha,
+    });
+    return {
+        status: 'ok',
+        data: dataBuffer,
+        stored: result.stored,
+        latestTuple: result.latestTuple,
+        latestSha: result.latestSha,
+    };
+}
+
 export function writeLatestChatSnapshot(target, data) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
-    const parsed = parseChatJsonl(toBuffer(data));
+    const buffer = toBuffer(data);
+    const parsed = parseChatJsonl(buffer);
     if (parsed.status !== 'ok') {
         throw new TypeError(`Invalid chat JSONL snapshot: ${parsed.reason}.`);
     }
 
-    storeValidSnapshot(normalizedTarget, parsed);
-    const { latestPath } = getChatRecoveryPaths(normalizedTarget);
-    return { ...parsed, stored: isStoredSnapshotCurrent(latestPath, parsed.data) };
+    const result = storeValidSnapshotInternal(normalizedTarget, buffer);
+    return { ...parsed, stored: result.stored };
 }
 
 export function removeLatestChatSnapshotIfMatches(target, expectedData) {
@@ -501,7 +739,16 @@ export function removeLatestChatSnapshotIfMatches(target, expectedData) {
         if (!isStoredSnapshotCurrent(latestPath, expectedData)) {
             return false;
         }
-        return removeRegularFile(latestPath);
+        const removed = removeRegularFile(latestPath);
+        if (removed) {
+            deleteLatestSnapshotMeta(latestPath);
+            chatStateCache.update(normalizedTarget.activePath, {
+                latestTuple: null,
+                latestSha: null,
+                latestEqualsActive: false,
+            });
+        }
+        return removed;
     } finally {
         release();
     }
@@ -514,7 +761,12 @@ export function seedLatestChatSnapshot(target) {
         return { ...active, seeded: false };
     }
 
-    storeValidSnapshot(normalizedTarget, active);
+    const stored = storeValidSnapshot(normalizedTarget, active);
+    chatStateCache.update(normalizedTarget.activePath, {
+        latestTuple: stored.latestTuple,
+        latestSha: stored.latestSha,
+        latestEqualsActive: stored.stored,
+    });
     return { ...active, seeded: true };
 }
 
@@ -576,26 +828,174 @@ function ensureActiveDirectory(target) {
 function atomicRestoreActive(target, data) {
     ensureActiveDirectory(target);
     assertWritableRegularPath(target.activePath);
-    tryWriteFileSync(target.activePath, data, undefined, { durable: true });
+    return writeDurableAtomicFileSync(target.activePath, data);
+}
+
+function buildLazyCachedActiveResult(cached) {
+    let cachedRecords = null;
+    let cachedBuffer = null;
+    const result = {
+        status: 'ok',
+        source: 'active',
+        recovered: false,
+        quarantinePath: null,
+    };
+    Object.defineProperties(result, {
+        data: {
+            enumerable: true,
+            configurable: true,
+            get() {
+                if (cachedBuffer === null) {
+                    cachedBuffer = getEntryRawBuffer(cached);
+                }
+                return cachedBuffer;
+            },
+        },
+        records: {
+            enumerable: true,
+            configurable: true,
+            get() {
+                if (cachedRecords === null) {
+                    const parsed = cached.lines.map(line => JSON.parse(line));
+                    if (cached.headerFixedUp && parsed.length > 0 && !isPlainObject(parsed[0].chat_metadata)) {
+                        parsed[0] = { ...parsed[0], chat_metadata: {} };
+                    }
+                    cachedRecords = parsed;
+                }
+                return cachedRecords;
+            },
+        },
+    });
+    return attachChatFastMetadata(result, {
+        rawRows: cached.lines,
+        headerFixedUp: cached.headerFixedUp,
+        originalHeader: cached.header,
+        isCanonical: cached.isCanonical,
+    });
+}
+
+function isRecoverySnapshotUpToDateFast(target, cached) {
+    if (target.maxRecoveryStates === 0 || !cached.latestEqualsActive) {
+        return false;
+    }
+    if (!cached.latestTuple || !isReliableStatTuple(cached.latestTuple)) {
+        return false;
+    }
+    const { latestPath, tombstonePath } = getChatRecoveryPaths(target);
+    if (!isTombstoneAbsentFast(tombstonePath)) {
+        return false;
+    }
+    try {
+        const latestStats = fs.lstatSync(latestPath, { bigint: true });
+        if (latestStats.isSymbolicLink() || !latestStats.isFile()) {
+            return false;
+        }
+        if (!statTuplesEqual(extractStatTuple(latestStats), cached.latestTuple)) {
+            return false;
+        }
+        if (!isStatTupleRacy(cached.latestTuple)) {
+            return true;
+        }
+        // An external write within the timestamp tick can leave the tuple unchanged, so read the snapshot.
+        const confirmed = confirmFileContentSync(latestPath, cached.latestSha, cached.latestTuple);
+        if (!confirmed) {
+            return false;
+        }
+        chatStateCache.update(target.activePath, { latestTuple: withValidationTime(cached.latestTuple, confirmed.validatedAtNs) });
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 export function loadActiveChatWithRecovery(target) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
-    const active = readChatJsonlStrict(normalizedTarget.activePath);
+    if (recoverFileWriteSync(normalizedTarget.activePath)) {
+        chatStateCache.invalidate(normalizedTarget.activePath);
+    }
+
+    let activePathStats = null;
+    try {
+        activePathStats = fs.lstatSync(normalizedTarget.activePath, { bigint: true });
+    } catch {
+        activePathStats = null;
+    }
+
+    if (activePathStats && !activePathStats.isSymbolicLink() && activePathStats.isFile()) {
+        const cached = chatStateCache.getIfStatMatches(normalizedTarget.activePath, activePathStats);
+        if (cached) {
+            if (!isRecoverySnapshotUpToDateFast(normalizedTarget, cached)) {
+                try {
+                    const stored = storeValidSnapshotInternal(normalizedTarget, getEntryRawBuffer(cached), {
+                        dataSha: cached.sha256,
+                        cachedLatestTuple: cached.latestTuple,
+                        cachedLatestSha: cached.latestSha,
+                    });
+                    chatStateCache.update(normalizedTarget.activePath, {
+                        latestTuple: stored.latestTuple,
+                        latestSha: stored.latestSha,
+                        latestEqualsActive: stored.stored,
+                    });
+                } catch (error) {
+                    chatStateCache.update(normalizedTarget.activePath, { latestEqualsActive: false });
+                    // The active chat remains authoritative when optional recovery storage is unavailable.
+                    console.warn('Failed to refresh the exact chat recovery snapshot; continuing with the valid active chat.', error);
+                }
+            }
+            return buildLazyCachedActiveResult(cached);
+        }
+    }
+
+    const rawActive = readRegularFile(normalizedTarget.activePath, { includeStats: true });
+    const active = rawActive.status === 'ok'
+        ? parseChatJsonl(rawActive.data)
+        : { ...rawActive, records: null };
+
     if (active.status === 'ok') {
+        const activeSha = computeSha256(rawActive.data);
+        let latestTuple = null;
+        let latestSha = null;
+        let latestEqualsActive = false;
         try {
-            storeValidSnapshot(normalizedTarget, active);
+            const stored = storeValidSnapshotInternal(normalizedTarget, rawActive.data, { dataSha: activeSha });
+            latestTuple = stored.latestTuple;
+            latestSha = stored.latestSha;
+            latestEqualsActive = stored.stored;
         } catch (error) {
             // The active chat remains authoritative when optional recovery storage is unavailable.
             console.warn('Failed to refresh the exact chat recovery snapshot; continuing with the valid active chat.', error);
         }
-        return {
+
+        if (rawActive.statTuple && isReliableStatTuple(rawActive.statTuple)) {
+            const isCanonical = active[CHAT_IS_CANONICAL_SYMBOL] === true;
+            chatStateCache.set(normalizedTarget.activePath, {
+                ...rawActive.statTuple,
+                sha256: activeSha,
+                lines: active[CHAT_RAW_ROWS_SYMBOL],
+                header: active[CHAT_ORIGINAL_HEADER_SYMBOL],
+                headerFixedUp: active[CHAT_HEADER_FIXED_UP_SYMBOL] === true,
+                isCanonical,
+                rawBuffer: isCanonical ? null : rawActive.data,
+                latestTuple,
+                latestSha,
+                latestEqualsActive,
+            });
+        }
+
+        return attachChatFastMetadata({
             ...active,
             source: 'active',
             recovered: false,
             quarantinePath: null,
-        };
+        }, {
+            rawRows: active[CHAT_RAW_ROWS_SYMBOL],
+            headerFixedUp: active[CHAT_HEADER_FIXED_UP_SYMBOL] === true,
+            originalHeader: active[CHAT_ORIGINAL_HEADER_SYMBOL],
+            isCanonical: active[CHAT_IS_CANONICAL_SYMBOL] === true,
+        });
     }
+
+    chatStateCache.invalidate(normalizedTarget.activePath);
 
     const recoveryInspection = runChatRecoveryBestEffort(() => {
         if (isTombstoned(normalizedTarget)) {
@@ -603,7 +1003,15 @@ export function loadActiveChatWithRecovery(target) {
         }
 
         const { latestPath } = getChatRecoveryPaths(normalizedTarget);
-        return { tombstoned: false, snapshot: readChatJsonlStrict(latestPath) };
+        const rawSnapshot = readRegularFile(latestPath, { includeStats: true });
+        if (rawSnapshot.status !== 'ok') {
+            return { tombstoned: false, snapshot: { ...rawSnapshot, records: null }, latestTuple: null };
+        }
+        return {
+            tombstoned: false,
+            snapshot: parseChatJsonl(rawSnapshot.data),
+            latestTuple: rawSnapshot.statTuple ?? null,
+        };
     }, 'Failed to inspect chat recovery state; continuing without sidecar recovery.');
 
     if (!recoveryInspection.ok) {
@@ -657,13 +1065,35 @@ export function loadActiveChatWithRecovery(target) {
         quarantinePath = quarantineResult.ok ? quarantineResult.value : null;
     }
 
-    atomicRestoreActive(normalizedTarget, snapshot.data);
-    return {
+    const restoredTuple = atomicRestoreActive(normalizedTarget, snapshot.data);
+    if (restoredTuple && isReliableStatTuple(restoredTuple)) {
+        const restoredSha = computeSha256(snapshot.data);
+        const isCanonical = snapshot[CHAT_IS_CANONICAL_SYMBOL] === true;
+        chatStateCache.set(normalizedTarget.activePath, {
+            ...restoredTuple,
+            sha256: restoredSha,
+            lines: snapshot[CHAT_RAW_ROWS_SYMBOL],
+            header: snapshot[CHAT_ORIGINAL_HEADER_SYMBOL],
+            headerFixedUp: snapshot[CHAT_HEADER_FIXED_UP_SYMBOL] === true,
+            isCanonical,
+            rawBuffer: isCanonical ? null : snapshot.data,
+            latestTuple: recoveryInspection.value.latestTuple,
+            latestSha: restoredSha,
+            latestEqualsActive: recoveryInspection.value.latestTuple !== null,
+        });
+    }
+
+    return attachChatFastMetadata({
         ...snapshot,
         source: 'snapshot',
         recovered: true,
         quarantinePath,
-    };
+    }, {
+        rawRows: snapshot[CHAT_RAW_ROWS_SYMBOL],
+        headerFixedUp: snapshot[CHAT_HEADER_FIXED_UP_SYMBOL] === true,
+        originalHeader: snapshot[CHAT_ORIGINAL_HEADER_SYMBOL],
+        isCanonical: snapshot[CHAT_IS_CANONICAL_SYMBOL] === true,
+    });
 }
 
 export function markChatDeleted(target) {
@@ -680,6 +1110,8 @@ export function markChatDeleted(target) {
     const release = acquireRecoveryStateLock(normalizedTarget);
     try {
         atomicWriteRecoveryFile(normalizedTarget, tombstonePath, Buffer.from(`${normalizedTarget.id}\n`, 'utf8'));
+        tombstonesMayExist.add(tombstonePath);
+        chatStateCache.update(normalizedTarget.activePath, { latestEqualsActive: false });
         pruneRecoveryStates(normalizedTarget);
     } finally {
         release();
@@ -704,6 +1136,8 @@ function getRecoveryStatePaths(target) {
  */
 export function clearChatRecoveryState(target) {
     const normalizedTarget = normalizeChatRecoveryTarget(target);
+    chatStateCache.invalidate(normalizedTarget.activePath);
+    chatInfoCache.invalidate(normalizedTarget.activePath);
     if (!assertRecoveryDirectory(normalizedTarget)) {
         return { status: 'missing', cleared: 0 };
     }
@@ -715,6 +1149,8 @@ export function clearChatRecoveryState(target) {
             if (removeRegularFile(filePath)) {
                 cleared++;
             }
+            deleteLatestSnapshotMeta(filePath);
+            tombstonesMayExist.delete(filePath);
         }
         return { status: 'cleared', cleared };
     } finally {
@@ -731,11 +1167,18 @@ function captureRecoveryState(target) {
 
 function applyRecoveryState(target, state) {
     const paths = getRecoveryStatePaths(target);
+    chatStateCache.invalidate(target.activePath);
+    chatInfoCache.invalidate(target.activePath);
     for (let index = 0; index < paths.length; index++) {
+        deleteLatestSnapshotMeta(paths[index]);
         if (state[index] === null) {
             removeRegularFile(paths[index]);
+            tombstonesMayExist.delete(paths[index]);
         } else {
             atomicWriteRecoveryFile(target, paths[index], state[index]);
+            if (index === 1) {
+                tombstonesMayExist.add(paths[index]);
+            }
         }
     }
 }
