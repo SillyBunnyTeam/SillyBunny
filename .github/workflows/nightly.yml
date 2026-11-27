@@ -143,6 +143,7 @@ jobs:
         env:
           SILLYBUNNY_LAUNCHER: '1'
           SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+          SILLYBUNNY_E2E_COVERAGE_DIR: ${{ runner.temp }}/e2e-coverage-raw
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/sillybunny-server.log"
@@ -159,6 +160,29 @@ jobs:
             sleep 1
           done
           npm run test:e2e --prefix tests -- --workers=1 --reporter=line,html
+
+      - name: Report e2e client module coverage
+        if: always()
+        env:
+          SILLYBUNNY_E2E_COVERAGE_DIR: ${{ runner.temp }}/e2e-coverage-raw
+        run: |
+          if [ -f scripts/report-e2e-client-coverage.js ] && [ -d "$SILLYBUNNY_E2E_COVERAGE_DIR" ] && [ -n "$(ls -A "$SILLYBUNNY_E2E_COVERAGE_DIR" 2>/dev/null)" ]; then
+            node scripts/report-e2e-client-coverage.js \
+              --dir "$SILLYBUNNY_E2E_COVERAGE_DIR" \
+              --json-out "${{ runner.temp }}/e2e-client-coverage/report.json" \
+              --markdown-out "${{ runner.temp }}/e2e-client-coverage/report.md"
+          else
+            echo 'No e2e client coverage files were produced.'
+          fi
+
+      - name: Upload e2e client coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-e2e-client-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/e2e-client-coverage/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload failure diagnostics
         # A job-level timeout cancels the job, where `failure()` is false; without this the log is lost.

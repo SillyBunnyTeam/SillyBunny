@@ -139,6 +139,8 @@
         "audit:frontend": "node scripts/audit-frontend-contracts.js",
         "check:frontend-contracts": "node scripts/audit-frontend-contracts.js --strict --baseline scripts/frontend-contract-baseline.json",
         "check:design-rules": "node scripts/audit-design-rules.js --check --strict",
+        "check:unit-coverage": "node scripts/check-unit-coverage.js",
+        "report:e2e-coverage": "node scripts/report-e2e-client-coverage.js",
         "check:frontend-foundation": "node scripts/check-frontend-foundation.js",
         "init": "node src/server-init.js || bun src/server-init.js",
         "lint": "eslint \"src/**/*.js\" \"public/**/*.js\" \"scripts/**/*.js\" ./*.js",

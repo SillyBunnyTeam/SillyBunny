@@ -1,6 +1,11 @@
 import { defineConfig } from '@playwright/test';
+// SillyBunny: opt-in Chromium JS coverage collection for nightly client reach reporting.
+import { installE2eClientCoverage } from './e2e-client-coverage.js';
 // SillyBunny: the fork can start several test servers and spread the workers over them.
 import { SUITE_IGNORE, getServerConfig } from './e2e-servers.js';
+
+// SillyBunny: attaches page V8 coverage in worker processes only when SILLYBUNNY_E2E_COVERAGE_DIR is set.
+installE2eClientCoverage();
 
 const baseURL = process.env.SILLYBUNNY_TEST_BASE_URL || process.env.ST_BASE_URL || process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4444';
 // SillyBunny: Playwright imports this config again in each worker, and a worker reads its server here.
