@@ -7,6 +7,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 import { unzipSync } from 'fflate';
+import webpack from 'webpack';
 import yauzl from 'yauzl';
 
 import { setConfigFilePath } from '../src/util.js';
@@ -177,7 +178,7 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
             cacheVersion: '0123456789abcdef',
             inputsHash,
             sha256: sha256Hex(bundleContent),
-            webpackVersion: '5.105.4',
+            webpackVersion: webpack.version,
             bundleBytes: bundleContent.byteLength,
             builtWithNode: true,
         };
@@ -252,7 +253,7 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
                 cacheVersion: 'fedcba9876543210',
                 inputsHash,
                 sha256: sha256Hex(bundleContent),
-                webpackVersion: '5.105.4',
+                webpackVersion: webpack.version,
                 bundleBytes: bundleContent.byteLength,
                 builtWithNode: true,
             }),
@@ -297,6 +298,130 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
         }
     });
 
+    describe('rejects an offered prebuilt bundle and says why', () => {
+        const bundleContent = Buffer.from('export default { offered: true };\n', 'utf8');
+        const inputsHash = sha256Hex('inputs-rejection');
+        const cacheVersion = 'aaaaaaaaaaaaaaaa';
+        let warnSpy;
+        let debugSpy;
+
+        beforeEach(() => {
+            warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+        });
+
+        afterEach(() => {
+            warnSpy.mockRestore();
+            debugSpy.mockRestore();
+        });
+
+        function writePrebuilt(manifestOverrides = {}) {
+            const dir = makeTempDir('sb-prebuilt-reject-');
+            fs.writeFileSync(path.join(dir, PREBUILT_LIB_FILENAME), bundleContent);
+            fs.writeFileSync(path.join(dir, PREBUILT_LIB_MANIFEST_FILENAME), JSON.stringify({
+                schemaVersion: PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
+                cacheVersion,
+                inputsHash,
+                sha256: sha256Hex(bundleContent),
+                webpackVersion: webpack.version,
+                bundleBytes: bundleContent.byteLength,
+                builtWithNode: true,
+                ...manifestOverrides,
+            }));
+            return dir;
+        }
+
+        function seed(prebuiltDir, overrides = {}) {
+            const outputPath = path.join(makeTempDir('sb-prebuilt-reject-out-'), 'lib.js');
+            const seeded = trySeedPrebuiltPublicLib({ cacheVersion, inputsHash, outputPath, prebuiltDir, ...overrides });
+            return { seeded, outputPath };
+        }
+
+        function loggedLines() {
+            return [...warnSpy.mock.calls, ...debugSpy.mock.calls].map(call => String(call[0]));
+        }
+
+        test('accepts a bundle whose manifest matches this install, without logging', () => {
+            const { seeded, outputPath } = seed(writePrebuilt());
+
+            expect(seeded).toBe(true);
+            expect(fs.readFileSync(outputPath)).toEqual(bundleContent);
+            expect(warnSpy).not.toHaveBeenCalled();
+        });
+
+        test('says nothing when no prebuilt bundle is there at all', () => {
+            const { seeded } = seed(path.join(makeTempDir('sb-prebuilt-none-'), 'missing'));
+
+            expect(seeded).toBe(false);
+            expect(loggedLines()).toEqual([]);
+        });
+
+        test('rejects a manifest cacheVersion that differs from this install', () => {
+            const { seeded, outputPath } = seed(writePrebuilt({ cacheVersion: 'zzzzzzzzzzzzzzzz' }));
+
+            expect(seeded).toBe(false);
+            expect(fs.existsSync(outputPath)).toBe(false);
+            const lines = loggedLines();
+            expect(lines).toHaveLength(1);
+            expect(lines[0]).toMatch(/cacheVersion/);
+        });
+
+        test('does not compare cacheVersion on Bun, which hashes a different cache signature than the Node.js build', () => {
+            const { seeded } = seed(writePrebuilt({ cacheVersion: 'zzzzzzzzzzzzzzzz' }), { isBun: true });
+
+            expect(seeded).toBe(true);
+        });
+
+        test('rejects a manifest webpackVersion that differs from the installed Webpack, on Node.js and on Bun', () => {
+            for (const isBun of [false, true]) {
+                warnSpy.mockClear();
+                debugSpy.mockClear();
+                const { seeded, outputPath } = seed(writePrebuilt({ webpackVersion: '0.0.1' }), { isBun });
+
+                expect(seeded).toBe(false);
+                expect(fs.existsSync(outputPath)).toBe(false);
+                const lines = loggedLines();
+                expect(lines).toHaveLength(1);
+                expect(lines[0]).toMatch(/webpackVersion/);
+            }
+        });
+
+        test('takes the installed Webpack version from the install when the caller gives none', () => {
+            expect(seed(writePrebuilt({ webpackVersion: webpack.version })).seeded).toBe(true);
+            expect(seed(writePrebuilt({ webpackVersion: `${webpack.version}-other` })).seeded).toBe(false);
+        });
+
+        test('rejects a prebuilt directory that is a symlink, even when everything inside is valid', () => {
+            const realDir = writePrebuilt();
+            const linkDir = path.join(makeTempDir('sb-prebuilt-linkdir-'), 'lib');
+            fs.symlinkSync(realDir, linkDir, 'dir');
+
+            expect(readPrebuiltPublicLibManifest(realDir)).not.toBeNull();
+            expect(readPrebuiltPublicLibManifest(linkDir)).toBeNull();
+
+            const { seeded, outputPath } = seed(linkDir);
+            expect(seeded).toBe(false);
+            expect(fs.existsSync(outputPath)).toBe(false);
+            const lines = loggedLines();
+            expect(lines).toHaveLength(1);
+            expect(lines[0]).toMatch(/symlink/);
+        });
+
+        test.each([
+            ['inputsHash', { inputsHash: sha256Hex('another-install') }, /inputsHash/],
+            ['sha256', { sha256: sha256Hex('another-bundle') }, /sha256|checksum|integrity/i],
+            ['bundleBytes', { bundleBytes: bundleContent.byteLength + 1 }, /bytes/i],
+        ])('logs one line that names the reason for a %s mismatch', (_label, overrides, reasonPattern) => {
+            const { seeded } = seed(writePrebuilt(overrides));
+
+            expect(seeded).toBe(false);
+            const lines = loggedLines();
+            expect(lines).toHaveLength(1);
+            expect(lines[0]).toMatch(reasonPattern);
+            expect(lines[0]).toMatch(/local Webpack build/);
+        });
+    });
+
     test('webpack-serve middleware seeds from SILLYBUNNY_PREBUILT_LIB_DIR and skips local Webpack compilation', async () => {
         const dataRoot = makeTempDir('sb-data-root-');
         const prebuiltDir = makeTempDir('sb-prebuilt-env-');
@@ -314,7 +439,7 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
                 cacheVersion: cacheInfo.cacheVersion,
                 inputsHash,
                 sha256: sha256Hex(bundleContent),
-                webpackVersion: '5.105.4',
+                webpackVersion: webpack.version,
                 bundleBytes: bundleContent.byteLength,
                 builtWithNode: true,
             }),

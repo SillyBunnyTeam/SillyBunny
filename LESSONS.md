@@ -1009,6 +1009,16 @@ This is the largest class by a wide margin.
 - **Limit:** a name@version comparison of the two lockfiles always lists the npm aliases `string-width-cjs`, `strip-ansi-cjs` and `wrap-ansi-cjs`, and `@jimp/plugin-blur`. npm satisfies the `@jimp/plugin-blur` peer of `@jimp/plugin-shadow@0.22.12` with a top-level 1.6.x copy, and Bun reuses 0.22.12.
 - **Open:** npm audit flags file-type 16.5.4, which `@jimp/core` 0.22.12 uses through jimp 0.22 in sillytavern-transformers, for GHSA-5v7r-6r5c-r473. The first fixed release is file-type 21.3.1, which is ESM-only.
 
+### Prebuilt vendor bundle (`dist/lib`)
+
+- **Breaks:** a `dist/lib` that no longer matches the install is seeded into the Webpack output directory, or a rejected one falls back to Webpack without a trace.
+- **Files:** `src/prebuilt-lib.js`, `src/middleware/webpack-serve.js`, `scripts/build-prebuilt-lib.js`.
+- **Guards:**
+  - `trySeedPrebuiltPublicLib()` seeds only when the manifest's `inputsHash`, `webpackVersion` (against the installed `webpack/package.json`, read without loading Webpack) and `cacheVersion` match the running install, and when neither `dist/lib` nor `lib.js` nor the manifest is a symlink. Every other rejection logs one line that names the reason and falls back to the local Webpack build; a missing `dist/lib` logs nothing.
+  - The manifest's `cacheVersion` is the Node.js one (the bundle is built under Node.js), and Bun hashes a different cache signature for the same install, so it is compared on Node.js only. A `cacheVersion` hashes the raw bytes of `public/lib.js`, `package.json` and both lockfiles (`inputsHash` normalises CRLF), so an install whose files have CRLF line endings falls back to Webpack; `.gitattributes` keeps git checkouts at LF.
+  - The manifest's `sha256` is written next to the bundle it describes. It detects corruption and proves no origin.
+- **Tests:** `tests/perf-prebuilt-lib-and-zip.test.js` (`rejects an offered prebuilt bundle and says why`).
+
 ### Macro whitespace
 
 - **Breaks:** a trim in the macro engine removes whitespace that a template asks for with `{{newline}}`, `{{space}}` or `{{noop}}` (SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674).

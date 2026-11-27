@@ -1,8 +1,10 @@
 import { Buffer } from 'node:buffer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import process from 'node:process';
+import { isBunRuntime } from './runtime.js';
 import { serverDirectory } from './server-directory.js';
 
 export const PREBUILT_LIB_MANIFEST_SCHEMA_VERSION = 1;
@@ -128,55 +130,120 @@ export function isValidPrebuiltLibManifest(value) {
 }
 
 /**
- * Reads and validates `lib.manifest.json` from a prebuilt directory.
- * @param {string} prebuiltDir Directory containing `lib.manifest.json`.
- * @returns {Record<string, any>|null} Validated manifest object normalized with `bundleBytes`, or null if absent/invalid.
+ * Reads the version of the installed Webpack from its package.json, without loading Webpack itself.
+ * @returns {string|null} Version string, or null when Webpack is not installed.
  */
-export function readPrebuiltPublicLibManifest(prebuiltDir) {
-    const manifestPath = path.join(prebuiltDir, PREBUILT_LIB_MANIFEST_FILENAME);
-    let stat;
+function getInstalledWebpackVersion() {
     try {
-        stat = fs.lstatSync(manifestPath);
-    } catch {
-        return null;
-    }
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-        return null;
-    }
-
-    try {
-        const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        if (!isValidPrebuiltLibManifest(parsed)) {
-            return null;
-        }
-        return {
-            ...parsed,
-            bundleBytes: resolveManifestBundleBytes(parsed),
-        };
+        const { version } = createRequire(import.meta.url)('webpack/package.json');
+        return typeof version === 'string' && version ? version : null;
     } catch {
         return null;
     }
 }
 
 /**
+ * Reads and validates the manifest of a prebuilt directory, and says why when it is not usable.
+ * @param {string} prebuiltDir Directory containing `lib.manifest.json`.
+ * @returns {{ manifest: Record<string, any>|null, reason: string|null }} `manifest` is null when nothing usable is offered.
+ * `reason` is null when nothing is offered at all (no directory or no manifest), which is the normal state of an install.
+ */
+function loadPrebuiltPublicLibManifest(prebuiltDir) {
+    let directoryStat;
+    try {
+        directoryStat = fs.lstatSync(prebuiltDir);
+    } catch {
+        return { manifest: null, reason: null };
+    }
+    if (directoryStat.isSymbolicLink()) {
+        return { manifest: null, reason: 'the prebuilt directory is a symlink' };
+    }
+
+    const manifestPath = path.join(prebuiltDir, PREBUILT_LIB_MANIFEST_FILENAME);
+    let stat;
+    try {
+        stat = fs.lstatSync(manifestPath);
+    } catch {
+        return { manifest: null, reason: null };
+    }
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+        return { manifest: null, reason: 'the manifest is a symlink or not a regular file' };
+    }
+
+    try {
+        const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        if (!isValidPrebuiltLibManifest(parsed)) {
+            return { manifest: null, reason: 'the manifest does not match schema version 1' };
+        }
+        return {
+            manifest: {
+                ...parsed,
+                bundleBytes: resolveManifestBundleBytes(parsed),
+            },
+            reason: null,
+        };
+    } catch {
+        return { manifest: null, reason: 'the manifest cannot be read or parsed' };
+    }
+}
+
+/**
+ * Reads and validates `lib.manifest.json` from a prebuilt directory.
+ * A prebuilt directory that is itself a symlink offers nothing.
+ * @param {string} prebuiltDir Directory containing `lib.manifest.json`.
+ * @returns {Record<string, any>|null} Validated manifest object normalized with `bundleBytes`, or null if absent/invalid.
+ */
+export function readPrebuiltPublicLibManifest(prebuiltDir) {
+    return loadPrebuiltPublicLibManifest(prebuiltDir).manifest;
+}
+
+/**
  * Seeds `<DATA_ROOT>/_webpack/<cacheVersion>/output/lib.js` from a verified prebuilt `dist/lib/` bundle.
- * Returns `false` cleanly whenever the prebuilt bundle is absent, stale (`inputsHash` mismatch), or fails SHA-256 verification.
+ * Returns `false` whenever a bundle is offered but rejected, after one log line that names the reason, and returns `false`
+ * without logging when none is offered. The caller then runs the local Webpack build.
+ * A bundle is rejected when its directory or files are symlinks, or when its manifest was made for other inputs
+ * (`inputsHash`), another Webpack (`webpackVersion`), another cache version (`cacheVersion`), or does not match the bytes.
+ * The manifest's `sha256` only detects corruption: it is written next to the bundle it describes, so it proves no origin.
  * @param {object} options Seeding options.
- * @param {string} [options.cacheVersion] Active Webpack cache version string.
+ * @param {string} [options.cacheVersion] Cache version of the running install, compared with the manifest's.
  * @param {string} [options.inputsHash] Expected portable `inputsHash` for the current repo inputs.
+ * @param {string} [options.webpackVersion] Expected Webpack version; defaults to the installed one.
+ * @param {boolean} [options.isBun] Whether the running install is Bun; defaults to the current runtime.
  * @param {string} options.outputPath Destination `lib.js` path inside the active Webpack output directory.
  * @param {string} [options.prebuiltDir] Override directory for `lib.js` and `lib.manifest.json`.
  * @returns {boolean} True if a verified prebuilt bundle was atomically seeded to `outputPath`.
  */
-export function trySeedPrebuiltPublicLib({ cacheVersion = undefined, inputsHash = undefined, outputPath, prebuiltDir = undefined } = {}) {
+export function trySeedPrebuiltPublicLib({
+    cacheVersion = undefined,
+    inputsHash = undefined,
+    webpackVersion = getInstalledWebpackVersion(),
+    isBun = isBunRuntime(),
+    outputPath,
+    prebuiltDir = undefined,
+} = {}) {
     if (typeof outputPath !== 'string' || !outputPath) {
         return false;
     }
 
-    const resolvedPrebuiltDir = resolvePrebuiltLibDir({ prebuiltDir });
-    const manifest = readPrebuiltPublicLibManifest(resolvedPrebuiltDir);
-    if (!manifest) {
+    /**
+     * @param {string} reason Why the offered bundle is not used.
+     * @param {boolean} [stale] The bundle is out of date with this install, which is routine after an update, so it logs at debug level.
+     * @returns {false}
+     */
+    const reject = (reason, stale = false) => {
+        const message = `Prebuilt frontend library bundle not used (${reason}); falling back to local Webpack build.`;
+        if (stale) {
+            console.debug(message);
+        } else {
+            console.warn(message);
+        }
         return false;
+    };
+
+    const resolvedPrebuiltDir = resolvePrebuiltLibDir({ prebuiltDir });
+    const { manifest, reason: manifestReason } = loadPrebuiltPublicLibManifest(resolvedPrebuiltDir);
+    if (!manifest) {
+        return manifestReason ? reject(manifestReason) : false;
     }
 
     const expectedInputsHash = typeof inputsHash === 'string' && inputsHash
@@ -184,8 +251,18 @@ export function trySeedPrebuiltPublicLib({ cacheVersion = undefined, inputsHash 
         : computePublicLibInputsHash();
 
     if (manifest.inputsHash !== expectedInputsHash) {
-        console.debug('Prebuilt frontend library bundle inputsHash mismatch; falling back to local Webpack build.');
-        return false;
+        return reject('its inputsHash differs from the inputs of this install', true);
+    }
+
+    // The Android manifest variant has no webpackVersion, so there is nothing to compare for it.
+    if (manifest.webpackVersion !== undefined && manifest.webpackVersion !== webpackVersion) {
+        return reject(`its webpackVersion ${manifest.webpackVersion} differs from the installed Webpack ${webpackVersion}`, true);
+    }
+
+    // The bundle is built under Node.js, and the cache version includes the runtime, so under Bun the same install
+    // has another cache version and the manifest's can never equal it. The inputsHash and webpackVersion checks stand in there.
+    if (!isBun && manifest.cacheVersion !== cacheVersion) {
+        return reject(`its cacheVersion ${manifest.cacheVersion} differs from the cacheVersion ${cacheVersion} of this install`, true);
     }
 
     const sourceBundlePath = path.join(resolvedPrebuiltDir, PREBUILT_LIB_FILENAME);
@@ -193,24 +270,28 @@ export function trySeedPrebuiltPublicLib({ cacheVersion = undefined, inputsHash 
     try {
         sourceStat = fs.lstatSync(sourceBundlePath);
     } catch {
-        return false;
+        return reject(`${PREBUILT_LIB_FILENAME} is missing`);
     }
 
-    if (sourceStat.isSymbolicLink() || !sourceStat.isFile() || sourceStat.size !== manifest.bundleBytes) {
-        console.warn('Prebuilt frontend library bundle validation failed; falling back to local Webpack build.');
-        return false;
+    if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) {
+        return reject(`${PREBUILT_LIB_FILENAME} is a symlink or not a regular file`);
+    }
+    if (sourceStat.size !== manifest.bundleBytes) {
+        return reject(`${PREBUILT_LIB_FILENAME} has ${sourceStat.size} bytes, the manifest says ${manifest.bundleBytes}`);
     }
 
     let verifiedBuffer;
     try {
         verifiedBuffer = fs.readFileSync(sourceBundlePath);
-    } catch {
-        return false;
+    } catch (error) {
+        return reject(`${PREBUILT_LIB_FILENAME} cannot be read: ${error?.message}`);
     }
 
-    if (verifiedBuffer.byteLength !== manifest.bundleBytes || sha256Hex(verifiedBuffer) !== manifest.sha256) {
-        console.warn('Prebuilt frontend library bundle integrity check failed; falling back to local Webpack build.');
-        return false;
+    if (verifiedBuffer.byteLength !== manifest.bundleBytes) {
+        return reject(`${PREBUILT_LIB_FILENAME} size changed while it was read`);
+    }
+    if (sha256Hex(verifiedBuffer) !== manifest.sha256) {
+        return reject(`${PREBUILT_LIB_FILENAME} fails the sha256 integrity check`);
     }
 
     const outputDir = path.dirname(outputPath);
@@ -232,8 +313,7 @@ export function trySeedPrebuiltPublicLib({ cacheVersion = undefined, inputsHash 
         } catch {
             // Ignore cleanup failure for temp file.
         }
-        console.warn('Failed to seed prebuilt frontend library bundle; falling back to local Webpack build.', error);
-        return false;
+        return reject(`it could not be written to the cache: ${error?.message}`);
     }
 }
 
