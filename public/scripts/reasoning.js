@@ -696,7 +696,15 @@ export class ReasoningHandler {
         if (this.state === ReasoningState.Thinking) {
             this.state = this.#isHiddenReasoningModel ? ReasoningState.Hidden : ReasoningState.Done;
             this.updateReasoning(messageId, null, { persist: true });
+            // SillyBunny: a closed panel is not rendered while the reasoning streams, so the final render comes
+            // before the event, and a listener that reads `.mes_reasoning` sees the finished text.
+            this.updateDom(messageId);
+            const renderedState = this.state;
+            const renderedReasoning = this.reasoningDisplayText ?? this.reasoning;
             await eventSource.emit(event_types.STREAM_REASONING_DONE, this.reasoning, this.getDuration(), messageId, this.state);
+            if (this.state === renderedState && (this.reasoningDisplayText ?? this.reasoning) === renderedReasoning) {
+                return;
+            }
         }
 
         this.updateDom(messageId);

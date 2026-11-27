@@ -1576,7 +1576,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
     });
 
     describe('Universal zero-work closed <details> reasoning & lazy toggle render', () => {
-        function createReasoningHarness({ detailsOpen = false, platform = 'Win32', streamFadeIn = true } = {}) {
+        function createReasoningHarness({ detailsOpen = false, platform = 'Win32', streamFadeIn = true, onEmit = null } = {}) {
             const dom = createDomEnvironment();
             const chatRoot = dom.document.createElement('div');
             chatRoot.id = 'chat';
@@ -1633,7 +1633,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 messageFormatting: messageFormattingSpy,
                 applyStreamFadeIn: applyStreamFadeInSpy,
                 applyStreamDomPatch: applyStreamDomPatchSpy,
-                eventSource: { emit: jest.fn(async () => {}) },
+                eventSource: { emit: jest.fn(async (...args) => { onEmit?.(...args); }) },
                 event_types: { STREAM_REASONING_DONE: 'stream_reasoning_done' },
                 moment: {
                     duration: ms => ({
@@ -1743,6 +1743,31 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             expect(reasoningContent.innerHTML).toBe('<p>Silent thought 2 final</p>');
             expect(headerTitle.textContent).toBe('Thought for 2 seconds');
             expect(details.getAttribute('data-reasoning-pending-render')).toBeNull();
+        });
+
+        test('emits STREAM_REASONING_DONE after the closed reasoning body is rendered', async () => {
+            let seenAtEvent = null;
+            const { handler, ReasoningState, reasoningContent, messageFormattingSpy } = createReasoningHarness({
+                detailsOpen: false,
+                platform: 'Win32',
+                streamFadeIn: false,
+                onEmit: (eventName) => {
+                    if (eventName === 'stream_reasoning_done') seenAtEvent = reasoningContent.innerHTML;
+                },
+            });
+
+            handler.state = ReasoningState.Thinking;
+            handler.startTime = handler.initialTime;
+            handler.reasoning = 'Silent thought 1';
+            handler.updateDom(0);
+            handler.reasoning = 'Silent thought 2 final';
+            handler.updateDom(0);
+            expect(reasoningContent.innerHTML).toBe('');
+
+            await handler.finish(0);
+
+            expect(seenAtEvent).toBe('<p>Silent thought 2 final</p>');
+            expect(messageFormattingSpy).toHaveBeenCalledTimes(1);
         });
 
         test('attaches toggle listener only while pending, detaches on expand/finish, and prevents stale aborted handlers from overwriting after swipe/regenerate', async () => {
