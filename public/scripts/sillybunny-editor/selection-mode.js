@@ -564,7 +564,7 @@ export function createSelectionMode({
         if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'a') {
             const target = event.target;
             if (!(target instanceof Element) || target.closest('input:not(.sb-selection-check), textarea, select, [contenteditable="true"]')
-                || ![list, standaloneHeader, actionBar].some(region => region?.contains(target))) return;
+                || ![list, standaloneHeader, headerState?.slots.header, actionBar].some(region => region?.contains(target))) return;
             event.preventDefault();
             event.stopPropagation();
             selectAll();
