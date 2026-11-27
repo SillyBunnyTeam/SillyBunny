@@ -327,15 +327,39 @@ export function getEntryRawText(entry) {
 }
 
 /**
- * Returns the exact raw Buffer bytes of a ChatStateCache entry.
+ * Returns a copy of the exact raw Buffer bytes of a ChatStateCache entry, so the caller can change it freely.
  * @param {object} entry
  * @returns {Buffer}
  */
 export function getEntryRawBuffer(entry) {
     if (entry.rawBuffer) {
-        return entry.rawBuffer;
+        return Buffer.from(entry.rawBuffer);
     }
     return Buffer.from(entry.lines.join('\n'), 'utf8');
+}
+
+function deepFreeze(value) {
+    if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+        Object.freeze(value);
+        for (const child of Object.values(value)) {
+            deepFreeze(child);
+        }
+    }
+    return value;
+}
+
+/**
+ * Copies the parts of an entry that a caller can also hold, so that nothing a caller does to its own objects
+ * reaches the cache and nothing that the cache hands out can be used to change it. The header is stored as the
+ * JSON round trip of the caller's header, which is what a fresh read of the saved row produces.
+ * @param {{ header?: object|null, lines?: string[], rawBuffer?: Buffer|null }} entryData
+ */
+function isolateChatStateEntryData(entryData) {
+    return {
+        header: entryData.header ? deepFreeze(JSON.parse(JSON.stringify(entryData.header))) : entryData.header,
+        lines: Array.isArray(entryData.lines) ? Object.freeze([...entryData.lines]) : entryData.lines,
+        rawBuffer: entryData.rawBuffer ? Buffer.from(entryData.rawBuffer) : entryData.rawBuffer,
+    };
 }
 
 function estimateChatStateEntryBytes(entry) {
@@ -413,6 +437,7 @@ export class ChatStateCache {
     /**
      * Stores or replaces an entry for `filePath`, evicting LRU entries to remain within `maxBytes`.
      * `entryData.validatedAtNs` is the time at which the entry's content was read or written (see `withValidationTime`).
+     * The entry keeps its own copies of `header`, `lines` and `rawBuffer`; the header and the lines are frozen.
      * @param {string} filePath
      * @param {object} entryData
      * @returns {any|null}
@@ -435,6 +460,7 @@ export class ChatStateCache {
         }
         const entry = {
             ...entryData,
+            ...isolateChatStateEntryData(entryData),
             validatedAtNs: typeof entryData.validatedAtNs === 'bigint' ? entryData.validatedAtNs : currentTimeNs(),
             key,
             estimatedBytes,

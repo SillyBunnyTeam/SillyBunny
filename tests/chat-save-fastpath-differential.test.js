@@ -30,6 +30,7 @@ const {
 } = await import('../src/chat-io-fastpath.js');
 
 const {
+    CHAT_RAW_ROWS_SYMBOL,
     clearChatRecoveryRuntimeCaches,
     createCharacterChatTarget,
     getChatRecoveryPaths,
@@ -989,6 +990,74 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         const strictLatest = readChatJsonlStrict(latestPath);
         expect(strictLatest.status).toBe('ok');
         expect(chatStateCache.get(utf8Path)).toBeNull();
+    });
+
+    test('a caller that mutates the records it loaded does not change what the cache holds for the next save', async () => {
+        const first = await trySaveChat(makeLargeChat(6, 'alias-slug'), chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        });
+        const savedBytes = fs.readFileSync(chatFile);
+        const unchangedPayload = () => {
+            const payload = JSON.parse(`[${savedBytes.toString('utf8').split('\n').join(',')}]`);
+            return payload;
+        };
+
+        // A load that misses the cache hands the caller the same header object that the entry is built from.
+        chatStateCache.clear();
+        const missed = loadActiveChatWithRecovery(recoveryTarget);
+        expect(missed.status).toBe('ok');
+        missed.records[0].chat_metadata.integrity = 'changed-by-the-caller';
+        missed.records[0].chat_metadata.note = 'added by the caller';
+        missed.records[1].mes = 'changed by the caller';
+        missed[CHAT_RAW_ROWS_SYMBOL][0] = '{"chat_metadata":{"integrity":"changed-by-the-caller"}}';
+
+        const noOpSave = await trySaveChat(unchangedPayload(), chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        });
+        expect(noOpSave.integrity).toBe(first.integrity);
+        expect(fs.readFileSync(chatFile)).toEqual(savedBytes);
+
+        // A hit hands out its rows without letting the caller change the entry's copy.
+        const hit = loadActiveChatWithRecovery(recoveryTarget);
+        expect(() => hit[CHAT_RAW_ROWS_SYMBOL].push('{"mes":"changed by the caller"}')).toThrow(TypeError);
+        hit.records[0].chat_metadata.integrity = 'changed-by-the-caller';
+        expect(loadActiveChatWithRecovery(recoveryTarget).records[0].chat_metadata.integrity).toBe(first.integrity);
+    });
+
+    test('a nested object that the caller keeps editing after a save does not change the header the cache holds', async () => {
+        const payload = makeLargeChat(4, 'nested-slug');
+        payload[0].chat_metadata.variables = { counter: 1 };
+        const first = await trySaveChat(payload, chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        });
+
+        // The caller carries on with its in-memory chat and later sends the state that is on disk.
+        const resend = structuredClone(payload);
+        resend[0].chat_metadata.integrity = first.integrity;
+        payload[0].chat_metadata.variables.counter = 2;
+
+        const second = await trySaveChat(resend, chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        });
+        expect(second.integrity).toBe(first.integrity);
+    });
+
+    test('a caller that overwrites the bytes of a loaded non-canonical chat does not change what the cache serves next', () => {
+        const crlfRows = makeLargeChat(3, 'crlf-slug').map(JSON.stringify).join('\r\n');
+        fs.writeFileSync(chatFile, crlfRows, 'utf8');
+
+        const missed = loadActiveChatWithRecovery(recoveryTarget);
+        expect(missed.status).toBe('ok');
+        missed.data.fill(0);
+
+        const hit = loadActiveChatWithRecovery(recoveryTarget);
+        expect(Buffer.from(hit.data)).toEqual(fs.readFileSync(chatFile));
+        hit.data.fill(0);
+        expect(Buffer.from(loadActiveChatWithRecovery(recoveryTarget).data)).toEqual(fs.readFileSync(chatFile));
     });
 
     test('getCanonicalChatCacheKey resolves the same key after both file and parent directory are deleted', () => {
