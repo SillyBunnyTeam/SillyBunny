@@ -1,6 +1,7 @@
+/* global globalThis */
 import { afterAll, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import { createMessageFormatPipeline } from '../util/message-format-pipeline.js';
-import { loadBlockFormatterModule } from '../util/block-formatter-module.js';
+import { loadBlockFormatterModule, loadStreamFadeInModule } from '../util/block-formatter-module.js';
 
 jest.setTimeout(120000);
 
@@ -250,6 +251,130 @@ describe('the incremental block formatter shows what the whole-message format sh
             expect(compareEveryTick(showdownPipeline, '- \n\n*old quietly l\n\n- item\n\nlast').differing).toEqual([]);
         } finally {
             showdownPipeline.cleanup();
+        }
+    });
+});
+
+describe('the final render of a streamed message equals a render of the stored message', () => {
+    let pipeline;
+    let fadeIn;
+    // morphdom reads these two from the global scope.
+    const savedGlobals = { HTMLElement: globalThis.HTMLElement, document: globalThis.document };
+
+    beforeAll(async () => {
+        pipeline = await createMessageFormatPipeline();
+        fadeIn = loadStreamFadeInModule(pipeline.window, pipeline.morphdom);
+        globalThis.HTMLElement = pipeline.window.HTMLElement;
+        globalThis.document = pipeline.window.document;
+    });
+
+    afterAll(() => {
+        for (const [key, value] of Object.entries(savedGlobals)) {
+            if (value === undefined) delete globalThis[key];
+            else globalThis[key] = value;
+        }
+        pipeline.cleanup();
+    });
+
+    /** Streams `document` into a `.mes_text` element as `onProgressStreaming` does, and returns the element. */
+    function streamIntoElement(document, { step = 11 } = {}) {
+        const element = pipeline.window.document.createElement('div');
+        element.className = 'mes_text';
+        pipeline.window.document.body.appendChild(element);
+        const formatter = fadeIn.createIncrementalBlockFormatter(
+            (block, hooks) => pipeline.format(block, hooks),
+            { getSignature: pipeline.getSignature },
+        );
+        for (let end = step; end < document.length; end += step) {
+            const markdown = pipeline.balance(document.slice(0, end));
+            fadeIn.applyStreamFadeIn(element, formatter.format(markdown, { isFinal: false }), { isFinal: false });
+        }
+        fadeIn.applyStreamFadeIn(element, formatter.format(document, { isFinal: true }), { isFinal: true });
+        return element;
+    }
+
+    function renderStored(document) {
+        const element = pipeline.window.document.createElement('div');
+        element.className = 'mes_text';
+        element.innerHTML = pipeline.format(document);
+        return element;
+    }
+
+    beforeAll(() => jest.useFakeTimers());
+    afterAll(() => {
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+    });
+
+    test.each(Object.entries(STREAMS))('%s', (_name, document) => {
+        const streamed = streamIntoElement(document);
+        const stored = renderStored(document);
+        expect(streamed.querySelectorAll('.text_segment')).toHaveLength(0);
+        expect(streamed.innerHTML).toBe(stored.innerHTML);
+        expect(streamed.isEqualNode(stored)).toBe(true);
+    });
+});
+
+describe('sanitising stays the same during a stream', () => {
+    const PAYLOADS = [
+        '<form><math><mtext></form><form><mglyph><style></math><img src onerror=alert(1)>',
+        '<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;/mglyph&gt;&lt;img&Tab;src=1&Tab;onerror=alert(1)&gt;">',
+        '<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+        '<svg></p><style><a id="</style><img src=1 onerror=alert(1)>">',
+        '<svg><style><img src=x onerror=alert(1)></style></svg>',
+        '<select><template><style></style><img src=x onerror=alert(1)></template></select>',
+        '<table><td><a><table></a><tr><td><a><img src=x onerror=alert(1)></a>',
+        '<iframe srcdoc="<img src=x onerror=alert(1)>"></iframe>',
+        '<a href="jav&#x09;ascript:alert(1)">x</a>',
+        '<a href="&#106;avascript:alert(1)">x</a>',
+        '<img src=x onerror=alert(1)//',
+        '<details open ontoggle=alert(1)>x</details>',
+        '<custom-style>%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E</custom-style>',
+        '<style>.a{background:url(javascript:alert(1))}</style>',
+        '<button class="menu_button" onclick="alert(1)">x</button>',
+        '<!--<img src=x onerror=alert(1)>--><b>x</b>',
+        '<script>alert(1)</script>',
+        '[trap](javascript:alert(3))',
+        '((ooc <img src=x onerror=alert(1)>\n\nmore))',
+    ];
+    const UNSAFE_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'form', 'base', 'meta', 'link', 'frame', 'frameset', 'applet', 'xmp', 'plaintext']);
+
+    function violations(window, html) {
+        const found = [];
+        const root = window.document.createElement('div');
+        root.innerHTML = html;
+        for (const element of root.querySelectorAll('*')) {
+            if (UNSAFE_TAGS.has(element.localName)) found.push(`tag:${element.localName}`);
+            for (const { name, value } of element.attributes) {
+                if (/^on/i.test(name)) found.push(`attr:${element.localName}[${name}]`);
+                if (/^(href|src|xlink:href|action|formaction|data|srcdoc)$/i.test(name) && /^\s*(javascript|vbscript|data:text\/html)/i.test(value)) {
+                    found.push(`url:${element.localName}[${name}]`);
+                }
+            }
+        }
+        return found;
+    }
+
+    test('no tick of a stream shows markup that the whole-message format of the same text lacks', async () => {
+        const pipeline = await createMessageFormatPipeline();
+        try {
+            const unsafeOnlyInIncremental = [];
+            for (const payload of PAYLOADS) {
+                const document = `intro paragraph\n\n${payload}\n\nmiddle paragraph\n\n${payload}\n\nlast paragraph here`;
+                const formatter = createIncrementalBlockFormatter(
+                    (block, hooks) => pipeline.format(block, hooks),
+                    { getSignature: pipeline.getSignature },
+                );
+                for (let end = 3; end <= document.length; end += 3) {
+                    const markdown = pipeline.balance(document.slice(0, end));
+                    const whole = new Set(violations(pipeline.window, pipeline.format(markdown)));
+                    const extra = violations(pipeline.window, formatter.format(markdown, { isFinal: false })).filter(found => !whole.has(found));
+                    if (extra.length > 0) unsafeOnlyInIncremental.push({ payload, end, extra });
+                }
+            }
+            expect(unsafeOnlyInIncremental).toEqual([]);
+        } finally {
+            pipeline.cleanup();
         }
     });
 });
