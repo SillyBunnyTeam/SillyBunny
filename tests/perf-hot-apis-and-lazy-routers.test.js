@@ -375,7 +375,7 @@ describe('setupPrivateEndpoints', () => {
             '/api/search', '/api/backends/text-completions', '/api/openrouter', '/api/nanogpt', '/api/backends/kobold',
             '/api/backends/chat-completions', '/api/speech', '/api/azure', '/api/volcengine', '/api/minimax',
             '/api/data-maid', '/api/backups', '/api/image-metadata', '/api/server-admin', '/api/in-chat-agents',
-            '/api/sillybunny-conversation', '/api/sillybunny/conversation', '/api/sillybunny/themes',
+            '/api/sillybunny-conversation', '/api/sillybunny/themes',
             '/api/sillybunny/managed-content',
         ]);
     });
@@ -901,6 +901,7 @@ function createUserDirectories(root) {
         sysprompt: path.join(root, 'sysprompt'),
         reasoning: path.join(root, 'reasoning'),
         inChatAgents: path.join(root, 'InChatAgents'),
+        conversations: path.join(root, 'conversations'),
     };
 
     for (const dirPath of Object.values(dirs)) {
