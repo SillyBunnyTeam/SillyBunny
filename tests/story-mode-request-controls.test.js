@@ -1301,3 +1301,56 @@ describe('overlapping temporary response lengths', () => {
         expect(runtime.state()).toEqual({ lengths: [], ...PRESET });
     });
 });
+
+describe('Continue preserves stored message text', () => {
+    const STORED_TEXT = 'Existing prose <secret>tag</secret>. ';
+    const PROMPT_ONLY_TEXT = 'Existing prose . ';
+    const ATTACHMENT_PREFIX = '[Attached file]\n\n';
+
+    function setupContinueRuntime({ api, stream }) {
+        const runtime = makeRuntime({ api, stream });
+        const { context } = runtime;
+        context.power_user.auto_continue.enabled = false;
+        context.power_user.reasoning.add_to_prompts = true;
+        context.chat = [{
+            name: 'Story',
+            mes: STORED_TEXT,
+            extra: { reasoning: 'hidden chain' },
+            is_user: false,
+            swipes: [STORED_TEXT],
+            swipe_id: 0,
+            swipe_info: [{ extra: { reasoning: 'hidden chain' } }],
+        }];
+        context.getRegexedString = (value, _placement, opts) => opts?.isPrompt ? value.replace(/<secret>.*?<\/secret>/g, '') : value;
+        context.appendFileContent = async () => ATTACHMENT_PREFIX;
+        context.reply = 'Continued text.';
+        context.chunks = [{ text: 'Continued text.' }];
+        return runtime;
+    }
+
+    test('OpenAI non-streaming Continue saves stored text without prompt-only regex loss, attachments or reasoning prefix', async () => {
+        const { context, requests } = setupContinueRuntime({ api: 'openai', stream: false });
+        await context.Generate('continue');
+        expect(requests).toHaveLength(1);
+        const lastPromptMsg = requests[0].body.messages[requests[0].body.messages.length - 1];
+        expect(lastPromptMsg.content).toContain(ATTACHMENT_PREFIX + PROMPT_ONLY_TEXT);
+        expect(lastPromptMsg.content).not.toContain('<secret>');
+        expect(context.chat[0].mes).toBe(STORED_TEXT + 'Continued text.');
+        expect(context.chat[0].mes).not.toContain(ATTACHMENT_PREFIX);
+        expect(context.chat[0].mes).not.toContain('<think>');
+    });
+
+    test.each([
+        ['text completion non-streaming', false],
+        ['text completion streaming', true],
+    ])('%s Continue saves stored text without prompt-only regex loss, attachments or reasoning prefix', async (_label, stream) => {
+        const { context, requests } = setupContinueRuntime({ api: 'textgenerationwebui', stream });
+        await context.Generate('continue');
+        expect(requests).toHaveLength(1);
+        expect(requests[0].body.prompt).toContain(ATTACHMENT_PREFIX + PROMPT_ONLY_TEXT);
+        expect(requests[0].body.prompt).not.toContain('<secret>');
+        expect(context.chat[0].mes).toBe(STORED_TEXT + 'Continued text.');
+        expect(context.chat[0].mes).not.toContain(ATTACHMENT_PREFIX);
+        expect(context.chat[0].mes).not.toContain('<think>');
+    });
+});

@@ -8318,6 +8318,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             return {
                 ...chatItem,
                 mes: consolidatedContextMessage,
+                // SillyBunny: keep the stored message text so Continue saves it instead of the prompt copy (ST #6130).
+                original_mes: chatItem.mes,
                 extra: hiddenCompanionHistory ? {} : chatItem.extra,
                 is_system: hiddenCompanionHistory ? false : chatItem.is_system,
                 ...(agentContributions.length > 0 && { agentContributions }),
@@ -8605,7 +8607,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 chat2[i] = coreChat[j].mes;
                 if (i === 0 && isContinue) {
                     chat2[i] = chat2[i].slice(0, chat2[i].lastIndexOf(coreChat[j].mes) + coreChat[j].mes.length);
-                    continue_mag = coreChat[j].mes;
+                    // SillyBunny: use stored text for Continue persistence instead of the prompt copy (ST #6130).
+                    continue_mag = coreChat[j].original_mes ?? coreChat[j].mes;
                 }
                 continue;
             }
@@ -8641,7 +8644,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
                 chat2[i] = chat2[i].includes(FORMAT_TOKEN)
                     ? chat2[i].slice(0, chat2[i].lastIndexOf(FORMAT_TOKEN))
                     : chat2[i].slice(0, chat2[i].lastIndexOf(coreChat[j].mes) + coreChat[j].mes.length);
-                continue_mag = coreChat[j].mes;
+                // SillyBunny: use stored text for Continue persistence instead of the prompt copy (ST #6130).
+                continue_mag = coreChat[j].original_mes ?? coreChat[j].mes;
             }
 
             if (coreChat[j].is_user) {
@@ -9238,7 +9242,6 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             if (isStreamingEnabled() && type !== 'quiet') {
                 let startedSuccessorGeneration = false;
                 try {
-                    continue_mag = promptReasoning.removePrefix(continue_mag);
                     const activeStreamingProcessor = streamingProcessor = new StreamingProcessor(type, force_name2, generation_started, continue_mag, promptReasoning, requestControls);
                     activeStreamingProcessor.isCurrentGeneration = isCurrent;
                     activeStreamingProcessor.agentGenerationContext = agentGenerationContext;
@@ -9508,7 +9511,6 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             }
 
             if (isContinue) {
-                continue_mag = promptReasoning.removePrefix(continue_mag);
                 getMessage = continue_mag + getMessage;
             }
 

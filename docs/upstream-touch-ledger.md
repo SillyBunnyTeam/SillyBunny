@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/script.js` - Continue saves stored message text
+| Field | Value |
+| --- | --- |
+| File | `public/script.js` (`Generate()` `coreChat` map, both Continue prefix assignments, and removal of `promptReasoning.removePrefix(continue_mag)`). |
+| Area | Continue generation persistence when prompt-only regex, attachments, media titles, or prompt reasoning alter the prompt copy. |
+| Divergence reason | Early port of upstream SillyTavern PR #6130, merged into upstream `staging` after SillyBunny's current sync base, adapted because SillyBunny's `coreChat` map mutates `message` with media titles and in-chat agent regex scripts; saving `original_mes: chatItem.mes` prevents prompt-only regex output, attachment text, and agent regex mutations from overwriting stored messages on Continue. |
+| Target seam | `Generate()` in `public/script.js` (early port of upstream SillyTavern PR #6130, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Preserve `original_mes: chatItem.mes` on each mapped `coreChat` entry, read `coreChat[j].original_mes ?? coreChat[j].mes` at both Continue prefix sites while keeping `chat2[i]` prompt slicing on `coreChat[j].mes`, and drop both `promptReasoning.removePrefix(continue_mag)` calls. |
+| Protecting tests | `tests/story-mode-request-controls.test.js` (`Continue preserves stored message text (ST #6130)`). |
+| Validation | Root and `tests/` lint, `npm run test:unit -- story-mode-request-controls.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove `original_mes: chatItem.mes` from the `coreChat` map, restore `continue_mag = coreChat[j].mes` and the two `promptReasoning.removePrefix(continue_mag)` calls in `public/script.js`, and remove the three Continue tests from `tests/story-mode-request-controls.test.js`. Stored chats are unchanged. On the next upstream sync carrying ST #6130, keep `chatItem.mes` for `original_mes` and drop this entry once upstream and SillyBunny align. |
+| Last reviewed | 2026-11-27 (early port of ST #6130). |
+| Owner | Core frontend and generation runtime integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
