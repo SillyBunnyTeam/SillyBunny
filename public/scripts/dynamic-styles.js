@@ -15,6 +15,11 @@ function getAbsoluteAssetUrl(href) {
     }
 }
 
+// SillyBunny: match deferred stylesheet links by their original data-sb-source-href when HTML rewriting hashes hrefs.
+function stripUrlQuery(url) {
+    return String(url).split(/[?#]/)[0];
+}
+
 function findStylesheetLink(absoluteHref, id = '') {
     if (id) {
         const existingById = document.getElementById(id);
@@ -23,9 +28,14 @@ function findStylesheetLink(absoluteHref, id = '') {
         }
     }
 
+    const cleanAbsoluteHref = stripUrlQuery(absoluteHref);
+
     // SillyBunny: adopt deferred style preloads instead of duplicating them
     return Array.from(document.querySelectorAll('link[rel~="stylesheet"], link[rel~="preload"][as="style"][data-sb-deferred-style]'))
-        .find(link => link instanceof HTMLLinkElement && getAbsoluteAssetUrl(link.href) === absoluteHref) ?? null;
+        .find(link => link instanceof HTMLLinkElement && (
+            getAbsoluteAssetUrl(link.href) === absoluteHref
+            || (link.dataset.sbSourceHref && stripUrlQuery(getAbsoluteAssetUrl(link.dataset.sbSourceHref)) === cleanAbsoluteHref)
+        )) ?? null;
 }
 
 function waitForStylesheetLink(link, media = 'all') {

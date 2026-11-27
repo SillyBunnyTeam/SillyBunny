@@ -1,0 +1,1133 @@
+import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import zlib from 'node:zlib';
+
+import express from 'express';
+import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
+import fullHljs from 'highlight.js';
+import fullMoment from 'moment';
+
+import {
+    createDeterministicTarGz,
+    flattenCssFile,
+    minifyCss,
+} from '../scripts/build-frontend-assets.js';
+import {
+    FRONTEND_ASSET_PREFIX,
+    FRONTEND_DIST_ROOT,
+    FRONTEND_INPUTS_STAMP_FILE,
+    FRONTEND_MANIFEST_FILE,
+    FRONTEND_MANIFEST_VERSION,
+    clearFrontendManifestCache,
+    computeFrontendInputsHash,
+    computeFrontendStatStamp,
+    getFrontendAssetsEnabled,
+    getFrontendHtmlCacheStats,
+    isExcludedFrontendPublicPath,
+    isManifestFresh,
+    isRawFrontendRequested,
+    loadFrontendManifest,
+    readRewrittenFrontendHtml,
+    rewriteFrontendHtml,
+    writeFrontendInputsStamp,
+} from '../src/frontend-assets.js';
+import { getFrontendAssetMiddleware, shouldServeFrontendAssets } from '../src/middleware/frontend-assets.js';
+import { setConfigFilePath } from '../src/util.js';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const publicRoot = path.join(repoRoot, 'public');
+const indexHtmlPath = path.join(publicRoot, 'index.html');
+const buildScriptPath = path.join(repoRoot, 'scripts', 'build-frontend-assets.js');
+const releaseWorkflowPath = path.join(repoRoot, '.github', 'workflows', 'release.yml');
+const webpackConfigPath = path.join(repoRoot, 'webpack.config.js');
+
+const ORIGIN = 'http://127.0.0.1:8000';
+
+/**
+ * Spec-exact W3C / HTML Standard import map resolver (imports + scopes) for testing runtime module identity.
+ * @param {string} specifier Raw import specifier
+ * @param {string} referrerUrl Full referring module URL
+ * @param {{ imports?: Record<string, string>, scopes?: Record<string, Record<string, string>> }} importMap Parsed import map
+ * @returns {string} Resolved URL
+ */
+function resolveWithImportMap(specifier, referrerUrl, importMap) {
+    const asUrl = new URL(specifier, referrerUrl).href;
+
+    const normalizedScopes = Object.entries(importMap.scopes ?? {})
+        .map(([scopePrefix, scopeMap]) => [new URL(scopePrefix, `${ORIGIN}/`).href, scopeMap])
+        .sort((a, b) => b[0].length - a[0].length);
+
+    for (const [scopePrefix, scopeMap] of normalizedScopes) {
+        if (referrerUrl === scopePrefix || (scopePrefix.endsWith('/') && referrerUrl.startsWith(scopePrefix))) {
+            for (const [rawKey, rawTarget] of Object.entries(scopeMap)) {
+                const resolvedKey = new URL(rawKey, `${ORIGIN}/`).href;
+                if (resolvedKey === asUrl) {
+                    return new URL(rawTarget, `${ORIGIN}/`).href;
+                }
+            }
+        }
+    }
+
+    for (const [rawKey, rawTarget] of Object.entries(importMap.imports ?? {})) {
+        const resolvedKey = new URL(rawKey, `${ORIGIN}/`).href;
+        if (resolvedKey === asUrl) {
+            return new URL(rawTarget, `${ORIGIN}/`).href;
+        }
+    }
+
+    return asUrl;
+}
+
+function collectPublicJsModules(dir, out = []) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        const relPosix = path.relative(publicRoot, fullPath).split(path.sep).join('/');
+        if (isExcludedFrontendPublicPath(relPosix)) {
+            continue;
+        }
+        if (entry.isDirectory()) {
+            collectPublicJsModules(fullPath, out);
+        } else if (entry.isFile() && /\.(?:js|mjs)$/i.test(entry.name)) {
+            out.push(relPosix);
+        }
+    }
+    return out;
+}
+
+function collectStaticReachableModules(entryRelPaths) {
+    const visited = new Set();
+    const queue = [...entryRelPaths];
+
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current || visited.has(current)) {
+            continue;
+        }
+        const fullPath = path.join(publicRoot, current);
+        if (!fs.existsSync(fullPath)) {
+            continue;
+        }
+        visited.add(current);
+        const source = fs.readFileSync(fullPath, 'utf8');
+        const re = /(?:(?:^|[;\n])\s*(?:import|export)\s+(?:[^;'"()]*?\s+from\s*)?|\bimport\s*\(\s*|new\s+URL\(\s*)['"]([^'"]+)['"]/g;
+        const currentDir = path.posix.dirname(current);
+        for (const match of source.matchAll(re)) {
+            const spec = match[1];
+            if (!spec || (!spec.startsWith('.') && !spec.startsWith('/'))) {
+                continue;
+            }
+            const clean = spec.split(/[?#]/)[0];
+            if (!/\.(?:js|mjs)$/i.test(clean)) {
+                continue;
+            }
+            const resolved = clean.startsWith('/')
+                ? path.posix.normalize(clean).replace(/^\/+/, '')
+                : path.posix.normalize(currentDir === '.' ? clean : path.posix.join(currentDir, clean)).replace(/^\/+/, '');
+            if (!resolved.startsWith('..') && !isExcludedFrontendPublicPath(resolved) && resolved !== 'sw.js') {
+                queue.push(resolved);
+            }
+        }
+    }
+
+    return visited;
+}
+
+/**
+ * Describes the repository's own dist/frontend (the one a developer's server serves), without reading beyond its manifest and stamp.
+ * @returns {string}
+ */
+function snapshotRepositoryDist() {
+    const files = {};
+    for (const name of [FRONTEND_MANIFEST_FILE, FRONTEND_INPUTS_STAMP_FILE]) {
+        const filePath = path.join(FRONTEND_DIST_ROOT, name);
+        files[name] = fs.existsSync(filePath)
+            ? `${fs.statSync(filePath).mtimeMs}:${fs.readFileSync(filePath, 'utf8').length}`
+            : null;
+    }
+    return JSON.stringify({ exists: fs.existsSync(FRONTEND_DIST_ROOT), files });
+}
+
+function parseTarEntryNames(tarBuffer) {
+    const entries = [];
+    let offset = 0;
+    let pendingPaxPath = null;
+
+    while (offset + 512 <= tarBuffer.length) {
+        const header = tarBuffer.subarray(offset, offset + 512);
+        if (header.every(byte => byte === 0)) {
+            break;
+        }
+
+        const magic = header.subarray(257, 262).toString('ascii');
+        expect(magic).toBe('ustar');
+
+        const rawName = header.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
+        const rawPrefix = header.subarray(345, 500).toString('utf8').replace(/\0.*$/, '');
+        const typeflag = header.subarray(156, 157).toString('ascii');
+        const sizeOctal = header.subarray(124, 136).toString('ascii').replace(/\0.*$/, '').trim();
+        const size = parseInt(sizeOctal || '0', 8);
+
+        const dataStart = offset + 512;
+        const data = tarBuffer.subarray(dataStart, dataStart + size);
+
+        if (typeflag === 'x') {
+            const paxText = data.toString('utf8');
+            const pathMatch = paxText.match(/ path=([^\n]+)\n/);
+            pendingPaxPath = pathMatch ? pathMatch[1] : null;
+        } else {
+            const fullName = pendingPaxPath ?? (rawPrefix ? `${rawPrefix}/${rawName}` : rawName);
+            pendingPaxPath = null;
+            entries.push({ name: fullName, size });
+        }
+
+        const paddedSize = Math.ceil(size / 512) * 512;
+        offset = dataStart + paddedSize;
+    }
+
+    return entries;
+}
+
+describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', () => {
+    let tmpWorkDir;
+    let tmpDistDir;
+    let tmpTarballPath;
+    let manifest;
+
+    let previousSbDev;
+    let fixtureCounter = 0;
+    let repositoryDistBefore;
+
+    beforeAll(() => {
+        repositoryDistBefore = snapshotRepositoryDist();
+        tmpWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-pr13-test-'));
+        tmpDistDir = path.join(tmpWorkDir, 'dist', 'frontend');
+        tmpTarballPath = path.join(tmpWorkDir, 'sillybunny-frontend-assets.tar.gz');
+
+        const tmpConfigPath = path.join(tmpWorkDir, 'config.yaml');
+        fs.writeFileSync(tmpConfigPath, 'performance:\n  frontendBuild:\n    enabled: true\n    immutableMaxAge: 31536000\n', 'utf8');
+        setConfigFilePath(tmpConfigPath);
+
+        // Run the real CLI builder in a child process so Webpack/Terser memory does not linger in Jest --runInBand.
+        execFileSync(process.execPath, [buildScriptPath, '--dist', tmpDistDir, '--tarball', tmpTarballPath], {
+            cwd: repoRoot,
+            stdio: 'pipe',
+        });
+        manifest = JSON.parse(fs.readFileSync(path.join(tmpDistDir, 'asset-manifest.json'), 'utf8'));
+    }, 120000);
+
+    afterAll(() => {
+        setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
+        if (tmpWorkDir && fs.existsSync(tmpWorkDir)) {
+            fs.rmSync(tmpWorkDir, { recursive: true, force: true });
+        }
+    });
+
+    afterEach(() => {
+        if (previousSbDev === undefined) {
+            delete process.env.SB_DEV;
+        } else {
+            process.env.SB_DEV = previousSbDev;
+        }
+        previousSbDev = undefined;
+        clearFrontendManifestCache();
+    });
+
+    function setSbDev(value) {
+        previousSbDev ??= process.env.SB_DEV;
+        if (value === undefined) {
+            delete process.env.SB_DEV;
+        } else {
+            process.env.SB_DEV = value;
+        }
+    }
+
+    /**
+     * Creates a throwaway dist directory next to the built one, so no case reads or writes the repository's own dist/frontend.
+     * @param {object} customManifest Manifest to write
+     * @param {Record<string, string>} [files] Extra files (relative path to text) to write beside it
+     * @returns {string} The dist directory
+     */
+    function createDistFixture(customManifest, files = {}) {
+        fixtureCounter += 1;
+        const distDir = path.join(tmpWorkDir, `dist-fixture-${fixtureCounter}`);
+        fs.mkdirSync(distDir, { recursive: true });
+        fs.writeFileSync(path.join(distDir, 'asset-manifest.json'), JSON.stringify(customManifest), 'utf8');
+        for (const [relativePath, content] of Object.entries(files)) {
+            fs.mkdirSync(path.dirname(path.join(distDir, relativePath)), { recursive: true });
+            fs.writeFileSync(path.join(distDir, relativePath), content, 'utf8');
+        }
+        return distDir;
+    }
+
+    test('(a) importmap covers 100% of /lib.js, /script.js, public/scripts/**, and every reachable module', () => {
+        expect(manifest.version).toBe(FRONTEND_MANIFEST_VERSION);
+        expect(typeof manifest.inputsHash).toBe('string');
+        expect(manifest.inputsHash).toHaveLength(64);
+        expect(manifest.inputsHash).toBe(computeFrontendInputsHash({ repoRoot, publicRoot }));
+
+        const imports = manifest.importMap?.imports ?? {};
+        const scoped = manifest.importMap?.scopes?.[FRONTEND_ASSET_PREFIX] ?? {};
+
+        expect(imports['/lib.js']).toMatch(/^\/frontend-assets\/lib-[a-f0-9]{12}\.js$/);
+        expect(imports['/script.js']).toMatch(/^\/frontend-assets\/script-[a-f0-9]{12}\.js$/);
+        expect(imports['/sw.js']).toBeUndefined();
+
+        const allScriptsModules = collectPublicJsModules(path.join(publicRoot, 'scripts'));
+        const reachableFromScript = collectStaticReachableModules(['script.js', ...allScriptsModules]);
+        const expectedModules = new Set(['lib.js', 'script.js', ...allScriptsModules, ...reachableFromScript]);
+
+        const missingFromImports = [];
+        const missingFromScope = [];
+        const missingOnDisk = [];
+
+        for (const relPosix of expectedModules) {
+            const importTarget = imports[`/${relPosix}`];
+            const scopeTarget = scoped[`${FRONTEND_ASSET_PREFIX}${relPosix}`];
+            if (!importTarget) {
+                missingFromImports.push(relPosix);
+                continue;
+            }
+            if (scopeTarget !== importTarget) {
+                missingFromScope.push(relPosix);
+            }
+            const outputRel = importTarget.slice(FRONTEND_ASSET_PREFIX.length);
+            if (!fs.existsSync(path.join(tmpDistDir, outputRel))) {
+                missingOnDisk.push(outputRel);
+            }
+        }
+
+        expect(missingFromImports).toEqual([]);
+        expect(missingFromScope).toEqual([]);
+        expect(missingOnDisk).toEqual([]);
+        expect(Object.keys(imports).length).toBeGreaterThan(600);
+    });
+
+    test('(b) rewriteFrontendHtml injects strictly ONE <script type="importmap"> before the first modulepreload/module and caches in RAM', () => {
+        setSbDev(undefined);
+        const rawHtml = fs.readFileSync(indexHtmlPath, 'utf8');
+        const rewritten = rewriteFrontendHtml(rawHtml, { enabled: true, distRoot: tmpDistDir });
+
+        const importMapTags = [...rewritten.matchAll(/<script\b[^>]*\btype="importmap"[^>]*>([\s\S]*?)<\/script>/gi)];
+        expect(importMapTags).toHaveLength(1);
+
+        const parsedImportMap = JSON.parse(importMapTags[0][1]);
+        expect(parsedImportMap.imports['/script.js']).toBe(manifest.importMap.imports['/script.js']);
+        expect(parsedImportMap.imports['/lib.js']).toBe(manifest.importMap.imports['/lib.js']);
+
+        const headOpenIndex = rewritten.search(/<head\b[^>]*>/i);
+        const baseTagIndex = rewritten.search(/<base\b[^>]*>/i);
+        const metaCharsetMatch = /<meta\b[^>]*\bcharset\s*=\s*["']utf-8["'][^>]*>/i.exec(rewritten);
+        const criticalStyleIndex = rewritten.search(/<style\b[^>]*>/i);
+        const stylePreloadIndex = rewritten.search(/<link\b[^>]*\brel="preload"[^>]*\bas="style"[^>]*>/i);
+        const importMapIndex = rewritten.search(/<script\b[^>]*\btype="importmap"[^>]*>/i);
+        const firstModulePreloadIndex = rewritten.search(/<link\b[^>]*\brel="modulepreload"[^>]*>/i);
+        const firstModuleScriptIndex = rewritten.search(/<script\b[^>]*\btype="module"[^>]*>/i);
+
+        expect(metaCharsetMatch).not.toBeNull();
+        const metaCharsetEndBytes = Buffer.byteLength(
+            rewritten.slice(0, metaCharsetMatch.index + metaCharsetMatch[0].length),
+            'utf8',
+        );
+        // HTML5 charset prescan requires <meta charset="utf-8"> to finish within the first 1,024 bytes.
+        expect(metaCharsetEndBytes).toBeLessThan(1024);
+
+        expect(importMapIndex).toBeGreaterThan(headOpenIndex);
+        expect(importMapIndex).toBeGreaterThan(baseTagIndex);
+        expect(importMapIndex).toBeGreaterThan(metaCharsetMatch.index);
+        expect(importMapIndex).toBeGreaterThan(criticalStyleIndex);
+        expect(importMapIndex).toBeGreaterThan(stylePreloadIndex);
+        expect(importMapIndex).toBeLessThan(firstModulePreloadIndex);
+        expect(importMapIndex).toBeLessThan(firstModuleScriptIndex);
+
+        expect(rewritten).toContain(`<link rel="modulepreload" href="${manifest.importMap.imports['/script.js']}">`);
+        expect(rewritten).toContain(`<script type="module" src="${manifest.importMap.imports['/script.js']}"></script>`);
+        expect(rewritten).toContain(`href="${FRONTEND_ASSET_PREFIX}${manifest.assets['style.css'].output}"`);
+        expect(rewritten).toContain(`href="${FRONTEND_ASSET_PREFIX}${manifest.assets['css/solid.min.css'].output}"`);
+        expect(rewritten).toContain('href="css/user.css"');
+        expect(rewritten).not.toContain('/frontend-assets/css/user');
+
+        // Attribute rewriting must not interpolate $ replacement patterns or choke on nested quotes.
+        const specialContent = 'body{color:red}';
+        const specialHash = crypto.createHash('sha256').update(specialContent).digest('hex').slice(0, 12);
+        const specialOutput = `style-$&$1-${specialHash}.css`;
+        const specialDist = createDistFixture({
+            ...manifest,
+            assets: {
+                'style.css': { hash: specialHash, output: specialOutput, bytes: specialContent.length },
+            },
+        }, { [specialOutput]: specialContent });
+        const specialHtml = '<head><base href="/"><meta charset="utf-8"><link rel="stylesheet" href="style.css?v=a\'b"></head>';
+        const rewrittenSpecial = rewriteFrontendHtml(specialHtml, { enabled: true, distRoot: specialDist });
+        expect(rewrittenSpecial).toContain(`href="/frontend-assets/${specialOutput}"`);
+
+        // The standard manifest must hit the RAM cache for index.html.
+        clearFrontendManifestCache();
+        const cachedFirst = rewriteFrontendHtml(rawHtml, { enabled: true, distRoot: tmpDistDir });
+        const statsBefore = getFrontendHtmlCacheStats();
+        const rewrittenAgain = rewriteFrontendHtml(rawHtml, { enabled: true, distRoot: tmpDistDir });
+        const statsAfter = getFrontendHtmlCacheStats();
+
+        expect(cachedFirst).toBe(rewritten);
+        expect(rewrittenAgain).toBe(rewritten);
+        expect(statsAfter.hits).toBe(statsBefore.hits + 1);
+        expect(statsAfter.misses).toBe(statsBefore.misses);
+    });
+
+    test('(c) live ESM singleton identity holds when a mock 3rd-party extension imports ../../../../script.js and ../../../extensions.js', async () => {
+        const scriptHashedUrl = new URL(manifest.importMap.imports['/script.js'], `${ORIGIN}/`).href;
+        const extensionsHashedUrl = new URL(manifest.importMap.imports['/scripts/extensions.js'], `${ORIGIN}/`).href;
+        const tabsHashedUrl = new URL(manifest.importMap.imports['/scripts/sillybunny-tabs.js'], `${ORIGIN}/`).href;
+        const serverToolsHashedUrl = new URL(manifest.importMap.imports['/scripts/sillybunny-server-tools.js'], `${ORIGIN}/`).href;
+        const thirdPartyExtUrl = `${ORIGIN}/scripts/extensions/third-party/mock-ext/index.js`;
+
+        // Verify exact spec URL resolution for core modules, import.meta.url deferred loads, and 3rd-party extensions.
+        expect(resolveWithImportMap('../../../../script.js', thirdPartyExtUrl, manifest.importMap)).toBe(scriptHashedUrl);
+        expect(resolveWithImportMap('../../../extensions.js', thirdPartyExtUrl, manifest.importMap)).toBe(extensionsHashedUrl);
+        expect(resolveWithImportMap('../script.js', extensionsHashedUrl, manifest.importMap)).toBe(scriptHashedUrl);
+        expect(resolveWithImportMap('../script.js', tabsHashedUrl, manifest.importMap)).toBe(scriptHashedUrl);
+        expect(resolveWithImportMap(new URL('./sillybunny-server-tools.js', tabsHashedUrl).href, tabsHashedUrl, manifest.importMap)).toBe(serverToolsHashedUrl);
+
+        // Execute real ES modules in vm.SourceTextModule linked strictly via manifest.importMap.
+        const evalCounts = new Map();
+        const context = vm.createContext({
+            recordEval: (id) => evalCounts.set(id, (evalCounts.get(id) ?? 0) + 1),
+        });
+
+        const virtualSources = new Map([
+            [scriptHashedUrl, `
+                recordEval('script.js');
+                export let chat = ['boot'];
+                export let this_chid = 0;
+                export function pushMessage(msg) { chat.push(msg); }
+                export function setCharacter(id) { this_chid = id; }
+            `],
+            [extensionsHashedUrl, `
+                recordEval('extensions.js');
+                import { chat, setCharacter } from '../script.js';
+                export const extension_settings = { loadedByCore: true };
+                export function getCoreChat() { return chat; }
+                export function selectCoreChar(id) { setCharacter(id); }
+            `],
+            [thirdPartyExtUrl, `
+                recordEval('mock-ext');
+                import { chat, this_chid, pushMessage } from '../../../../script.js';
+                import { extension_settings, getCoreChat, selectCoreChar } from '../../../extensions.js';
+                pushMessage('from-3p-ext');
+                extension_settings.fromThirdParty = true;
+                selectCoreChar(7);
+                export const observed = {
+                    chatRef: chat,
+                    coreChatRef: getCoreChat(),
+                    liveChid: () => this_chid,
+                    settingsRef: extension_settings,
+                };
+            `],
+        ]);
+
+        const moduleRegistry = new Map();
+        async function loadModule(url) {
+            if (moduleRegistry.has(url)) {
+                return moduleRegistry.get(url);
+            }
+            const source = virtualSources.get(url);
+            if (!source) {
+                throw new Error(`Unexpected unmapped module URL: ${url}`);
+            }
+            const mod = new vm.SourceTextModule(source, { identifier: url, context });
+            moduleRegistry.set(url, mod);
+            await mod.link(async (specifier, referencingModule) => {
+                const resolved = resolveWithImportMap(specifier, referencingModule.identifier, manifest.importMap);
+                return loadModule(resolved);
+            });
+            await mod.evaluate();
+            return mod;
+        }
+
+        const coreScript = await loadModule(scriptHashedUrl);
+        const coreExtensions = await loadModule(extensionsHashedUrl);
+        const thirdPartyExt = await loadModule(thirdPartyExtUrl);
+
+        expect(evalCounts.get('script.js')).toBe(1);
+        expect(evalCounts.get('extensions.js')).toBe(1);
+        expect(evalCounts.get('mock-ext')).toBe(1);
+
+        expect(thirdPartyExt.namespace.observed.chatRef).toBe(coreScript.namespace.chat);
+        expect(thirdPartyExt.namespace.observed.coreChatRef).toBe(coreScript.namespace.chat);
+        expect(thirdPartyExt.namespace.observed.settingsRef).toBe(coreExtensions.namespace.extension_settings);
+        expect(coreScript.namespace.chat).toEqual(['boot', 'from-3p-ext']);
+        expect(coreExtensions.namespace.extension_settings.fromThirdParty).toBe(true);
+        expect(thirdPartyExt.namespace.observed.liveChid()).toBe(7);
+        expect(coreScript.namespace.this_chid).toBe(7);
+    });
+
+    test('(d) falls back to raw public/ on inputsHash mismatch or SB_DEV=1', () => {
+        const sampleHtml = fs.readFileSync(indexHtmlPath, 'utf8');
+
+        // 1. Stale inputsHash mismatch must reject manifest and return raw HTML untouched.
+        const staleDist = createDistFixture({
+            ...manifest,
+            inputsHash: '0'.repeat(64),
+        });
+
+        expect(loadFrontendManifest({ distRoot: staleDist })).toBeNull();
+        expect(shouldServeFrontendAssets({ distRoot: staleDist })).toBe(false);
+        expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: staleDist })).toBe(sampleHtml);
+
+        // 2. Fresh manifest enables frontend serving; SB_DEV=1 overrides it back to raw public/.
+        setSbDev(undefined);
+        expect(loadFrontendManifest({ distRoot: tmpDistDir })).not.toBeNull();
+        expect(shouldServeFrontendAssets({ distRoot: tmpDistDir })).toBe(true);
+
+        setSbDev('1');
+        expect(shouldServeFrontendAssets({ distRoot: tmpDistDir })).toBe(false);
+        expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: tmpDistDir })).toBe(sampleHtml);
+
+        // 3. computeFrontendInputsHash ignores .DS_Store/Thumbs.db, normalizes CRLF across tracked text files,
+        // and invalidates when package.json or scripts/build-frontend-assets.js changes.
+        const hashFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-hash-fixture-'));
+        try {
+            const fixturePublic = path.join(hashFixture, 'public');
+            fs.mkdirSync(path.join(fixturePublic, 'nested'), { recursive: true });
+            fs.mkdirSync(path.join(hashFixture, 'scripts'), { recursive: true });
+            fs.writeFileSync(path.join(hashFixture, 'webpack.config.js'), 'export default {};\n', 'utf8');
+            fs.writeFileSync(path.join(hashFixture, 'package.json'), '{"version":"1.0.0"}\n', 'utf8');
+            fs.writeFileSync(path.join(hashFixture, 'scripts', 'build-frontend-assets.js'), '// builder v1\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'global.d.ts'), 'declare const x: number;\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'style.less'), '.a { color: red; }\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'fix.patch'), '--- a\n+++ b\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'tool.LICENSE'), 'MIT\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'nested', 'LICENSE'), 'Apache-2.0\n', 'utf8');
+
+            const lfHash = computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic });
+
+            // Adding OS junk files must not change inputsHash.
+            fs.writeFileSync(path.join(fixturePublic, '.DS_Store'), 'junk', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'nested', 'Thumbs.db'), 'junk', 'utf8');
+            expect(computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic })).toBe(lfHash);
+
+            // Converting tracked text files (.ts, .less, .patch, .license, LICENSE) to CRLF must keep the same hash.
+            fs.writeFileSync(path.join(fixturePublic, 'global.d.ts'), 'declare const x: number;\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'style.less'), '.a { color: red; }\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'fix.patch'), '--- a\r\n+++ b\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'tool.LICENSE'), 'MIT\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixturePublic, 'nested', 'LICENSE'), 'Apache-2.0\r\n', 'utf8');
+            expect(computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic })).toBe(lfHash);
+
+            // Editing package.json or scripts/build-frontend-assets.js must invalidate inputsHash.
+            fs.writeFileSync(path.join(hashFixture, 'package.json'), '{"version":"1.0.1"}\n', 'utf8');
+            const afterPkgHash = computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic });
+            expect(afterPkgHash).not.toBe(lfHash);
+
+            fs.writeFileSync(path.join(hashFixture, 'scripts', 'build-frontend-assets.js'), '// builder v2\n', 'utf8');
+            const afterBuilderHash = computeFrontendInputsHash({ repoRoot: hashFixture, publicRoot: fixturePublic });
+            expect(afterBuilderHash).not.toBe(afterPkgHash);
+        } finally {
+            fs.rmSync(hashFixture, { recursive: true, force: true });
+        }
+    });
+
+    test('(e) flattened style.css has 0 local @imports, valid rewritten url(...)s, font-display: swap in bundled CSS, preserves @media & calc(), and excludes /css/user.css', () => {
+        const styleBundle = manifest.cssBundles['style.css'];
+        expect(styleBundle).toBeDefined();
+        expect(styleBundle.inlinedImports.length).toBeGreaterThanOrEqual(19);
+        expect(styleBundle.inlinedImports).toContain('css/popup.css');
+        expect(styleBundle.inlinedImports).toContain('lib/dialog-polyfill.css');
+        expect(styleBundle.inlinedImports).toContain('css/popup-safari-fix.css');
+        expect(styleBundle.inlinedImports).not.toContain('css/user.css');
+
+        const flattenedStyleCss = fs.readFileSync(path.join(tmpDistDir, styleBundle.output), 'utf8');
+        expect(flattenedStyleCss).not.toMatch(/@import\b/i);
+        expect(flattenedStyleCss).not.toContain('user.css');
+        expect(flattenedStyleCss).toContain('.poly_dialog');
+        expect(flattenedStyleCss).toContain('calc(var(--topBarIconSize) + var(--topBarBlockPadding))');
+
+        const urlMatches = [...flattenedStyleCss.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]+))\s*\)/gi)]
+            .map(match => match[1] ?? match[2] ?? match[3] ?? '');
+        expect(urlMatches.length).toBeGreaterThan(0);
+
+        for (const url of urlMatches) {
+            if (url.startsWith('data:') || /^https?:/i.test(url)) {
+                continue;
+            }
+            expect(url.startsWith(FRONTEND_ASSET_PREFIX)).toBe(true);
+            const distFile = path.join(tmpDistDir, url.slice(FRONTEND_ASSET_PREFIX.length).split('#')[0]);
+            expect(fs.existsSync(distFile)).toBe(true);
+        }
+
+        // Bundled icon font sheets must rewrite font-display: block -> swap and reference hashed woff2 assets.
+        for (const iconSheet of ['css/solid.min.css', 'css/brands.min.css']) {
+            const builtCss = fs.readFileSync(path.join(tmpDistDir, manifest.assets[iconSheet].output), 'utf8');
+            expect(builtCss).not.toMatch(/font-display\s*:\s*block\b/i);
+            expect(builtCss).toMatch(/font-display\s*:\s*swap\b/i);
+            expect(builtCss).toContain(`${FRONTEND_ASSET_PREFIX}webfonts/`);
+        }
+
+        // minifyCss must never strip descendant-combinator whitespace before : / :: or corrupt space-only custom props.
+        expect(minifyCss('.last_swipe :is(.swipes-counter, .swipe_right) { display: none; }'))
+            .toBe('.last_swipe :is(.swipes-counter,.swipe_right){display:none}');
+        expect(minifyCss('.mes_text :where(p, li) { color: red; }'))
+            .toBe('.mes_text :where(p,li){color:red}');
+        expect(minifyCss('.foo ::before { content: ""; }'))
+            .toBe('.foo ::before{content:""}');
+        expect(minifyCss(':root { --x: ; --y: 1px; }'))
+            .toBe(':root{--x: ;--y:1px}');
+
+        // Verify 0 corrupted descendant pseudo-selectors across every built CSS asset in dist/frontend/.
+        expect(flattenedStyleCss).toContain('.last_swipe :is(.swipes-counter,.swipe_right)');
+        expect(flattenedStyleCss).toContain('.mes_text :where(p,li,blockquote,q,span)');
+        const descendantPseudoRe = /([a-zA-Z0-9_\])*])\s+(::?(?:is|where|not|has|hover|focus|focus-visible|focus-within|active|checked|disabled|enabled|first-child|last-child|nth-child|nth-of-type|empty|root|before|after|placeholder|selection|backdrop|scope|-webkit-|-moz-))/gi;
+        const corruptedCssFiles = [];
+        for (const [sourcePath, entry] of Object.entries(manifest.assets)) {
+            if (!sourcePath.endsWith('.css')) {
+                continue;
+            }
+            const rawFlattened = flattenCssFile(sourcePath, { publicRoot, assets: manifest.assets }).css;
+            const builtCss = fs.readFileSync(path.join(tmpDistDir, entry.output), 'utf8');
+            const sourceCount = [...rawFlattened.matchAll(descendantPseudoRe)].length;
+            const builtCount = [...builtCss.matchAll(descendantPseudoRe)].length;
+            if (builtCount < sourceCount) {
+                corruptedCssFiles.push(`${sourcePath} (expected >=${sourceCount}, got ${builtCount})`);
+            }
+        }
+        expect(corruptedCssFiles).toEqual([]);
+
+        // Synthetic @charset + @media + nested relative url() + hoisted /css/user.css exclusion check.
+        const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-css-fixture-'));
+        try {
+            fs.mkdirSync(path.join(fixtureRoot, 'nested'), { recursive: true });
+            fs.writeFileSync(path.join(fixtureRoot, 'nested', 'mobile.css'), '.m :is(.a, .b) { background: url("../img/pic.png"); font-display: block; }\n', 'utf8');
+            fs.writeFileSync(
+                path.join(fixtureRoot, 'entry.css'),
+                '@charset "UTF-8";\n@import url("./nested/mobile.css") screen and (max-width: 768px);\n@import url("/css/user.css");\n.x { width: calc(10px + 20px); }\n',
+                'utf8',
+            );
+
+            const flattened = flattenCssFile('entry.css', {
+                publicRoot: fixtureRoot,
+                assets: { 'img/pic.png': { output: 'img/pic-abcdef123456.png' } },
+            });
+            const minified = minifyCss(flattened.css);
+
+            expect(flattened.inlinedImports).toEqual(['nested/mobile.css']);
+            expect(minified).toContain('@media screen and (max-width:768px){.m :is(.a,.b){background:url("/frontend-assets/img/pic-abcdef123456.png");font-display:swap}}');
+            expect(minified).toContain('@import url("/css/user.css");');
+            // Un-inlined @import must be hoisted after @charset and BEFORE any @media or style rules to remain valid CSS.
+            const charsetIdx = minified.indexOf('@charset "UTF-8";');
+            const userImportIdx = minified.indexOf('@import url("/css/user.css");');
+            const mediaIdx = minified.indexOf('@media screen');
+            expect(charsetIdx).toBe(0);
+            expect(userImportIdx).toBeGreaterThan(charsetIdx);
+            expect(userImportIdx).toBeLessThan(mediaIdx);
+            expect(minified).toContain('calc(10px + 20px)');
+        } finally {
+            fs.rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+    });
+
+    test('(f) built lib.js keeps the full highlight.js languages and moment locales, and preserves all exports & shims', async () => {
+        const libEntry = manifest.assets['lib.js'];
+        expect(libEntry).toBeDefined();
+
+        const webpackSource = fs.readFileSync(webpackConfigPath, 'utf8');
+        // A cache signature from the base or from the slim-bundle build must not come back, or that cached bundle would be reused.
+        for (const retiredSignature of ['chevrotain-esm-alias-v1', 'bun-no-minify-v1', 'slim-hljs-moment-ui-locales-v3', 'bun-premin-vendors-v3']) {
+            expect(webpackSource).not.toContain(retiredSignature);
+        }
+
+        const builtLibPath = path.join(tmpDistDir, libEntry.output);
+        const builtLibSource = fs.readFileSync(builtLibPath, 'utf8');
+
+        // The Node build is minified by Webpack whichever minimizer package the config names: a minified bundle has very long lines.
+        expect(builtLibSource.length / builtLibSource.split('\n').length).toBeGreaterThan(10000);
+
+        const mockWindow = {
+            document: {
+                createElement: () => ({ href: '', setAttribute() {}, appendChild() {} }),
+                getElementsByTagName: () => [null],
+                documentElement: {},
+            },
+            navigator: { userAgent: 'Mozilla/5.0' },
+            location: { href: `${ORIGIN}/`, origin: ORIGIN, protocol: 'http:' },
+            console,
+            setTimeout,
+            clearTimeout,
+            TextEncoder,
+            TextDecoder,
+            URL,
+            URLSearchParams,
+        };
+        mockWindow.window = mockWindow;
+        mockWindow.self = mockWindow;
+        mockWindow.globalThis = mockWindow;
+
+        const libContext = vm.createContext(mockWindow);
+        const libVmModule = new vm.SourceTextModule(builtLibSource, {
+            identifier: `${ORIGIN}${FRONTEND_ASSET_PREFIX}${libEntry.output}`,
+            context: libContext,
+        });
+        await libVmModule.link(() => {
+            throw new Error('Compiled lib.js must be self-contained with zero external module imports.');
+        });
+        await libVmModule.evaluate();
+        const libModule = libVmModule.namespace;
+
+        const nonNamespaceExportNames = [
+            'lodash', 'Fuse', 'DOMPurify', 'hljs', 'localforage', 'Handlebars',
+            'css', 'Bowser', 'DiffMatchPatch', 'Readability', 'isProbablyReaderable',
+            'SVGInject', 'showdown', 'markdownit', 'markdownItEmoji', 'markdownItCjkFriendly',
+            'moment', 'seedrandom', 'droll', 'morphdom', 'slideToggle',
+            'chalk', 'yaml', 'gzipSync', 'gzip', 'sha256',
+        ];
+        const namespaceExportNames = ['Popper', 'chevrotain'];
+        const expectSameNamespace = (actual, expected) => {
+            const actualKeys = Object.keys(actual).sort();
+            const expectedKeys = Object.keys(expected).sort();
+            expect(actualKeys.length).toBeGreaterThan(0);
+            expect(actualKeys).toEqual(expectedKeys);
+            for (const key of expectedKeys) {
+                expect(actual[key]).toBe(expected[key]);
+            }
+        };
+
+        for (const name of nonNamespaceExportNames) {
+            expect(libModule[name]).toBeDefined();
+            expect(libModule.default[name]).toBe(libModule[name]);
+        }
+        for (const name of namespaceExportNames) {
+            expect(libModule[name]).toBeDefined();
+            expectSameNamespace(libModule.default[name], libModule[name]);
+        }
+        expect(typeof libModule.initLibraryShims).toBe('function');
+
+        // Verify window.* compatibility shims.
+        libModule.initLibraryShims();
+        expect(mockWindow.Fuse).toBe(libModule.Fuse);
+        expect(mockWindow.DOMPurify).toBe(libModule.DOMPurify);
+        expect(mockWindow.hljs).toBe(libModule.hljs);
+        expect(mockWindow.localforage).toBe(libModule.localforage);
+        expect(mockWindow.Handlebars).toBe(libModule.Handlebars);
+        expect(mockWindow.diff_match_patch).toBe(libModule.DiffMatchPatch);
+        expect(mockWindow.SVGInject).toBe(libModule.SVGInject);
+        expect(mockWindow.showdown).toBe(libModule.showdown);
+        expect(mockWindow.moment).toBe(libModule.moment);
+        expectSameNamespace(mockWindow.Popper, libModule.Popper);
+        expect(mockWindow.droll).toBe(libModule.droll);
+
+        // highlight.js must keep every language of the installed package, with the same API surface as the package itself.
+        const { hljs, moment } = libModule;
+        expect(hljs.listLanguages().sort()).toEqual(fullHljs.listLanguages().sort());
+        expect(Object.keys(hljs).sort()).toEqual(Object.keys(fullHljs).sort());
+
+        for (const languageName of fullHljs.listLanguages()) {
+            expect(hljs.getLanguage(languageName)).toBeTruthy();
+            for (const alias of fullHljs.getLanguage(languageName).aliases ?? []) {
+                expect(hljs.getLanguage(alias)).toBeTruthy();
+            }
+        }
+
+        for (const [languageName, sample] of [
+            ['haskell', 'main :: IO ()\nmain = print (1 < 2)'],
+            ['latex', '\\begin{document}\n\\section{Intro} $x < y$\n\\end{document}'],
+            ['perl', 'use strict;\nmy $x = 1;\nprint "$x\\n";'],
+            ['r', 'x <- c(1, 2, 3)\nmean(x)'],
+        ]) {
+            const highlighted = hljs.highlight(sample, { language: languageName });
+            expect(highlighted.language).toBe(languageName);
+            expect(highlighted.value).toContain('<span class="hljs-');
+        }
+
+        // An unknown language keeps throwing as in upstream, so extension code that wraps hljs.highlight() in try/catch behaves the same.
+        expect(() => hljs.highlight('a < b', { language: 'nonexistent-rare-fence' })).toThrow();
+
+        // Runtime custom language registration (e.g. STscript) still works.
+        hljs.registerLanguage('stscript-test', () => ({ keywords: 'echo' }));
+        expect(hljs.getLanguage('stscript-test')).toBeTruthy();
+
+        // Every locale file of the installed moment package stays in the bundle, so a browser language outside the UI
+        // languages (pl-PL, tr-TR, ...) keeps its localized dates.
+        const sampleIso = '2026-01-15T12:00:00Z';
+        const momentLocaleDir = path.join(repoRoot, 'node_modules', 'moment', 'locale');
+        const momentLocaleCodes = fs.readdirSync(momentLocaleDir)
+            .filter(fileName => fileName.endsWith('.js'))
+            .map(fileName => fileName.slice(0, -'.js'.length));
+        expect(momentLocaleCodes.length).toBeGreaterThan(100);
+
+        for (const code of [...momentLocaleCodes, 'pl-pl', 'tr-tr', 'sv-se', 'cs-cz', 'id-id', 'he-il', 'hi-in', 'ar-ae', 'ja-jp', 'de-de']) {
+            const bundled = moment(sampleIso).utc().locale(code);
+            const reference = fullMoment(sampleIso).utc().locale(code);
+            expect(bundled.locale()).toBe(reference.locale());
+            expect(bundled.format('LLLL')).toBe(reference.format('LLLL'));
+        }
+        expect(moment(sampleIso).locale('pl-pl').locale()).toBe('pl');
+        expect(moment(sampleIso).locale('tr-tr').locale()).toBe('tr');
+        expect(moment.duration(125000).locale('ja-jp').humanize()).toBe('2分');
+    });
+
+    test('(g) --tarball produces a deterministic pure-Node POSIX .tar.gz archive and release.yml attaches it', async () => {
+        expect(fs.existsSync(tmpTarballPath)).toBe(true);
+
+        const secondTarballPath = path.join(tmpWorkDir, 'second.tar.gz');
+        await createDeterministicTarGz(tmpDistDir, secondTarballPath);
+
+        const firstGz = fs.readFileSync(tmpTarballPath);
+        const secondGz = fs.readFileSync(secondTarballPath);
+        expect(firstGz.equals(secondGz)).toBe(true);
+
+        const tarBuffer = zlib.gunzipSync(firstGz);
+        const entries = parseTarEntryNames(tarBuffer);
+        const names = new Set(entries.map(entry => entry.name));
+
+        expect(names.has('dist/frontend/asset-manifest.json')).toBe(true);
+        expect(names.has(`dist/frontend/${FRONTEND_INPUTS_STAMP_FILE}`)).toBe(false);
+        expect(names.has(`dist/frontend/${manifest.assets['lib.js'].output}`)).toBe(true);
+        expect(names.has(`dist/frontend/${manifest.assets['script.js'].output}`)).toBe(true);
+        expect(names.has(`dist/frontend/${manifest.assets['style.css'].output}`)).toBe(true);
+        expect(fs.existsSync(path.join(tmpDistDir, FRONTEND_INPUTS_STAMP_FILE))).toBe(true);
+
+        const releaseYml = fs.readFileSync(releaseWorkflowPath, 'utf8');
+        expect(releaseYml).toContain('SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" npm run build:frontend -- --tarball "$out/sillybunny-frontend-assets.tar.gz"');
+    });
+
+    test('(h) defaults performance.frontendBuild.enabled to auto, gates SB_DEV=1, uses stat-stamp fast-path, and bundles core 3P extensions only', () => {
+        const defaultConfig = fs.readFileSync(path.join(repoRoot, 'default', 'config.yaml'), 'utf8');
+        expect(defaultConfig).toMatch(/frontendBuild:[\s\S]*?enabled:\s*auto/);
+
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: 'auto' })).toBe(true);
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: true })).toBe(true);
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: false })).toBe(false);
+        expect(getFrontendAssetsEnabled({ env: {}, enabled: 'false' })).toBe(false);
+        expect(getFrontendAssetsEnabled({ env: { SB_DEV: '1' }, enabled: 'auto' })).toBe(false);
+        expect(getFrontendAssetsEnabled({ env: { SB_DEV: '1' }, enabled: true })).toBe(false);
+
+        // Bundled git-tracked 3rd-party extensions are included while .gitkeep and user-installed 3P extensions remain excluded.
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party')).toBe(false);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/.gitkeep')).toBe(true);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/BunnyPresetTools/content.js')).toBe(false);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/ChatCompletionTabs/index.js')).toBe(false);
+        expect(isExcludedFrontendPublicPath('scripts/extensions/third-party/user-custom-ext/index.js')).toBe(true);
+
+        const bundledImports = manifest.importMap?.imports ?? {};
+        expect(Object.keys(bundledImports).some(key => key.startsWith('/scripts/extensions/third-party/BunnyPresetTools/'))).toBe(true);
+        expect(Object.keys(bundledImports).some(key => key.startsWith('/scripts/extensions/third-party/ChatCompletionTabs/'))).toBe(true);
+
+        // Stat-stamp fast-path validates unchanged trees and invalidates immediately when an input file changes.
+        const stampFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-stamp-fixture-'));
+        try {
+            const fixturePublic = path.join(stampFixtureRoot, 'public');
+            const fixtureDist = path.join(stampFixtureRoot, 'dist', 'frontend');
+            fs.mkdirSync(path.join(fixturePublic, 'scripts'), { recursive: true });
+            fs.mkdirSync(fixtureDist, { recursive: true });
+            fs.writeFileSync(path.join(fixturePublic, 'index.html'), '<!doctype html><html><body>hi</body></html>\n');
+            fs.writeFileSync(path.join(fixturePublic, 'scripts', 'app.js'), 'export const a = 1;\n');
+
+            const inputsHash = computeFrontendInputsHash({ repoRoot: stampFixtureRoot, publicRoot: fixturePublic });
+            const fixtureManifest = { version: FRONTEND_MANIFEST_VERSION, inputsHash, assets: {}, importMap: { imports: {} } };
+            expect(writeFrontendInputsStamp(inputsHash, { distRoot: fixtureDist, repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).toBe(true);
+            expect(fs.existsSync(path.join(fixtureDist, FRONTEND_INPUTS_STAMP_FILE))).toBe(true);
+
+            const initialStamp = computeFrontendStatStamp({ repoRoot: stampFixtureRoot, publicRoot: fixturePublic });
+            expect(initialStamp).toMatch(/^[0-9a-f]{64}$/);
+            expect(isManifestFresh(fixtureManifest, { distRoot: fixtureDist, repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).toBe(true);
+
+            // Mutating a tracked public file invalidates both stat stamp and manifest freshness immediately.
+            fs.writeFileSync(path.join(fixturePublic, 'scripts', 'app.js'), 'export const a = 2222;\n');
+            clearFrontendManifestCache();
+            expect(computeFrontendStatStamp({ repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).not.toBe(initialStamp);
+            expect(isManifestFresh(fixtureManifest, { distRoot: fixtureDist, repoRoot: stampFixtureRoot, publicRoot: fixturePublic })).toBe(false);
+        } finally {
+            fs.rmSync(stampFixtureRoot, { recursive: true, force: true });
+        }
+    });
+
+    test('(j) the HTML rewriter matches attribute names exactly and hashes data-sb-href placeholders on purpose', () => {
+        setSbDev(undefined);
+        const solid = `${FRONTEND_ASSET_PREFIX}${manifest.assets['css/solid.min.css'].output}`;
+        const brands = `${FRONTEND_ASSET_PREFIX}${manifest.assets['css/brands.min.css'].output}`;
+        const scriptHashed = manifest.importMap.imports['/script.js'];
+        // The rewriter adds the import map and its support check to any document, so compare the tags without them.
+        const rewrite = html => rewriteFrontendHtml(html, { enabled: true, distRoot: tmpDistDir })
+            .replace(/<script>if\(!\(window\.HTMLScriptElement[\s\S]*?<\/script>/, '')
+            .replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, '')
+            .trim();
+
+        // A link with href.
+        expect(rewrite('<link rel="stylesheet" href="css/solid.min.css?v=1">'))
+            .toBe(`<link rel="stylesheet" href="${solid}">`);
+
+        // A deferred placeholder has data-sb-href and no href: the value is hashed and the source path is kept for the page script.
+        expect(rewrite('<link data-sb-deferred-style data-sb-href="css/solid.min.css?v=1" data-sb-media="all">'))
+            .toBe(`<link data-sb-deferred-style data-sb-href="${solid}" data-sb-media="all" data-sb-source-href="css/solid.min.css">`);
+
+        // A link with both: each attribute is hashed on its own, whichever comes first, and the source path is the one of href.
+        expect(rewrite('<link rel="stylesheet" href="css/solid.min.css" data-sb-deferred-style data-sb-href="css/brands.min.css">'))
+            .toBe(`<link rel="stylesheet" href="${solid}" data-sb-deferred-style data-sb-href="${brands}" data-sb-source-href="css/solid.min.css">`);
+        expect(rewrite('<link data-sb-deferred-style data-sb-href="css/brands.min.css" rel="stylesheet" href="css/solid.min.css">'))
+            .toBe(`<link data-sb-deferred-style data-sb-href="${brands}" rel="stylesheet" href="${solid}" data-sb-source-href="css/solid.min.css">`);
+
+        // Names that merely end in href or src are not those attributes.
+        const foreignHref = '<link rel="stylesheet" xlink:href="css/solid.min.css">';
+        expect(rewrite(foreignHref)).toBe(foreignHref);
+        expect(rewrite('<script type="module" data-src="script.js" src="script.js"></script>'))
+            .toBe(`<script type="module" data-src="script.js" src="${scriptHashed}"></script>`);
+        const foreignSrc = '<script type="module" data-src="script.js"></script>';
+        expect(rewrite(foreignSrc)).toBe(foreignSrc);
+    });
+
+    test('(k) an unreadable index.html is reported to the caller instead of becoming an empty page', () => {
+        setSbDev(undefined);
+        const missingPath = path.join(tmpWorkDir, 'missing-index.html');
+        expect(readRewrittenFrontendHtml(missingPath, { enabled: true, distRoot: tmpDistDir })).toBeNull();
+        expect(readRewrittenFrontendHtml(missingPath, { enabled: false })).toBeNull();
+
+        const presentPath = path.join(tmpWorkDir, 'present-index.html');
+        fs.writeFileSync(presentPath, '<html><head><link rel="stylesheet" href="css/solid.min.css"></head></html>', 'utf8');
+        expect(readRewrittenFrontendHtml(presentPath, { enabled: true, distRoot: tmpDistDir })).toContain(manifest.assets['css/solid.min.css'].output);
+        expect(readRewrittenFrontendHtml(presentPath, { enabled: false })).toContain('href="css/solid.min.css"');
+    });
+
+    test('(l) a lockfile change makes the built frontend stale, because lib.js bundles the installed packages', () => {
+        const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-lock-fixture-'));
+        try {
+            const fixturePublic = path.join(fixtureRoot, 'public');
+            fs.mkdirSync(fixturePublic, { recursive: true });
+            fs.writeFileSync(path.join(fixturePublic, 'index.html'), '<!doctype html>\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'package.json'), '{"version":"1.0.0"}\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"node_modules/moment":{"version":"2.30.1"}}}\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'bun.lock'), '{\n  "packages": {\n    "moment": ["moment@2.30.1"]\n  }\n}\n', 'utf8');
+            const roots = { repoRoot: fixtureRoot, publicRoot: fixturePublic };
+
+            const baselineHash = computeFrontendInputsHash(roots);
+            const baselineStamp = computeFrontendStatStamp(roots);
+
+            // The stat stamp sees size and modification time, so the new content differs in length.
+            fs.writeFileSync(path.join(fixtureRoot, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"node_modules/moment":{"version":"2.31.0-beta.1"}}}\n', 'utf8');
+            const afterNpmLock = computeFrontendInputsHash(roots);
+            expect(afterNpmLock).not.toBe(baselineHash);
+            expect(computeFrontendStatStamp(roots)).not.toBe(baselineStamp);
+
+            fs.writeFileSync(path.join(fixtureRoot, 'bun.lock'), '{\n  "packages": {\n    "moment": ["moment@2.30.2"]\n  }\n}\n', 'utf8');
+            const afterBunLock = computeFrontendInputsHash(roots);
+            expect(afterBunLock).not.toBe(afterNpmLock);
+
+            // A Windows checkout with CRLF line endings must still match a build made from LF files.
+            fs.writeFileSync(path.join(fixtureRoot, 'bun.lock'), '{\r\n  "packages": {\r\n    "moment": ["moment@2.30.2"]\r\n  }\r\n}\r\n', 'utf8');
+            fs.writeFileSync(path.join(fixtureRoot, 'package-lock.json'), '{"lockfileVersion":3,"packages":{"node_modules/moment":{"version":"2.31.0-beta.1"}}}\r\n', 'utf8');
+            expect(computeFrontendInputsHash(roots)).toBe(afterBunLock);
+        } finally {
+            fs.rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+    });
+
+    test('(m) a browser without import map support is sent to the plain page once, and a supporting browser is left alone', () => {
+        setSbDev(undefined);
+        const rewritten = rewriteFrontendHtml(fs.readFileSync(indexHtmlPath, 'utf8'), { enabled: true, distRoot: tmpDistDir });
+
+        const checkScripts = [...rewritten.matchAll(/<script>((?:(?!<\/script>)[\s\S])*HTMLScriptElement(?:(?!<\/script>)[\s\S])*)<\/script>/g)];
+        expect(checkScripts).toHaveLength(1);
+        const checkIndex = checkScripts[0].index;
+        expect(checkIndex).toBeLessThan(rewritten.search(/<script\b[^>]*\btype="importmap"[^>]*>/i));
+        expect(checkIndex).toBeLessThan(rewritten.search(/<link\b[^>]*\brel="modulepreload"[^>]*>/i));
+        expect(checkIndex).toBeLessThan(rewritten.search(/<script\b[^>]*\btype="module"[^>]*>/i));
+
+        // The page runs the check as a classic script in any browser, including ones that predate optional chaining and arrow functions.
+        const checkSource = checkScripts[0][1];
+        expect(checkSource).not.toMatch(/=>|\?\.|\blet\b|\bconst\b/);
+
+        const runCheck = ({ htmlScriptElement, search = '', pathname = '/', hash = '' }) => {
+            const replaced = [];
+            const sandbox = {
+                location: { search, pathname, hash, replace: url => replaced.push(url) },
+            };
+            sandbox.window = sandbox;
+            if (htmlScriptElement) {
+                sandbox.HTMLScriptElement = htmlScriptElement;
+            }
+            vm.runInContext(checkSource, vm.createContext(sandbox));
+            return replaced;
+        };
+
+        expect(runCheck({ htmlScriptElement: { supports: type => type === 'importmap' } })).toEqual([]);
+        expect(runCheck({})).toEqual(['/?sbRawFrontend=1']);
+        expect(runCheck({ htmlScriptElement: {} })).toEqual(['/?sbRawFrontend=1']);
+        expect(runCheck({ htmlScriptElement: { supports: () => false } })).toEqual(['/?sbRawFrontend=1']);
+        expect(runCheck({ htmlScriptElement: { supports: () => false }, pathname: '/app/', search: '?a=b', hash: '#c' }))
+            .toEqual(['/app/?a=b&sbRawFrontend=1#c']);
+        // The flag ends the redirect, so a browser that stays unsupported cannot reload in a loop.
+        expect(runCheck({ htmlScriptElement: { supports: () => false }, search: '?sbRawFrontend=1' })).toEqual([]);
+
+        expect(isRawFrontendRequested({ query: { sbRawFrontend: '1' } })).toBe(true);
+        expect(isRawFrontendRequested({ query: {} })).toBe(false);
+        expect(isRawFrontendRequested({ query: { sbRawFrontend: '0' } })).toBe(false);
+        expect(isRawFrontendRequested({})).toBe(false);
+    });
+
+    test('(n) the CSS flattener keeps @import rules with layer() or supports() as imports and ignores @import inside strings and comments', () => {
+        const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-css-import-fixture-'));
+        try {
+            fs.mkdirSync(path.join(fixtureRoot, 'css'), { recursive: true });
+            for (const name of ['base', 'grid', 'anon', 'combined', 'plain']) {
+                fs.writeFileSync(path.join(fixtureRoot, 'css', `${name}.css`), `.${name} { color: red; }\n`, 'utf8');
+            }
+
+            fs.writeFileSync(path.join(fixtureRoot, 'layered.css'), [
+                '@import url("./css/base.css") layer(base);',
+                '@import "./css/grid.css" supports(display: grid) screen and (min-width: 600px);',
+                '@import url(./css/anon.css) layer;',
+                '@import url("./css/combined.css") layer(x) supports(display: flex) (min-width: 10px);',
+                '@import url("./css/plain.css") screen and (min-width: 600px);',
+                '.after { color: blue; }',
+                '',
+            ].join('\n'), 'utf8');
+
+            const layered = flattenCssFile('layered.css', { publicRoot: fixtureRoot });
+            expect(layered.inlinedImports).toEqual(['css/plain.css']);
+            expect(layered.css).not.toMatch(/@media\s+(?:layer|supports)/i);
+            expect(layered.css).toContain('@import url("/css/base.css") layer(base);');
+            expect(layered.css).toContain('@import url("/css/grid.css") supports(display: grid) screen and (min-width: 600px);');
+            expect(layered.css).toContain('@import url("/css/anon.css") layer;');
+            expect(layered.css).toContain('@import url("/css/combined.css") layer(x) supports(display: flex) (min-width: 10px);');
+            // A plain media query is still inlined as @media, and every kept @import stays ahead of the rules.
+            expect(layered.css).toMatch(/@media screen and \(min-width: 600px\) \{\s*\.plain \{ color: red; \}\s*\}/);
+            expect(layered.css.lastIndexOf('@import')).toBeLessThan(layered.css.indexOf('@media'));
+            expect(layered.css.lastIndexOf('@import')).toBeLessThan(layered.css.indexOf('.after'));
+
+            fs.writeFileSync(path.join(fixtureRoot, 'strings.css'), [
+                '.a::after { content: "@import \'nope.css\';"; }',
+                '.b::after { content: \'@import "nope2.css";\'; }',
+                '.c::after { content: "\\"@import \'nope3.css\';"; }',
+                '/* @import url("css/base.css"); */',
+                '@import url("./css/plain.css");',
+                '',
+            ].join('\n'), 'utf8');
+
+            const strings = flattenCssFile('strings.css', { publicRoot: fixtureRoot });
+            expect(strings.inlinedImports).toEqual(['css/plain.css']);
+            expect(strings.css).toContain('.a::after { content: "@import \'nope.css\';"; }');
+            expect(strings.css).toContain('.b::after { content: \'@import "nope2.css";\'; }');
+            expect(strings.css).toContain('.c::after { content: "\\"@import \'nope3.css\';"; }');
+            expect(strings.css).not.toContain('@import url("/nope');
+            expect(strings.css).not.toContain('base.css');
+            expect(strings.css).toContain('.plain { color: red; }');
+        } finally {
+            fs.rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+    });
+
+    /**
+     * Creates a dist directory whose two hashed files match the hash in their names and whose manifest is fresh for this checkout.
+     * @returns {{ distDir: string, scriptOutput: string, scriptContent: string, styleOutput: string, styleContent: string }}
+     */
+    function createVerifiableDist() {
+        const sha12 = content => crypto.createHash('sha256').update(content).digest('hex').slice(0, 12);
+        const scriptContent = 'export const answer = 42;\n';
+        const styleContent = 'body{color:red}';
+        const scriptOutput = `scripts/answer-${sha12(scriptContent)}.js`;
+        const styleOutput = `style-${sha12(styleContent)}.css`;
+        const distDir = createDistFixture({
+            version: FRONTEND_MANIFEST_VERSION,
+            inputsHash: manifest.inputsHash,
+            importMap: { imports: { '/scripts/answer.js': `${FRONTEND_ASSET_PREFIX}${scriptOutput}` } },
+            assets: {
+                'scripts/answer.js': { hash: sha12(scriptContent), output: scriptOutput, bytes: scriptContent.length },
+                'style.css': { hash: sha12(styleContent), output: styleOutput, bytes: styleContent.length },
+            },
+        }, { [scriptOutput]: scriptContent, [styleOutput]: styleContent });
+        return { distDir, scriptOutput, scriptContent, styleOutput, styleContent };
+    }
+
+    test('(o) a build with a file that does not match the hash in its name is not trusted, and serving falls back to raw public/', () => {
+        setSbDev(undefined);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const { distDir, scriptOutput, scriptContent, styleOutput, styleContent } = createVerifiableDist();
+            const sampleHtml = '<head><link rel="stylesheet" href="style.css"></head>';
+
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+            expect(shouldServeFrontendAssets({ distRoot: distDir })).toBe(true);
+            expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: distDir })).toContain(styleOutput);
+
+            // Same name, other bytes (and another length, so that a size check alone would also notice).
+            fs.writeFileSync(path.join(distDir, scriptOutput), `${scriptContent}export const extra = 1;\n`, 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+            expect(shouldServeFrontendAssets({ distRoot: distDir })).toBe(false);
+            expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: distDir })).toBe(sampleHtml);
+            expect(warn).toHaveBeenCalledWith(expect.stringContaining(scriptOutput));
+
+            // Same length, other bytes.
+            fs.writeFileSync(path.join(distDir, scriptOutput), scriptContent.replace('42', '43'), 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+
+            // The original bytes restore trust.
+            fs.writeFileSync(path.join(distDir, scriptOutput), scriptContent, 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+
+            // A file that the manifest lists but that is missing (a partial copy of the build) is not trusted either.
+            fs.rmSync(path.join(distDir, styleOutput));
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+            fs.writeFileSync(path.join(distDir, styleOutput), styleContent, 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    test('(p) the immutable route refuses a hashed file that does not match its name and distrusts the build', async () => {
+        setSbDev(undefined);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const { distDir, scriptOutput, scriptContent } = createVerifiableDist();
+        const app = express();
+        app.use(FRONTEND_ASSET_PREFIX, getFrontendAssetMiddleware({ distRoot: distDir }).immutableAssets);
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+        try {
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+
+            const intact = await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}${scriptOutput}`);
+            expect(intact.status).toBe(200);
+            expect(intact.headers.get('cache-control')).toMatch(/\bimmutable\b/);
+            expect(await intact.text()).toBe(scriptContent);
+
+            // Damage the file after the manifest was trusted: the request must not receive an immutable copy.
+            fs.writeFileSync(path.join(distDir, scriptOutput), `${scriptContent}throw new Error('forged');\n`, 'utf8');
+            const damaged = await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}${scriptOutput}`);
+            expect(damaged.status).toBe(404);
+            expect(damaged.headers.get('cache-control') ?? '').not.toMatch(/immutable/);
+            expect(await damaged.text()).not.toContain('forged');
+
+            // The next page request must get the plain page, so the manifest is distrusted without a restart.
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+            expect(shouldServeFrontendAssets({ distRoot: distDir })).toBe(false);
+
+            // Missing and malformed hashed names still end in 404 and never reach public/.
+            expect((await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}scripts/answer-000000000000.js`)).status).toBe(404);
+            expect((await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}..%2f..%2fpackage-abcdef123456.json`)).status).toBe(404);
+            expect((await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}%00-abcdef123456.js`)).status).toBe(404);
+
+            // Unhashed lookups keep their fallback to public/ and stay revalidating.
+            const unhashed = await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}scripts/utils.js`);
+            expect(unhashed.status).toBe(200);
+            expect(unhashed.headers.get('cache-control')).toBe('no-cache');
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+            warn.mockRestore();
+        }
+    });
+
+    test('(i) no case reads or writes the repository\'s own dist/frontend', () => {
+        expect(snapshotRepositoryDist()).toBe(repositoryDistBefore);
+    });
+});

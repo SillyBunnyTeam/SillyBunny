@@ -8,8 +8,9 @@ import { isBunRuntime } from './src/runtime.js';
 import { serverDirectory } from './src/server-directory.js';
 import { getVersion, color } from './src/util.js';
 
-const BUN_LIB_BUNDLE_SIGNATURE = 'bun-no-minify-v1';
-const PUBLIC_LIB_CONFIG_SIGNATURE = 'chevrotain-esm-alias-v1';
+// SillyBunny: cache signatures and input hashing cover the Bun pre-minified vendor aliases.
+const BUN_LIB_BUNDLE_SIGNATURE = 'bun-premin-vendors-full-libs-v4';
+const PUBLIC_LIB_CONFIG_SIGNATURE = 'full-libs-vendor-aliases-v4';
 const WEBPACK_CACHE_KEEP_COUNT = 3;
 const PUBLIC_LIB_FILENAME = 'lib.js';
 
@@ -26,6 +27,8 @@ function hashFileIfPresent(hasher, filePath) {
 function getPublicLibInputsSignature() {
     const hasher = crypto.createHash('sha256');
 
+    // SillyBunny: invalidate cached /lib.js when the webpack config changes.
+    hashFileIfPresent(hasher, path.join(serverDirectory, 'webpack.config.js'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'public', 'lib.js'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'package.json'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'package-lock.json'));
@@ -159,6 +162,44 @@ export function prunePublicLibCache({ forceDist = false, currentCacheVersion = u
     pruneWebpackCache(webpackRoot, cacheVersion, { keepCount });
 }
 
+// SillyBunny: resolve optional pre-minified vendor builds for Bun where Webpack/Terser minification is disabled.
+function resolveOptionalVendorAlias(relativePath) {
+    const absolutePath = path.resolve(serverDirectory, 'node_modules', relativePath);
+    return fs.existsSync(absolutePath) ? absolutePath : false;
+}
+
+function getVendorResolveAliases({ usePreminified = false } = {}) {
+    // Use Chevrotain's bundled ESM build to avoid Windows + Bun walking lodash-es source files.
+    const chevrotainFallback = path.resolve(serverDirectory, 'node_modules/chevrotain/lib/chevrotain.mjs');
+
+    if (!usePreminified) {
+        return {
+            chevrotain$: chevrotainFallback,
+        };
+    }
+
+    // SillyBunny: alias large vendor libraries to their official pre-minified browser bundles on Bun,
+    // where Webpack minification is disabled.
+    const candidates = {
+        chevrotain$: 'chevrotain/lib/chevrotain.min.mjs',
+        handlebars$: 'handlebars/dist/handlebars.min.js',
+        lodash$: 'lodash/lodash.min.js',
+        showdown$: 'showdown/dist/showdown.min.js',
+        localforage$: 'localforage/dist/localforage.min.js',
+    };
+    const aliases = {};
+    for (const [specifier, relativePath] of Object.entries(candidates)) {
+        const resolved = resolveOptionalVendorAlias(relativePath);
+        if (resolved) {
+            aliases[specifier] = resolved;
+        }
+    }
+    if (!aliases.chevrotain$) {
+        aliases.chevrotain$ = chevrotainFallback;
+    }
+    return aliases;
+}
+
 /**
  * Get the Webpack configuration for the public/lib.js file.
  * 1. Docker has got cache and the output file pre-baked.
@@ -198,10 +239,7 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
         devtool: false,
         watch: false,
         resolve: {
-            alias: {
-                // Use Chevrotain's bundled ESM build to avoid Windows + Bun walking lodash-es source files.
-                chevrotain$: path.resolve(serverDirectory, 'node_modules/chevrotain/lib/chevrotain.mjs'),
-            },
+            alias: getVendorResolveAliases({ usePreminified: !minimize }),
         },
         module: {},
         stats: {

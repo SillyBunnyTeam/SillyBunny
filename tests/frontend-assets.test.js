@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, test } from '@jest/globals';
@@ -12,14 +13,15 @@ import {
 } from '../src/frontend-assets.js';
 
 describe('frontend asset manifest rewriting', () => {
-    const manifestPath = getFrontendManifestPath();
-    const manifestDirectory = path.dirname(manifestPath);
-    let previousManifest = null;
+    let distRoot;
+
+    function rewrite(html, options = {}) {
+        return rewriteFrontendHtml(html, { enabled: true, distRoot, ...options });
+    }
 
     beforeEach(() => {
-        previousManifest = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf8') : null;
-        fs.mkdirSync(manifestDirectory, { recursive: true });
-        fs.writeFileSync(manifestPath, JSON.stringify({
+        distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-frontend-assets-test-'));
+        fs.writeFileSync(getFrontendManifestPath(distRoot), JSON.stringify({
             assets: {
                 'style.css': { output: 'style-abc123.css' },
                 'css/sillybunny-mobile-shell.css': { output: 'css/sillybunny-mobile-shell-def456.css' },
@@ -33,17 +35,13 @@ describe('frontend asset manifest rewriting', () => {
     });
 
     afterEach(() => {
-        if (previousManifest === null) {
-            fs.rmSync(manifestPath, { force: true });
-        } else {
-            fs.writeFileSync(manifestPath, previousManifest, 'utf8');
-        }
+        fs.rmSync(distRoot, { recursive: true, force: true });
         clearFrontendManifestCache();
     });
 
     test('leaves HTML unchanged when the frontend build is disabled', () => {
         const html = '<link href="style.css"><script type="module" src="script.js"></script>';
-        expect(rewriteFrontendHtml(html, { enabled: false })).toBe(html);
+        expect(rewrite(html, { enabled: false })).toBe(html);
     });
 
     test('rewrites built styles and fonts without moving boot modules', () => {
@@ -56,7 +54,7 @@ describe('frontend asset manifest rewriting', () => {
             '<script type="module" src="scripts/sillybunny-tabs.js?v=old"></script>',
         ].join('');
 
-        const rewritten = rewriteFrontendHtml(html, { enabled: true });
+        const rewritten = rewrite(html);
 
         expect(rewritten).toContain('href="/frontend-assets/style-abc123.css"');
         expect(rewritten).toContain('href="/frontend-assets/css/sillybunny-mobile-shell-def456.css"');

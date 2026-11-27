@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `webpack.config.js`, `public/scripts/dynamic-styles.js`, `public/scripts/extensions.js`, `default/config.yaml`, and `src/server-main.js` - extension-safe ESM importmap, flattened CSS, and Bun pre-minified `/lib.js` vendors
+| Field | Value |
+| --- | --- |
+| File | `webpack.config.js`, `public/scripts/dynamic-styles.js`, `public/scripts/extensions.js`, `default/config.yaml`, `src/server-main.js`. |
+| Area | Frontend asset pipeline, `/lib.js` bundling, deferred CSS adoption, and extension module loading. |
+| Divergence reason | Upstream chains 19 serial CSS `@import` requests from `style.css` and serves hundreds of unhashed ESM modules that force warm-reload `304` revalidations. SillyBunny flattens CSS `@import` chains, and serves content-hashed immutable ESM assets via a single `<script type="importmap">` that preserves live-binding singleton identity for unbundled third-party extensions. |
+| Target seam | `scripts/build-frontend-assets.js`, `src/frontend-assets.js`, and `src/middleware/frontend-assets.js`. |
+| Adapter shape | `webpack.config.js`: aliases large vendor packages to official pre-minified builds on Bun and hashes `webpack.config.js` in `getPublicLibInputsSignature()`. `public/scripts/dynamic-styles.js`: matches rewritten deferred stylesheet links by `data-sb-source-href` in `findStylesheetLink()`. `public/scripts/extensions.js`: resolves built-in extension module URLs through `import.meta.resolve()` in `prefetchExtensionAsset()` and `addExtensionScript()`. `default/config.yaml`: defaults `performance.frontendBuild.enabled` to `auto` so `dist/frontend/` activates automatically whenever a verified manifest exists and `SB_DEV` is unset. `src/server-main.js`: serves `GET /` through RAM-cached `readRewrittenFrontendHtml()` when prebuilt frontend assets are active, falls through to `sendFile()` when that file cannot be read, and answers the plain page when the query flag `sbRawFrontend=1` is set. |
+| Protecting tests | `tests/perf-esm-importmap-and-slim-lib.test.js`, `tests/frontend-assets.test.js`, `tests/frontend-asset-middleware.test.js`, `tests/script-module-identity.test.js`, `tests/startup-module-graph.test.js`, `tests/markdown-engine-wiring.test.js`, `tests/extension-boot-lifecycle.test.js`, `tests/extension-boot-lifecycle-wiring.test.js`. |
+| Validation | 2026-11-27 (review fixes): the Node.js `/lib.js` bundle is byte-identical to the base and the Bun bundle has the same exports; a throwaway server on Node.js and on Bun served the hashed page, the plain page for `?sbRawFrontend=1`, and answered 404 for a damaged hashed file; Chromium without `HTMLScriptElement.supports` reached the plain page and booted. `npm run lint`, `npm run lint` in `tests/`, `node scripts/check-frontend-budgets.js`, and Jest: `perf-esm-importmap-and-slim-lib.test.js`, `frontend-assets.test.js`, `frontend-asset-middleware.test.js`, `script-module-identity.test.js`, `startup-module-graph.test.js`, `markdown-engine-wiring.test.js`, `extension-boot-lifecycle.test.js`, `extension-boot-lifecycle-wiring.test.js`. |
+| Rollback path | Set `performance.frontendBuild.enabled: false` or `SB_DEV=1` for immediate raw `public/` serving; for full code rollback, revert the marked `SillyBunny:` hunks in the 5 listed files, revert `scripts/build-frontend-assets.js`, `src/frontend-assets.js`, `src/middleware/frontend-assets.js`, and `.github/workflows/release.yml`, and remove `tests/perf-esm-importmap-and-slim-lib.test.js`. Generated `dist/frontend/` artifacts are gitignored and no saved user data changes. |
+| Last reviewed | 2026-11-27, PR #1042 review fixes. |
+| Owner | Runtime and release integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

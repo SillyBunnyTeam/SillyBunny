@@ -298,9 +298,9 @@ performance:
     # Timeout for request compression in milliseconds.
     timeout: 4000
   frontendBuild:
-    # Serve hashed frontend assets from dist/frontend when a production asset manifest is present.
-    # Dev mode continues to serve plain files from public for upstream compatibility.
-    enabled: false
+    # SillyBunny: default 'auto' serves dist/frontend when a valid manifest matches current inputs and SB_DEV is unset.
+    # Set false to force raw public/ serving, or true to require production mode when a manifest exists.
+    enabled: auto
     # Static cache max age for hashed frontend assets in seconds.
     immutableMaxAge: 31536000
 

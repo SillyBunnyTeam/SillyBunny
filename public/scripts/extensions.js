@@ -198,15 +198,28 @@ function scheduleIdleTask(callback, timeout = 4000) {
     return window.setTimeout(callback, Math.min(timeout, 1000));
 }
 
+// SillyBunny: resolve built-in extension module URLs through the active import map so <script src> and prefetch match hashed singletons.
+function resolveModuleUrlThroughImportMap(url) {
+    if (typeof import.meta?.resolve !== 'function') {
+        return url;
+    }
+
+    try {
+        return import.meta.resolve(url);
+    } catch {
+        return url;
+    }
+}
+
 function prefetchExtensionAsset(name, assetPath, as) {
     if (!assetPath) {
         return;
     }
 
     try {
-        // SillyBunny: scripts load without a query, so the hint must name the same URL.
+        // SillyBunny: scripts load without a query, so the hint must name the same URL (resolved through the import map when active).
         const url = as === 'script' ? buildExtensionModuleUrl(name, assetPath) : getExtensionAssetUrl(name, assetPath);
-        prefetchAsset(url, { as });
+        prefetchAsset(as === 'script' ? resolveModuleUrlThroughImportMap(url) : url, { as });
     } catch (error) {
         console.debug('Could not prefetch extension asset', name, assetPath, error);
     }
@@ -1273,8 +1286,9 @@ function addExtensionScript(name, manifest) {
     }
 
     return new Promise((resolve, reject) => {
-        // SillyBunny: the bare URL keeps the entry module and the files that import it on one module instance.
+        // SillyBunny: the bare URL (resolved through the import map when active) keeps the entry module and the files that import it on one module instance.
         const url = buildExtensionModuleUrl(name, manifest.js);
+        const resolvedUrl = resolveModuleUrlThroughImportMap(url);
         const id = sanitizeSelector(`${name}-js`);
         let ready = false;
 
@@ -1282,7 +1296,7 @@ function addExtensionScript(name, manifest) {
             const script = document.createElement('script');
             script.id = id;
             script.type = 'module';
-            script.src = url;
+            script.src = resolvedUrl;
             script.async = true;
             script.onerror = function (err) {
                 reject(createExtensionScriptLoadError(name, url, err));
