@@ -31,6 +31,9 @@ jest.unstable_mockModule('node-fetch', () => ({
     default: fetchMock,
 }));
 
+// Multi-format card imports decode images and ZIP archives, which can exceed Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
+
 const PNG_SCENE = createImagePng({ width: 3, height: 3, rgba: [20, 140, 220, 255] });
 const PNG_ALT = createImagePng({ width: 4, height: 2, rgba: [220, 80, 40, 255] });
 const JPEG_PHOTO = await new Jimp({ width: 3, height: 2, color: 0x336699ff }).getBuffer(JimpMime.jpeg, { quality: 90, jpegColorSpace: 'ycbcr' });

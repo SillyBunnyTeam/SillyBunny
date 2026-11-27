@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { pathToFileURL } from 'node:url';
+
+import { canCreateFileSymlinks, createDirectoryLink, nativeTmpDir } from './util/platform-capabilities.js';
 
 import {
     acquireServerPluginUpdateMutex,
@@ -22,9 +23,10 @@ import { recoverInterruptedServerPluginUpdates } from '../src/server-plugin-upda
 const tempDirectories = [];
 // Staging's platform option only decides how npm is found and run; the release flush follows the host platform.
 const OTHER_PLATFORM = process.platform === 'win32' ? 'linux' : 'win32';
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 function createTempDirectory() {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-server-plugin-manager-'));
+    const directory = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-server-plugin-manager-'));
     tempDirectories.push(directory);
     return directory;
 }
@@ -386,7 +388,7 @@ describe('server plugin release manager', () => {
         const externalPlugin = path.join(root, 'external-plugin');
         fs.mkdirSync(pluginsRoot);
         fs.mkdirSync(externalPlugin);
-        fs.symlinkSync(externalPlugin, path.join(pluginsRoot, 'ExamplePlugin'), 'dir');
+        createDirectoryLink(externalPlugin, path.join(pluginsRoot, 'ExamplePlugin'));
 
         await expect(stageServerPluginRelease({
             pluginsRoot,
@@ -402,7 +404,7 @@ describe('server plugin release manager', () => {
         const { root, pluginsRoot } = createReleaseRepository();
         const external = path.join(root, 'external-updates');
         fs.mkdirSync(external);
-        fs.symlinkSync(external, path.join(pluginsRoot, '.server-plugin-updates'), 'dir');
+        createDirectoryLink(external, path.join(pluginsRoot, '.server-plugin-updates'));
 
         await expect(stageServerPluginRelease({
             pluginsRoot,
@@ -433,18 +435,20 @@ describe('server plugin release manager', () => {
         }
     });
 
-    test('rejects release symlinks before writing release metadata', async () => {
-        const repository = createReleaseRepository({ markerSymlinkTarget: '../outside.txt' });
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('rejects release symlinks before writing release metadata', async () => {
+            const repository = createReleaseRepository({ markerSymlinkTarget: '../outside.txt' });
 
-        await expect(stageServerPluginRelease({
-            pluginsRoot: repository.pluginsRoot,
-            directoryName: 'ExamplePlugin',
-            targetVersion: '2.0.0',
-        }, testDependencies())).rejects.toMatchObject({
-            status: 422,
-            code: 'unsafe_release',
+            await expect(stageServerPluginRelease({
+                pluginsRoot: repository.pluginsRoot,
+                directoryName: 'ExamplePlugin',
+                targetVersion: '2.0.0',
+            }, testDependencies())).rejects.toMatchObject({
+                status: 422,
+                code: 'unsafe_release',
+            });
+            expect(fs.existsSync(path.join(repository.root, 'outside.txt'))).toBe(false);
         });
-        expect(fs.existsSync(path.join(repository.root, 'outside.txt'))).toBe(false);
     });
 
     test('rejects absolute dependency symlinks that would break after activation', () => {
@@ -453,7 +457,7 @@ describe('server plugin release manager', () => {
         const link = path.join(releaseRoot, 'node_modules', 'linked');
         fs.mkdirSync(target, { recursive: true });
         fs.writeFileSync(path.join(target, 'index.js'), 'export default true;\n');
-        fs.symlinkSync(target, link, 'dir');
+        createDirectoryLink(target, link);
 
         expect(() => getServerPluginReleaseDigest(releaseRoot)).toThrow('unsafe symbolic link');
     });

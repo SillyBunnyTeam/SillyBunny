@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+
+import { createDirectoryLink, nativeTmpDir } from './util/platform-capabilities.js';
 
 import {
     applyServerPluginRelease,
@@ -15,7 +16,7 @@ import { getServerPluginReleaseDigest, SERVER_PLUGIN_RELEASE_MARKER } from '../s
 const tempDirectories = [];
 
 function createFixture({ preservePaths = ['.cursor-key'] } = {}) {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-server-plugin-helper-'));
+    const root = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-server-plugin-helper-'));
     tempDirectories.push(root);
     const pluginsRoot = path.join(root, 'plugins');
     const pluginPath = path.join(pluginsRoot, 'ExamplePlugin');
@@ -156,7 +157,7 @@ describe('server plugin update helper', () => {
         fs.mkdirSync(path.join(fixture.pluginPath, 'state'));
         fs.writeFileSync(path.join(fixture.pluginPath, 'state', 'key'), 'secret');
         fs.mkdirSync(outside);
-        fs.symlinkSync(outside, path.join(fixture.releaseRoot, 'state'), 'dir');
+        createDirectoryLink(outside, path.join(fixture.releaseRoot, 'state'));
 
         expect(() => applyServerPluginRelease(fixture.payload)).toThrow('unsafe symbolic link');
         expect(fs.existsSync(path.join(outside, 'key'))).toBe(false);
@@ -168,7 +169,7 @@ describe('server plugin update helper', () => {
         const outside = path.join(fixture.root, 'outside-state');
         fs.mkdirSync(outside);
         fs.writeFileSync(path.join(outside, 'key'), 'external-secret');
-        fs.symlinkSync(outside, path.join(fixture.pluginPath, 'state'), 'dir');
+        createDirectoryLink(outside, path.join(fixture.pluginPath, 'state'));
 
         expect(() => applyServerPluginRelease(fixture.payload)).toThrow('cannot contain symbolic links');
         expect(fs.readFileSync(path.join(fixture.pluginPath, 'stale.txt'), 'utf8')).toBe('remove me');
@@ -187,7 +188,7 @@ describe('server plugin update helper', () => {
         const fixture = createFixture();
         const outside = path.join(fixture.root, 'outside-backups');
         fs.mkdirSync(outside);
-        fs.symlinkSync(outside, path.join(fixture.pluginsRoot, '.server-plugin-backups'), 'dir');
+        createDirectoryLink(outside, path.join(fixture.pluginsRoot, '.server-plugin-backups'));
 
         expect(() => applyServerPluginRelease(fixture.payload)).toThrow('must be a regular directory');
         expect(fs.readFileSync(path.join(fixture.pluginPath, 'stale.txt'), 'utf8')).toBe('remove me');

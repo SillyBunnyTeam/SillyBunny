@@ -20,6 +20,9 @@ import {
     seedLatestChatSnapshot,
     writeLatestChatSnapshot,
 } from '../src/chat-recovery.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 let tempRoot;
 let chatsDirectory;
@@ -358,28 +361,30 @@ describe('snapshot and recovery operations', () => {
         expect(quarantineFiles).toHaveLength(CHAT_RECOVERY_QUARANTINE_LIMIT);
     });
 
-    test('restores from a valid snapshot when corrupt-byte quarantine storage is unsafe', () => {
-        const target = characterTarget();
-        const snapshot = chatData('snapshot');
-        const linkedData = Buffer.from('do-not-touch');
-        const linkedFile = path.join(tempRoot, 'linked-quarantine.jsonl');
-        const paths = getChatRecoveryPaths(target);
-        const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        writeLatestChatSnapshot(target, snapshot);
-        fs.writeFileSync(linkedFile, linkedData);
-        fs.symlinkSync(linkedFile, paths.quarantinePaths[0]);
-        writeActive(target, Buffer.from('corrupt-active'));
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('restores from a valid snapshot when corrupt-byte quarantine storage is unsafe', () => {
+            const target = characterTarget();
+            const snapshot = chatData('snapshot');
+            const linkedData = Buffer.from('do-not-touch');
+            const linkedFile = path.join(tempRoot, 'linked-quarantine.jsonl');
+            const paths = getChatRecoveryPaths(target);
+            const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            writeLatestChatSnapshot(target, snapshot);
+            fs.writeFileSync(linkedFile, linkedData);
+            fs.symlinkSync(linkedFile, paths.quarantinePaths[0]);
+            writeActive(target, Buffer.from('corrupt-active'));
 
-        const result = loadActiveChatWithRecovery(target);
+            const result = loadActiveChatWithRecovery(target);
 
-        expect(result).toMatchObject({ status: 'ok', source: 'snapshot', recovered: true, quarantinePath: null });
-        expect(fs.readFileSync(target.activePath)).toEqual(snapshot);
-        expect(fs.lstatSync(paths.quarantinePaths[0]).isSymbolicLink()).toBe(true);
-        expect(fs.readFileSync(linkedFile)).toEqual(linkedData);
-        expect(consoleWarn).toHaveBeenCalledWith(
-            'Failed to quarantine corrupt chat bytes; continuing with safe snapshot recovery.',
-            expect.any(Error),
-        );
+            expect(result).toMatchObject({ status: 'ok', source: 'snapshot', recovered: true, quarantinePath: null });
+            expect(fs.readFileSync(target.activePath)).toEqual(snapshot);
+            expect(fs.lstatSync(paths.quarantinePaths[0]).isSymbolicLink()).toBe(true);
+            expect(fs.readFileSync(linkedFile)).toEqual(linkedData);
+            expect(consoleWarn).toHaveBeenCalledWith(
+                'Failed to quarantine corrupt chat bytes; continuing with safe snapshot recovery.',
+                expect.any(Error),
+            );
+        });
     });
 
     test('leaves missing and corrupt active files alone without a valid snapshot', () => {
@@ -426,29 +431,34 @@ describe('snapshot and recovery operations', () => {
         expect(isChatRecoverable(target)).toBe(false);
     });
 
-    test('rejects symlinks and non-regular active paths without replacing them', () => {
+    test('rejects non-regular active paths without replacing them', () => {
         const target = characterTarget();
-        const snapshot = chatData('snapshot');
-        const linkedData = chatData('linked');
-        const linkedFile = path.join(tempRoot, 'linked.jsonl');
-        writeLatestChatSnapshot(target, snapshot);
-        fs.writeFileSync(linkedFile, linkedData);
-        fs.mkdirSync(target.activeDirectory, { recursive: true });
-        fs.symlinkSync(linkedFile, target.activePath);
+        fs.mkdirSync(target.activePath, { recursive: true });
 
-        expect(readChatJsonlStrict(target.activePath)).toMatchObject({ status: 'corrupt', reason: 'symlink' });
-        expect(loadActiveChatWithRecovery(target)).toMatchObject({
-            status: 'corrupt',
-            reason: 'symlink',
-            recovered: false,
-            recoveryReason: 'unsafe-active',
-        });
-        expect(fs.lstatSync(target.activePath).isSymbolicLink()).toBe(true);
-        expect(fs.readFileSync(linkedFile)).toEqual(linkedData);
-
-        fs.unlinkSync(target.activePath);
-        fs.mkdirSync(target.activePath);
         expect(readChatJsonlStrict(target.activePath)).toMatchObject({ status: 'corrupt', reason: 'non-regular' });
+    });
+
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('rejects symlinked active paths without replacing them', () => {
+            const target = characterTarget();
+            const snapshot = chatData('snapshot');
+            const linkedData = chatData('linked');
+            const linkedFile = path.join(tempRoot, 'linked.jsonl');
+            writeLatestChatSnapshot(target, snapshot);
+            fs.writeFileSync(linkedFile, linkedData);
+            fs.mkdirSync(target.activeDirectory, { recursive: true });
+            fs.symlinkSync(linkedFile, target.activePath);
+
+            expect(readChatJsonlStrict(target.activePath)).toMatchObject({ status: 'corrupt', reason: 'symlink' });
+            expect(loadActiveChatWithRecovery(target)).toMatchObject({
+                status: 'corrupt',
+                reason: 'symlink',
+                recovered: false,
+                recoveryReason: 'unsafe-active',
+            });
+            expect(fs.lstatSync(target.activePath).isSymbolicLink()).toBe(true);
+            expect(fs.readFileSync(linkedFile)).toEqual(linkedData);
+        });
     });
 });
 
