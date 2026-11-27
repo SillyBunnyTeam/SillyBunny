@@ -1022,6 +1022,16 @@ This is the largest class by a wide margin.
   - The manifest's `sha256` is written next to the bundle it describes. It detects corruption and proves no origin.
 - **Tests:** `tests/perf-prebuilt-lib-and-zip.test.js` (`rejects an offered prebuilt bundle and says why`).
 
+### Android `node_modules` pruner
+
+- **Breaks:** `scripts/prune-android-node-modules.js` empties `docs`, `test` and similar folders, or removes a package, outside the install that it was meant for.
+- **Files:** `scripts/prune-android-node-modules.js`.
+- **Guards:**
+  - `assertPrunableTarget()` refuses a target that does not exist, is a symlink or a file, is not named `node_modules`, or has no `package.json` beside it whose `name` equals this project's. It runs for a dry run too, and the command line exits 1. Before it, `--node-modules <dir>` took any path and a missing one exited 0.
+  - The explicit paths of the duplicate WASM step (`onnxruntime-web/dist`, `sillytavern-transformers/dist`) are checked component by component with `lstat`. A symlinked `onnxruntime-web` used to let the real run delete `ort-wasm*.wasm` files outside the target (`removeFile()` only checked the last component); the walks skip symlinks through `readdir` entries.
+  - `--include-unused` keeps a verified-unused package that a `server.js`, `src/`, `webpack.config.js` or `public/lib.js` import names (`isLoadedByServer()`, a static scan of `import`, `import()` and `require()`). `archiver` is the ZIP64 backup fallback in `src/users.js`, so it stays; `html2canvas` is vendored in `public/lib/` and goes. A package that is loaded through a computed name is not found by the scan.
+- **Tests:** `tests/perf-prebuilt-lib-and-zip.test.js` (`zero-feature-loss Android node_modules pruner`).
+
 ### Macro whitespace
 
 - **Breaks:** a trim in the macro engine removes whitespace that a template asks for with `{{newline}}`, `{{space}}` or `{{noop}}` (SillyTavern/SillyTavern#5673 and SillyTavern/SillyTavern#5674).

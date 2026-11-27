@@ -26,6 +26,129 @@ export const VERIFIED_UNUSED_PACKAGES = Object.freeze([
 ]);
 
 const STRIP_FILE_RE = /\.(?:map|d\.(?:ts|mts|cts))$/i;
+const OWN_PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// What the server (or the Webpack build that it starts) can load from node_modules at run time.
+const SERVER_SOURCE_PATHS = Object.freeze(['server.js', 'src', 'webpack.config.js', 'public/lib.js']);
+const SOURCE_FILE_RE = /\.[cm]?js$/i;
+
+/**
+ * Checks that a path is a real directory, not a symlink to one.
+ * @param {string} dirPath Path to check.
+ * @returns {boolean} True for a directory that is not a symlink.
+ */
+function isRealDirectory(dirPath) {
+    try {
+        const stat = fs.lstatSync(dirPath);
+        return stat.isDirectory() && !stat.isSymbolicLink();
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Reads the `name` of a package.json.
+ * @param {string} packageJsonPath Path of the package.json.
+ * @returns {string|null} Null when the file is missing, invalid or has no name.
+ */
+function readPackageName(packageJsonPath) {
+    try {
+        const { name } = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+        return typeof name === 'string' && name ? name : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Refuses a target that is not the `node_modules` folder of this project, so that a wrong `--node-modules` argument
+ * cannot empty `docs`, `test` and similar folders anywhere else.
+ * @param {string} resolvedDir Absolute target path.
+ * @returns {void}
+ * @throws {Error} When the target is missing, a symlink, not named `node_modules`, or not beside this project's package.json.
+ */
+function assertPrunableTarget(resolvedDir) {
+    let stat;
+    try {
+        stat = fs.lstatSync(resolvedDir);
+    } catch {
+        throw new Error(`Refusing to prune "${resolvedDir}": it does not exist.`);
+    }
+    if (stat.isSymbolicLink()) {
+        throw new Error(`Refusing to prune "${resolvedDir}": it is a symlink.`);
+    }
+    if (!stat.isDirectory()) {
+        throw new Error(`Refusing to prune "${resolvedDir}": it is not a directory.`);
+    }
+    if (path.basename(resolvedDir) !== 'node_modules') {
+        throw new Error(`Refusing to prune "${resolvedDir}": the directory is not named node_modules.`);
+    }
+
+    const ownName = readPackageName(path.join(OWN_PROJECT_DIR, 'package.json'));
+    if (!ownName) {
+        throw new Error('Refusing to prune: this project\'s package.json cannot be read.');
+    }
+    const siblingPackageJson = path.join(path.dirname(resolvedDir), 'package.json');
+    const siblingName = readPackageName(siblingPackageJson);
+    if (!siblingName) {
+        throw new Error(`Refusing to prune "${resolvedDir}": ${siblingPackageJson} is missing or has no name.`);
+    }
+    if (siblingName !== ownName) {
+        throw new Error(`Refusing to prune "${resolvedDir}": ${siblingPackageJson} names "${siblingName}", not "${ownName}".`);
+    }
+}
+
+/**
+ * Collects the JavaScript files under a path without following symlinks or entering `node_modules`.
+ * @param {string} entryPath File or directory.
+ * @param {string[]} found Output list.
+ * @returns {string[]} The same list.
+ */
+function collectSourceFiles(entryPath, found = []) {
+    let stat;
+    try {
+        stat = fs.lstatSync(entryPath);
+    } catch {
+        return found;
+    }
+    if (stat.isSymbolicLink()) {
+        return found;
+    }
+    if (stat.isFile()) {
+        if (SOURCE_FILE_RE.test(entryPath)) {
+            found.push(entryPath);
+        }
+        return found;
+    }
+    if (stat.isDirectory()) {
+        for (const dirent of fs.readdirSync(entryPath, { withFileTypes: true })) {
+            if (dirent.name !== 'node_modules') {
+                collectSourceFiles(path.join(entryPath, dirent.name), found);
+            }
+        }
+    }
+    return found;
+}
+
+/**
+ * Checks whether the server's own sources import or require a package, which means that removing it breaks a code path at run time.
+ * @param {string} projectDir Project root that holds the server sources.
+ * @param {string} packageName Package name, such as `archiver`.
+ * @returns {boolean} True when a static `import`, dynamic `import()` or `require()` names the package or one of its subpaths.
+ */
+function isLoadedByServer(projectDir, packageName) {
+    const escapedName = packageName.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    const specifier = new RegExp(`(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*(['"\`])${escapedName}(?:/[^'"\`]*)?\\1`);
+
+    return SERVER_SOURCE_PATHS
+        .flatMap(sourcePath => collectSourceFiles(path.join(projectDir, ...sourcePath.split('/'))))
+        .some((filePath) => {
+            try {
+                return specifier.test(fs.readFileSync(filePath, 'utf8'));
+            } catch {
+                return false;
+            }
+        });
+}
 
 /**
  * Checks whether a filename is legally or structurally protected and must never be removed during pruning.
@@ -56,6 +179,9 @@ export function isStrippableArtifactFile(filename) {
  */
 export function hasActiveTransformersWasms(nodeModulesDir) {
     const activeDistDir = path.join(nodeModulesDir, 'sillytavern-transformers', 'dist');
+    if (!isRealDirectory(path.join(nodeModulesDir, 'sillytavern-transformers')) || !isRealDirectory(activeDistDir)) {
+        return false;
+    }
 
     for (const wasmFile of DUPLICATE_ORT_WASM_FILES) {
         const activePath = path.join(activeDistDir, wasmFile);
@@ -358,8 +484,9 @@ function pruneNodeModulesContainer(containerDir, dryRun, stats, skipTopLevelPack
  * @param {object} [options] Pruning options.
  * @param {string} [options.nodeModulesDir] Path to `node_modules` (defaults to `<repo>/node_modules`).
  * @param {boolean} [options.dryRun=false] When true, reports savings without deleting any files.
- * @param {boolean} [options.includeUnused=false] When true, also removes `html2canvas` (vendored in `public/lib/`) and optional ZIP64 backup fallback `archiver` (only used when a backup exceeds 4 GiB or 65,535 files).
- * @returns {{ removedFiles: number, removedDirectories: number, savedBytes: number, removedDuplicateWasms: string[], removedUnusedPackages: string[], dryRun: boolean }} Pruning summary.
+ * @param {boolean} [options.includeUnused=false] When true, also removes the verified-unused packages (`html2canvas`, vendored in `public/lib/`; `archiver`, the ZIP64 backup fallback) unless the server's sources import them.
+ * @returns {{ removedFiles: number, removedDirectories: number, savedBytes: number, removedDuplicateWasms: string[], removedUnusedPackages: string[], keptUnusedPackages: string[], dryRun: boolean }} Pruning summary.
+ * @throws {Error} When the target is not this project's `node_modules` (see `assertPrunableTarget()`).
  */
 export function pruneAndroidNodeModules({
     nodeModulesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'node_modules'),
@@ -367,6 +494,8 @@ export function pruneAndroidNodeModules({
     includeUnused = false,
 } = {}) {
     const resolvedDir = path.resolve(nodeModulesDir);
+    assertPrunableTarget(resolvedDir);
+
     const stats = {
         removedFiles: 0,
         removedDirectories: 0,
@@ -374,20 +503,20 @@ export function pruneAndroidNodeModules({
     };
     const removedDuplicateWasms = [];
     const removedUnusedPackages = [];
+    const keptUnusedPackages = [];
     const skippedTopLevelPackages = new Set();
-
-    if (!fs.existsSync(resolvedDir)) {
-        return {
-            ...stats,
-            removedDuplicateWasms,
-            removedUnusedPackages,
-            dryRun: Boolean(dryRun),
-        };
-    }
 
     // 1. Optional verified-unused package removal (explicit opt-in flag).
     if (includeUnused) {
+        const projectDir = path.dirname(resolvedDir);
         for (const pkgName of VERIFIED_UNUSED_PACKAGES) {
+            // A package that the server imports must stay, even when package.json does not list it (archiver is the ZIP64 backup fallback).
+            if (isLoadedByServer(projectDir, pkgName)) {
+                keptUnusedPackages.push(pkgName);
+                skippedTopLevelPackages.add(pkgName);
+                continue;
+            }
+
             const pkgPath = path.join(resolvedDir, pkgName);
             if (removePackageDirectory(pkgPath, dryRun, stats)) {
                 removedUnusedPackages.push(pkgName);
@@ -397,8 +526,10 @@ export function pruneAndroidNodeModules({
     }
 
     // 2. Duplicate onnxruntime-web WASM removal (ONLY when sillytavern-transformers/dist holds all 4 active WASMs).
-    if (hasActiveTransformersWasms(resolvedDir)) {
-        const duplicateDistDir = path.join(resolvedDir, 'onnxruntime-web', 'dist');
+    const duplicateDistDir = path.join(resolvedDir, 'onnxruntime-web', 'dist');
+    if (hasActiveTransformersWasms(resolvedDir)
+        && isRealDirectory(path.join(resolvedDir, 'onnxruntime-web'))
+        && isRealDirectory(duplicateDistDir)) {
         for (const wasmFile of DUPLICATE_ORT_WASM_FILES) {
             const duplicatePath = path.join(duplicateDistDir, wasmFile);
             if (removeFile(duplicatePath, dryRun, stats)) {
@@ -416,6 +547,7 @@ export function pruneAndroidNodeModules({
         savedBytes: stats.savedBytes,
         removedDuplicateWasms,
         removedUnusedPackages,
+        keptUnusedPackages,
         dryRun: Boolean(dryRun),
     };
 }
@@ -448,7 +580,7 @@ function parseArgs(argv) {
             }
         } else if (arg === '--help' || arg === '-h') {
             console.log('Usage: node scripts/prune-android-node-modules.js [--node-modules <dir>] [--dry-run] [--include-unused] [--json]');
-            console.log('  --include-unused  Also remove html2canvas (vendored) and optional archiver ZIP64 fallback (>4 GiB or >65,535 files).');
+            console.log('  --include-unused  Also remove html2canvas (vendored), and archiver (ZIP64 backup fallback) when no server code imports it.');
             process.exit(0);
         } else {
             throw new Error(`Unknown argument: ${arg}`);
@@ -482,6 +614,9 @@ if (isDirectExecution()) {
             }
             if (result.removedUnusedPackages.length > 0) {
                 console.log(`Unused packages: ${result.removedUnusedPackages.join(', ')}`);
+            }
+            if (result.keptUnusedPackages.length > 0) {
+                console.log(`Kept (loaded by the server): ${result.keptUnusedPackages.join(', ')}`);
             }
         }
     } catch (error) {

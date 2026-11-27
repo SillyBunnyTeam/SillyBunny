@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { PassThrough, Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
@@ -1301,8 +1302,18 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
 });
 
 describe('zero-feature-loss Android node_modules pruner', () => {
-    function buildFixtureNodeModules({ missingActiveWasm = null } = {}) {
-        const nm = makeTempDir('sb-android-prune-');
+    const projectName = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).name;
+
+    // A target must be `<project>/node_modules` with this project's package.json next to it.
+    function buildFixtureNodeModules({ missingActiveWasm = null, serverLoadsArchiver = true } = {}) {
+        const projectRoot = makeTempDir('sb-android-prune-');
+        const nm = path.join(projectRoot, 'node_modules');
+        writeFiles(projectRoot, {
+            'package.json': JSON.stringify({ name: projectName, dependencies: { archiver: '^7.0.1', html2canvas: '^1.4.1', 'sample-pkg': '^1.0.0' } }),
+            'src/users.js': serverLoadsArchiver
+                ? 'const loadArchiver = () => import(\'archiver\');\nexport { loadArchiver };\n'
+                : 'export const noArchiverHere = true;\n',
+        });
         const files = {
             // Regular package with maps, d.ts, docs, tests, protected files
             'sample-pkg/package.json': '{"name":"sample-pkg","main":"index.js"}',
@@ -1422,12 +1433,158 @@ describe('zero-feature-loss Android node_modules pruner', () => {
         }
     });
 
-    test('removes html2canvas and archiver only when includeUnused is true', () => {
+    test('removes html2canvas only when includeUnused is true, and keeps archiver while the server can load it', () => {
         const nm = buildFixtureNodeModules();
+
+        const withoutFlag = pruneAndroidNodeModules({ nodeModulesDir: nm, dryRun: true, includeUnused: false });
+        expect(withoutFlag.removedUnusedPackages).toEqual([]);
+
+        const dry = pruneAndroidNodeModules({ nodeModulesDir: nm, dryRun: true, includeUnused: true });
+        expect(dry.removedUnusedPackages).toEqual(['html2canvas']);
+        expect(dry.keptUnusedPackages).toEqual(['archiver']);
+        expect(fs.existsSync(path.join(nm, 'html2canvas'))).toBe(true);
+
+        const result = pruneAndroidNodeModules({ nodeModulesDir: nm, dryRun: false, includeUnused: true });
+        expect(result.removedUnusedPackages).toEqual(['html2canvas']);
+        expect(result.keptUnusedPackages).toEqual(['archiver']);
+        expect(result.removedFiles).toBe(dry.removedFiles);
+        expect(result.savedBytes).toBe(dry.savedBytes);
+        expect(fs.existsSync(path.join(nm, 'html2canvas'))).toBe(false);
+        expect(fs.existsSync(path.join(nm, 'archiver', 'index.js'))).toBe(true);
+    });
+
+    test('removes archiver too once no server code loads it', () => {
+        const nm = buildFixtureNodeModules({ serverLoadsArchiver: false });
 
         const result = pruneAndroidNodeModules({ nodeModulesDir: nm, dryRun: false, includeUnused: true });
         expect(result.removedUnusedPackages).toEqual(['html2canvas', 'archiver']);
-        expect(fs.existsSync(path.join(nm, 'html2canvas'))).toBe(false);
+        expect(result.keptUnusedPackages).toEqual([]);
         expect(fs.existsSync(path.join(nm, 'archiver'))).toBe(false);
+    });
+
+    test('keeps a package that the server imports even when package.json does not list it', () => {
+        const nm = buildFixtureNodeModules();
+        fs.writeFileSync(path.join(path.dirname(nm), 'package.json'), JSON.stringify({ name: projectName, dependencies: {} }));
+
+        const result = pruneAndroidNodeModules({ nodeModulesDir: nm, dryRun: false, includeUnused: true });
+        expect(result.keptUnusedPackages).toEqual(['archiver']);
+        expect(fs.existsSync(path.join(nm, 'archiver', 'index.js'))).toBe(true);
+    });
+
+    describe('refuses a target that is not this project\'s node_modules', () => {
+        function buildDecoy(rootName, folderName, packageJson) {
+            const decoyRoot = makeTempDir(`sb-prune-decoy-${rootName}-`);
+            const target = path.join(decoyRoot, folderName);
+            writeFiles(decoyRoot, {
+                ...(packageJson === null ? {} : { 'package.json': packageJson }),
+                [`${folderName}/app/docs/README.md`]: 'must stay',
+                [`${folderName}/app/test/important-fixture.json`]: '{}',
+                [`${folderName}/app/app.d.ts`]: 'declare const x: number;',
+                [`${folderName}/app/app.js.map`]: '{}',
+                [`${folderName}/archiver/package.json`]: '{"name":"archiver"}',
+                [`${folderName}/html2canvas/package.json`]: '{"name":"html2canvas"}',
+            });
+            return { target, decoyRoot };
+        }
+
+        function listTree(root) {
+            const found = [];
+            const walk = (dir) => {
+                for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+                    const full = path.join(dir, dirent.name);
+                    found.push(path.relative(root, full));
+                    if (dirent.isDirectory()) {
+                        walk(full);
+                    }
+                }
+            };
+            walk(root);
+            return found.sort();
+        }
+
+        test.each([
+            ['a folder that is not called node_modules', 'projects', JSON.stringify({ name: projectName }), /node_modules/],
+            ['a node_modules with no package.json beside it', 'node_modules', null, /package\.json/],
+            ['a node_modules whose package.json names another project', 'node_modules', JSON.stringify({ name: 'someone-elses-app' }), /someone-elses-app|name/],
+            ['a node_modules whose package.json is not valid JSON', 'node_modules', '{not json', /package\.json/],
+        ])('%s, in dry-run and real mode alike', (_label, folderName, packageJson, messagePattern) => {
+            const { target, decoyRoot } = buildDecoy('refuse', folderName, packageJson);
+            const before = listTree(decoyRoot);
+
+            for (const dryRun of [true, false]) {
+                expect(() => pruneAndroidNodeModules({ nodeModulesDir: target, dryRun, includeUnused: true })).toThrow(messagePattern);
+            }
+            expect(listTree(decoyRoot)).toEqual(before);
+        });
+
+        test('a path that does not exist, a file and a symlinked node_modules', () => {
+            const root = makeTempDir('sb-prune-missing-');
+            writeFiles(root, { 'package.json': JSON.stringify({ name: projectName }), 'node_modules': 'a file' });
+            expect(() => pruneAndroidNodeModules({ nodeModulesDir: path.join(root, 'absent', 'node_modules'), dryRun: true })).toThrow();
+            expect(() => pruneAndroidNodeModules({ nodeModulesDir: path.join(root, 'node_modules'), dryRun: true })).toThrow();
+
+            const realNodeModules = buildFixtureNodeModules();
+            const linkRoot = makeTempDir('sb-prune-link-');
+            writeFiles(linkRoot, { 'package.json': JSON.stringify({ name: projectName }) });
+            fs.symlinkSync(realNodeModules, path.join(linkRoot, 'node_modules'), 'dir');
+            expect(() => pruneAndroidNodeModules({ nodeModulesDir: path.join(linkRoot, 'node_modules'), dryRun: false })).toThrow(/symlink/);
+            expect(fs.existsSync(path.join(realNodeModules, 'sample-pkg', 'index.js.map'))).toBe(true);
+        });
+
+        test('the command line exits non-zero for a wrong target and says why', () => {
+            const { target } = buildDecoy('cli', 'projects', JSON.stringify({ name: projectName }));
+            const run = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'prune-android-node-modules.js'), '--node-modules', target, '--dry-run'], { encoding: 'utf8' });
+
+            expect(run.status).toBe(1);
+            expect(run.stderr).toMatch(/node_modules/);
+            expect(run.stdout).not.toMatch(/Would remove/);
+
+            const missing = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'prune-android-node-modules.js'), '--node-modules', path.join(target, 'gone', 'node_modules')], { encoding: 'utf8' });
+            expect(missing.status).toBe(1);
+        });
+    });
+
+    test('never follows a symlink out of the target, in dry-run or real mode', () => {
+        const nm = buildFixtureNodeModules();
+        const outside = makeTempDir('sb-prune-outside-');
+        const outsideFiles = {
+            'ort-pkg/dist/ort-wasm.wasm': Buffer.alloc(512, 0x02),
+            'ort-pkg/dist/ort-wasm-simd.wasm': Buffer.alloc(512, 0x02),
+            'ort-pkg/dist/ort-wasm-threaded.wasm': Buffer.alloc(512, 0x02),
+            'ort-pkg/dist/ort-wasm-simd-threaded.wasm': Buffer.alloc(512, 0x02),
+            'ort-pkg/dist/keep.js.map': '{}',
+            'ort-pkg/docs/guide.md': 'outside docs',
+            'dir-link-target/docs/readme.md': 'outside docs 2',
+            'dir-link-target/index.d.ts': 'declare const y: number;',
+            'html-pkg/package.json': '{"name":"html2canvas"}',
+            'html-pkg/dist/html2canvas.js': 'outside html2canvas',
+            'file-target.map': '{}',
+        };
+        writeFiles(outside, outsideFiles);
+
+        // The package that the explicit WASM step reaches by name is a symlink, and so are entries inside other packages.
+        fs.rmSync(path.join(nm, 'onnxruntime-web'), { recursive: true, force: true });
+        fs.symlinkSync(path.join(outside, 'ort-pkg'), path.join(nm, 'onnxruntime-web'), 'dir');
+        fs.rmSync(path.join(nm, 'html2canvas'), { recursive: true, force: true });
+        fs.symlinkSync(path.join(outside, 'html-pkg'), path.join(nm, 'html2canvas'), 'dir');
+        fs.symlinkSync(path.join(outside, 'dir-link-target'), path.join(nm, 'sample-pkg', 'linked-dir'), 'dir');
+        fs.symlinkSync(path.join(outside, 'dir-link-target'), path.join(nm, 'sample-pkg', 'docs-link'), 'dir');
+        fs.symlinkSync(path.join(outside, 'file-target.map'), path.join(nm, 'sample-pkg', 'linked.js.map'));
+
+        const snapshot = () => Object.keys(outsideFiles).map(name => [name, fs.readFileSync(path.join(outside, name)).toString('hex')]);
+        const before = snapshot();
+
+        const dry = pruneAndroidNodeModules({ nodeModulesDir: nm, dryRun: true, includeUnused: true });
+        expect(snapshot()).toEqual(before);
+        const real = pruneAndroidNodeModules({ nodeModulesDir: nm, dryRun: false, includeUnused: true });
+        expect(snapshot()).toEqual(before);
+
+        expect(real.removedFiles).toBe(dry.removedFiles);
+        expect(real.savedBytes).toBe(dry.savedBytes);
+        expect(real.removedDuplicateWasms).toEqual([]);
+        expect(real.removedUnusedPackages).toEqual([]);
+        expect(fs.lstatSync(path.join(nm, 'html2canvas')).isSymbolicLink()).toBe(true);
+        expect(fs.lstatSync(path.join(nm, 'sample-pkg', 'linked-dir')).isSymbolicLink()).toBe(true);
+        expect(fs.lstatSync(path.join(nm, 'sample-pkg', 'linked.js.map')).isSymbolicLink()).toBe(true);
     });
 });
