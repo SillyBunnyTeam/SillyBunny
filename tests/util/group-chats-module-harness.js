@@ -382,7 +382,7 @@ export async function importGroupChatsModule(options = {}) {
         compressRequest: jest.fn(async request => request),
     }));
     await jest.unstable_mockModule(pub('scripts/csrf-token-refresh.js'), () => ({
-        fetchWithCsrfRetry: jest.fn(async (url, initOrFn) => globalThis.fetch(url, typeof initOrFn === 'function' ? await initOrFn() : initOrFn)),
+        fetchWithCsrfRetry: options.fetchWithCsrfRetry ?? jest.fn(async (url, initOrFn) => globalThis.fetch(url, typeof initOrFn === 'function' ? await initOrFn() : initOrFn)),
     }));
     await jest.unstable_mockModule(pub('scripts/openai.js'), () => ({
         chat_completion_sources: {

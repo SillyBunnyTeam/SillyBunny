@@ -1,3 +1,4 @@
+/* global globalThis */
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import os from 'node:os';
@@ -1310,21 +1311,98 @@ describe('chat integrity rotation', () => {
 
     test('exposes default-off backup diagnostic logging for chat and settings backups', async () => {
         const configSource = await fs.readFile(fileURLToPath(new URL('../default/config.yaml', import.meta.url)), 'utf8');
-        const chatsSource = await fs.readFile(fileURLToPath(new URL('../src/endpoints/chats.js', import.meta.url)), 'utf8');
-        const settingsSource = await fs.readFile(fileURLToPath(new URL('../src/endpoints/settings.js', import.meta.url)), 'utf8');
-
         expect(configSource).toContain('logging: false');
-        expect(chatsSource).toContain('const isBackupLoggingEnabled = !!getConfigValue(\'backups.chat.logging\', false, \'boolean\');');
-        expect(chatsSource).toContain('console.info(color.cyan(`[Backup] ${action}${fields ? ` ${fields}` : \'\'}`));');
-        expect(chatsSource).toContain('chat-backup-written');
-        expect(chatsSource).toContain('chat-backup-skipped');
-        expect(chatsSource).toContain('chat-save-written');
-        expect(chatsSource).toContain('reason: \'deferred\'');
-        expect(chatsSource).toContain('reason: \'duplicate\'');
-        expect(settingsSource).toContain('settings-autosave-requested');
-        expect(settingsSource).toContain('settings-autosave-fired');
-        expect(settingsSource).toContain('settings-backup-written');
-        expect(settingsSource).toContain('settings-backup-skipped');
+
+        // Run with backups.chat.logging enabled in a temporary config file so both chat and settings
+        // backup modules emit structured [Backup] diagnostic events, and stay silent when disabled.
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sillybunny-backup-logging-'));
+        const loggingConfigPath = path.join(tempDir, 'config-logging.yaml');
+        const userRoot = path.join(tempDir, 'log-user');
+        const backupDir = path.join(userRoot, 'backups');
+        const chatFile = path.join(tempDir, 'chat.jsonl');
+        await fs.mkdir(backupDir, { recursive: true });
+        await fs.writeFile(path.join(userRoot, 'settings.json'), JSON.stringify({ theme: 'dark' }));
+        await fs.writeFile(chatFile, chatWithIntegrity('orig-int', 'initial message').map(JSON.stringify).join('\n'));
+        await fs.writeFile(loggingConfigPath, configSource.replace('logging: false', 'logging: true'));
+
+        const prevDataRoot = globalThis.DATA_ROOT;
+        globalThis.DATA_ROOT = tempDir;
+        const infoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+        try {
+            // Default config (logging: false) emits no [Backup] logs.
+            const { trySaveChat: defaultTrySaveChat } = await import('../src/endpoints/chats.js');
+            await defaultTrySaveChat(
+                chatWithIntegrity('orig-int', 'quiet save'),
+                chatFile,
+                false,
+                'quiet-user',
+                'Test Card',
+                backupDir,
+            );
+            expect(infoSpy.mock.calls.flat().join('\n')).not.toContain('[Backup]');
+
+            // Reload with backups.chat.logging: true and verify chat + settings backup events log.
+            jest.resetModules();
+            const { setConfigFilePath: setLoggingConfigFilePath } = await import('../src/util.js');
+            setLoggingConfigFilePath(loggingConfigPath);
+            const { trySaveChat: loggingTrySaveChat } = await import('../src/endpoints/chats.js');
+            const { triggerAutoSave } = await import('../src/endpoints/settings.js');
+            const currentLines = (await fs.readFile(chatFile, 'utf8')).trim().split('\n').map(JSON.parse);
+            const currentIntegrity = currentLines[0].chat_metadata.integrity;
+
+            await loggingTrySaveChat(
+                chatWithIntegrity(currentIntegrity, 'deferred logged save'),
+                chatFile,
+                false,
+                'log-user',
+                'Test Card',
+                backupDir,
+                { deferBackup: true, deferSequenceId: 'seq-log-1' },
+            );
+            const afterDeferred = (await fs.readFile(chatFile, 'utf8')).trim().split('\n').map(JSON.parse);
+            await loggingTrySaveChat(
+                chatWithIntegrity(afterDeferred[0].chat_metadata.integrity, 'completed logged save'),
+                chatFile,
+                false,
+                'log-user',
+                'Test Card',
+                backupDir,
+                { deferBackup: false, completeDeferredBackup: true, deferSequenceId: 'seq-log-1' },
+            );
+
+            // Duplicate save triggers chat-backup-skipped (reason: duplicate).
+            const afterCompleted = (await fs.readFile(chatFile, 'utf8')).trim().split('\n').map(JSON.parse);
+            await loggingTrySaveChat(
+                chatWithIntegrity(afterCompleted[0].chat_metadata.integrity, 'completed logged save'),
+                chatFile,
+                false,
+                'log-user',
+                'Test Card',
+                backupDir,
+            );
+
+            triggerAutoSave('log-user');
+            jest.runOnlyPendingTimers();
+            triggerAutoSave('log-user');
+            jest.advanceTimersByTime(10 * 60 * 1000 + 10);
+
+            const logged = infoSpy.mock.calls.flat().join('\n');
+            expect(logged).toContain('[Backup] chat-save-written');
+            expect(logged).toContain('[Backup] chat-backup-skipped');
+            expect(logged).toContain('reason="deferred"');
+            expect(logged).toContain('[Backup] chat-backup-written');
+            expect(logged).toContain('[Backup] settings-autosave-requested');
+            expect(logged).toContain('[Backup] settings-autosave-fired');
+            expect(logged).toContain('[Backup] settings-backup-written');
+            expect(logged).toContain('[Backup] settings-backup-skipped');
+        } finally {
+            infoSpy.mockRestore();
+            globalThis.DATA_ROOT = prevDataRoot;
+            jest.resetModules();
+            const { setConfigFilePath: restoreConfigFilePath } = await import('../src/util.js');
+            restoreConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
+            await fs.rm(tempDir, { recursive: true, force: true });
+        }
     });
 
     test('keeps distinct pre-write backups for rapid overwrites in the same second', async () => {
@@ -1455,147 +1533,5 @@ describe('chat integrity rotation', () => {
             backupDir,
         )).rejects.toThrow(/invalid chat save payload/i);
         await expect(fs.readFile(chatFile, 'utf8')).resolves.toBe(originalContent);
-    });
-
-    test('adopts returned integrity only for the active chat file', async () => {
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-
-        expect(scriptSource).toContain('const currentActiveChatName = characters[this_chid]?.chat;');
-        expect(scriptSource).toContain('const isActiveChatSave = fileName === currentActiveChatName;');
-        expect(scriptSource).toContain('if (isActiveChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
-    });
-
-    test('queues chat saves and keeps forced overwrites inside the active queue task', async () => {
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-
-        expect(scriptSource).toContain('let chatSaveQueue = Promise.resolve();');
-        expect(scriptSource).toContain('export function saveChat(...saveChatArguments)');
-        expect(scriptSource).toContain('const metadataSnapshot = structuredClone({ ...chat_metadata, ...(options.withMetadata || {}) });');
-        expect(scriptSource).toContain('const chatData = cloneChatSavePayload(sourceChatData);');
-        expect(scriptSource).toContain('activeChatName: activeCharacter?.chat');
-        expect(scriptSource).toContain('characterName: activeCharacter?.name');
-        expect(scriptSource).toContain('avatarUrl: activeCharacter?.avatar');
-        expect(scriptSource).toContain('wasGroupChat: Boolean(selected_group)');
-        expect(scriptSource).toContain('setChatSaveActive(true);');
-        expect(scriptSource).toContain('.then(() => saveChatImmediately(...queuedSaveArguments))');
-        expect(scriptSource).toContain('.finally(() => setChatSaveActive(false));');
-        expect(scriptSource).toContain('async function saveChatImmediately');
-        expect(scriptSource).toContain('applyQueuedChatIntegrity(metadata, integrityKey, isActiveChatSave);');
-        expect(scriptSource).toContain('rememberQueuedChatIntegrity(integrityKey, responseData?.integrity);');
-        expect(scriptSource).toContain('deferBackup: Boolean(deferBackup)');
-        expect(scriptSource).toContain('return await saveChatImmediately({ chatName, withMetadata, metadataSnapshot: metadata, mesId, force: true, chatData, throwOnError, deferBackup, deferSequenceId, allowShrink, activeChatName, characterName, avatarUrl, wasGroupChat, scheduledGeneration, scheduledCharacterId, scheduledGroupId, scheduledChatId });');
-    });
-
-    test('queued chat saves abort when generation or character changes while queued', async () => {
-        const guardSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/chat-save-guard.js', import.meta.url)), 'utf8');
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-
-        expect(guardSource).toContain('export function getQueuedChatSaveAbortReason');
-        expect(scriptSource).toContain('scheduledGeneration: currentGeneration');
-        expect(scriptSource).toContain('const abortReason = getQueuedChatSaveAbortReason');
-        expect(scriptSource).toContain('saveChatImmediately aborted, but ${abortReason} changed while queued.');
-    });
-
-    test('swipes invalidate pending debounced saves and queued saves by incrementing chat generation', async () => {
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-        const standardSwipeBody = scriptSource.slice(
-            scriptSource.indexOf('async function standardSwipe(newSwipeId)'),
-            scriptSource.indexOf('function clearMessageData(message)', scriptSource.indexOf('async function standardSwipe(newSwipeId)')),
-        );
-
-        expect(standardSwipeBody).toContain('incrementChatGeneration();');
-        expect(standardSwipeBody).toContain('await loadFromSwipeId(mesId, newSwipeId);');
-    });
-
-    test('debounced chat saves abort after the active chat generation changes', async () => {
-        const guardSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/chat-save-guard.js', import.meta.url)), 'utf8');
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-
-        expect(scriptSource).toContain('let chatGeneration = 0;');
-        expect(scriptSource).toContain('export function incrementChatGeneration()');
-        expect(scriptSource).toContain('const generation = chatGeneration;');
-        expect(scriptSource).toContain('scheduledGeneration: generation');
-        expect(scriptSource).toContain('currentGeneration: chatGeneration');
-        expect(guardSource).toContain('scheduledGeneration !== currentGeneration');
-    });
-
-    test('saveChatConditional delegates ordering to the save queues instead of dropping slow saves', async () => {
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-        const saveConditionalBody = scriptSource.slice(
-            scriptSource.indexOf('export async function saveChatConditional(options = {})'),
-            scriptSource.indexOf('export async function importCharacterChat', scriptSource.indexOf('export async function saveChatConditional(options = {})')),
-        );
-
-        expect(saveConditionalBody).not.toContain('waitUntilCondition(() => !isChatSaving');
-        expect(saveConditionalBody).toContain('await saveChat(options);');
-        expect(saveConditionalBody).toContain('await saveGroupChat(selected_group, true, false, options.throwOnError ?? false, options)');
-        expect(scriptSource).toContain('let chatSaveActivityCount = 0;');
-        expect(scriptSource).toContain('function setChatSaveActive(isActive)');
-        expect(scriptSource).toContain('isChatSaving = chatSaveActivityCount > 0;');
-    });
-
-    test('queues group chat saves and keeps forced overwrites inside the active queue task', async () => {
-        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
-
-        expect(groupChatSource).toContain('let groupChatSaveQueue = Promise.resolve();');
-        expect(groupChatSource).toContain('function saveGroupChat(groupId, shouldSaveGroup, force = false, throwOnError = false, options = {})');
-        expect(groupChatSource).toContain('const chatSnapshot = cloneGroupChatSavePayload(chat);');
-        expect(groupChatSource).toContain('const metadataSnapshot = structuredClone(chat_metadata);');
-        expect(groupChatSource).toContain('.then(() => saveGroupChatImmediately({');
-        expect(groupChatSource).toContain('applyQueuedGroupChatIntegrity(metadataForSave, chatId, isActiveGroupChatSave);');
-        expect(groupChatSource).toContain('rememberQueuedGroupChatIntegrity(chatId, responseData?.integrity);');
-        expect(groupChatSource).toContain('deferBackup: Boolean(options.deferBackup)');
-        expect(groupChatSource).toContain('return await saveGroupChatImmediately({ groupId, shouldSaveGroup, force: true, throwOnError, chatId, chatData: chatMessages, metadata: metadataForSave, deferBackup, deferSequenceId, allowShrink, scheduledGeneration });');
-        expect(groupChatSource).toContain('const isActiveGroupChatSave = selected_group === groupId && group.chat_id === chatId;');
-        expect(groupChatSource).toContain('if (isActiveGroupChatSave && typeof responseData?.integrity === \'string\' && responseData.integrity)');
-    });
-
-    test('navigation waits for in-flight saves instead of refusing to switch chats', async () => {
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
-        const selectCharacterBody = scriptSource.slice(
-            scriptSource.indexOf('export async function selectCharacterById('),
-            scriptSource.indexOf('function getBackBlock()'),
-        );
-        const openGroupBody = groupChatSource.slice(
-            groupChatSource.indexOf('export async function openGroupById('),
-            groupChatSource.indexOf('async function openCharacterDefinition('),
-        );
-        const flushForNavigationBody = scriptSource.slice(
-            scriptSource.indexOf('export async function flushPendingChatSavesForNavigation('),
-            scriptSource.indexOf('export async function flushPendingChatSaves('),
-        );
-
-        expect(selectCharacterBody).not.toContain('if (isChatSaving)');
-        expect(selectCharacterBody).toContain('await flushPendingChatSavesForNavigation()');
-        expect(openGroupBody).not.toContain('if (isChatSaving)');
-        expect(openGroupBody).toContain('await flushPendingChatSavesForNavigation()');
-
-        expect(scriptSource).not.toContain('waitUntilCondition(() => !isChatSaving');
-        expect(groupChatSource).not.toContain('waitUntilCondition(() => !isChatSaving');
-
-        expect(scriptSource).toContain('async function waitForQueuedChatSaves()');
-        expect(groupChatSource).toContain('export async function waitForQueuedGroupChatSaves()');
-        expect(flushForNavigationBody).toContain('await flushPendingChatSaves({ silent: true })');
-        expect(flushForNavigationBody).toContain('await waitForQueuedChatSaves();');
-        expect(flushForNavigationBody).toContain('await waitForQueuedGroupChatSaves();');
-        expect(scriptSource).toContain('body.chat_id_hash = Number.isSafeInteger(chat_metadata.chat_id_hash) && wasActiveTarget');
-    });
-
-    test('retries group chat load requests after stale CSRF before integrity metadata is initialized', async () => {
-        const groupChatSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/group-chats.js', import.meta.url)), 'utf8');
-        const loadGroupChatBody = groupChatSource.slice(
-            groupChatSource.indexOf('async function loadGroupChat(chatId, allowCreate = false)'),
-            groupChatSource.indexOf('/**\n * Checks whether a group chat file currently exists on the server.'),
-        );
-        const groupChatExistsBody = groupChatSource.slice(
-            groupChatSource.indexOf('async function groupChatExists(chatId)'),
-            groupChatSource.indexOf('/**\n * Validates a group by checking if all members exist'),
-        );
-
-        expect(loadGroupChatBody).toContain('fetchWithCsrfRetry(\'/api/chats/group/get\'');
-        expect(loadGroupChatBody).toContain('{ refreshCsrfToken }');
-        expect(groupChatExistsBody).toContain('fetchWithCsrfRetry(\'/api/chats/group/info\'');
-        expect(groupChatExistsBody).toContain('{ refreshCsrfToken }');
     });
 });

@@ -1,7 +1,5 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom uses synchronous DOM assertions. */
-import { readFileSync } from 'node:fs';
-import { parse } from 'acorn';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 const confirmDestructiveAction = jest.fn();
@@ -236,36 +234,5 @@ describe('roleplay message selection async races and window controls', () => {
 
         expect(deleteMessage).toHaveBeenCalledWith(0, undefined, false, false);
         expect(syncWindowControls).toHaveBeenCalledTimes(1);
-    });
-});
-
-describe('public/script.js openMessageDelete and clearChat wiring', () => {
-    const scriptSource = readFileSync(new URL('../../public/script.js', import.meta.url), 'utf8');
-    const ast = parse(scriptSource, { ecmaVersion: 'latest', sourceType: 'module', ranges: true });
-
-    function sourceOf(fnName, exported = false) {
-        const node = ast.body.find(item => (exported
-            ? item.type === 'ExportNamedDeclaration' && item.declaration?.type === 'FunctionDeclaration' && item.declaration.id?.name === fnName
-            : item.type === 'FunctionDeclaration' && item.id?.name === fnName));
-        const target = exported ? node?.declaration : node;
-        return target ? scriptSource.slice(target.range[0], target.range[1]) : '';
-    }
-
-    test('clearChat resets is_delete_mode even when selection mode has not mounted its cancel button yet', () => {
-        const clearChatSource = sourceOf('clearChat', true);
-        expect(clearChatSource).toContain('if (is_delete_mode)');
-        expect(clearChatSource).toContain('is_delete_mode = false;');
-    });
-
-    test('openMessageDelete guards async loading with request id and render version and wires syncWindowControls', () => {
-        const openSource = sourceOf('openMessageDelete');
-        expect(openSource).toContain('const requestId = ++messageDeleteRequestId;');
-        expect(openSource).toContain('const renderVersion = chatRenderVersion;');
-        expect(openSource).toContain('const isStillWanted = () => is_delete_mode && requestId === messageDeleteRequestId && renderVersion === chatRenderVersion;');
-        expect(openSource).toContain('if (!isStillWanted())');
-        expect(openSource).toContain('isStillWanted,');
-        expect(openSource).toContain('syncWindowControls:');
-        expect(openSource).toContain('printMessages()');
-        expect(openSource).toContain('syncChatHistoryWindowControls()');
     });
 });

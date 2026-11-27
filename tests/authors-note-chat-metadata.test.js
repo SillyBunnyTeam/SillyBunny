@@ -1,14 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { event_types } from '../public/scripts/events.js';
 import { importWorldInfoModule } from './util/world-info-module-harness.js';
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// Deferred until script.js behavioural harness lands; verifies script.js delegates to authors-note accessors.
-const scriptSource = fs.readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
 
 async function loadAuthorsNoteApp(chatMetadata = {}, noteSettings = {}, extraOptions = {}) {
     return importWorldInfoModule({
@@ -129,9 +122,5 @@ describe('author\'s note chat metadata', () => {
             1,
         );
         expect(Object.keys(chatMetadata).filter(key => key.startsWith('note_'))).toEqual([]);
-
-        // Keep script.js guard until script.js behavioural harness replaces it.
-        expect(scriptSource).toContain('setExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, getAuthorsNotePosition(), getAuthorsNoteDepth(), extension_settings.note.allowWIScan, getAuthorsNoteRole());');
-        expect(scriptSource).not.toContain('chat_metadata[metadata_keys.');
     });
 });

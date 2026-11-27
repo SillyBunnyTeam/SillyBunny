@@ -1,22 +1,16 @@
-/* eslint-disable playwright/no-standalone-expect -- These parameterized cases run under Jest. */
+/** @jest-environment jsdom */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import vm from 'node:vm';
-import { getQueuedChatSaveAbortReason } from '../public/scripts/chat-save-guard.js';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { parse } from 'acorn';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { getChatBackupSaveOptions, resetChatBackupSequence } from '../public/scripts/chat-backup-sequence.js';
+import { resetChatBackupSequence } from '../public/scripts/chat-backup-sequence.js';
 import { setConfigFilePath } from '../src/util.js';
+import { importScriptModule } from './util/script-harness.js';
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
 const { trySaveChat, clearActiveDeferredChatPreWrites } = await import('../src/endpoints/chats.js');
-const sources = Object.fromEntries(['script.js', 'scripts/group-chats.js', 'scripts/extensions/in-chat-agents/agent-runner.js'].map(file => {
-    const source = fs.readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8');
-    return [file, { source, ast: parse(source, { ecmaVersion: 'latest', sourceType: 'module' }) }];
-}));
 
 function records(integrity, text) {
     return [{ chat_metadata: { integrity } }, { name: 'Bunny', is_user: false, mes: text }];
@@ -26,8 +20,9 @@ let directory;
 let chatFile;
 let backups;
 let handle;
+let activeRuntime = null;
+
 beforeEach(() => {
-    jest.useFakeTimers();
     resetChatBackupSequence();
     clearActiveDeferredChatPreWrites();
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-backup-sequence-'));
@@ -37,9 +32,10 @@ beforeEach(() => {
     fs.mkdirSync(backups);
     fs.writeFileSync(chatFile, records('original', 'before the turn').map(JSON.stringify).join('\n'));
 });
+
 afterEach(() => {
-    jest.runOnlyPendingTimers();
-    jest.useRealTimers();
+    activeRuntime?.cleanup();
+    activeRuntime = null;
     jest.restoreAllMocks();
     fs.rmSync(directory, { recursive: true, force: true });
 });
@@ -48,55 +44,58 @@ function preWriteFiles() {
     return fs.readdirSync(backups).filter(name => name.startsWith('chat_pre_write_'));
 }
 
-function createClient(group) {
+async function createSoloClient() {
     const sent = [];
-    async function send(_url, request) {
-        const payload = JSON.parse(request.body);
-        sent.push(payload);
-        const result = await trySaveChat(payload.chat, chatFile, payload.force, handle, 'Bunny', backups, payload);
-        return { ok: true, json: async () => result };
-    }
-    const runtime = vm.createContext({
-        console, structuredClone, getChatBackupSaveOptions, uuidv4: randomUUID, getQueuedChatSaveAbortReason,
-        isTemporaryChat: () => false,
-        chatSaveQueue: Promise.resolve(), groupChatSaveQueue: Promise.resolve(),
-        chat: records('original', 'first pass').slice(1), chat_metadata: { integrity: 'original' },
-        chatGeneration: 1, getChatGeneration: () => 1,
-        this_chid: 0, selected_group: group ? 'group' : null,
-        groups: [{ id: 'group', chat_id: 'chat', chats: ['chat'] }],
-        characters: [{ name: 'Bunny', avatar: 'bunny.png', chat: 'chat' }],
-        getCurrentChatId: () => 'chat', name2: 'Bunny', neutralCharacterName: 'Assistant',
-        cloneChatSavePayload: structuredClone, cloneGroupChatSavePayload: structuredClone,
-        setChatSaveActive: jest.fn(), getQueuedChatIntegrityKey: () => 'key',
-        applyQueuedChatIntegrity: (metadata) => { metadata.integrity = runtime.chat_metadata.integrity; },
-        applyQueuedGroupChatIntegrity: (metadata) => { metadata.integrity = runtime.chat_metadata.integrity; },
-        rememberQueuedChatIntegrity: jest.fn(), rememberQueuedGroupChatIntegrity: jest.fn(),
-        compressRequest: async request => request, getRequestHeaders: () => ({}),
-        fetch: send, fetchWithCsrfRetry: async (url, build) => send(url, await build()),
-        refreshCsrfToken: jest.fn(), editGroup: jest.fn(),
-        toastr: { error: jest.fn() }, t: strings => strings.join(''),
+    const fetchMock = jest.fn(async (url, request) => {
+        if (String(url) === '/api/chats/save') {
+            const payload = JSON.parse(request.body);
+            sent.push(payload);
+            const result = await trySaveChat(payload.chat, chatFile, payload.force, handle, 'Bunny', backups, payload);
+            return { ok: true, status: 200, json: async () => result, text: async () => JSON.stringify(result) };
+        }
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '{}' };
     });
-    const { source, ast } = sources[group ? 'scripts/group-chats.js' : 'script.js'];
-    for (const name of group ? ['saveGroupChat', 'saveGroupChatImmediately'] : ['saveChat', 'saveChatImmediately']) {
-        const node = ast.body.map(node => node.declaration ?? node).find(node => node.id?.name === name);
-        vm.runInContext(source.slice(node.start, node.end), runtime);
-    }
-    const save = options => group ? runtime.saveGroupChat('group', false, false, true, options) : runtime.saveChat(options);
-    const runner = sources['scripts/extensions/in-chat-agents/agent-runner.js'];
-    const helper = runner.ast.body.find(node => node.id?.name === 'saveChatForAgent');
-    vm.runInContext(runner.source.slice(helper.start, helper.end), runtime);
-    return { runtime, sent, save, saveForAgent: options => runtime.saveChatForAgent({ saveChat: save }, options) };
+
+    const loaded = await importScriptModule({
+        fetch: fetchMock,
+        keepReal: ['scripts/chat-save-guard.js', 'scripts/chat-backup-sequence.js'],
+        mocks: {
+            'scripts/utils.js': {
+                uuidv4: () => randomUUID(),
+            },
+        },
+    });
+    activeRuntime = loaded;
+
+    const { resetChatBackupSequence: resetActiveSequence } = await import('../public/scripts/chat-backup-sequence.js');
+    resetActiveSequence();
+
+    const { script } = loaded;
+    script.characters.push({ name: 'Bunny', avatar: 'bunny.png', chat: 'chat' });
+    script.setCharacterId(0);
+    script.setCharacterName('Bunny');
+    script.chat.push({ name: 'Bunny', is_user: false, mes: 'first pass' });
+    script.updateChatMetadata({ integrity: 'original' }, true);
+
+    return {
+        script,
+        sent,
+        resetSequence: resetActiveSequence,
+        save: options => script.saveChat(options),
+        completeDeferredSave: () => script.saveChat({ deferBackup: false, completeDeferredBackup: true }),
+    };
 }
 
-describe('deferred backups through the real save queues', () => {
-    test.each([false, true])('keeps one baseline and one final backup across four passes (group: %s)', async group => {
-        const { runtime, save, saveForAgent, sent } = createClient(group);
+describe('deferred backups through the real solo chat save queue', () => {
+    test('keeps one baseline and one final backup across four passes', async () => {
+        const { script, save, completeDeferredSave, sent } = await createSoloClient();
         for (let pass = 1; pass <= 4; pass++) {
-            runtime.chat[0].mes = `pass ${pass}`;
+            script.chat[0].mes = `pass ${pass}`;
             await expect(save({ deferBackup: true })).resolves.toBe(true);
         }
-        runtime.chat[0].mes = 'final reply';
-        await saveForAgent({ deferBackup: false });
+        script.chat[0].mes = 'final reply';
+        await expect(completeDeferredSave()).resolves.toBe(true);
+
         expect(new Set(sent.map(payload => payload.deferSequenceId)).size).toBe(1);
         expect(sent[0].deferSequenceId).toEqual(expect.any(String));
         expect(preWriteFiles()).toHaveLength(1);
@@ -107,31 +106,31 @@ describe('deferred backups through the real save queues', () => {
     });
 
     test('ordinary edits do not inherit an abandoned sequence', async () => {
-        const { runtime, save, sent } = createClient(false);
+        const { script, save, sent } = await createSoloClient();
         await save({ deferBackup: true });
-        runtime.chat[0].mes = 'manual edit';
+        script.chat[0].mes = 'manual edit';
         await save({});
         expect(sent[1].deferSequenceId).toBeUndefined();
         expect(preWriteFiles()).toHaveLength(2);
-        runtime.chat[0].mes = 'new agent run';
+        script.chat[0].mes = 'new agent run';
         await save({ deferBackup: true });
         expect(sent[2].deferSequenceId).not.toBe(sent[0].deferSequenceId);
     });
 
     test('a new generation gets its own baseline after an abandoned run', async () => {
-        const { runtime, save, sent } = createClient(false);
+        const { script, save, sent, resetSequence } = await createSoloClient();
         await save({ deferBackup: true });
-        resetChatBackupSequence();
-        runtime.chat[0].mes = 'new generation';
+        resetSequence();
+        script.chat[0].mes = 'new generation';
         await save({ deferBackup: true });
         expect(sent[1].deferSequenceId).not.toBe(sent[0].deferSequenceId);
         expect(preWriteFiles()).toHaveLength(2);
     });
 
     test('an unrelated explicit regular save does not close an abandoned agent run', async () => {
-        const { runtime, save, sent } = createClient(false);
+        const { script, save, sent } = await createSoloClient();
         await save({ deferBackup: true });
-        runtime.chat[0].mes = 'manual companion edit';
+        script.chat[0].mes = 'manual companion edit';
         await save({ deferBackup: false });
         expect(sent[1].deferSequenceId).toBeUndefined();
         expect(preWriteFiles()).toHaveLength(2);

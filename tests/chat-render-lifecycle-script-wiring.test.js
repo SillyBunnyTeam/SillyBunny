@@ -1,698 +1,444 @@
-import { describe, expect, test } from '@jest/globals';
-import { parse } from 'acorn';
+/** @jest-environment jsdom */
+/* global globalThis */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY } from '../public/scripts/chat-render-lifecycle/index.js';
+import { importScriptModule } from './util/script-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
-const scriptAst = parse(scriptSource, {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    ranges: true,
+
+let activeRuntime = null;
+
+afterEach(() => {
+    activeRuntime?.cleanup();
+    activeRuntime = null;
+    localStorage.removeItem(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY);
+    document.body.innerHTML = '';
+    jest.restoreAllMocks();
 });
 
-function visit(node, callback) {
-    if (!node || typeof node !== 'object') {
-        return;
-    }
+const LIFECYCLE_DOM = `
+    <select id="main_api"><option value="openai" selected>openai</option></select>
+    <div id="sheld">
+        <div id="chat_wrapper">
+            <div id="chat"></div>
+        </div>
+        <div id="form_sheld">
+            <div id="send_form">
+                <textarea id="send_textarea"></textarea>
+                <div id="send_but"></div>
+                <div id="mes_stop" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+    <div id="message_template" hidden>
+        <div class="mes">
+            <div class="mes_block">
+                <div class="ch_name"><span class="name_text"></span></div>
+                <div class="mes_text"></div>
+                <div class="mes_timer"></div>
+                <div class="tokenCounterDisplay"></div>
+            </div>
+            <div class="swipe_left"></div>
+            <div class="swipe_right"></div>
+            <div class="swipes-counter"></div>
+            <button class="mes_swipe_picker" type="button"></button>
+            <button class="mes_delete_add_swipe" type="button"></button>
+        </div>
+    </div>
+`;
 
-    if (typeof node.type === 'string') {
-        callback(node);
-    }
-
-    for (const value of Object.values(node)) {
-        if (Array.isArray(value)) {
-            for (const item of value) {
-                visit(item, callback);
-            }
-        } else if (value && typeof value.type === 'string') {
-            visit(value, callback);
-        }
-    }
-}
-
-function findNode(node, predicate) {
-    let found = null;
-    visit(node, current => {
-        if (!found && predicate(current)) {
-            found = current;
+function setScrollGeometry(el, { scrollHeight = 2000, clientHeight = 500, scrollTop = 1500 } = {}) {
+    let currentScrollTop = scrollTop;
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => clientHeight });
+    Object.defineProperty(el, 'scrollTop', {
+        configurable: true,
+        get: () => currentScrollTop,
+        set: (value) => { currentScrollTop = Number(value); },
+    });
+    el.scrollTo = jest.fn((arg1, arg2) => {
+        if (typeof arg1 === 'object' && arg1 !== null && typeof arg1.top === 'number') {
+            currentScrollTop = arg1.top;
+        } else if (typeof arg2 === 'number') {
+            currentScrollTop = arg2;
         }
     });
-    return found;
+    return {
+        getScrollTop: () => currentScrollTop,
+        setScrollTop: (val) => { currentScrollTop = val; },
+    };
 }
 
-function findExportedFunction(name) {
-    return scriptAst.body
-        .find(node => node.type === 'ExportNamedDeclaration'
-            && node.declaration?.type === 'FunctionDeclaration'
-            && node.declaration.id?.name === name)
-        ?.declaration;
-}
-
-function findFunctionDeclaration(name) {
-    return scriptAst.body
-        .find(node => node.type === 'FunctionDeclaration' && node.id?.name === name);
-}
-
-function findTopLevelVariable(functionNode, name) {
-    for (const statement of functionNode.body.body) {
-        if (statement.type !== 'VariableDeclaration') {
-            continue;
-        }
-
-        const declaration = statement.declarations.find(item => item.id?.name === name);
-        if (declaration) {
-            return { declaration, statement };
-        }
+async function createRenderRuntime({
+    rolloutEnabled = true,
+    isMobile = false,
+    autoScroll = true,
+    chatTruncation = 10,
+    sendOpenAIRequest,
+    stream = false,
+    runReady = false,
+    installObservers = false,
+    installVisualViewport = false,
+} = {}) {
+    if (!rolloutEnabled) {
+        localStorage.setItem(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY, 'false');
+    } else {
+        localStorage.removeItem(CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY);
     }
 
-    return null;
-}
+    const resizeInstances = [];
+    const intersectionInstances = [];
+    const origResizeObserver = globalThis.ResizeObserver;
+    const origIntersectionObserver = globalThis.IntersectionObserver;
+    const origVisualViewport = window.visualViewport;
 
-function getSource(node) {
-    return scriptSource.slice(node.range[0], node.range[1]);
+    if (installObservers) {
+        class FakeResizeObserver {
+            constructor(callback) {
+                this.callback = callback;
+                this.observed = new Set();
+                this.disconnected = false;
+                resizeInstances.push(this);
+            }
+            observe(target) { this.observed.add(target); }
+            unobserve(target) { this.observed.delete(target); }
+            disconnect() { this.observed.clear(); this.disconnected = true; }
+            trigger(entries) { this.callback(entries, this); }
+        }
+        class FakeIntersectionObserver {
+            constructor(callback) {
+                this.callback = callback;
+                this.observed = new Set();
+                this.disconnected = false;
+                intersectionInstances.push(this);
+            }
+            observe(target) { this.observed.add(target); }
+            unobserve(target) { this.observed.delete(target); }
+            disconnect() { this.observed.clear(); this.disconnected = true; }
+        }
+        globalThis.ResizeObserver = FakeResizeObserver;
+        window.ResizeObserver = FakeResizeObserver;
+        globalThis.IntersectionObserver = FakeIntersectionObserver;
+        window.IntersectionObserver = FakeIntersectionObserver;
+    }
+
+    const visualViewportListeners = { scroll: new Set(), resize: new Set() };
+    if (installVisualViewport) {
+        Object.defineProperty(window, 'visualViewport', {
+            configurable: true,
+            value: {
+                height: 700,
+                offsetTop: 0,
+                addEventListener: jest.fn((type, fn) => visualViewportListeners[type]?.add(fn)),
+                removeEventListener: jest.fn((type, fn) => visualViewportListeners[type]?.delete(fn)),
+            },
+        });
+    }
+
+    const loaded = await importScriptModule({
+        dom: LIFECYCLE_DOM,
+        mocks: {
+            'scripts/RossAscends-mods.js': {
+                isMobile: jest.fn(() => isMobile),
+            },
+            ...(sendOpenAIRequest ? {
+                'scripts/openai.js': {
+                    sendOpenAIRequest,
+                    prepareOpenAIMessages: jest.fn(async () => [[{ role: 'user', content: 'Hi' }], 10]),
+                },
+            } : {}),
+        },
+    });
+
+    loaded.state.power_user.chat_truncation = chatTruncation;
+    loaded.state.power_user.auto_scroll_chat_to_bottom = autoScroll;
+    loaded.state.oai_settings.stream_openai = stream;
+    loaded.state.oai_settings.chat_completion_source = 'openai';
+    loaded.state.oai_settings.openai_model = 'gpt-4o';
+
+    activeRuntime = {
+        cleanup() {
+            loaded.cleanup();
+            if (installObservers) {
+                globalThis.ResizeObserver = origResizeObserver;
+                window.ResizeObserver = origResizeObserver;
+                globalThis.IntersectionObserver = origIntersectionObserver;
+                window.IntersectionObserver = origIntersectionObserver;
+            }
+            if (installVisualViewport) {
+                Object.defineProperty(window, 'visualViewport', { configurable: true, value: origVisualViewport });
+            }
+        },
+    };
+
+    if (runReady) {
+        await loaded.runReady();
+        loaded.$('#main_api').val('openai').trigger('change');
+    }
+
+    const { script } = loaded;
+    script.characters.push({
+        name: 'Bunny',
+        avatar: 'bunny.png',
+        chat: 'render-chat',
+        first_mes: 'Hi',
+        data: { extensions: {} },
+    });
+    script.setCharacterId(0);
+    script.setCharacterName('Bunny');
+    script.setOnlineStatus('connected');
+
+    return {
+        ...loaded,
+        resizeInstances,
+        intersectionInstances,
+        visualViewportListeners,
+    };
 }
 
 describe('chat render lifecycle script wiring', () => {
-    test('printMessages routes initial-load bottom landing through the lifecycle gate', () => {
-        const printMessages = findExportedFunction('printMessages');
-        const source = getSource(printMessages);
+    test.each([true, false])('printMessages and redisplayChat render the bounded window and pin initial load to bottom (rollout=%s)', async (rolloutEnabled) => {
+        const runtime = await createRenderRuntime({ rolloutEnabled, chatTruncation: 4 });
+        const chatEl = document.getElementById('chat');
+        const geom = setScrollGeometry(chatEl, { scrollHeight: 2400, clientHeight: 400, scrollTop: 0 });
 
-        expect(source).toContain('const count = getChatRenderWindowSize(power_user.chat_truncation);');
-        expect(source).toContain('const startIndex = getChatRenderWindowStartIndex(chat.length, count);');
-        expect(source).toContain('removeRenderedChatMessages();');
-        expect(source).toContain('beginChatLoadBottomLock();');
-        expect(source).toContain('const rendering = redisplayChat({ startIndex, fade: false, pinBottomDuringRender: true });');
-        expect(source).toContain('await rendering;');
-        expect(source).toContain('syncChatHistoryWindowControls();');
-        expect(source).toContain('scrollLoadedChatToBottomThroughLifecycle();');
-        expect(source).toContain('delay(debounce_timeout.short).then(() => scrollOnMediaLoad({ force: true }));');
+        for (let i = 0; i < 6; i++) {
+            runtime.script.chat.push({ name: 'Bunny', is_user: i % 2 === 0, is_system: false, mes: `Message ${i}`, extra: {} });
+        }
 
-        const lifecycleGate = findFunctionDeclaration('scrollLoadedChatToBottomThroughLifecycle');
-        expect(lifecycleGate).toBeTruthy();
+        await runtime.script.printMessages();
 
-        const lifecycleGateSource = getSource(lifecycleGate);
-        expect(lifecycleGateSource).toContain('isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.INITIAL_LOAD)');
-        expect(lifecycleGateSource).toContain('resolveChatScrollAction({');
-        expect(lifecycleGateSource).toContain('intent: CHAT_SCROLL_INTENT.INITIAL_LOAD');
-        expect(lifecycleGateSource).toContain('shouldApplyChatBottomScrollAction(action)');
-        expect(lifecycleGateSource).toContain('scrollLoadedChatToBottom();');
+        const rendered = Array.from(document.querySelectorAll('#chat > .mes')).map(el => Number(el.getAttribute('mesid')));
+        expect(rendered).toEqual([2, 3, 4, 5]);
+        expect(document.querySelector('#chat > .mes[mesid="5"]').classList.contains('last_mes')).toBe(true);
+        expect(document.getElementById('show_more_messages')).toBeTruthy();
+        expect(geom.getScrollTop()).toBeGreaterThanOrEqual(2000);
+        expect(runtime.mocks['scripts/tags.js'].applyCharacterTagsToMessageDivs).toHaveBeenCalledWith({ mesIds: [2, 3, 4, 5] });
     });
 
-    test('redisplayChat delegates selected messages to the guarded redisplay renderer', () => {
-        const redisplayChat = findExportedFunction('redisplayChat');
-        const source = getSource(redisplayChat);
+    test.each([true, false])('showMoreMessages and showNewerMessages page history windows and emit MORE_MESSAGES_LOADED (rollout=%s)', async (rolloutEnabled) => {
+        const runtime = await createRenderRuntime({ rolloutEnabled, chatTruncation: 3 });
+        runtime.state.power_user.aggressive_dom_unload = true;
+        runtime.state.power_user.aggressive_dom_window_size = 3;
+        for (let i = 0; i < 12; i++) {
+            runtime.script.chat.push({ name: 'Bunny', is_user: false, is_system: false, mes: `Msg ${i}`, extra: {} });
+        }
 
-        expect(source).toContain('const shouldReplaceRenderedWindow = renderedMessageCount > 0');
-        expect(source).toContain('const windowSize = getChatRenderWindowSize();');
-        expect(source).toContain('const endIndex = Math.min(targetChat.length, startIndex + windowSize);');
-        expect(source).toContain('const messages = targetChat.slice(startIndex, endIndex);');
-        expect(source).toContain('const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex, pinBottomDuringRender, isCurrent: transaction.canRender });');
-        expect(source).toContain('applyCharacterTagsToMessageDivs({ mesIds: renderedMessageIds });');
-        expect(source).toContain('syncChatHistoryWindowControls();');
-        expect(source).toContain('refreshSwipeButtons(false, fade);');
-        expect(source).toContain('applyStylePins();');
-        expect(source).toContain('updateEditArrowClasses();');
+        const loadedEvents = [];
+        runtime.eventSource.on(runtime.script.event_types.MORE_MESSAGES_LOADED, () => loadedEvents.push('loaded'));
+
+        await runtime.script.printMessages();
+        expect(Array.from(document.querySelectorAll('#chat > .mes')).map(el => Number(el.getAttribute('mesid')))).toEqual([9, 10, 11]);
+
+        await runtime.script.showMoreMessages();
+        const afterOlder = Array.from(document.querySelectorAll('#chat > .mes')).map(el => Number(el.getAttribute('mesid')));
+        expect(afterOlder[0]).toBeLessThan(9);
+        expect(loadedEvents).toHaveLength(1);
+
+        // Page further back so the tail is pruned below message 11, then page forward with showNewerMessages.
+        for (let step = 0; step < 6 && Number(document.querySelector('#chat > .mes').getAttribute('mesid')) > 0; step++) {
+            await runtime.script.showMoreMessages();
+        }
+        expect(document.getElementById('show_more_messages')).toBeNull();
+        expect(Number(document.querySelector('#chat > .mes').getAttribute('mesid'))).toBe(0);
+
+        const beforeNewerLast = Number(Array.from(document.querySelectorAll('#chat > .mes')).at(-1).getAttribute('mesid'));
+        expect(beforeNewerLast).toBeLessThan(11);
+        await runtime.script.showNewerMessages();
+        const afterNewerLast = Number(Array.from(document.querySelectorAll('#chat > .mes')).at(-1).getAttribute('mesid'));
+        expect(afterNewerLast).toBeGreaterThan(beforeNewerLast);
+        expect(loadedEvents.length).toBeGreaterThanOrEqual(3);
     });
 
-    test('redisplayChat keeps render-batch routing behind the lifecycle rollout guard', () => {
-        const renderRedisplayChatMessages = findFunctionDeclaration('renderRedisplayChatMessages');
-        const source = getSource(renderRedisplayChatMessages);
+    test.each([true, false])('addOneMessage returns the rendered element, updates .last_mes, and honors pre-mutation scroll position (rollout=%s)', async (rolloutEnabled) => {
+        const runtime = await createRenderRuntime({ rolloutEnabled, autoScroll: true, chatTruncation: 3 });
+        const chatEl = document.getElementById('chat');
+        const geom = setScrollGeometry(chatEl, { scrollHeight: 2000, clientHeight: 500, scrollTop: 1500 });
 
-        expect(source).toContain('const batchSize = getMobileChatRenderBatchSize(messages.length);');
-        expect(source).toContain('if (isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.REDISPLAY_BATCH))');
-        expect(source).toContain('return renderRedisplayChatMessagesThroughLifecycle({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent });');
-        expect(source).toContain('return renderRedisplayChatMessagesLegacy({ messages, startIndex, batchSize, pinBottomDuringRender, isCurrent });');
+        for (let i = 0; i < 3; i++) {
+            const msg = { name: 'Bunny', is_user: false, is_system: false, mes: `M${i}`, extra: {} };
+            runtime.script.chat.push(msg);
+            const el = runtime.script.addOneMessage(msg);
+            expect(el[0]).toBeInstanceOf(HTMLElement);
+        }
+        expect(document.querySelector('#chat > .mes[mesid="2"]').classList.contains('last_mes')).toBe(true);
+
+        // User scrolls far up away from the bottom before a new tail message arrives.
+        geom.setScrollTop(100);
+        const tailMsg = { name: 'Bunny', is_user: false, is_system: false, mes: 'M3', extra: {} };
+        runtime.script.chat.push(tailMsg);
+        const rendered = runtime.script.addOneMessage(tailMsg);
+        expect(rendered[0].getAttribute('mesid')).toBe('3');
+        expect(document.querySelector('#chat > .mes[mesid="3"]').classList.contains('last_mes')).toBe(true);
+        // Pruned to window size (3).
+        expect(document.querySelectorAll('#chat > .mes')).toHaveLength(3);
+        // Did not yank scroll position back to the bottom.
+        expect(geom.getScrollTop()).toBe(100);
     });
 
-    test('guard-on redisplayChat delegates batch mechanics to the lifecycle render batch helper', () => {
-        const renderRedisplayChatMessagesThroughLifecycle = findFunctionDeclaration('renderRedisplayChatMessagesThroughLifecycle');
-        const source = getSource(renderRedisplayChatMessagesThroughLifecycle);
+    test.each([true, false])('updateMessageBlock updates message DOM through lifecycle or legacy path (rollout=%s)', async (rolloutEnabled) => {
+        const runtime = await createRenderRuntime({ rolloutEnabled });
+        const msg = { name: 'Bunny', is_user: false, is_system: false, mes: 'Initial text', extra: {} };
+        runtime.script.chat.push(msg);
+        runtime.script.addOneMessage(msg);
 
-        expect(source).toContain('renderMessagesInBatches({');
-        expect(source).toContain('messages,');
-        expect(source).toContain('firstMessageId: startIndex');
-        expect(source).toContain('batchSize,');
-        expect(source).toContain('renderMessageElement: (message, messageId) => updateMessageElement(message, { messageId })');
-        expect(source).toContain('insertFragment: fragment => chatElement[0].appendChild(fragment)');
-        expect(source).toContain('waitForNextFrame,');
-        expect(source).toContain('markLastMessage: true');
-        expect(source).toContain('afterBatch: pinBottomDuringRender ? () => beginChatLoadBottomLock() : undefined');
+        msg.mes = 'Updated text';
+        await runtime.script.updateMessageBlock(0, msg);
+        expect(document.querySelector('#chat .mes[mesid="0"] .mes_text').textContent).toContain('Updated text');
     });
 
-    test('guard-off redisplayChat keeps legacy inline batching', () => {
-        const renderRedisplayChatMessagesLegacy = findFunctionDeclaration('renderRedisplayChatMessagesLegacy');
-        const source = getSource(renderRedisplayChatMessagesLegacy);
+    test.each([true, false])('streaming start and progress render chunks and finalize cleanly (rollout=%s)', async (rolloutEnabled) => {
+        const sendOpenAIRequest = jest.fn(async () => async function* () {
+            yield { text: 'Hello', swipes: [], logprobs: null, toolCalls: [], state: {} };
+            yield { text: 'Hello streamed world', swipes: [], logprobs: null, toolCalls: [], state: {} };
+        });
 
-        expect(source).not.toContain('renderMessagesInBatches');
-        expect(source).toContain('const renderedMessageIds = lodash.range(startIndex, startIndex + messages.length, 1);');
-        expect(source).toContain('const fragment = document.createDocumentFragment();');
-        expect(source).toContain('const messageElement = updateMessageElement(message, { messageId });');
-        expect(source).toContain('newMessageElements.at(-1).classList.add(\'last_mes\');');
-        expect(source).toContain('chatElement[0].appendChild(fragment);');
-        expect(source).toContain('if (pinBottomDuringRender)');
-        expect(source).toContain('beginChatLoadBottomLock();');
-        expect(source).toContain('await waitForNextFrame();');
-        expect(source).toContain('return renderedMessageIds;');
+        const runtime = await createRenderRuntime({ rolloutEnabled, stream: true, sendOpenAIRequest, runReady: true });
+        runtime.script.chat.push({ name: 'User', is_user: true, is_system: false, mes: 'Hi', extra: {} });
+        runtime.script.addOneMessage(runtime.script.chat[0]);
+
+        const result = await runtime.script.Generate('normal');
+        expect(String(result)).toBe('Hello streamed world');
+        expect(runtime.script.chat).toHaveLength(2);
+        expect(document.querySelector('#chat .mes[mesid="1"] .mes_text').textContent).toContain('Hello streamed world');
     });
 
-    test('showMoreMessages delegates selected history messages to the guarded show-more renderer', () => {
-        const showMoreMessages = findExportedFunction('showMoreMessages');
-        const source = getSource(showMoreMessages);
+    test.each([true, false])('display-only swipe replacement updates rendered text without starting generation (rollout=%s)', async (rolloutEnabled) => {
+        const sendOpenAIRequest = jest.fn();
+        const runtime = await createRenderRuntime({ rolloutEnabled, sendOpenAIRequest });
+        runtime.script.chat.push({
+            name: 'Bunny',
+            is_user: false,
+            is_system: false,
+            mes: 'First swipe',
+            swipe_id: 0,
+            swipes: ['First swipe', 'Second swipe'],
+            swipe_info: [{}, {}],
+            extra: {},
+        });
+        runtime.script.addOneMessage(runtime.script.chat[0]);
 
-        expect(source).toContain('const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;');
-        expect(source).toContain('const windowSize = getPagedChatRenderWindowSize(requestedWindowSize, renderedMessageCount);');
-        expect(source).toContain('preserveAnchor: messagesToLoad === null');
-        expect(source).toContain('const firstId = clamp(messageId - count, 0, Infinity);');
-        expect(source).toContain('const messages = chat.slice(firstId, messageId);');
-        expect(source).toContain('const anchor = captureVisibleChatMessageAnchor();');
-        expect(source).toContain('await renderShowMoreMessages({');
-        expect(source).toContain('pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: \'end\' });');
-        expect(source).toContain('syncChatHistoryWindowControls();');
-        expect(source).toContain('refreshSwipeButtons();');
-        expect(source).toContain('showMoreButton.remove();');
-        expect(source).toContain('applyStylePins();');
-        expect(source).toContain('updateEditArrowClasses();');
-        expect(source).toContain('await settleVisibleChatMessageAnchor(anchor);');
-        expect(source).toContain('await eventSource.emit(event_types.MORE_MESSAGES_LOADED);');
+        await runtime.script.swipe(null, 'right', { forceMesId: 0 });
+        expect(document.querySelector('#chat .mes[mesid="0"] .mes_text').textContent).toContain('Second swipe');
+        expect(sendOpenAIRequest).not.toHaveBeenCalled();
     });
 
-    test('showNewerMessages appends newer history through the bounded redisplay renderer', () => {
-        const showNewerMessages = findExportedFunction('showNewerMessages');
-        const source = getSource(showNewerMessages);
+    test('delegated ResizeObserver and offscreen message tracker observe rendered messages and clean up on removal and unload', async () => {
+        const queuedFrames = [];
+        const origRaf = window.requestAnimationFrame;
+        const origCaf = window.cancelAnimationFrame;
+        const asyncRaf = jest.fn(cb => {
+            queuedFrames.push(cb);
+            return queuedFrames.length;
+        });
+        window.requestAnimationFrame = asyncRaf;
+        globalThis.requestAnimationFrame = asyncRaf;
+        window.cancelAnimationFrame = jest.fn();
+        globalThis.cancelAnimationFrame = window.cancelAnimationFrame;
 
-        expect(source).toContain('const { renderedMessageCount, lastMessageId } = getRenderedChatMessageWindow();');
-        expect(source).toContain('const requestedWindowSize = messagesToLoad ?? power_user.chat_truncation;');
-        expect(source).toContain('const windowSize = getPagedChatRenderWindowSize(requestedWindowSize, renderedMessageCount);');
-        expect(source).toContain('preserveAnchor: messagesToLoad === null');
-        expect(source).toContain('const firstId = Number.isInteger(lastMessageId) ? lastMessageId + 1 : 0;');
-        expect(source).toContain('const messages = chat.slice(firstId, lastId);');
-        expect(source).toContain('const renderedMessageIds = await renderRedisplayChatMessages({ messages, startIndex: firstId, isCurrent: transaction.canRender });');
-        expect(source).toContain('pruneRenderedChatMessagesToWindow({ windowSize, pruneFrom: \'start\' });');
-        expect(source).toContain('syncRenderedChatLastMessageClass();');
-        expect(source).toContain('syncChatHistoryWindowControls();');
-        expect(getSource(findFunctionDeclaration('pruneRenderedChatMessagesToWindow'))).toContain('captureVisibleChatMessageAnchor()');
-        expect(source).toContain('applyCharacterTagsToMessageDivs({ mesIds: renderedMessageIds });');
-        expect(source).toContain('refreshSwipeButtons();');
-        expect(source).toContain('applyStylePins();');
-        expect(source).toContain('updateEditArrowClasses();');
-        expect(source).toContain('await eventSource.emit(event_types.MORE_MESSAGES_LOADED);');
+        try {
+            const runtime = await createRenderRuntime({ rolloutEnabled: true, installObservers: true, runReady: true });
+            const chatEl = document.getElementById('chat');
+            setScrollGeometry(chatEl, { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 });
+
+            runtime.script.chat.push(
+                { name: 'Bunny', is_user: false, is_system: false, mes: 'Msg 0', extra: {} },
+                { name: 'Bunny', is_user: false, is_system: false, mes: 'Msg 1', extra: {} },
+            );
+            runtime.script.addOneMessage(runtime.script.chat[0]);
+            runtime.script.addOneMessage(runtime.script.chat[1]);
+
+            while (queuedFrames.length) {
+                queuedFrames.shift()(0);
+            }
+
+            expect(runtime.resizeInstances.length).toBeGreaterThanOrEqual(2);
+            const block0 = document.querySelector('#chat .mes[mesid="0"] .mes_block');
+            const block1 = document.querySelector('#chat .mes[mesid="1"] .mes_block');
+            const mes0 = document.querySelector('#chat .mes[mesid="0"]');
+            const mes1 = document.querySelector('#chat .mes[mesid="1"]');
+            const resizeObserver = runtime.resizeInstances.find(obs => obs.observed.has(block0));
+            const offscreenObserver = runtime.resizeInstances.find(obs => obs.observed.has(mes0));
+            expect(resizeObserver).toBeTruthy();
+            expect(resizeObserver.observed.has(block1)).toBe(true);
+            expect(offscreenObserver).toBeTruthy();
+            expect(offscreenObserver.observed.has(mes1)).toBe(true);
+
+            // Deleting the last message unobserves its block and untracks its message while keeping msg 0.
+            await runtime.script.deleteLastMessage();
+            expect(resizeObserver.observed.has(block1)).toBe(false);
+            expect(resizeObserver.observed.has(block0)).toBe(true);
+            expect(offscreenObserver.observed.has(mes1)).toBe(false);
+            expect(offscreenObserver.observed.has(mes0)).toBe(true);
+
+            // Clearing chat disposes both observers.
+            await runtime.script.clearChat();
+            expect(resizeObserver.disconnected).toBe(true);
+            expect(offscreenObserver.disconnected).toBe(true);
+        } finally {
+            window.requestAnimationFrame = origRaf;
+            globalThis.requestAnimationFrame = origRaf;
+            window.cancelAnimationFrame = origCaf;
+            globalThis.cancelAnimationFrame = origCaf;
+        }
     });
 
-    test('showMoreMessages keeps render-batch routing behind the lifecycle rollout guard', () => {
-        const renderShowMoreMessages = findFunctionDeclaration('renderShowMoreMessages');
-        const source = getSource(renderShowMoreMessages);
+    test('refreshSwipeButtons avoids redundant display toggles when control visibility does not change', async () => {
+        const runtime = await createRenderRuntime({ rolloutEnabled: true });
+        runtime.script.chat.push({
+            name: 'Bunny',
+            is_user: false,
+            is_system: false,
+            mes: 'Single swipe',
+            swipe_id: 0,
+            swipes: ['Single swipe'],
+            swipe_info: [{}],
+            extra: {},
+        });
+        runtime.script.addOneMessage(runtime.script.chat[0]);
 
-        expect(source).toContain('const batchSize = getMobileChatRenderBatchSize(messages.length);');
-        expect(source).toContain('if (isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.SHOW_MORE_BATCH))');
-        expect(source).toContain('await renderShowMoreMessagesThroughLifecycle(renderOptions);');
-        expect(source).toContain('await renderShowMoreMessagesLegacy(renderOptions);');
+        runtime.script.refreshSwipeButtons(false, false);
+        const picker = document.querySelector('#chat .mes[mesid="0"] .mes_swipe_picker');
+        const initialDisplay = picker.style.display;
+        const setPropertySpy = jest.spyOn(picker.style, 'setProperty');
+
+        // Calling refreshSwipeButtons again with unchanged state does not flip display unnecessarily.
+        runtime.script.refreshSwipeButtons(false, false);
+        expect(picker.style.display).toBe(initialDisplay);
+        expect(setPropertySpy).not.toHaveBeenCalled();
     });
 
-    test('guard-on showMoreMessages delegates batch insertion to the lifecycle render batch helper', () => {
-        const renderShowMoreMessagesThroughLifecycle = findFunctionDeclaration('renderShowMoreMessagesThroughLifecycle');
-        const source = getSource(renderShowMoreMessagesThroughLifecycle);
-
-        expect(source).toContain('renderMessagesInBatches({');
-        expect(source).toContain('messages,');
-        expect(source).toContain('firstMessageId: firstId');
-        expect(source).toContain('batchSize,');
-        expect(source).toContain('renderMessageElement: (message, messageId) => updateMessageElement(message, { messageId })');
-        expect(source).toContain('insertFragment: fragment => insertShowMoreFragment(insertionReference, fragment)');
-        expect(source).toContain('waitForNextFrame: async () =>');
-        expect(source).toContain('await waitForNextFrame();');
-        expect(source).toContain('afterBatch: restoreAnchorIfNeeded');
-    });
-
-    test('guard-off showMoreMessages keeps legacy inline batching and anchor restores', () => {
-        const renderShowMoreMessagesLegacy = findFunctionDeclaration('renderShowMoreMessagesLegacy');
-        const source = getSource(renderShowMoreMessagesLegacy);
-
-        expect(source).not.toContain('renderMessagesInBatches');
-        expect(source).toContain('const fragment = document.createDocumentFragment();');
-        expect(source).toContain('const batch = messages.slice(offset, offset + batchSize);');
-        expect(source).toContain('const messageElement = updateMessageElement(message, { messageId: firstId + offset + id });');
-        expect(source).toContain('insertShowMoreFragment(insertionReference, fragment);');
-        expect(source).toContain('restoreVisibleChatMessageAnchor(anchor);');
-        expect(source).toContain('await waitForNextFrame();');
-    });
-
-    test('addOneMessage passes pre-mutation bottom state into lifecycle bottom scroll', () => {
-        const addOneMessage = findExportedFunction('addOneMessage');
-        expect(addOneMessage).toBeTruthy();
-
-        const tailAppendState = findTopLevelVariable(addOneMessage, 'tailAppendIsNearBottom');
-        expect(tailAppendState).toBeTruthy();
-        expect(tailAppendState.declaration.init?.type).toBe('ConditionalExpression');
-        expect(findNode(tailAppendState.declaration.init.test, node => node.type === 'Identifier' && node.name === 'isTailAppend')).toBeTruthy();
-        expect(findNode(tailAppendState.declaration.init.test, node => node.type === 'Identifier' && node.name === 'scroll')).toBeTruthy();
-        expect(tailAppendState.declaration.init.consequent?.callee?.name).toBe('isChatScrolledNearBottom');
-        expect(tailAppendState.declaration.init.alternate?.value).toBe(true);
-
-        const firstRenderWork = findNode(addOneMessage, node => node.type === 'CallExpression'
-            && node.callee?.name === 'updateMessageElement');
-        expect(firstRenderWork).toBeTruthy();
-        expect(tailAppendState.statement.range[0]).toBeLessThan(firstRenderWork.range[0]);
-
-        const bottomScrollCall = findNode(addOneMessage, node => node.type === 'CallExpression'
-            && node.callee?.name === 'scrollChatToBottom');
-        expect(bottomScrollCall).toBeTruthy();
-
-        const scrollOptions = bottomScrollCall.arguments[0];
-        expect(scrollOptions?.type).toBe('ObjectExpression');
-        expect(scrollOptions.properties).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                key: expect.objectContaining({ name: 'waitForFrame' }),
-                value: expect.objectContaining({ value: true }),
-            }),
-            expect.objectContaining({
-                key: expect.objectContaining({ name: 'isNearBottom' }),
-                value: expect.objectContaining({ name: 'tailAppendIsNearBottom' }),
-            }),
-        ]));
-    });
-
-    test('addOneMessage preserves mobile bottom pin as platform policy', () => {
-        const addOneMessage = findExportedFunction('addOneMessage');
-        const mobilePinBranch = findNode(addOneMessage, node => node.type === 'IfStatement'
-            && node.test?.name === 'shouldPinMobileBottom');
-
-        expect(mobilePinBranch).toBeTruthy();
-        expect(findNode(mobilePinBranch.consequent, node => node.type === 'CallExpression'
-            && node.callee?.name === 'pinMobileChatToBottom')).toBeTruthy();
-        expect(findNode(mobilePinBranch.alternate, node => node.type === 'CallExpression'
-            && node.callee?.name === 'scrollChatToBottom')).toBeTruthy();
-    });
-
-    test('scrollChatToBottom keeps bottom-scroll routing behind its route gate', () => {
-        const scrollChatToBottom = findExportedFunction('scrollChatToBottom');
-        const source = getSource(scrollChatToBottom);
-
-        expect(source).toContain('if (isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.BOTTOM_SCROLL))');
-        expect(source).toContain('resolveChatBottomScrollAction({');
-        expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
-        expect(source).toContain('scrollChatElementToBottom();');
-    });
-
-    test('addOneMessage keeps compatibility follow-up hooks in place', () => {
-        const addOneMessage = findExportedFunction('addOneMessage');
-        const source = getSource(addOneMessage);
-
-        expect(source).toContain('const renderedWindowBeforeAdd = getRenderedChatMessageWindow();');
-        expect(source).toContain('const shouldResetForTailGap = isTailAppend');
-        expect(source).toContain('removeRenderedChatMessages();');
-        expect(source).toContain('querySelector(\'.mes.last_mes\')?.classList.remove(\'last_mes\')');
-        expect(source).toContain('lastMessageElement?.classList.add(\'last_mes\')');
-        expect(source).toContain('pruneRenderedChatMessagesToWindow({ windowSize: getChatRenderWindowSize(), pruneFrom: \'start\' });');
-        expect(source).toContain('syncChatHistoryWindowControls();');
-        expect(source).toContain('if (showSwipes) refreshSwipeButtons();');
-        expect(source).toContain('applyCharacterTagsToMessageDivs({ mesIds: messageId });');
-        expect(source).toContain('updateEditArrowClasses();');
-    });
-
-    test('addOneMessage keeps returning the rendered jQuery element', () => {
-        const addOneMessage = findExportedFunction('addOneMessage');
-        const returnStatement = addOneMessage.body.body.find(node => node.type === 'ReturnStatement');
-
-        expect(returnStatement?.argument).toEqual(expect.objectContaining({
-            type: 'Identifier',
-            name: 'messageElement',
-        }));
-    });
-
-    test('updateMessageBlock keeps lifecycle update routing behind the rollout guard', () => {
-        const updateMessageBlock = findExportedFunction('updateMessageBlock');
-        const source = getSource(updateMessageBlock);
-
-        expect(source).toContain('if (shouldDeferMobileMessageUpdates())');
-        expect(source).toContain('queueMobileMessageBlockUpdate(messageId, message, { rerenderMessage });');
-        expect(source).toContain('if (isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MESSAGE_UPDATE))');
-        expect(source).toContain('updateMessageBlockThroughLifecycle(messageId, message, { rerenderMessage });');
-        expect(source).toContain('applyMessageBlockUpdate(messageId, message, { rerenderMessage });');
-    });
-
-    test('guard-on updateMessageBlock delegates queue mechanics to the lifecycle update queue helper', () => {
-        expect(scriptSource).toContain('createMessageUpdateQueue,');
-
-        const getMessageUpdateQueue = findFunctionDeclaration('getMessageUpdateQueue');
-        const getQueueSource = getSource(getMessageUpdateQueue);
-
-        expect(getQueueSource).toContain('createMessageUpdateQueue({');
-        expect(getQueueSource).toContain('applyUpdate: applyMessageBlockUpdate');
-
-        const updateMessageBlockThroughLifecycle = findFunctionDeclaration('updateMessageBlockThroughLifecycle');
-        const lifecycleSource = getSource(updateMessageBlockThroughLifecycle);
-
-        expect(lifecycleSource).toContain('const queue = getMessageUpdateQueue();');
-        expect(lifecycleSource).toContain('queue.queue(messageId, message, { rerenderMessage });');
-        expect(lifecycleSource).toContain('queue.flush();');
-    });
-
-    test('mobile-deferred message updates use the lifecycle update queue without changing scheduling policy', () => {
-        expect(scriptSource).not.toContain('pendingMobileMessageUpdates = new Map');
-        expect(scriptSource).not.toContain('pendingMobileMessageUpdates.set');
-
-        const getMobileMessageUpdateQueue = findFunctionDeclaration('getMobileMessageUpdateQueue');
-        const getMobileQueueSource = getSource(getMobileMessageUpdateQueue);
-
-        expect(getMobileQueueSource).toContain('createMessageUpdateQueue({');
-        expect(getMobileQueueSource).toContain('applyUpdate: applyMessageBlockUpdate');
-
-        const flushPendingMobileMessageUpdates = findFunctionDeclaration('flushPendingMobileMessageUpdates');
-        const flushSource = getSource(flushPendingMobileMessageUpdates);
-
-        expect(flushSource).toContain('pendingMobileMessageUpdateFrame = 0;');
-        expect(flushSource).toContain('pendingMobileMessageUpdateTimer = 0;');
-        expect(flushSource).toContain('getMobileMessageUpdateQueue().flush();');
-
-        const queueMobileMessageBlockUpdate = findFunctionDeclaration('queueMobileMessageBlockUpdate');
-        const queueSource = getSource(queueMobileMessageBlockUpdate);
-
-        expect(queueSource).toContain('getMobileMessageUpdateQueue().queue(messageId, message, { rerenderMessage });');
-        expect(queueSource).toContain('if (pendingMobileMessageUpdateFrame || pendingMobileMessageUpdateTimer)');
-        expect(queueSource).toContain('pendingMobileMessageUpdateTimer = window.setTimeout(() =>');
-        expect(queueSource).toContain('pendingMobileMessageUpdateFrame = requestAnimationFrame(flushPendingMobileMessageUpdates);');
-        expect(queueSource).toContain('scheduleMobileMessageUpdateFlushTimeout();');
-
-        const timeoutSource = getSource(findFunctionDeclaration('scheduleMobileMessageUpdateFlushTimeout'));
-        expect(timeoutSource).toContain('pendingMobileMessageUpdateFlushTimeout = window.setTimeout(() =>');
-        expect(timeoutSource).toContain('flushPendingMobileMessageUpdates();');
-    });
-
-    test('streaming start keeps viewport routing behind the lifecycle rollout guard', () => {
-        const onStartStreaming = findNode(scriptAst, node => node.type === 'MethodDefinition'
-            && node.key?.name === 'onStartStreaming');
-        const source = getSource(onStartStreaming.value);
-
-        expect(source).toContain('hideSwipeButtons({ hideCounters: true });');
-        expect(source).toContain('scrollLock = false;');
-        expect(source).toContain('scrollLockImmunityUntil = Date.now() + 500;');
-        expect(source).toContain('scrollStartedStreamingMessageThroughLifecycle();');
-        expect(source).not.toContain('scrollChatToBottom({ waitForFrame: true });');
-    });
-
-    test('guard-on streaming start resolves viewport intent through lifecycle scroll rules', () => {
-        const scrollStartedStreamingMessageThroughLifecycle = findFunctionDeclaration('scrollStartedStreamingMessageThroughLifecycle');
-        const source = getSource(scrollStartedStreamingMessageThroughLifecycle);
-
-        expect(source).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_START))');
-        expect(source).toContain('scrollChatToBottom({ waitForFrame: true });');
-        expect(source).toContain('resolveChatScrollAction({');
-        expect(source).toContain('intent: CHAT_SCROLL_INTENT.STREAM_PROGRESS');
-        expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
-        expect(source).toContain('isNearBottom: isChatScrolledNearBottom()');
-        expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
-        expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
-        expect(source).toContain('scrollChatElementToBottom();');
-    });
-
-    test('streaming progress keeps visible DOM write routing behind the lifecycle rollout guard', () => {
-        const onProgressStreaming = findNode(scriptAst, node => node.type === 'MethodDefinition'
-            && node.key?.name === 'onProgressStreaming');
-        const source = getSource(onProgressStreaming.value);
-
-        expect(source).toContain('await this.#checkDomElements(messageId);');
-        expect(source).toContain('await updateMessageTokenAccounting(chat[messageId],');
-        expect(source).toContain('shouldUpdateMetaBadges: !shouldReduceIntermediateStreamingWork');
-        expect(source).toContain('this.setFirstSwipe(messageId);');
-        expect(source).toContain('this.#queueStreamingVisibleWrite({');
-        expect(source).toContain('formatText,');
-        expect(source).toContain('timePassed,');
-        expect(source).toContain('currentTokenCount,');
-        expect(source).toContain('isFinal,');
-    });
-
-    test('streaming progress skips reduced-work intermediate pins and settles once at completion', () => {
-        const onProgressStreaming = findNode(scriptAst, node => node.type === 'MethodDefinition'
-            && node.key?.name === 'onProgressStreaming');
-        const source = getSource(onProgressStreaming.value);
-
-        expect(source).toContain('const shouldUseMobileStreamingPin = !isImpersonate && shouldGuardMobileChatScroll();');
-        expect(source).toContain('const shouldPinMobileBottom = shouldUseMobileStreamingPin && shouldPinMobileChatToBottom();');
-        expect(source).toContain('if (shouldReduceIntermediateStreamingWork && shouldUseMobileStreamingPin)');
-        expect(source).toContain('if (shouldPinMobileBottom && shouldPinMobileChatToBottom())');
-        expect(source).toContain('scheduleMobileStreamingBottomPin({ isFinal });');
-        expect(source).toContain('isNearBottom: shouldUseMobileStreamingPin ? shouldPinMobileBottom || (isFinal && shouldReduceStreamingWork) : true');
-        expect(source).not.toContain('pinMobileChatToBottom({ waitForFrame: true, settle: isFinal });');
-
-        const shouldPinMobileChatToBottom = findFunctionDeclaration('shouldPinMobileChatToBottom');
-        expect(getSource(shouldPinMobileChatToBottom)).toContain('!power_user.auto_scroll_chat_to_bottom');
-    });
-
-    test('mobile streaming bottom pin scheduling coalesces smooth intermediate pins', () => {
-        expect(scriptSource).toContain('const MOBILE_STREAMING_SCROLL_MIN_INTERVAL_MS = 750;');
-        expect(scriptSource).toContain('let mobileStreamingBottomPinFrame = 0;');
-        expect(scriptSource).toContain('let mobileStreamingBottomPinTimer = 0;');
-
-        const requestFrame = findFunctionDeclaration('requestMobileStreamingBottomPinFrame');
-        const requestFrameSource = getSource(requestFrame);
-        expect(requestFrameSource).toContain('requestAnimationFrame(() =>');
-        expect(requestFrameSource).toContain('const behavior = getMobileStreamingBottomPinBehavior({');
-        expect(requestFrameSource).toContain('if (!shouldPinMobileChatToBottom())');
-        expect(requestFrameSource).toContain('pinMobileChatToBottom({');
-        expect(requestFrameSource).toContain('waitForFrame: false');
-        expect(requestFrameSource).toContain('behavior,');
-
-        const scheduler = findFunctionDeclaration('scheduleMobileStreamingBottomPin');
-        const schedulerSource = getSource(scheduler);
-        expect(schedulerSource).toContain('clearMobileStreamingBottomPinTimer();');
-        expect(schedulerSource).toContain('elapsed >= MOBILE_STREAMING_SCROLL_MIN_INTERVAL_MS');
-        expect(schedulerSource).toContain('mobileStreamingBottomPinTimer = setTimeout(() =>');
-    });
-
-    test('guard-on streaming progress delegates visible DOM writes to the lifecycle stream buffer', () => {
-        expect(scriptSource).toContain('createStreamWriteBuffer,');
-
-        const getStreamingVisibleWriteBuffer = findFunctionDeclaration('getStreamingVisibleWriteBuffer');
-        const getBufferSource = getSource(getStreamingVisibleWriteBuffer);
-
-        expect(getBufferSource).toContain('createStreamWriteBuffer({');
-        expect(getBufferSource).toContain('applyWrite: applyStreamingVisibleWrite');
-
-        const applyStreamingVisibleWrite = findFunctionDeclaration('applyStreamingVisibleWrite');
-        const applySource = getSource(applyStreamingVisibleWrite);
-
-        expect(applySource).toContain('applyStreamFadeIn(messageTextDom, formattedText,');
-        expect(applySource).toContain('messageTextDom.innerHTML = formattedText;');
-        expect(applySource).toContain('messageTokenCounterDom.textContent = `${currentTokenCount}t`;');
-        expect(applySource).toContain('messageTimerDom.textContent = timePassed.timerValue;');
-        expect(applySource).toContain('messageTimerDom.title = timePassed.timerTitle;');
-
-        const queueStreamingVisibleWrite = findNode(scriptAst, node => node.type === 'MethodDefinition'
-            && node.key?.name === 'queueStreamingVisibleWrite');
-        const queueSource = getSource(queueStreamingVisibleWrite.value);
-
-        expect(queueSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.STREAM_PROGRESS))');
-        expect(queueSource).toContain('applyStreamingVisibleWrite(messageId, write, { isFinal });');
-        expect(queueSource).toContain('getStreamingVisibleWriteBuffer().queue(messageId, write, {');
-        expect(queueSource).toContain('this.onErrorStreaming();');
-    });
-
-    test('swipe replacement keeps viewport routing behind the lifecycle rollout guard', () => {
-        const getSwipeReplacementViewportUpdate = findFunctionDeclaration('getSwipeReplacementViewportUpdate');
-        const source = getSource(getSwipeReplacementViewportUpdate);
-
-        expect(source).toContain('if (!useLifecycleRoute || !isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.REPLACE_MESSAGE))');
-        expect(source).toContain('const anchor = isLastMessageSwipe && !isChatScrolledNearBottom()');
-        expect(source).toContain('captureVisibleChatMessageAnchor()');
-        expect(source).toContain('scrollWithAddOneMessage: isLastMessageSwipe && !anchor');
-        expect(source).toContain('intent: CHAT_SCROLL_INTENT.REPLACE_MESSAGE');
-        expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
-        expect(source).toContain('isNearBottom,');
-        expect(source).toContain('hasAnchor: Boolean(anchor)');
-        expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
-        expect(source).toContain('scrollWithAddOneMessage: false');
-    });
-
-    test('guard-on swipe replacement applies bottom or anchor lifecycle actions', () => {
-        const applySwipeReplacementViewportUpdate = findFunctionDeclaration('applySwipeReplacementViewportUpdate');
-        const applySource = getSource(applySwipeReplacementViewportUpdate);
-
-        expect(applySource).toContain('shouldApplyChatBottomScrollAction(viewportUpdate?.action)');
-        expect(applySource).toContain('requestAnimationFrame(() =>');
-        expect(applySource).toContain('scrollChatElementToBottom();');
-        expect(applySource).toContain('await settleSwipeReplacementAnchor(viewportUpdate);');
-
-        const shouldSettleSwipeReplacementAnchor = findFunctionDeclaration('shouldSettleSwipeReplacementAnchor');
-        const settleSource = getSource(shouldSettleSwipeReplacementAnchor);
-
-        expect(settleSource).toContain('Boolean(viewportUpdate?.anchor)');
-        expect(settleSource).toContain('viewportUpdate.action.action === CHAT_SCROLL_ACTION.PRESERVE_ANCHOR');
-    });
-
-    test('display-only swipe replacement delegates viewport handling without touching generation flow', () => {
-        const swipe = findExportedFunction('swipe');
-        const source = getSource(swipe);
-
-        expect(source).toContain('let swipeViewportUpdate = null;');
-        expect(source).toContain('let isOverswipeReplacement = false;');
-        expect(source).toContain('const useLifecycleRoute = source !== SWIPE_SOURCE.DELETE && source !== SWIPE_SOURCE.BACK && !isOverswipeReplacement;');
-        expect(source).toContain('swipeViewportUpdate = getSwipeReplacementViewportUpdate({ isLastMessageSwipe, useLifecycleRoute });');
-        expect(source).toContain('isOverswipeReplacement = true;');
-        expect(source).toContain('addOneMessage(chat[mesId], { type: \'swipe\', forceId: mesId, scroll: swipeViewportUpdate.scrollWithAddOneMessage, showSwipes: false });');
-        expect(source).toContain('await applySwipeReplacementViewportUpdate(swipeViewportUpdate);');
-        expect(source).toContain('await settleSwipeReplacementAnchor(swipeViewportUpdate);');
-
-        const runGenerateBlock = source.slice(source.indexOf('if (run_generate) {'), source.indexOf('} else {', source.indexOf('if (run_generate) {')));
-        expect(runGenerateBlock).not.toContain('getSwipeReplacementViewportUpdate');
-        expect(runGenerateBlock).not.toContain('addOneMessage');
-    });
-
-    test('guard-on message rendering registers delegated resize observation', () => {
-        expect(scriptSource).toContain('createDelegatedResizeObserver,');
-        expect(scriptSource).toContain('let chatMessageResizeObserver = null;');
-        expect(scriptSource).toContain('const chatMessageResizeStates = new Map();');
-
-        const updateMessageElement = findExportedFunction('updateMessageElement');
-        expect(getSource(updateMessageElement)).toContain('observeChatMessageResize(messageElement);');
-
-        const observeChatMessageResize = findFunctionDeclaration('observeChatMessageResize');
-        const observeSource = getSource(observeChatMessageResize);
-
-        expect(observeSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE) || !canObserveChatMessageResize())');
-        expect(observeSource).toContain('const messageBlock = getMessageBlockElement(messageElement);');
-        expect(observeSource).toContain('pendingChatMessageResizeBlocks.add(messageBlock);');
-        expect(observeSource).toContain('pendingChatMessageResizeFrame = requestAnimationFrame(observePendingChatMessageResizeBlocks);');
-        expect(observeSource).not.toContain('captureChatMessageResizeState(');
-
-        // One frame callback and one viewport capture cover every block rendered in that frame.
-        const observePendingSource = getSource(findFunctionDeclaration('observePendingChatMessageResizeBlocks'));
-        expect(observePendingSource).toContain('pendingChatMessageResizeFrame = 0;');
-        expect(observePendingSource).toContain('.filter(messageBlock => messageBlock.isConnected)');
-        expect(observePendingSource).toContain('pendingChatMessageResizeBlocks.clear();');
-        expect(observePendingSource).toContain('!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE)');
-        expect(observePendingSource).toContain('const observer = getChatMessageResizeObserver();');
-        expect(observePendingSource).toContain('const viewportState = captureChatMessageResizeViewportState();');
-        expect(observePendingSource).toContain('unobserveChatMessageResizeBlock(messageBlock);');
-        expect(observePendingSource).toContain('const metadata = captureChatMessageResizeState(messageBlock, null, viewportState);');
-        expect(observePendingSource).toContain('observer.observe(messageBlock, metadata)');
-        expect(observePendingSource).toContain('chatMessageResizeStates.set(messageBlock, metadata);');
-        expect(observePendingSource.indexOf('const viewportState = captureChatMessageResizeViewportState();'))
-            .toBeLessThan(observePendingSource.indexOf('for (const messageBlock of messageBlocks)'));
-
-        const getMessageBlockElement = findFunctionDeclaration('getMessageBlockElement');
-        expect(getSource(getMessageBlockElement)).toContain('element.matches(\'.mes_block\') ? element : element.querySelector(\'.mes_block\')');
-
-        const getChatMessageResizeObserver = findFunctionDeclaration('getChatMessageResizeObserver');
-        expect(getSource(getChatMessageResizeObserver)).toContain('createDelegatedResizeObserver({');
-        expect(getSource(getChatMessageResizeObserver)).toContain('onResize: onChatMessageResize');
-    });
-
-    test('guard-on message resize resolves media-resize intent through lifecycle scroll rules', () => {
-        const isActiveStreamingMessageResizeBlock = findFunctionDeclaration('isActiveStreamingMessageResizeBlock');
-        const streamingResizeSource = getSource(isActiveStreamingMessageResizeBlock);
-
-        expect(streamingResizeSource).toContain('!streamingProcessor || streamingProcessor.isFinished');
-        expect(streamingResizeSource).toContain('const streamingMessageId = Number(streamingProcessor.messageId);');
-        expect(streamingResizeSource).toContain('element?.closest?.(\'.mes\')');
-        expect(streamingResizeSource).toContain('messageElement?.getAttribute(\'mesid\')');
-
-        const applyChatMessageResizeAction = findFunctionDeclaration('applyChatMessageResizeAction');
-        const source = getSource(applyChatMessageResizeAction);
-
-        expect(source).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MEDIA_RESIZE))');
-        expect(source).toContain('const resizeState = metadata ?? captureChatMessageResizeState(element, entry);');
-        expect(source).toContain('if (isActiveStreamingMessageResizeBlock(element))');
-        expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry, captureChatMessageResizeDeliveryViewportState());');
-        expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
-        expect(source).toContain('intent: CHAT_SCROLL_INTENT.MEDIA_RESIZE');
-        expect(source).toContain('autoScrollEnabled: power_user.auto_scroll_chat_to_bottom');
-        expect(source).toContain('isNearBottom: Boolean(resizeState.isNearBottom)');
-        expect(source).toContain('hasAnchor: Boolean(resizeState.anchor)');
-        expect(source).toContain('isManualScrollSuppressed: shouldSuppressMobileChatAutoScroll()');
-        expect(source).toContain('shouldApplyChatBottomScrollAction(action)');
-        expect(source).toContain('scrollChatToBottom({ waitForFrame: true, isNearBottom: true });');
-        expect(source).toContain('isRecentChatTap()');
-        expect(source).toContain('action.action === CHAT_SCROLL_ACTION.PRESERVE_ANCHOR');
-        expect(source).toContain('await settleVisibleChatMessageAnchor(resizeState.anchor);');
-        expect(source).toContain('refreshChatMessageResizeState(element, metadata, entry);');
-    });
-
-    test('message resize deliveries share one viewport capture', () => {
-        const deliverySource = getSource(findFunctionDeclaration('captureChatMessageResizeDeliveryViewportState'));
-
-        expect(scriptSource).toContain('let chatMessageResizeDeliveryViewportState = null;');
-        expect(deliverySource).toContain('if (!chatMessageResizeDeliveryViewportState)');
-        expect(deliverySource).toContain('chatMessageResizeDeliveryViewportState = captureChatMessageResizeViewportState();');
-        expect(deliverySource).toContain('queueMicrotask(() => {');
-        expect(deliverySource).toContain('chatMessageResizeDeliveryViewportState = null;');
-
-        const captureSource = getSource(findFunctionDeclaration('captureChatMessageResizeState'));
-        expect(captureSource).toContain('viewportState = captureChatMessageResizeViewportState()');
-        expect(captureSource).toContain('...viewportState,');
-
-        const refreshSource = getSource(findFunctionDeclaration('refreshChatMessageResizeState'));
-        expect(refreshSource).toContain('captureChatMessageResizeState(element, entry, viewportState)');
-    });
-
-    test('message resize metadata refreshes viewport anchors on chat scroll', () => {
-        const refreshObservedChatMessageResizeViewportStates = findFunctionDeclaration('refreshObservedChatMessageResizeViewportStates');
-        const source = getSource(refreshObservedChatMessageResizeViewportStates);
-
-        expect(source).toContain('if (chatMessageResizeStates.size === 0)');
-        expect(source).toContain('const viewportState = captureChatMessageResizeViewportState();');
-        expect(source).toContain('for (const [element, metadata] of chatMessageResizeStates)');
-        expect(source).toContain('unobserveChatMessageResizeBlock(element);');
-        expect(source).toContain('Object.assign(metadata, viewportState);');
-
-        expect(scriptSource).toContain('const chatScrollHandler = function () {');
-        expect(scriptSource).toContain('refreshObservedChatMessageResizeViewportStates();');
-    });
-
-    test('message resize observer cleans up on chat removal paths', () => {
-        const unobserveChatMessageResize = findFunctionDeclaration('unobserveChatMessageResize');
-        const unobserveSource = getSource(unobserveChatMessageResize);
-
-        expect(unobserveSource).toContain('messageElement.toArray().forEach(unobserveChatMessageResize);');
-        expect(unobserveSource).toContain('unobserveChatMessageResizeBlock(messageBlock);');
-
-        const disposeChatMessageResizeObserver = findFunctionDeclaration('disposeChatMessageResizeObserver');
-        const disposeSource = getSource(disposeChatMessageResizeObserver);
-
-        expect(disposeSource).toContain('cancelAnimationFrame(pendingChatMessageResizeFrame);');
-        expect(disposeSource).toContain('pendingChatMessageResizeBlocks.clear();');
-        expect(disposeSource).toContain('chatMessageResizeObserver?.dispose();');
-        expect(disposeSource).toContain('chatMessageResizeObserver = null;');
-        expect(disposeSource).toContain('chatMessageResizeStates.clear();');
-
-        const unobserveBlockSource = getSource(findFunctionDeclaration('unobserveChatMessageResizeBlock'));
-        expect(unobserveBlockSource).toContain('pendingChatMessageResizeBlocks.delete(messageBlock);');
-
-        expect(getSource(findExportedFunction('redisplayChat'))).toContain('unobserveChatMessageResize(removedMessageElements);');
-        expect(getSource(findExportedFunction('clearChat'))).toContain('disposeChatMessageResizeObserver();');
-        const deleteLastMessageSource = getSource(findExportedFunction('deleteLastMessage'));
-        expect(deleteLastMessageSource).toContain('const deletedMessageId = chat.length - 1;');
-        expect(deleteLastMessageSource).toContain('chatElement.find(`.mes[mesid="${deletedMessageId}"]`)');
-        expect(deleteLastMessageSource).toContain('unobserveChatMessageResize(messageElement);');
-        expect(getSource(findExportedFunction('deleteMessage'))).toContain('unobserveChatMessageResize(messageElement);');
-        expect(getSource(findExportedFunction('removeRenderedMessagesFrom'))).toContain('unobserveChatMessageResize(messageElements);');
-        expect(scriptSource).toContain('$(window).on(\'beforeunload\', () => {');
-        expect(scriptSource).toContain('disposeChatMessageResizeObserver();');
-
-        const onChatMessageResize = findFunctionDeclaration('onChatMessageResize');
-        expect(getSource(onChatMessageResize)).toContain('unobserveChatMessageResizeBlock(element);');
-    });
-
-    test('off-screen message skipping stays behind its lifecycle route and follows message cleanup', () => {
-        expect(scriptSource).toContain('createOffscreenMessageTracker,');
-        expect(scriptSource).toContain('let offscreenChatMessageTracker = null;');
-
-        const updateMessageElement = findExportedFunction('updateMessageElement');
-        expect(getSource(updateMessageElement)).toContain('trackOffscreenChatMessage(messageElement);');
-
-        const trackSource = getSource(findFunctionDeclaration('trackOffscreenChatMessage'));
-        expect(trackSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.OFFSCREEN_MESSAGES) || !canObserveChatMessageResize())');
-        expect(trackSource).toContain('getOffscreenChatMessageTracker()?.track(element);');
-
-        const getTrackerSource = getSource(findFunctionDeclaration('getOffscreenChatMessageTracker'));
-        expect(getTrackerSource).toContain('createOffscreenMessageTracker({ container: chatElement[0] })');
-
-        expect(getSource(findFunctionDeclaration('unobserveChatMessageResize'))).toContain('offscreenChatMessageTracker?.untrack(messageElement.closest(\'.mes\') ?? messageElement);');
-
-        const disposeSource = getSource(findFunctionDeclaration('disposeChatMessageResizeObserver'));
-        expect(disposeSource).toContain('offscreenChatMessageTracker?.dispose();');
-        expect(disposeSource).toContain('offscreenChatMessageTracker = null;');
+    test.each([true, false])('mobile viewport observer registers visualViewport listeners, resets on clearChat, and routes shell wheel events to #chat (rollout=%s)', async (rolloutEnabled) => {
+        const runtime = await createRenderRuntime({
+            rolloutEnabled,
+            isMobile: true,
+            installVisualViewport: true,
+            runReady: true,
+        });
+
+        expect(window.visualViewport.addEventListener).toHaveBeenCalledWith('scroll', expect.any(Function), expect.anything());
+        expect(window.visualViewport.addEventListener).toHaveBeenCalledWith('resize', expect.any(Function), expect.anything());
+
+        // Shell wheel events over #sheld route deltaY onto #chat.scrollTop.
+        const chatEl = document.getElementById('chat');
+        const geom = setScrollGeometry(chatEl, { scrollHeight: 1200, clientHeight: 400, scrollTop: 100 });
+        const wheelEvent = new window.WheelEvent('wheel', {
+            bubbles: true,
+            cancelable: true,
+            deltaX: 0,
+            deltaY: 60,
+            deltaMode: 0,
+        });
+        document.getElementById('sheld').dispatchEvent(wheelEvent);
+        expect(geom.getScrollTop()).toBe(160);
+
+        // clearChat resets mobile viewport lifecycle and beforeunload disposes observer listeners.
+        await runtime.script.clearChat();
+        runtime.$(window).trigger('beforeunload');
+        expect(window.visualViewport.removeEventListener.mock.calls.length > 0).toBe(rolloutEnabled);
     });
 
     test('off-screen message skipping CSS only skips laid-out history and never collapses it', () => {
@@ -701,115 +447,5 @@ describe('chat render lifecycle script wiring', () => {
         expect(styleSource).toMatch(/#chat > \.mes \{[^}]*flex-shrink: 0;/);
         expect(styleSource).toContain('#chat > .mes.sb-mes-sized:not(.last_mes):not(:nth-last-child(-n + 20)) {\n    content-visibility: auto;\n}');
         expect(styleSource).toMatch(/\n\.mes \{[^}]*contain-intrinsic-size: auto 180px;/);
-    });
-
-    test('swipe refreshes only toggle controls whose inline display has to change', () => {
-        const toggleSource = getSource(findFunctionDeclaration('toggleSwipeControl'));
-        expect(toggleSource).toContain('if ((control.style.display === \'none\') !== visible) {');
-        expect(toggleSource).toContain('$(control).toggle(visible);');
-
-        const refreshSource = getSource(findExportedFunction('refreshSwipeButtons'));
-        expect(refreshSource).toContain('toggleSwipeControl(swipePickerButton, canOpenSwipePicker);');
-        expect(refreshSource).toContain('toggleSwipeControl(deleteAddSwipeButton, canDeleteAddSwipe(messageId, message));');
-        expect(refreshSource).toContain('toggleSwipeControl($(div).find(\'.mes_swipe_picker\'), canOpenSwipePickerForMessage(messageId));');
-        expect(refreshSource).not.toMatch(/\.toggle\((?:canOpenSwipePicker|canDeleteAddSwipe)/);
-    });
-
-    test('guard-on mobile viewport events route through the lifecycle observer helper', () => {
-        expect(scriptSource).toContain('createMobileViewportObserver,');
-        expect(scriptSource).toContain('let mobileChatViewportObserver = null;');
-
-        const setupMobileChatViewportObserver = findFunctionDeclaration('setupMobileChatViewportObserver');
-        const setupSource = getSource(setupMobileChatViewportObserver);
-
-        expect(setupSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MOBILE_VIEWPORT))');
-        expect(setupSource).toContain('window.visualViewport?.addEventListener(\'scroll\', onViewportChange, { passive: true });');
-        expect(setupSource).toContain('window.visualViewport?.addEventListener(\'resize\', onViewportChange, { passive: true });');
-        expect(setupSource).toContain('disposeMobileChatViewportObserver();');
-        expect(setupSource).toContain('mobileChatViewportObserver = createMobileViewportObserver({');
-        expect(setupSource).toContain('onViewportChange,');
-        expect(setupSource).toContain('onViewportSettle: onViewportChange');
-        expect(setupSource).toContain('mobileChatViewportObserver.start();');
-
-        const initSource = scriptSource.slice(scriptSource.indexOf('const chatElementScroll = document.getElementById(\'chat\');'));
-        expect(initSource).toContain('const markMobileViewportScroll = getMobileViewportScrollHandler();');
-        expect(scriptSource).toContain('const CHAT_SHELL_WHEEL_SURFACE_SELECTOR = \'#sheld, #chat_wrapper, #form_sheld, #top-bar, #send_form\';');
-        expect(scriptSource).toContain('const shellBoundary = getChatShellWheelBoundary(event.target);');
-        expect(scriptSource).toContain('hasScrollableWheelTarget(event.target, shellBoundary)');
-        expect(initSource).toContain('document.addEventListener(\'wheel\', routeShellWheelToChat, { passive: false, capture: true });');
-        expect(initSource).toContain('setupMobileChatViewportObserver(markMobileViewportScroll);');
-    });
-
-    test('initial chat load keeps bottom pin settling across late layout passes', () => {
-        expect(scriptSource).toContain('const CHAT_SCROLL_BOTTOM_THRESHOLD_PX = 24;');
-        expect(scriptSource).toContain('const CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS = 250;');
-        expect(scriptSource).toContain('const CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS = Object.freeze([80, 250, MOBILE_CHAT_LOAD_SCROLL_SETTLE_MS, 900, 1600, 2400]);');
-        expect(scriptSource).toContain('history.scrollRestoration = \'manual\';');
-
-        const beginChatLoadBottomLock = findFunctionDeclaration('beginChatLoadBottomLock');
-        const lockSource = getSource(beginChatLoadBottomLock);
-        expect(lockSource).toContain('chatLoadBottomLockUntil = Math.max(chatLoadBottomLockUntil, Date.now() + durationMs);');
-        expect(lockSource).toContain('scrollLockImmunityUntil = Math.max(scrollLockImmunityUntil, chatLoadBottomLockUntil);');
-        expect(lockSource).toContain('pinChatLoadToBottom();');
-
-        const pinChatLoadToBottom = findFunctionDeclaration('pinChatLoadToBottom');
-        const pinSource = getSource(pinChatLoadToBottom);
-        expect(pinSource).toContain('if (!isChatLoadBottomLockActive())');
-        expect(pinSource).toContain('scrollChatElementToBottom();');
-
-        const scrollLoadedChatToBottom = findFunctionDeclaration('scrollLoadedChatToBottom');
-        const source = getSource(scrollLoadedChatToBottom);
-        expect(source).toContain('const latestSettleDelay = Math.max(...CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS);');
-        expect(source).toContain('const bottomLockDurationMs = latestSettleDelay + CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS;');
-        expect(source).toContain('beginChatLoadBottomLock({ durationMs: bottomLockDurationMs });');
-        expect(source).toContain('scrollLockImmunityUntil = Math.max(scrollLockImmunityUntil, chatLoadBottomLockUntil);');
-        expect(source).toContain('requestMobileChatBottomPin({ requireNearBottom: false, durationMs: bottomLockDurationMs + MOBILE_SEND_SCROLL_SETTLE_MS });');
-        expect(source).toContain('for (const delayMs of CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS)');
-        expect(source.match(/pinChatLoadToBottom\(\{ waitForFrame: true \}\);/g)).toHaveLength(2);
-        expect(source).not.toMatch(/scrollChatToBottom\(\{[^}]*waitForFrame/);
-
-        const initSource = scriptSource.slice(scriptSource.indexOf('const chatElementScroll = document.getElementById(\'chat\');'));
-        expect(initSource).toContain('clearChatLoadBottomLock();');
-        expect(initSource).toContain('if (isChatLoadBottomLockActive() && !isChatScrolledNearBottom())');
-        expect(initSource).toContain('pinChatLoadToBottom();');
-        expect(initSource).toContain('lastChatPointerUpAt = Date.now();');
-
-        const clearLockSource = getSource(findFunctionDeclaration('clearChatLoadBottomLock'));
-        expect(clearLockSource).toContain('scrollLockImmunityUntil = 0;');
-        expect(clearLockSource).toContain('cancelAnimationFrame(chatLoadBottomPinFrame);');
-    });
-
-    test('mobile viewport lifecycle route preserves existing scroll suppression policy', () => {
-        const getMobileViewportScrollHandler = findFunctionDeclaration('getMobileViewportScrollHandler');
-        const handlerSource = getSource(getMobileViewportScrollHandler);
-
-        expect(handlerSource).toContain('if (mobileChatTouchScrolling || Date.now() < mobileChatManualScrollSuppressedUntil)');
-        expect(handlerSource).toContain('markMobileChatManualScroll({ suppressMs: MOBILE_CHAT_VIEWPORT_SCROLL_SUPPRESS_MS });');
-
-        const resetMobileViewportScrollState = findFunctionDeclaration('resetMobileViewportScrollState');
-        const resetSource = getSource(resetMobileViewportScrollState);
-
-        expect(resetSource).toContain('mobileChatTouchScrolling = false;');
-        expect(resetSource).toContain('mobileChatManualScrollSuppressedUntil = 0;');
-        expect(resetSource).toContain('mobileChatBottomPinUntil = 0;');
-    });
-
-    test('mobile viewport lifecycle observer resets on chat clear and disposes on unload', () => {
-        const disposeMobileChatViewportObserver = findFunctionDeclaration('disposeMobileChatViewportObserver');
-        const disposeSource = getSource(disposeMobileChatViewportObserver);
-
-        expect(disposeSource).toContain('mobileChatViewportObserver?.dispose();');
-        expect(disposeSource).toContain('mobileChatViewportObserver = null;');
-
-        const resetMobileChatViewportLifecycle = findFunctionDeclaration('resetMobileChatViewportLifecycle');
-        const resetSource = getSource(resetMobileChatViewportLifecycle);
-
-        expect(resetSource).toContain('if (!isChatRenderLifecycleRolloutEnabled(CHAT_RENDER_LIFECYCLE_ROUTE.MOBILE_VIEWPORT))');
-        expect(resetSource).toContain('resetMobileViewportScrollState();');
-        expect(resetSource).toContain('setupMobileChatViewportObserver(getMobileViewportScrollHandler());');
-
-        expect(getSource(findExportedFunction('clearChat'))).toContain('resetMobileChatViewportLifecycle();');
-        expect(scriptSource).toContain('$(window).on(\'beforeunload\', () => {');
-        expect(scriptSource).toContain('disposeMobileChatViewportObserver();');
     });
 });

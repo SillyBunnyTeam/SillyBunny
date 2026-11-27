@@ -56,6 +56,12 @@ function ensureJsdomBrowserGlobals() {
             }
         };
     }
+    if (typeof globalThis.Element !== 'undefined' && typeof globalThis.Element.prototype.getAnimations !== 'function') {
+        globalThis.Element.prototype.getAnimations = () => [];
+    }
+    if (typeof globalThis.window !== 'undefined' && typeof globalThis.WheelEvent === 'undefined' && typeof globalThis.window.WheelEvent === 'function') {
+        globalThis.WheelEvent = globalThis.window.WheelEvent;
+    }
     if (typeof globalThis.window !== 'undefined') {
         if (typeof globalThis.window.matchMedia !== 'function') {
             globalThis.window.matchMedia = () => ({
@@ -87,14 +93,10 @@ function loadWrappedJQuery() {
     if (real$.fx) {
         real$.fx.off = true;
     }
-    if (!real$.fn.sortable) {
-        real$.fn.sortable = jest.fn(function () { return this; });
-    }
-    if (!real$.fn.select2) {
-        real$.fn.select2 = jest.fn(function () { return this; });
-    }
-    if (!real$.fn.transition) {
-        real$.fn.transition = jest.fn(function () { return this; });
+    for (const plugin of ['sortable', 'select2', 'transition', 'pagination', 'draggable', 'resizable']) {
+        if (!real$.fn[plugin]) {
+            real$.fn[plugin] = jest.fn(function () { return this; });
+        }
     }
 
     const readyCallbacks = [];
@@ -176,6 +178,22 @@ export async function importScriptModule(options = {}) {
 
     if (options.dom !== null && typeof document !== 'undefined') {
         document.body.innerHTML = options.dom ?? DEFAULT_SCRIPT_DOM;
+    }
+
+    const trackedNativeListeners = [];
+    const origDocAdd = typeof document !== 'undefined' ? document.addEventListener.bind(document) : null;
+    const origWinAdd = typeof window !== 'undefined' ? window.addEventListener.bind(window) : null;
+    if (origDocAdd) {
+        document.addEventListener = function trackedDocAdd(type, listener, listenerOptions) {
+            trackedNativeListeners.push([document, type, listener, listenerOptions]);
+            return origDocAdd(type, listener, listenerOptions);
+        };
+    }
+    if (origWinAdd) {
+        window.addEventListener = function trackedWinAdd(type, listener, listenerOptions) {
+            trackedNativeListeners.push([window, type, listener, listenerOptions]);
+            return origWinAdd(type, listener, listenerOptions);
+        };
     }
 
     const { $, runReady } = loadWrappedJQuery();
@@ -324,6 +342,13 @@ export async function importScriptModule(options = {}) {
             isPlainObject: v => Boolean(v) && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype,
             isEqual: (a, b) => JSON.stringify(a) === JSON.stringify(b),
             merge: Object.assign,
+            range: (start, end, step = 1) => {
+                const out = [];
+                for (let value = start; value < end; value += step) {
+                    out.push(value);
+                }
+                return out;
+            },
             get: () => undefined,
             set: () => {},
             uniq: arr => [...new Set(arr)],
@@ -703,7 +728,7 @@ export async function importScriptModule(options = {}) {
         'scripts/tags.js': {
             tag_map: {},
             tags: [],
-            filterByTagState: jest.fn(() => true),
+            filterByTagState: jest.fn(list => list),
             isBogusFolder: jest.fn(() => false),
             isBogusFolderOpen: jest.fn(() => false),
             chooseBogusFolder: jest.fn(),
@@ -782,7 +807,7 @@ export async function importScriptModule(options = {}) {
             FilterHelper: class {
                 setFilterData() {}
                 getFilterData() { return null; }
-                applyFilters() {}
+                applyFilters() { return []; }
                 clearFuzzySearchCaches() {}
             },
             isFilterState: () => false,
@@ -840,7 +865,12 @@ export async function importScriptModule(options = {}) {
         },
         'scripts/action-loader.js': {
             dismissPreloader: jest.fn(),
-            loader: { show: jest.fn(), hide: jest.fn() },
+            loader: {
+                show: jest.fn(),
+                hide: jest.fn(),
+                ToastMode: { STATIC: 'static', PROGRESS: 'progress' },
+                start: jest.fn(() => ({ finish: jest.fn(), fail: jest.fn(), update: jest.fn(), dismiss: jest.fn() })),
+            },
         },
         'scripts/BulkEditOverlay.js': {
             BulkEditOverlay: class {
@@ -904,6 +934,7 @@ export async function importScriptModule(options = {}) {
         'scripts/tool-calling.js': {
             ToolManager: {
                 RECURSE_LIMIT: 5,
+                initToolSlashCommands: jest.fn(),
                 isToolCallingSupported: jest.fn(() => false),
                 canPerformToolCalls: jest.fn(() => false),
                 recurse: jest.fn(async () => false),
@@ -1034,7 +1065,7 @@ export async function importScriptModule(options = {}) {
             lorebookSortingOptions: jest.fn(() => ({})),
             lorebookSelectOptions: jest.fn(() => ({})),
         },
-        'scripts/sillybunny-editor/adapters/misc-dialogs.js': { messageScreenshotOptions: jest.fn(() => ({})) },
+        'scripts/sillybunny-editor/adapters/misc-dialogs.js': { messageScreenshotOptions: jest.fn(() => ({ onOpening: jest.fn() })) },
         'scripts/sillybunny-character-editor.js': {
             beginCharacterEditorLoad: jest.fn(),
             loadCharacterEditorGreetings: jest.fn(async () => {}),
@@ -1126,6 +1157,26 @@ export async function importScriptModule(options = {}) {
             accountStorage,
         },
         cleanup() {
+            try {
+                $(document).off();
+                $(window).off();
+            } catch {
+                // Ignore if jsdom window is already torn down.
+            }
+            for (const [target, type, listener, listenerOptions] of trackedNativeListeners) {
+                try {
+                    target.removeEventListener(type, listener, listenerOptions);
+                } catch {
+                    // Ignore teardown errors.
+                }
+            }
+            trackedNativeListeners.length = 0;
+            if (origDocAdd && typeof document !== 'undefined') {
+                document.addEventListener = origDocAdd;
+            }
+            if (origWinAdd && typeof window !== 'undefined') {
+                window.addEventListener = origWinAdd;
+            }
             for (const timer of activeDebounceTimers) {
                 clearTimeout(timer);
             }

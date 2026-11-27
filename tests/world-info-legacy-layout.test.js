@@ -7,8 +7,6 @@ import { importWorldInfoModule } from './util/world-info-module-harness.js';
 
 const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/css/world-info.css', import.meta.url), 'utf8');
-// Deferred until script.js behavioural harness lands; checks dormant OpenAll/CloseAll handlers.
-const script = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
 
 const parsedIndex = new DOMParser().parseFromString(indexHtml, 'text/html');
 const entryEditTemplateHtml = parsedIndex.querySelector('#entry_edit_template')?.outerHTML ?? '';
@@ -104,11 +102,6 @@ describe('World Info legacy layout retirement', () => {
 
         block.find('.inline-drawer').trigger('inline-drawer-toggle');
         expect(block.find('.world_entry_edit')).toHaveLength(1);
-
-        // Keep script.js guards until script.js behavioural harness replaces them.
-        expect(script).toContain('e.target.matches(\'#OpenAllWIEntries\')');
-        expect(script).toContain('e.target.matches(\'#CloseAllWIEntries\')');
-        expect(script.match(/document.querySelectorAll\('#world_popup_entries_list \.inline-drawer'\)/g)).toHaveLength(2);
     });
 
     test('uses upstream pagination and rendering without any split or popout DOM', async () => {
