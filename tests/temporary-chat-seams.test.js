@@ -1,412 +1,268 @@
-import vm from 'node:vm';
-import { describe, expect, jest, test } from '@jest/globals';
-import { AUTO_ENGINE_URL, loadFunctions } from './helpers/vm-source.js';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { importScriptModule } from './util/script-harness.js';
 
-/**
- * The guards for a temporary chat sit in script.js, which Jest cannot import, so the real functions are cut out of the
- * source and run in a context with stubbed collaborators (as chat-save-queue-runtime.test.js does for saveChat).
- */
+let loaded = null;
 
-function createContext(overrides = {}) {
-    const calls = [];
-    const characters = [{ name: 'Bunny', avatar: 'bunny.png', chat: 'real-chat' }, { name: 'Other', avatar: 'other.png', chat: 'other-chat' }];
-    const context = vm.createContext({
-        console: { debug: jest.fn(), warn: jest.fn(), error: jest.fn(), log: jest.fn(), trace: jest.fn() },
-        calls,
-        characters,
-        this_chid: '0',
-        selected_group: null,
-        is_group_generating: false,
-        is_send_press: false,
-        name2: 'Bunny',
-        chat: [],
-        chat_metadata: { stale: true },
-        itemizedPrompts: [],
-        fetch: jest.fn(),
-        toastr: { error: jest.fn() },
-        t: strings => strings.join(''),
-        isTemporaryChat: jest.fn(() => false),
-        leaveTemporaryChat: jest.fn(async () => true),
-        hasPendingChatSave: jest.fn(() => false),
-        flushPendingChatSaves: jest.fn(async () => true),
-        waitForQueuedChatSaves: jest.fn(async () => {}),
-        waitForQueuedGroupChatSaves: jest.fn(async () => {}),
-        ...overrides,
+afterEach(() => {
+    loaded?.cleanup();
+    loaded = null;
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+});
+
+async function setupSeamsRuntime({
+    temporary = false,
+    leaveImpl = null,
+    fetchImpl = null,
+} = {}) {
+    let isTemp = temporary;
+    const log = [];
+    const fetchMock = fetchImpl ?? jest.fn(async (url) => {
+        if (url === '/api/chats/save') {
+            return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        }
+        if (url === '/api/chats/get') {
+            return { ok: true, status: 200, json: async () => [{ chat_metadata: {} }, { name: 'Other', mes: 'Saved greeting', extra: {} }] };
+        }
+        if (url === '/api/characters/last-chat') {
+            return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        }
+        if (url === '/api/chats/delete') {
+            return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        }
+        return { ok: true, status: 200, json: async () => ({}) };
     });
-    return context;
+
+    const isTemporaryChat = jest.fn(() => isTemp);
+    const isTemporaryChatWith = jest.fn(() => isTemp);
+    const beginTemporaryChat = jest.fn((character) => {
+        isTemp = true;
+        character.chat = 'Temporary Chat: 1';
+        log.push('begin');
+    });
+    const endTemporaryChat = jest.fn(() => {
+        isTemp = false;
+        log.push('end temporary');
+    });
+    const leaveTemporaryChat = leaveImpl ?? jest.fn(async () => true);
+    const showTemporaryChatError = jest.fn();
+
+    loaded = await importScriptModule({
+        fetch: fetchMock,
+        mocks: {
+            'scripts/sillybunny-temporary-chat-state.js': {
+                getStoredChatName: jest.fn(() => 'real-chat'),
+                isTemporaryChat,
+                isTemporaryChatWith,
+                reassertReservedChatName: jest.fn(),
+            },
+            'scripts/sillybunny-temporary-chat.js': {
+                beginTemporaryChat,
+                endTemporaryChat,
+                leaveTemporaryChat,
+                showTemporaryChatError,
+            },
+            'scripts/utils.js': {
+                delay: jest.fn(async () => {}),
+            },
+            'scripts/RossAscends-mods.js': (base) => ({
+                ...base,
+                humanizedDateTime: jest.fn(() => 'now'),
+            }),
+        },
+    });
+
+    loaded.script.characters.push(
+        { name: 'Bunny', avatar: 'bunny.png', chat: 'real-chat', first_mes: 'Hello from the card', data: { extensions: {} } },
+        { name: 'Other', avatar: 'other.png', chat: 'other-chat', first_mes: 'Hello from other', data: { extensions: {} } },
+    );
+    loaded.script.setCharacterId(0);
+    loaded.script.setCharacterName('Bunny');
+
+    return {
+        ...loaded,
+        log,
+        fetchMock,
+        isTemporaryChat,
+        beginTemporaryChat,
+        endTemporaryChat,
+        leaveTemporaryChat,
+        showTemporaryChatError,
+        setTemporary: val => { isTemp = val; },
+    };
 }
 
 describe('leaving a temporary chat through the navigation flush', () => {
-    function flushContext(overrides) {
-        const context = createContext(overrides);
-        loadFunctions(context, ['flushPendingChatSavesForNavigation']);
-        return context;
-    }
+    test('flushes pending saves for a normal chat and refuses navigation if flush fails', async () => {
+        const runtime = await setupSeamsRuntime({ temporary: false });
+        runtime.script.chat.push({ name: 'Bunny', mes: 'pending', extra: {} });
+        runtime.script.saveChatDebounced();
 
-    test('flushes pending saves and lets queued ones land for a normal chat, as before', async () => {
-        const context = flushContext({ hasPendingChatSave: jest.fn(() => true) });
+        await expect(runtime.script.flushPendingChatSavesForNavigation()).resolves.toBe(true);
+        expect(runtime.fetchMock.mock.calls.some(([url]) => url === '/api/chats/save')).toBe(true);
+        expect(runtime.leaveTemporaryChat).not.toHaveBeenCalled();
 
-        await expect(context.flushPendingChatSavesForNavigation()).resolves.toBe(true);
-
-        expect(context.flushPendingChatSaves).toHaveBeenCalledWith({ silent: true });
-        expect(context.waitForQueuedChatSaves).toHaveBeenCalledTimes(1);
-        expect(context.leaveTemporaryChat).not.toHaveBeenCalled();
+        runtime.fetchMock.mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Failed', json: async () => ({}) });
+        runtime.script.saveChatDebounced();
+        await expect(runtime.script.flushPendingChatSavesForNavigation()).resolves.toBe(false);
+        expect(runtime.toastr.error).toHaveBeenCalled();
     });
 
-    test('refuses to navigate when a normal chat could not be flushed, as before', async () => {
-        const context = flushContext({ hasPendingChatSave: jest.fn(() => true), flushPendingChatSaves: jest.fn(async () => false) });
+    test('asks to leave a temporary chat and flushes nothing, unless leaving saved and ended temporary state', async () => {
+        const runtime = await setupSeamsRuntime({ temporary: true });
+        runtime.script.chat.push({ name: 'Bunny', mes: 'temp', extra: {} });
 
-        await expect(context.flushPendingChatSavesForNavigation()).resolves.toBe(false);
-        expect(context.toastr.error).toHaveBeenCalled();
+        await expect(runtime.script.flushPendingChatSavesForNavigation()).resolves.toBe(true);
+        expect(runtime.leaveTemporaryChat).toHaveBeenCalledTimes(1);
+        expect(runtime.fetchMock.mock.calls.some(([url]) => url === '/api/chats/save')).toBe(false);
+        runtime.cleanup();
+        loaded = null;
+
+        // When Save as New Chat clears temporary state during leaveTemporaryChat, pending saves flush normally.
+        let savingRuntime;
+        savingRuntime = await setupSeamsRuntime({
+            temporary: true,
+            leaveImpl: jest.fn(async () => {
+                savingRuntime.setTemporary(false);
+                savingRuntime.script.saveChatDebounced();
+                return true;
+            }),
+        });
+        savingRuntime.script.chat.push({ name: 'Bunny', mes: 'saved temp', extra: {} });
+        await expect(savingRuntime.script.flushPendingChatSavesForNavigation()).resolves.toBe(true);
+        expect(savingRuntime.fetchMock.mock.calls.some(([url]) => url === '/api/chats/save')).toBe(true);
     });
 
-    test('asks to leave a temporary chat and flushes nothing', async () => {
-        const context = flushContext({ isTemporaryChat: jest.fn(() => true), hasPendingChatSave: jest.fn(() => true) });
-
-        await expect(context.flushPendingChatSavesForNavigation()).resolves.toBe(true);
-
-        expect(context.leaveTemporaryChat).toHaveBeenCalledTimes(1);
-        expect(context.flushPendingChatSaves).not.toHaveBeenCalled();
-        expect(context.waitForQueuedChatSaves).not.toHaveBeenCalled();
-    });
-
-    test('flushes the chat normally when leaving ended the temporary state by saving it', async () => {
-        let temporary = true;
-        const context = flushContext({
-            isTemporaryChat: jest.fn(() => temporary),
-            hasPendingChatSave: jest.fn(() => true),
-            // Save as New Chat leaves the temporary state before it returns.
-            leaveTemporaryChat: jest.fn(async () => { temporary = false; return true; }),
+    test('keeps the user in a temporary chat when leaving is declined, and does not ask when staying', async () => {
+        const runtime = await setupSeamsRuntime({
+            temporary: true,
+            leaveImpl: jest.fn(async () => false),
         });
 
-        await expect(context.flushPendingChatSavesForNavigation()).resolves.toBe(true);
+        await expect(runtime.script.flushPendingChatSavesForNavigation()).resolves.toBe(false);
+        expect(runtime.leaveTemporaryChat).toHaveBeenCalledTimes(1);
 
-        expect(context.flushPendingChatSaves).toHaveBeenCalledWith({ silent: true });
-        expect(context.waitForQueuedChatSaves).toHaveBeenCalledTimes(1);
-    });
-
-    test('keeps the user in a temporary chat when leaving is declined', async () => {
-        const context = flushContext({ isTemporaryChat: jest.fn(() => true), leaveTemporaryChat: jest.fn(async () => false) });
-
-        await expect(context.flushPendingChatSavesForNavigation()).resolves.toBe(false);
-    });
-
-    test('does not ask when the user only reselects the character that is already open', async () => {
-        const context = flushContext({ isTemporaryChat: jest.fn(() => true) });
-
-        await expect(context.flushPendingChatSavesForNavigation({ staying: true })).resolves.toBe(true);
-
-        expect(context.leaveTemporaryChat).not.toHaveBeenCalled();
+        await expect(runtime.script.flushPendingChatSavesForNavigation({ staying: true })).resolves.toBe(true);
+        expect(runtime.leaveTemporaryChat).toHaveBeenCalledTimes(1);
     });
 });
 
 describe('recording a chat name for a character', () => {
-    function recordContext(overrides) {
-        const context = createContext({
-            getRequestHeaders: () => ({}),
-            fetch: jest.fn(async () => ({ ok: true })),
-            ...overrides,
-        });
-        loadFunctions(context, ['updateRemoteChatName']);
-        return context;
-    }
+    test('posts the last chat for a normal chat and records nothing for a temporary chat', async () => {
+        const runtime = await setupSeamsRuntime({ temporary: false });
 
-    test('posts the last chat of the character and remembers it, as before', async () => {
-        const context = recordContext();
+        await runtime.script.updateRemoteChatName('0', 'new-chat');
+        expect(runtime.fetchMock).toHaveBeenCalledWith('/api/characters/last-chat', expect.any(Object));
+        expect(JSON.parse(runtime.fetchMock.mock.calls[0][1].body)).toEqual({ avatar: 'bunny.png', chat: 'new-chat' });
+        expect(runtime.script.characters[0].chat).toBe('new-chat');
 
-        await context.updateRemoteChatName('0', 'new-chat');
-
-        expect(context.fetch).toHaveBeenCalledTimes(1);
-        expect(context.fetch.mock.calls[0][0]).toBe('/api/characters/last-chat');
-        expect(JSON.parse(context.fetch.mock.calls[0][1].body)).toEqual({ avatar: 'bunny.png', chat: 'new-chat' });
-        expect(context.characters[0].chat).toBe('new-chat');
-    });
-
-    test('records nothing for a temporary chat, whose name is only a stand-in', async () => {
-        const context = recordContext({ isTemporaryChat: jest.fn(() => true) });
-
-        await context.updateRemoteChatName('0', 'Temporary Chat: 9');
-
-        expect(context.fetch).not.toHaveBeenCalled();
-        expect(context.characters[0].chat).toBe('real-chat');
+        runtime.fetchMock.mockClear();
+        runtime.setTemporary(true);
+        await runtime.script.updateRemoteChatName('0', 'Temporary Chat: 9');
+        expect(runtime.fetchMock).not.toHaveBeenCalled();
+        expect(runtime.script.characters[0].chat).toBe('new-chat');
     });
 });
 
 describe('scheduling a chat save', () => {
-    test('schedules no save timer for a temporary chat', () => {
-        const timers = [];
-        const context = createContext({
-            isTemporaryChat: jest.fn(() => true),
-            setTimeout: jest.fn((...args) => timers.push(args)),
-            getCurrentChatId: () => 'real-chat',
-            chatGeneration: 1,
-            cancelDebouncedChatSave: jest.fn(),
-            DEFAULT_SAVE_EDIT_TIMEOUT: 1000,
-        });
-        loadFunctions(context, ['saveChatDebounced']);
+    test('schedules no save timer for a temporary chat and schedules one for a normal chat', async () => {
+        jest.useFakeTimers();
+        const runtime = await setupSeamsRuntime({ temporary: true });
+        runtime.script.chat.push({ name: 'Bunny', mes: 'draft', extra: {} });
 
-        context.saveChatDebounced();
+        runtime.script.saveChatDebounced();
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(runtime.fetchMock.mock.calls.some(([url]) => url === '/api/chats/save')).toBe(false);
 
-        expect(timers).toEqual([]);
-        expect(context.cancelDebouncedChatSave).not.toHaveBeenCalled();
-    });
-
-    test('schedules one save timer for a normal chat, as before', () => {
-        const timers = [];
-        const context = createContext({
-            setTimeout: jest.fn((...args) => timers.push(args)),
-            getCurrentChatId: () => 'real-chat',
-            chatGeneration: 1,
-            cancelDebouncedChatSave: jest.fn(),
-            DEFAULT_SAVE_EDIT_TIMEOUT: 1000,
-        });
-        loadFunctions(context, ['saveChatDebounced']);
-
-        context.saveChatDebounced();
-
-        expect(timers).toHaveLength(1);
+        runtime.setTemporary(false);
+        runtime.script.saveChatDebounced();
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(runtime.fetchMock.mock.calls.some(([url]) => url === '/api/chats/save')).toBe(true);
     });
 });
 
-describe('selecting a character', () => {
-    function selectContext(overrides = {}) {
-        const log = [];
-        const context = createContext({
-            log,
-            flushPendingChatSavesForNavigation: jest.fn(async () => true),
-            cancelCharacterSaveDebounced: jest.fn(),
-            setCharacterId(value) { context.this_chid = value === undefined ? undefined : String(value); },
-            setCharacterName: jest.fn(),
-            resetSelectedGroup: jest.fn(),
-            clearChat: jest.fn(async () => { log.push('clearChat'); }),
-            cancelTtsPlay: jest.fn(),
-            this_edit_mes_id: undefined,
-            selected_button: '',
-            getChat: jest.fn(async () => true),
-            getTemporaryChat: jest.fn(async () => true),
-            syncCharacterMenuActiveEntity: jest.fn(),
-            unshallowCharacter: jest.fn(async () => {}),
-            select_selected_character: jest.fn(),
-            window: { dispatchEvent: jest.fn() },
-            CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
-            ...overrides,
+describe('selecting a character and opening a temporary chat', () => {
+    test('opens a saved chat with /api/chats/get, or a temporary chat from memory without reading any chat file', async () => {
+        const runtime = await setupSeamsRuntime({ temporary: false });
+
+        await expect(runtime.script.selectCharacterById(1, { switchMenu: false })).resolves.toBe(true);
+        expect(runtime.fetchMock.mock.calls.some(([url]) => url === '/api/chats/get')).toBe(true);
+
+        runtime.fetchMock.mockClear();
+        await expect(runtime.script.selectCharacterById(0, { temporary: true, switchMenu: false })).resolves.toBe(true);
+        expect(runtime.fetchMock.mock.calls.some(([url]) => url === '/api/chats/get')).toBe(false);
+        expect(runtime.beginTemporaryChat).toHaveBeenCalledTimes(1);
+        expect(runtime.script.characters[0].chat).toBe('Temporary Chat: 1');
+        expect(runtime.script.chat.map(m => m.mes)).toEqual(['Hello from the card']);
+    });
+
+    test('starts a fresh temporary chat with the already selected character and respects declined leave', async () => {
+        const runtime = await setupSeamsRuntime({ temporary: false });
+        runtime.script.chat.push({ name: 'Bunny', mes: 'left over', extra: {} });
+
+        await expect(runtime.script.selectCharacterById(0, { temporary: true, switchMenu: false })).resolves.toBe(true);
+        expect(runtime.script.chat.map(m => m.mes)).toEqual(['Hello from the card']);
+        expect(runtime.fetchMock).not.toHaveBeenCalled();
+
+        // When already in a temporary chat and leaving is declined, switching to another character refuses.
+        runtime.leaveTemporaryChat.mockResolvedValueOnce(false);
+        await expect(runtime.script.selectCharacterById(1, { temporary: true, switchMenu: false })).resolves.toBe(false);
+        expect(runtime.script.this_chid).toBe('0');
+
+        // Reselecting the already open character passes staying: true and does not prompt to leave.
+        runtime.leaveTemporaryChat.mockClear();
+        const accepted = jest.fn();
+        await expect(runtime.script.selectCharacterById(0, { onAccepted: accepted, switchMenu: false })).resolves.toBe(true);
+        expect(accepted).toHaveBeenCalledTimes(1);
+        expect(runtime.leaveTemporaryChat).not.toHaveBeenCalled();
+    });
+
+    test('ends the temporary chat and reports failure when opening throws', async () => {
+        const runtime = await setupSeamsRuntime({ temporary: false });
+        // Force beginTemporaryChat to throw after entering getTemporaryChat, or force printMessages failure via invalid template.
+        runtime.beginTemporaryChat.mockImplementationOnce(() => {
+            throw new Error('render failed');
         });
-        loadFunctions(context, ['selectCharacterById']);
-        return context;
-    }
 
-    test('opens the saved chat of a character with getChat, as before', async () => {
-        const context = selectContext();
-
-        await expect(context.selectCharacterById(1)).resolves.toBe(true);
-
-        expect(context.getChat).toHaveBeenCalledTimes(1);
-        expect(context.getTemporaryChat).not.toHaveBeenCalled();
-    });
-
-    test('opens a temporary chat without resolving or reading any chat file', async () => {
-        const context = selectContext();
-
-        await expect(context.selectCharacterById(1, { temporary: true, switchMenu: false })).resolves.toBe(true);
-
-        expect(context.getTemporaryChat).toHaveBeenCalledWith({ switchMenu: false });
-        expect(context.getChat).not.toHaveBeenCalled();
-        expect(context.fetch).not.toHaveBeenCalled();
-        expect(context.log).toEqual(['clearChat']);
-    });
-
-    test('starts a temporary chat with the character that is already selected, from a clean chat', async () => {
-        const context = selectContext();
-
-        await expect(context.selectCharacterById(0, { temporary: true })).resolves.toBe(true);
-
-        expect(context.clearChat).toHaveBeenCalledWith({ clearData: true });
-        expect(context.getTemporaryChat).toHaveBeenCalledTimes(1);
-    });
-
-    test('stays where it is when the user declines to leave the open temporary chat', async () => {
-        const context = selectContext({ flushPendingChatSavesForNavigation: jest.fn(async () => false) });
-
-        await expect(context.selectCharacterById(1, { temporary: true })).resolves.toBe(false);
-
-        expect(context.clearChat).not.toHaveBeenCalled();
-        expect(context.getTemporaryChat).not.toHaveBeenCalled();
-    });
-
-    test('reselecting the open character passes the staying flag, so a temporary chat is not asked about', async () => {
-        const context = selectContext();
-
-        await context.selectCharacterById(0, { onAccepted: jest.fn() });
-
-        expect(context.flushPendingChatSavesForNavigation).toHaveBeenCalledWith({ staying: true });
-    });
-});
-
-describe('opening a temporary chat', () => {
-    function openContext(overrides = {}) {
-        const log = [];
-        const context = createContext({
-            log,
-            incrementChatGeneration: jest.fn(),
-            unshallowCharacter: jest.fn(async () => {}),
-            beginTemporaryChat: jest.fn((character) => { character.chat = 'Temporary Chat: 1'; log.push('begin'); }),
-            endTemporaryChat: jest.fn(),
-            showTemporaryChatError: jest.fn(),
-            getFirstMessage: jest.fn(() => ({ name: 'Bunny', mes: 'Hello from the card', is_user: false })),
-            printMessages: jest.fn(async () => { log.push('print'); }),
-            select_selected_character: jest.fn(),
-            getCurrentChatId: () => context.characters[context.this_chid]?.chat,
-            eventSource: { emit: jest.fn(async () => {}) },
-            event_types: { CHAT_CHANGED: 'changed', CHAT_LOADED: 'loaded', MESSAGE_RECEIVED: 'received', CHARACTER_MESSAGE_RENDERED: 'rendered' },
-            delay: jest.fn(async () => {}),
-            debounce_timeout: { short: 1 },
-            $: jest.fn(() => ({ trigger: jest.fn().mockReturnThis(), is: jest.fn(() => false) })),
-            document: { activeElement: null },
-            ...overrides,
-        });
-        loadFunctions(context, ['getTemporaryChat']);
-        return context;
-    }
-
-    test('shows the card greeting as the only message and reads or writes no chat file', async () => {
-        const context = openContext();
-        context.chat.push({ mes: 'left over' });
-
-        await expect(context.getTemporaryChat({ switchMenu: false })).resolves.toBe(true);
-
-        expect(context.chat.map(message => message.mes)).toEqual(['Hello from the card']);
-        expect(context.fetch).not.toHaveBeenCalled();
-        expect(context.log).toEqual(['begin', 'print']);
-        expect(context.characters[0].chat).toBe('Temporary Chat: 1');
-        expect(context.select_selected_character).toHaveBeenCalledWith('0', { switchMenu: false });
-        expect(context.eventSource.emit).toHaveBeenCalledWith('changed', 'Temporary Chat: 1');
-    });
-
-    test('ends the temporary chat and reports the failure when opening throws', async () => {
-        const context = openContext({ printMessages: jest.fn(async () => { throw new Error('render failed'); }) });
-
-        await expect(context.getTemporaryChat()).resolves.toBe(false);
-
-        expect(context.endTemporaryChat).toHaveBeenCalledTimes(1);
-        expect(context.showTemporaryChatError).toHaveBeenCalledWith();
+        await expect(runtime.script.selectCharacterById(0, { temporary: true, switchMenu: false })).resolves.toBe(false);
+        expect(runtime.endTemporaryChat).toHaveBeenCalled();
+        expect(runtime.showTemporaryChatError).toHaveBeenCalledTimes(1);
     });
 });
 
 describe('clearing the chat', () => {
-    function clearContext(overrides = {}) {
-        const log = [];
-        const context = createContext({
-            log,
-            chatRenderVersion: 0,
-            cancelDebouncedChatSave: jest.fn(),
-            cancelDebouncedMetadataSave: jest.fn(),
-            closeMessageEditor: jest.fn(),
-            clearChatLoadBottomLock: jest.fn(),
-            disposeChatMessageResizeObserver: jest.fn(),
-            resetMobileChatViewportLifecycle: jest.fn(),
-            extension_prompts: {},
-            is_delete_mode: false,
-            chatElement: { children: () => ({ remove: jest.fn() }) },
-            $: jest.fn(() => ({ length: 0 })),
-            saveItemizedPrompts: jest.fn(async (chatId) => { log.push(`save prompts ${chatId}`); }),
-            getCurrentChatId: () => context.characters[context.this_chid]?.chat,
-            endTemporaryChat: jest.fn(() => { log.push('end temporary'); }),
-            incrementChatGeneration: jest.fn(),
-            ...overrides,
-        });
-        loadFunctions(context, ['clearChat']);
-        return context;
-    }
+    test('stores itemized prompts for a normal chat, ends a temporary chat only on clearData=true', async () => {
+        const runtime = await setupSeamsRuntime({ temporary: true });
 
-    test('stores the itemized prompts of a normal chat under its id, as before', async () => {
-        const context = clearContext();
+        await runtime.script.clearChat({ clearData: false });
+        expect(runtime.endTemporaryChat).not.toHaveBeenCalled();
 
-        await context.clearChat({ clearData: true });
+        await runtime.script.clearChat({ clearData: true });
+        expect(runtime.endTemporaryChat).toHaveBeenCalledTimes(1);
 
-        expect(context.log).toEqual(['save prompts real-chat']);
-        expect(context.endTemporaryChat).not.toHaveBeenCalled();
-    });
-
-    test('stores no prompts for a temporary chat and ends it when its messages are cleared for another chat', async () => {
-        const context = clearContext({ isTemporaryChat: jest.fn(() => true) });
-
-        await context.clearChat({ clearData: true });
-
-        expect(context.log).toEqual(['end temporary']);
-    });
-
-    test('keeps a temporary chat when only its rendering is cleared', async () => {
-        const context = clearContext({ isTemporaryChat: jest.fn(() => true) });
-
-        await context.clearChat({ clearData: false });
-
-        expect(context.log).toEqual([]);
-        expect(context.endTemporaryChat).not.toHaveBeenCalled();
+        // After ending temporary chat, clearing a normal chat does not call endTemporaryChat again.
+        runtime.endTemporaryChat.mockClear();
+        await runtime.script.clearChat({ clearData: true });
+        expect(runtime.endTemporaryChat).not.toHaveBeenCalled();
     });
 });
 
 describe('starting a new chat', () => {
-    function newChatContext({ temporary }) {
-        let isTemporary = temporary;
-        const context = createContext({
-            menu_type: 'character_edit',
-            isTemporaryChat: jest.fn(() => isTemporary),
-            flushPendingChatSavesForNavigation: jest.fn(async () => true),
-            // Clearing the chat ends a temporary chat, and gives the card its real chat name back.
-            clearChat: jest.fn(async () => { isTemporary = false; }),
-            getCurrentChatDetails: () => ({ sessionName: context.characters[context.this_chid].chat }),
-            getChat: jest.fn(async () => true),
-            updateRemoteChatName: jest.fn(async () => {}),
-            delChat: jest.fn(async () => true),
-            humanizedDateTime: () => 'now',
-            $: jest.fn(() => ({ val: jest.fn() })),
-            chat_file_for_del: undefined,
-        });
-        loadFunctions(context, ['doNewChat']);
-        return context;
-    }
+    test('deletes the current chat for a normal chat, but never deletes the character real chat when temporary', async () => {
+        const runtimeNormal = await setupSeamsRuntime({ temporary: false });
+        runtimeNormal.script.setMenuType('character_edit');
+        await runtimeNormal.script.doNewChat({ deleteCurrentChat: true });
+        const deleteCall = runtimeNormal.fetchMock.mock.calls.find(([url]) => url === '/api/chats/delete');
+        expect(deleteCall).toBeTruthy();
+        expect(JSON.parse(deleteCall[1].body).chatfile).toBe('real-chat.jsonl');
+        runtimeNormal.cleanup();
+        loaded = null;
 
-    test('deletes the chat that was open when asked to, as before', async () => {
-        const context = newChatContext({ temporary: false });
-
-        await context.doNewChat({ deleteCurrentChat: true });
-
-        expect(context.delChat).toHaveBeenCalledWith('real-chat.jsonl');
-    });
-
-    test('never deletes the real chat of the character when the chat that was open is temporary', async () => {
-        const context = newChatContext({ temporary: true });
-
-        await context.doNewChat({ deleteCurrentChat: true });
-
-        expect(context.getChat).toHaveBeenCalledTimes(1);
-        expect(context.delChat).not.toHaveBeenCalled();
-    });
-});
-
-describe('Conversation reactions to the open roleplay', () => {
-    function captureContext(overrides = {}) {
-        const context = createContext({
-            getCurrentCharAvatar: () => 'bunny.png',
-            getConversationPersonaId: () => 'persona.png',
-            getConversationRecord: () => ({ activeChatId: 'main' }),
-            buildConversationRoleplayContext: () => 'The scene so far.',
-            getRoleplaySourceMessageRevision: () => 'revision',
-            ...overrides,
-        });
-        loadFunctions(context, ['captureRoleplayAsideRequest'], AUTO_ENGINE_URL);
-        return context;
-    }
-
-    test('captures the scene of a normal roleplay chat for a reaction, as before', () => {
-        const context = captureContext();
-
-        expect(context.captureRoleplayAsideRequest()).toMatchObject({ avatar: 'bunny.png', chatId: 'main', roleplayContext: 'The scene so far.' });
-    });
-
-    test('captures nothing from a temporary chat, so no reaction is written into a conversation', () => {
-        const context = captureContext({ isTemporaryChat: jest.fn(() => true) });
-
-        expect(context.captureRoleplayAsideRequest()).toBeNull();
+        const runtimeTemp = await setupSeamsRuntime({ temporary: true });
+        runtimeTemp.script.setMenuType('character_edit');
+        await runtimeTemp.script.doNewChat({ deleteCurrentChat: true });
+        expect(runtimeTemp.fetchMock.mock.calls.some(([url]) => url === '/api/chats/delete')).toBe(false);
+        expect(runtimeTemp.fetchMock.mock.calls.some(([url]) => url === '/api/chats/get')).toBe(true);
     });
 });

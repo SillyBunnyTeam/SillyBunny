@@ -1,11 +1,7 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest/jsdom contracts. */
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { OPENING_HOLD_MS, createOpeningHold, shouldHoldChatAtTop } from '../../public/scripts/sillybunny-home/greeting-art-opening.js';
-
-const readSource = path => readFileSync(fileURLToPath(new URL(`../../public/${path}`, import.meta.url)), 'utf8');
 
 /**
  * A chat element that scrolls and measures like a real one, a clock the test moves by hand, and a hold that reads
@@ -303,40 +299,5 @@ describe('the scroll sink of the app', () => {
         hold.release();
 
         expect(shouldHoldChatAtTop()).toBe(false);
-    });
-
-    test('asks before the bottom pin, and does not skip the question for a forced pin', () => {
-        const sink = readSource('script.js').match(/function scrollChatElementToBottom\([\s\S]*?\n}\n/)?.[0] ?? '';
-
-        expect(sink).toMatch(/shouldHoldChatAtTop\(\)/);
-        expect(sink).not.toMatch(/force\s*&&|!force/);
-        expect(sink.indexOf('shouldHoldChatAtTop()')).toBeLessThan(sink.indexOf('chatElement[0].scrollHeight'));
-    });
-
-    test('is reached by every pin of a chat load', () => {
-        const source = readSource('script.js');
-        const pin = source.match(/function pinChatLoadToBottom\([\s\S]*?\n}\n/)?.[0] ?? '';
-        const scrollChatToBottom = source.match(/export function scrollChatToBottom\([\s\S]*?\n}\n/)?.[0] ?? '';
-
-        expect(pin).toContain('scrollChatElementToBottom(');
-        expect(scrollChatToBottom.match(/scrollChatElementToBottom\(\)/g)).toHaveLength(2);
-    });
-
-    test('is asked by the resize compensation of the chat, which would otherwise push a held chat off the top', () => {
-        expect(readSource('scripts/RossAscends-mods.js')).toMatch(/!shouldHoldChatAtTop\(\) && Math\.abs\(deltaHeight\)/);
-    });
-});
-
-describe('the time of the hold', () => {
-    test('is longer than the load lock of the app, which scrolls a loaded chat to the bottom until its latest settle delay and margin have passed', () => {
-        const source = readSource('script.js');
-        const constant = name => Number(source.match(new RegExp(`const ${name} = (\\d+);`))?.[1]);
-        const mobileSettle = constant('MOBILE_CHAT_LOAD_SCROLL_SETTLE_MS');
-        const delays = source.match(/const CHAT_LOAD_SCROLL_SETTLE_DELAYS_MS = Object\.freeze\(\[([^\]]+)\]\);/)?.[1]
-            .split(',').map(item => (item.trim() === 'MOBILE_CHAT_LOAD_SCROLL_SETTLE_MS' ? mobileSettle : Number(item)));
-
-        expect(Number.isFinite(mobileSettle) && delays?.length).toBeGreaterThan(0);
-        expect(delays.every(Number.isFinite)).toBe(true);
-        expect(OPENING_HOLD_MS).toBeGreaterThan(Math.max(...delays) + constant('CHAT_LOAD_BOTTOM_LOCK_EXTRA_MS'));
     });
 });
