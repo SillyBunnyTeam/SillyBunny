@@ -19,11 +19,9 @@ import {
     backupDedupeCache,
     chatInfoCache,
     chatStateCache,
-    clearDirtyByte0ActiveFile,
     computeNormalizedBackupHash,
     computeSha256,
     extractStatTuple,
-    flushDirtyByte0ActiveFileSync,
     getEntryRawBuffer,
     getEntryRawText,
     getLatestBackupFileInfo,
@@ -1989,13 +1987,12 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
     if (unchangedChatData === null) {
         let postWriteStatTuple = null;
         try {
-            // SillyBunny: when a durable redo snapshot exists, write in-place with Barrier #1/#2 and dirty-byte-0 tracking.
+            // SillyBunny: when a durable redo snapshot exists, write in place with Barriers #1 to #3.
             if (preserveFileIdentity && hasRecoverySnapshot) {
                 postWriteStatTuple = writeChatFileInPlaceFast(filePath, jsonlBuffer, {
                     expectedFileIdentity,
                     expectedFileHash,
                     expectedStatTuple: currentStatTuple,
-                    recoveryLatestPath: recoveryTarget ? getChatRecoveryPaths(recoveryTarget).latestPath : null,
                     getRollbackBuffer: () => {
                         if (currentSnapshot?.rawBuffer) {
                             return currentSnapshot.rawBuffer;
@@ -2016,7 +2013,6 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                     replaceFileOnly,
                     durable: !existingFile,
                 });
-                clearDirtyByte0ActiveFile(filePath);
                 try {
                     const postStats = fs.lstatSync(filePath, { bigint: true });
                     if (postStats.isFile() && !postStats.isSymbolicLink()) {
@@ -2307,8 +2303,6 @@ router.post('/rename', validateAvatarUrlMiddleware, async function (request, res
                 );
             }
 
-            // SillyBunny: flush any deferred byte-0 restore before atomic rename and invalidate chat caches.
-            flushDirtyByte0ActiveFileSync(pathToOriginalFile);
             // SillyBunny: atomic renames prevent interrupted chat renames from leaving cloned files behind.
             const renameResult = renameChatFile(pathToOriginalFile, pathToRenamedFile);
             chatStateCache.invalidate(pathToOriginalFile);
@@ -2379,8 +2373,7 @@ router.post('/delete', validateAvatarUrlMiddleware, function (request, response)
         }
 
         if (chatFileDeleted) {
-            // SillyBunny: invalidate in-process chat caches and dirty byte-0 tracking on delete.
-            clearDirtyByte0ActiveFile(chatFilePath);
+            // SillyBunny: invalidate in-process chat caches on delete.
             chatStateCache.invalidate(chatFilePath);
             chatInfoCache.invalidate(chatFilePath);
             clearDeferredPreWriteBackupSequence(chatFilePath);
@@ -2505,7 +2498,6 @@ router.post('/group/import', function (request, response) {
         const pathToNewFile = path.join(request.user.directories.groupChats, `${chatname}.jsonl`);
         fs.copyFileSync(pathToUpload, pathToNewFile);
         // SillyBunny: invalidate chat caches for imported group chat file.
-        clearDirtyByte0ActiveFile(pathToNewFile);
         chatStateCache.invalidate(pathToNewFile);
         chatInfoCache.invalidate(pathToNewFile);
         fs.unlinkSync(pathToUpload);
@@ -2566,7 +2558,6 @@ router.post('/import', validateAvatarUrlMiddleware, function (request, response)
                 fileNames.push(fileName);
                 writeFileAtomicSync(filePath, chat, 'utf8');
                 // SillyBunny: invalidate chat caches for imported character chat file.
-                clearDirtyByte0ActiveFile(filePath);
                 chatStateCache.invalidate(filePath);
                 chatInfoCache.invalidate(filePath);
             };
@@ -2613,7 +2604,6 @@ router.post('/import', validateAvatarUrlMiddleware, function (request, response)
                 fs.copyFileSync(pathToUpload, filePath);
             }
             // SillyBunny: invalidate chat caches for imported JSONL chat file.
-            clearDirtyByte0ActiveFile(filePath);
             chatStateCache.invalidate(filePath);
             chatInfoCache.invalidate(filePath);
             fs.unlinkSync(pathToUpload);
@@ -2701,8 +2691,7 @@ router.post('/group/delete', (request, response) => {
         }
 
         if (chatFileDeleted) {
-            // SillyBunny: invalidate in-process chat caches and dirty byte-0 tracking on delete.
-            clearDirtyByte0ActiveFile(chatFilePath);
+            // SillyBunny: invalidate in-process chat caches on delete.
             chatStateCache.invalidate(chatFilePath);
             chatInfoCache.invalidate(chatFilePath);
             clearDeferredPreWriteBackupSequence(chatFilePath);

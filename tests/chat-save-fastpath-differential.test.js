@@ -18,17 +18,14 @@ const {
     backupDedupeCache,
     chatInfoCache,
     chatStateCache,
-    clearDirtyByte0Tracking,
     computeNormalizedBackupHash,
     getCanonicalChatCacheKey,
-    getDirtyByte0TrackingCount,
     isReliableStatTuple,
     writeDurableAtomicFileSync,
 } = await import('../src/chat-io-fastpath.js');
 
 const {
     clearChatRecoveryRuntimeCaches,
-    clearChatRecoveryState,
     createCharacterChatTarget,
     getChatRecoveryPaths,
     loadActiveChatWithRecovery,
@@ -445,7 +442,6 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         chatStateCache.clear();
         chatInfoCache.clear();
         backupDedupeCache.clear();
-        clearDirtyByte0Tracking();
         clearChatRecoveryRuntimeCaches();
         clearActiveDeferredChatPreWrites();
 
@@ -493,7 +489,7 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         expect(smallCache.get(f3)).not.toBeNull();
     });
 
-    test('uses <= 3 file fsyncs on steady-state cached save, hard-links pre-write before latest rename, and never hard-links regular backups', async () => {
+    test('fsyncs the active file at all three barriers on a steady-state cached save, hard-links pre-write before latest rename, and never hard-links regular backups', async () => {
         const initial = makeLargeChat(10, 'init-slug');
         const firstSave = await trySaveChat(initial, chatFile, false, 'user1', 'TestCard', backupsDir, {
             recoveryTarget,
@@ -511,15 +507,26 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
             extra: {},
         });
 
+        const realOpenSync = fs.openSync.bind(fs);
         const realFsyncSync = fs.fsyncSync.bind(fs);
+        const fdPaths = new Map();
         let fileFsyncCount = 0;
+        let activeFileFsyncCount = 0;
         let dirFsyncCount = 0;
+        jest.spyOn(fs, 'openSync').mockImplementation((p, ...rest) => {
+            const fd = realOpenSync(p, ...rest);
+            fdPaths.set(fd, String(p));
+            return fd;
+        });
         jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
             const fdStats = fs.fstatSync(fd);
             if (fdStats.isDirectory()) {
                 dirFsyncCount++;
             } else if (fdStats.isFile()) {
                 fileFsyncCount++;
+                if (fdPaths.get(fd) === chatFile) {
+                    activeFileFsyncCount++;
+                }
             }
             return realFsyncSync(fd);
         });
@@ -531,10 +538,10 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
             deferBackup: false,
         });
 
-        // 1 file fsync for .latest.jsonl + 2 file fsyncs for active file (Barrier #1 + Barrier #2);
-        // 0 file fsyncs for pre-write hard-link & regular backup; <= 2 POSIX directory fsyncs (pre-write link + latest rename).
-        expect(fileFsyncCount).toBeLessThanOrEqual(3);
-        expect(fileFsyncCount).toBeGreaterThanOrEqual(2);
+        // 3 file fsyncs for the active file (Barriers #1, #2 and #3) + 1 for .latest.jsonl;
+        // 0 for the pre-write hard link; <= 2 POSIX directory fsyncs (pre-write link + latest rename).
+        expect(activeFileFsyncCount).toBe(3);
+        expect(fileFsyncCount).toBeLessThanOrEqual(5);
         expect(dirFsyncCount).toBeLessThanOrEqual(2);
         // Zero active-file readSync on warm cache hit
         expect(readSyncSpy).not.toHaveBeenCalled();
@@ -559,6 +566,92 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         for (const regFile of regularFiles) {
             expect(fs.statSync(path.join(backupsDir, regFile), { bigint: true }).ino).not.toBe(latestStat.ino);
         }
+    });
+
+    test('fsyncs the active file after restoring byte 0, so an acknowledged save leaves the complete valid file on disk', async () => {
+        const initial = makeLargeChat(10, 'init-slug');
+        const firstSave = await trySaveChat(initial, chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        });
+        const nextPayload = structuredClone(initial);
+        nextPayload[0].chat_metadata.integrity = firstSave.integrity;
+        nextPayload.push({ name: 'User', is_user: true, send_date: '2026-06-02T00:00:00.000Z', mes: 'Durable turn', extra: {} });
+
+        const realOpenSync = fs.openSync.bind(fs);
+        const realWriteSync = fs.writeSync.bind(fs);
+        const realFsyncSync = fs.fsyncSync.bind(fs);
+        const fdPaths = new Map();
+        const events = [];
+        jest.spyOn(fs, 'openSync').mockImplementation((p, ...rest) => {
+            const fd = realOpenSync(p, ...rest);
+            fdPaths.set(fd, String(p));
+            return fd;
+        });
+        jest.spyOn(fs, 'writeSync').mockImplementation((fd, ...rest) => {
+            if (fdPaths.get(fd) === chatFile) {
+                events.push(`write@${rest[3]}`);
+            }
+            return realWriteSync(fd, ...rest);
+        });
+        jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+            if (fdPaths.get(fd) === chatFile) {
+                events.push('fsync');
+            }
+            return realFsyncSync(fd);
+        });
+
+        await trySaveChat(nextPayload, chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        });
+
+        // poison byte 0, body, restored byte 0: each followed by an fsync of the same file
+        expect(events).toEqual(['write@0', 'fsync', 'write@1', 'fsync', 'write@0', 'fsync']);
+        expect(readChatJsonlStrict(chatFile).status).toBe('ok');
+    });
+
+    test('a failed fsync after restoring byte 0 fails the save and leaves byte 0 poisoned, and the next load recovers the new chat from .latest.jsonl', async () => {
+        const initial = makeLargeChat(10, 'init-slug');
+        const firstSave = await trySaveChat(initial, chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        });
+        const nextPayload = structuredClone(initial);
+        nextPayload[0].chat_metadata.integrity = firstSave.integrity;
+        nextPayload.push({ name: 'User', is_user: true, send_date: '2026-06-02T00:00:00.000Z', mes: 'Turn behind a failing flush', extra: {} });
+
+        const realOpenSync = fs.openSync.bind(fs);
+        const realFsyncSync = fs.fsyncSync.bind(fs);
+        const fdPaths = new Map();
+        let activeFsyncs = 0;
+        jest.spyOn(fs, 'openSync').mockImplementation((p, ...rest) => {
+            const fd = realOpenSync(p, ...rest);
+            fdPaths.set(fd, String(p));
+            return fd;
+        });
+        jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+            if (fdPaths.get(fd) === chatFile && ++activeFsyncs === 3) {
+                throw Object.assign(new Error('Simulated flush failure'), { code: 'EIO' });
+            }
+            return realFsyncSync(fd);
+        });
+
+        await expect(trySaveChat(nextPayload, chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: true,
+        })).rejects.toMatchObject({ code: 'EIO' });
+
+        const rawActiveBytes = fs.readFileSync(chatFile);
+        expect(rawActiveBytes[0]).toBe('{'.charCodeAt(0) ^ 0xFF);
+        expect(readChatJsonlStrict(chatFile).status).toBe('corrupt');
+
+        jest.restoreAllMocks();
+        const recovered = loadActiveChatWithRecovery(recoveryTarget);
+        expect(recovered.status).toBe('ok');
+        expect(recovered.recovered).toBe(true);
+        expect(recovered.records).toHaveLength(nextPayload.length);
+        expect(recovered.records[recovered.records.length - 1].mes).toBe('Turn behind a failing flush');
     });
 
     test('falls back cleanly to copy write when pre-write fs.linkSync fails with EXDEV/EPERM/ENOTSUP', async () => {
@@ -844,85 +937,6 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         expect(chatStateCache.get(utf8Path)).toBeNull();
     });
 
-    test('flushes pending Barrier #3 byte-0 active file before pruning or clearing its .latest.jsonl redo snapshot', async () => {
-        const targetA = createCharacterChatTarget({
-            chatsDirectory: chatsDir,
-            backupDirectory: backupsDir,
-            owner: 'TestCard',
-            filename: 'chat-a.jsonl',
-            maxRecoveryStates: 1,
-        });
-        const targetB = createCharacterChatTarget({
-            chatsDirectory: chatsDir,
-            backupDirectory: backupsDir,
-            owner: 'TestCard',
-            filename: 'chat-b.jsonl',
-            maxRecoveryStates: 1,
-        });
-
-        const chatA = makeLargeChat(4, 'slug-a1');
-        const saveA1 = await trySaveChat(chatA, targetA.activePath, false, 'user1', 'TestCard', backupsDir, {
-            recoveryTarget: targetA,
-            deferBackup: true,
-        });
-        // Second save triggers writeChatFileInPlaceFast (omits Barrier #3 and tracks dirty byte 0)
-        chatA[0].chat_metadata.integrity = saveA1.integrity;
-        chatA.push({ name: 'User', is_user: true, mes: 'second save in-place', extra: {} });
-        await trySaveChat(chatA, targetA.activePath, false, 'user1', 'TestCard', backupsDir, {
-            recoveryTarget: targetA,
-            deferBackup: true,
-        });
-        expect(getDirtyByte0TrackingCount()).toBe(1);
-
-        // Track ordering: active chat-a must be fsynced BEFORE its .latest.jsonl is unlinked by pruning
-        const { latestPath: latestPathA } = getChatRecoveryPaths(targetA);
-        const events = [];
-        const realOpenSync = fs.openSync.bind(fs);
-        const realFsyncSync = fs.fsyncSync.bind(fs);
-        const realUnlinkSync = fs.unlinkSync.bind(fs);
-        const fdPaths = new Map();
-        jest.spyOn(fs, 'openSync').mockImplementation((p, ...rest) => {
-            const fd = realOpenSync(p, ...rest);
-            fdPaths.set(fd, String(p));
-            return fd;
-        });
-        jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
-            if (fdPaths.get(fd) === targetA.activePath) {
-                events.push('fsync:chat-a');
-            }
-            return realFsyncSync(fd);
-        });
-        jest.spyOn(fs, 'unlinkSync').mockImplementation((p) => {
-            if (String(p) === latestPathA) {
-                events.push('unlink:latest-a');
-            }
-            return realUnlinkSync(p);
-        });
-
-        // Saving chat-b with maxRecoveryStates=1 evicts chat-a's .latest.jsonl
-        const chatB = makeLargeChat(4, 'slug-b1');
-        await trySaveChat(chatB, targetB.activePath, false, 'user1', 'TestCard', backupsDir, {
-            recoveryTarget: targetB,
-            deferBackup: true,
-        });
-
-        expect(events).toEqual(['fsync:chat-a', 'unlink:latest-a']);
-        expect(getDirtyByte0TrackingCount()).toBe(0);
-
-        // Verify clearChatRecoveryState also flushes a dirty active file
-        const saveB2Payload = structuredClone(chatB);
-        const loadedB = loadActiveChatWithRecovery(targetB);
-        saveB2Payload[0].chat_metadata.integrity = loadedB.records[0].chat_metadata.integrity;
-        saveB2Payload.push({ name: 'User', is_user: true, mes: 'trigger dirty B', extra: {} });
-        await trySaveChat(saveB2Payload, targetB.activePath, false, 'user1', 'TestCard', backupsDir, {
-            recoveryTarget: targetB,
-            deferBackup: true,
-        });
-        expect(getDirtyByte0TrackingCount()).toBe(1);
-        clearChatRecoveryState(targetB);
-        expect(getDirtyByte0TrackingCount()).toBe(0);
-    });
-
     test('getCanonicalChatCacheKey resolves the same key after both file and parent directory are deleted', () => {
         const nestedDir = path.join(ownerDir, 'ephemeral-sub');
         fs.mkdirSync(nestedDir, { recursive: true });
@@ -1135,7 +1149,6 @@ describe('HTTP fast paths (/api/chats/get, /api/chats/search, /api/chats/recent)
         chatStateCache.clear();
         chatInfoCache.clear();
         backupDedupeCache.clear();
-        clearDirtyByte0Tracking();
         clearChatRecoveryRuntimeCaches();
         clearActiveDeferredChatPreWrites();
 

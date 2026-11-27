@@ -8,7 +8,6 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { fsyncDirectorySync } from './util.js';
 
 const fatalUtf8Decoder = new TextDecoder('utf-8', { fatal: true });
-const DIRTY_BYTE0_TRACKING_MAX = 512;
 
 export const CHAT_STATE_CACHE_MAX_BYTES = process.env.SILLYBUNNY_ANDROID_APP === '1'
     ? 24 * 1024 * 1024
@@ -775,180 +774,18 @@ export function writeNonDurableAtomicFileSync(filePath, data, encoding = 'utf8')
 }
 
 /**
- * Tracks active chat paths whose Barrier #3 byte-0 restore was intentionally deferred to OS writeback
- * while a durable `.latest.jsonl` redo snapshot guarantees crash recovery.
- * Any recovery eviction/clear/rekey flushes the corresponding active file before dropping `.latest.jsonl`.
- * @type {Map<string, { activePath: string, latestKey: string|null }>}
- */
-const dirtyByte0ByActiveKey = new Map();
-/** @type {Map<string, string>} */
-const dirtyByte0ActiveKeyByLatestKey = new Map();
-
-function removeDirtyByte0Entry(activeKey) {
-    const entry = dirtyByte0ByActiveKey.get(activeKey);
-    if (!entry) {
-        return;
-    }
-    dirtyByte0ByActiveKey.delete(activeKey);
-    if (entry.latestKey && dirtyByte0ActiveKeyByLatestKey.get(entry.latestKey) === activeKey) {
-        dirtyByte0ActiveKeyByLatestKey.delete(entry.latestKey);
-    }
-}
-
-function fsyncRegularActiveFileSync(filePath) {
-    let pathStats;
-    try {
-        pathStats = fs.lstatSync(filePath);
-    } catch (error) {
-        if (error?.code === 'ENOENT') {
-            return false;
-        }
-        throw error;
-    }
-    if (pathStats.isSymbolicLink() || !pathStats.isFile()) {
-        return false;
-    }
-    const noFollow = fs.constants.O_NOFOLLOW ?? 0;
-    const flushOp = () => {
-        const fd = fs.openSync(filePath, fs.constants.O_RDWR | noFollow);
-        try {
-            fs.fsyncSync(fd);
-        } finally {
-            fs.closeSync(fd);
-        }
-    };
-    const retryResult = runWithWindowsRetries(flushOp);
-    if (!retryResult.ok) {
-        throw retryResult.error;
-    }
-    return true;
-}
-
-/**
- * Records an active chat path whose restored byte 0 has not yet been explicitly fsynced.
- * @param {string} activePath
- * @param {string|null} [recoveryLatestPath]
- */
-export function markActiveFileDirtyByte0(activePath, recoveryLatestPath = null) {
-    if (!activePath) {
-        return;
-    }
-    const activeKey = getCanonicalChatCacheKey(activePath);
-    removeDirtyByte0Entry(activeKey);
-    const latestKey = recoveryLatestPath ? getCanonicalChatCacheKey(recoveryLatestPath) : null;
-    dirtyByte0ByActiveKey.set(activeKey, { activePath, latestKey });
-    if (latestKey) {
-        dirtyByte0ActiveKeyByLatestKey.set(latestKey, activeKey);
-    }
-    while (dirtyByte0ByActiveKey.size > DIRTY_BYTE0_TRACKING_MAX) {
-        const oldestKey = dirtyByte0ByActiveKey.keys().next().value;
-        const oldestEntry = dirtyByte0ByActiveKey.get(oldestKey);
-        removeDirtyByte0Entry(oldestKey);
-        if (oldestEntry) {
-            try {
-                fsyncRegularActiveFileSync(oldestEntry.activePath);
-            } catch {
-                // Best-effort eviction flush.
-            }
-        }
-    }
-}
-
-/**
- * Clears dirty byte-0 tracking for an active chat path after a full durable write or deletion.
- * @param {string} activePath
- */
-export function clearDirtyByte0ActiveFile(activePath) {
-    if (!activePath) {
-        return;
-    }
-    removeDirtyByte0Entry(getCanonicalChatCacheKey(activePath));
-}
-
-/**
- * Synchronously fsyncs `activePath` if it has a pending un-fsynced Barrier #3 byte-0 restore,
- * then clears it from tracking. Returns true if an fsync was performed.
- * @param {string} activePath
- * @param {string|null} [fallbackActivePath] Alternate path if the file was already renamed (e.g. rekey)
- * @returns {boolean}
- */
-export function flushDirtyByte0ActiveFileSync(activePath, fallbackActivePath = null) {
-    if (!activePath) {
-        return false;
-    }
-    const activeKey = getCanonicalChatCacheKey(activePath);
-    const entry = dirtyByte0ByActiveKey.get(activeKey);
-    if (!entry) {
-        return false;
-    }
-    let flushed = false;
-    try {
-        flushed = fsyncRegularActiveFileSync(entry.activePath);
-        if (!flushed && fallbackActivePath) {
-            flushed = fsyncRegularActiveFileSync(fallbackActivePath);
-        }
-    } finally {
-        removeDirtyByte0Entry(activeKey);
-    }
-    return flushed;
-}
-
-/**
- * Flushes any dirty byte-0 active chat associated with `recoveryLatestPath` before that
- * `.latest.jsonl` redo snapshot is pruned, removed, or rekeyed.
- * @param {string} recoveryLatestPath
- * @returns {boolean}
- */
-export function flushDirtyByte0ForRecoveryPathSync(recoveryLatestPath) {
-    if (!recoveryLatestPath) {
-        return false;
-    }
-    const latestKey = getCanonicalChatCacheKey(recoveryLatestPath);
-    const activeKey = dirtyByte0ActiveKeyByLatestKey.get(latestKey);
-    if (!activeKey) {
-        return false;
-    }
-    const entry = dirtyByte0ByActiveKey.get(activeKey);
-    if (!entry) {
-        dirtyByte0ActiveKeyByLatestKey.delete(latestKey);
-        return false;
-    }
-    let flushed = false;
-    try {
-        flushed = fsyncRegularActiveFileSync(entry.activePath);
-    } finally {
-        removeDirtyByte0Entry(activeKey);
-    }
-    return flushed;
-}
-
-/**
- * Resets dirty byte-0 tracking state (for test isolation).
- */
-export function clearDirtyByte0Tracking() {
-    dirtyByte0ByActiveKey.clear();
-    dirtyByte0ActiveKeyByLatestKey.clear();
-}
-
-/**
- * Returns the number of tracked active chat files awaiting byte-0 flush.
- * @returns {number}
- */
-export function getDirtyByte0TrackingCount() {
-    return dirtyByte0ByActiveKey.size;
-}
-
-/**
  * Identity-preserving in-place chat writer used ONLY when a durable redo snapshot (`.latest.jsonl`)
  * has already been stored (Invariants I2, I3, I4).
  *
- * Crash-durability barriers preserved:
+ * Crash-durability barriers:
  * - Barrier #1: write poisoned byte 0 (`dataBuffer[0] ^ 0xFF`) + `fsyncSync(fd)`
  * - Barrier #2: write body bytes `[1..end]` + `ftruncateSync` + `fsyncSync(fd)`
- * - Restore byte 0: write `dataBuffer[0]` (Barrier #3 is omitted because durable `.latest.jsonl`
- *   already holds the exact new bytes; a power cut before byte 0 reaches disk leaves byte 0 poisoned
- *   from Barrier #1 and triggers exact recovery from `.latest.jsonl`. Any later recovery eviction,
- *   clear, or rekey flushes the active file first via `flushDirtyByte0*`).
+ * - Barrier #3: restore byte 0 (`dataBuffer[0]`) + `fsyncSync(fd)`
+ *
+ * Barrier #3 makes the complete, valid file reach the disk before the save is acknowledged. Without
+ * it a power cut after the response can leave the poisoned byte 0 on disk. Recovery would repair
+ * that from `.latest.jsonl` when the chat is opened, but every reader that does not go through
+ * recovery (chat lists, export, other tools) would see an unparseable file until then.
  *
  * When a reliable pre-verified `expectedStatTuple` is provided, verifies all 5 stat fields on the
  * open file descriptor and path instead of re-reading and re-hashing the active file.
@@ -960,7 +797,6 @@ export function getDirtyByte0TrackingCount() {
  *   expectedFileHash?: string,
  *   expectedStatTuple?: { dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }|null,
  *   getRollbackBuffer?: () => Buffer,
- *   recoveryLatestPath?: string|null,
  * }} options
  * @returns {{ dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }} Post-write stat tuple
  */
@@ -969,7 +805,6 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
     expectedFileHash = undefined,
     expectedStatTuple = null,
     getRollbackBuffer = undefined,
-    recoveryLatestPath = null,
 } = {}) {
     const dataLength = dataBuffer.byteLength;
 
@@ -1033,10 +868,22 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
                 fs.fsyncSync(fileDescriptor);
                 maybeInjectChatIoFault('after_barrier_2');
 
-                // Restore byte 0 without barrier #3; redo snapshot in .latest.jsonl already guarantees zero data loss.
+                // Barrier #3: restore byte 0 and fsync, so the valid file is on disk before the save is acknowledged.
                 maybeInjectChatIoFault('before_restore_byte0');
                 writeAllSync(fileDescriptor, dataBuffer.subarray(0, 1));
                 maybeInjectChatIoFault('after_restore_byte0_before_close');
+                try {
+                    fs.fsyncSync(fileDescriptor);
+                } catch (error) {
+                    try {
+                        // A byte 0 that may not have reached the disk must not pass for a complete file.
+                        writeAllSync(fileDescriptor, Buffer.from([dataBuffer[0] ^ 0xFF]));
+                        fs.fsyncSync(fileDescriptor);
+                    } catch {
+                        // The original flush error is more useful; recovery still has the exact snapshot.
+                    }
+                    throw error;
+                }
             }
 
             const finalDescriptorStats = fs.fstatSync(fileDescriptor, { bigint: true });
@@ -1044,10 +891,6 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
             if (finalDescriptorStats.dev !== finalPathStats.dev || finalDescriptorStats.ino !== finalPathStats.ino
                 || finalDescriptorStats.nlink !== 1n || finalPathStats.nlink !== 1n) {
                 throw Object.assign(new Error(`Refused to finish writing a replaced or hard-linked file: ${filePath}`), { code: 'ESTALE' });
-            }
-
-            if (dataLength > 0) {
-                markActiveFileDirtyByte0(filePath, recoveryLatestPath);
             }
 
             return extractStatTuple(finalDescriptorStats);
