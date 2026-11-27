@@ -1203,9 +1203,10 @@ export class SlashCommandParser {
             this.discardWhitespace();
         }
         this.discardWhitespace();
-        // SillyBunny: scan trailing whitespace behind index directly without slicing this.behind.
+        // SillyBunny: scan trailing whitespace behind index directly without slicing this.behind. An unclosed closure in non-verify mode leaves the index beyond the text, where slice() clamped, so clamp here too.
         let trailingWs = 0;
-        while (this.index - 1 - trailingWs >= 0 && WHITESPACE_CHAR_RE.test(this.text[this.index - 1 - trailingWs])) {
+        const behindEnd = Math.min(this.index, this.text.length);
+        while (behindEnd - 1 - trailingWs >= 0 && WHITESPACE_CHAR_RE.test(this.text[behindEnd - 1 - trailingWs])) {
             trailingWs++;
         }
         cmd.startUnnamedArgs = this.index - (trailingWs > 1 ? trailingWs - 1 : 0);

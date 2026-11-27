@@ -744,6 +744,27 @@ describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolatio
         expect(c2.executorList[1].unnamedArgumentList[0].value).toBe('c');
     });
 
+    test('startUnnamedArgs stays inside the text when an unclosed closure moves the parser index past its end', () => {
+        if (!SlashCommandParser.commands.gen) {
+            SlashCommandParser.addCommandObjectUnsafe(SlashCommand.fromProps({
+                name: 'gen',
+                callback: (_args, value) => String(value ?? ''),
+            }));
+        }
+
+        // The autocomplete path parses without verification; a missing ":}" is taken as if present, so the index ends beyond the text.
+        const text = '/gen raw=x right={:   ';
+        const closure = new SlashCommandParser().parse(text, false);
+        const command = closure.executorList[0];
+        expect(command.name).toBe('gen');
+        expect(command.startUnnamedArgs).toBe(text.length);
+        expect(command.endUnnamedArgs).toBeGreaterThan(text.length);
+
+        // With the whitespace inside the text, the first trailing space stays in front of the arguments.
+        const closed = new SlashCommandParser().parse('/gen raw=x    ', false).executorList[0];
+        expect(closed.startUnnamedArgs).toBe('/gen raw=x '.length);
+    });
+
     test('addCommandObjectUnsafe defers Error.stack parsing until metadata properties are actually read', () => {
         let prepareCalls = 0;
         const originalPrepare = Error.prepareStackTrace;
