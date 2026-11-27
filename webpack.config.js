@@ -199,7 +199,8 @@ export function buildPublicLibMinimizer({
     const isAndroidHost = env.SILLYBUNNY_ANDROID_APP === '1'
         || platform === 'android'
         || isTermuxEnv(env);
-    const parallel = isAndroidHost ? false : 2;
+    // The bundle is one asset, so the plugin's default of one worker per asset already gives one worker on desktop.
+    const parallelOption = isAndroidHost ? { parallel: false } : {};
     return [
         {
             apply(compiler) {
@@ -210,10 +211,10 @@ export function buildPublicLibMinimizer({
                     console.warn(`Failed to load webpack minimizer plugin at ${spec.pluginPath}; continuing without custom minimizer.`, error);
                     return;
                 }
-                // SillyBunny: cap worker fan-out on desktop and run in-process on Android (APK and Termux) to prevent memory spikes.
+                // SillyBunny: minify in-process on Android (APK and Termux) so no worker thread adds to the memory peak.
                 const pluginOptions = spec.kind === 'minimizer-webpack-plugin'
                     ? {
-                        parallel,
+                        ...parallelOption,
                         test: /^[^?#]*\.[cm]?js(?:[?#].*)?$/i,
                         minify: {
                             path: spec.pluginPath,
@@ -226,7 +227,7 @@ export function buildPublicLibMinimizer({
                         },
                     }
                     : {
-                        parallel,
+                        ...parallelOption,
                         terserOptions: {
                             compress: {
                                 passes: 2,

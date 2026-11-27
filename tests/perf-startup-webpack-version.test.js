@@ -100,7 +100,7 @@ describe('lazy webpack configuration and middleware', () => {
         expect(readSpy).not.toHaveBeenCalled();
     });
 
-    test('disables filesystem pack cache and caps Terser parallelism with Android override', async () => {
+    test('disables filesystem pack cache and minimizes in-process on Android only', async () => {
         const { default: webpack } = await import('webpack');
         const entryFile = path.join(tempDir, 'noop-entry.js');
         fs.writeFileSync(entryFile, 'export const value = 1;\n', 'utf8');
@@ -125,10 +125,10 @@ describe('lazy webpack configuration and middleware', () => {
             const androidCompiler = webpack({ ...androidConfig, entry: entryFile });
             await new Promise((resolve, reject) => androidCompiler.close(err => err ? reject(err) : resolve()));
 
-            const seenParallel = [];
+            const seenOptions = [];
             const captureLoader = () => class CapturingMinimizer {
                 constructor(opts) {
-                    seenParallel.push(opts.parallel);
+                    seenOptions.push(opts);
                 }
                 apply() {}
             };
@@ -136,7 +136,8 @@ describe('lazy webpack configuration and middleware', () => {
             buildPublicLibMinimizer({ env: { SILLYBUNNY_ANDROID_APP: '1' }, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
             buildPublicLibMinimizer({ env: {}, platform: 'android', loadPlugin: captureLoader })[0].apply({});
             buildPublicLibMinimizer({ env: { TERMUX_VERSION: '0.118.0' }, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
-            expect(seenParallel).toEqual([2, false, false, false]);
+            expect(seenOptions[0]).not.toHaveProperty('parallel');
+            expect(seenOptions.slice(1).map(opts => opts.parallel)).toEqual([false, false, false]);
 
             const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
             buildPublicLibMinimizer({
@@ -190,13 +191,13 @@ describe('lazy webpack configuration and middleware', () => {
         const modernStubCompiler = {};
         modernMinimizer[0].apply(modernStubCompiler);
         expect(modernStubCompiler.applied).toMatchObject({
-            parallel: 2,
             minify: {
                 path: modernSpec.pluginPath,
                 export: 'terserMinify',
             },
             minimizerOptions: { compress: { passes: 2 } },
         });
+        expect(modernStubCompiler.applied).not.toHaveProperty('parallel');
 
         const nestedRoot = path.join(tempDir, 'nested-layout');
         const nestedWebpackDir = path.join(nestedRoot, 'node_modules', 'webpack');
