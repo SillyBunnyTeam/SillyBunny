@@ -858,10 +858,18 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         clearChatRecoveryRuntimeCaches();
         expect(loadActiveChatWithRecovery(oldTarget).status).toBe('ok');
 
-        // Fill the global 25-file chat_pre_write_* ring with recent backups from other chats
+        // Fill the global 25-file chat_pre_write_* ring with recent backups from other chats. Their mtimes are
+        // distinct, newer than the aged chat and older than anything this test writes next, because a file that
+        // lands in the same filesystem timestamp tick as a filler ties with it, and the ring removes a tie in
+        // directory order, which can be the newest file.
+        const fillerPaths = [];
+        const fillerMtimeBase = Date.now() - 3_600_000;
         for (let i = 0; i < 25; i++) {
             const p = path.join(backupsDir, `chat_pre_write_other${i}_20261126-0000${String(i).padStart(2, '0')}_uuid${i}.jsonl`);
             fs.writeFileSync(p, '{"chat_metadata":{}}\n{"mes":"other"}', 'utf8');
+            const fillerMtime = new Date(fillerMtimeBase + i * 1000);
+            fs.utimesSync(p, fillerMtime, fillerMtime);
+            fillerPaths.push(p);
         }
 
         // Editing OldChar must bump the hard-linked pre-write backup's mtime so global pruning keeps it
@@ -903,6 +911,8 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         });
         const survivingAfterFallback = fs.readdirSync(backupsDir).filter(f => f.startsWith('chat_pre_write_oldchar_'));
         expect(survivingAfterFallback).toHaveLength(2);
+        // Each of the two saves pushed out the oldest filler, never one of the new backups.
+        expect(fillerPaths.filter(fillerPath => !fs.existsSync(fillerPath))).toEqual(fillerPaths.slice(0, 2));
     });
 
     test('writeDurableAtomicFileSync refuses in-place copyFileSync onto a hard-linked peer and retries temp writes without EEXIST', () => {
