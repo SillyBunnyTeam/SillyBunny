@@ -1099,7 +1099,12 @@ for (const width of [1440, 390]) {
             const editor = await setup(page, baseURL, width);
             await editor.open('pre');
             await editor.name.fill('Recovered draft');
-            await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('sb-agent-editor-draft-')))).toBe(true);
+            // The backup is written one interval after the first edit, so the poll has to outlast that interval.
+            const draftIntervalMs = await page.evaluate(async () => (await import('/scripts/sillybunny-editor/session.js')).DRAFT_INTERVAL_MS);
+            await expect.poll(
+                () => page.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('sb-agent-editor-draft-'))),
+                { timeout: draftIntervalMs + 5000 },
+            ).toBe(true);
             await page.reload({ waitUntil: 'domcontentloaded' });
             await waitForEditorApp(page);
             await seedEditorAgents(page);
