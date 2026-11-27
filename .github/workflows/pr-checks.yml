@@ -237,3 +237,106 @@ jobs:
             sleep 1
           done
           echo 'Node server is up.'
+
+  run-e2e-smoke:
+    name: ✅ Run E2E Smoke on PR
+    runs-on: ubuntu-latest
+    if: always()
+    timeout-minutes: 10
+    env:
+      CI: 'true'
+      PLAYWRIGHT_HTML_OPEN: never
+      SILLYBUNNY_TEST_BASE_URL: http://127.0.0.1:4444
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install test dependencies
+        env:
+          NPM_CONFIG_USERCONFIG: ${{ github.workspace }}/.npmrc
+        run: npm ci --ignore-scripts --prefix tests
+
+      - name: Install Chromium
+        working-directory: tests
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Initialize server state
+        run: npm run init
+
+      - name: Run Chromium E2E smoke suite
+        env:
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+        run: |
+          set -euo pipefail
+
+          server_log="$RUNNER_TEMP/sillybunny-server.log"
+          bun server.js --browserLaunchEnabled=false > "$server_log" 2>&1 &
+          server_pid=$!
+
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          startup_deadline=$((SECONDS + 120))
+          until curl --fail --silent --connect-timeout 1 --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/" > /dev/null; do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo 'SillyBunny exited before becoming ready.' >&2
+              cat "$server_log" >&2
+              exit 1
+            fi
+
+            if (( SECONDS >= startup_deadline )); then
+              echo 'SillyBunny did not become ready within 120 seconds.' >&2
+              cat "$server_log" >&2
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          node tests/e2e-servers-prime.js --browser=chromium
+          npm run test:e2e:smoke --prefix tests -- --workers=2 --reporter=line,html
+
+      - name: Print server log on failure
+        # A job-level timeout cancels the job, where `failure()` is false; without this the log is lost.
+        if: failure() || cancelled()
+        run: |
+          if [ -f "$RUNNER_TEMP/sillybunny-server.log" ]; then
+            cat "$RUNNER_TEMP/sillybunny-server.log"
+          fi
+
+      - name: Upload failure diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pr-e2e-smoke-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/sillybunny-server.log
+            tests/playwright-report/
+            tests/test-results/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -57,6 +57,31 @@ describe('pull request checks workflow', () => {
         expect(testIndex).toBeGreaterThan(installIndex);
     });
 
+    test('runs the Chromium E2E smoke suite within the ten-minute PR budget', () => {
+        const job = workflow.jobs['run-e2e-smoke'];
+        expect(job.name).toBe('✅ Run E2E Smoke on PR');
+        expect(job['timeout-minutes']).toBe(10);
+        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+        expect(job.steps.find(step => step.uses?.startsWith('oven-sh/setup-bun@')).with['bun-version']).toBe('1.4.4');
+
+        const commands = runCommands('run-e2e-smoke');
+        expect(commands).toContain('npm ci --ignore-scripts');
+        expect(commands).toContain('npm ci --ignore-scripts --prefix tests');
+        expect(commands).toContain('npx --no-install playwright install --with-deps chromium');
+        expect(commands).toContain('npm run init');
+
+        const smokeStep = job.steps.find(step => step.name === 'Run Chromium E2E smoke suite');
+        expect(smokeStep.env).toEqual({ SILLYBUNNY_LAUNCHER: '1', SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' });
+        expect(smokeStep.run).toContain('bun server.js --browserLaunchEnabled=false');
+        expect(smokeStep.run).toContain('node tests/e2e-servers-prime.js --browser=chromium');
+        expect(smokeStep.run).toContain('npm run test:e2e:smoke --prefix tests');
+
+        const logStep = job.steps.find(step => step.name === 'Print server log on failure');
+        const uploadStep = job.steps.find(step => step.name === 'Upload failure diagnostics');
+        expect(logStep.if).toBe('failure() || cancelled()');
+        expect(uploadStep.if).toBe('failure() || cancelled()');
+    });
+
     test('pins every action to a full commit SHA', () => {
         const uses = Object.values(workflow.jobs).flatMap(job => job.steps.map(step => step.uses).filter(Boolean));
         expect(uses.length).toBeGreaterThan(0);
