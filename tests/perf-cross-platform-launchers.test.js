@@ -1021,6 +1021,54 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
         expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
     });
 
+    describe('a runtime that command -v finds but that does not run', () => {
+        // Stands for a stale version-manager shim: present and executable, but it exits with 126 or 127.
+        function createBrokenShims(appDir, exitCode) {
+            const shimDir = path.join(appDir, 'broken-shims');
+            fs.mkdirSync(shimDir, { recursive: true });
+            for (const name of ['node', 'npm']) {
+                fs.writeFileSync(path.join(shimDir, name), `#!/bin/sh\nexit ${exitCode}\n`);
+                fs.chmodSync(path.join(shimDir, name), 0o755);
+            }
+            // The full prerequisite check is the step that repairs a runtime.
+            fs.writeFileSync(
+                path.join(appDir, 'scripts', 'install-prerequisites.sh'),
+                `#!/usr/bin/env bash\necho "prereq" >> boot-calls.log\nrm -rf "${toPosixShellPath(bashExecutable, shimDir)}"\n`,
+            );
+            return { PATH: `${shimDir}${path.delimiter}${process.env.PATH}` };
+        }
+
+        test.each([126, 127])('the dependency check failing with status %i runs the prerequisite check once and goes on', (exitCode) => {
+            const appDir = createBootApp(`posix-broken-runtime-cold-${exitCode}`);
+            const env = createBrokenShims(appDir, exitCode);
+
+            const result = runStartShIn(appDir, ['--skip-self-update'], env);
+            expect(result.status).toBe(0);
+            expect(takeBootCalls(appDir)).toEqual(['prereq', ...BOOT_FIXTURE_COLD_CALLS]);
+        });
+
+        test.each([126, 127])('a server that cannot start on a warm boot (status %i) runs the prerequisite check once and starts again', (exitCode) => {
+            const appDir = createBootApp(`posix-broken-runtime-warm-${exitCode}`);
+            expect(runStartShIn(appDir).status).toBe(0);
+            expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+
+            const env = createBrokenShims(appDir, exitCode);
+            const result = runStartShIn(appDir, ['--skip-self-update'], env);
+            expect(result.status).toBe(0);
+            expect(takeBootCalls(appDir)).toEqual(['prereq', 'server']);
+        });
+
+        test('a runtime that stays broken after the prerequisite check ends the launch with its status', () => {
+            const appDir = createBootApp('posix-broken-runtime-stays');
+            const env = createBrokenShims(appDir, 127);
+            fs.writeFileSync(path.join(appDir, 'scripts', 'install-prerequisites.sh'), '#!/usr/bin/env bash\necho "prereq" >> boot-calls.log\n');
+
+            const result = runStartShIn(appDir, ['--skip-self-update'], env);
+            expect(result.status).toBe(127);
+            expect(takeBootCalls(appDir)).toEqual(['prereq']);
+        });
+    });
+
     test.each([1, 3, 127])('start.sh starts the server when the optional updater exits with code %i', (exitCode) => {
         const appDir = createBootApp(`posix-updater-crash-${exitCode}`);
         fs.writeFileSync(

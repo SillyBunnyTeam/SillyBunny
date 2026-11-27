@@ -351,13 +351,22 @@ if (( auto_update_enabled )) && [[ -e "$SCRIPT_DIR/.git" ]]; then
     prereq_args+=(--require-git)
 fi
 
-if ! have_required_prerequisites; then
+prerequisites_checked=0
+
+# install-prerequisites.sh runs the runtimes (bun --version, node --version) and repairs one that fails,
+# which the existence test in have_required_prerequisites does not do.
+run_prerequisite_check() {
+    prerequisites_checked=1
     if (( ${#prereq_args[@]} )); then
         bash "$SCRIPT_DIR/scripts/install-prerequisites.sh" "${prereq_args[@]}"
     else
         bash "$SCRIPT_DIR/scripts/install-prerequisites.sh"
     fi
     refresh_launcher_paths
+}
+
+if ! have_required_prerequisites; then
+    run_prerequisite_check
 fi
 
 if (( self_update_requested )); then
@@ -381,8 +390,12 @@ if is_termux; then
     mkdir -p "$TMPDIR"
 fi
 
-RUNTIME_CMD="$(resolve_runtime_command "$runtime_kind")"
-PACKAGE_MANAGER_CMD="$(resolve_package_manager_command "$runtime_kind")"
+resolve_runtime_commands() {
+    RUNTIME_CMD="$(resolve_runtime_command "$runtime_kind")"
+    PACKAGE_MANAGER_CMD="$(resolve_package_manager_command "$runtime_kind")"
+}
+
+resolve_runtime_commands
 
 has_existing_dev_dependencies() {
     [[ -f "$SCRIPT_DIR/node_modules/eslint/package.json" ]]
@@ -478,7 +491,17 @@ fi
 if (( warm_boot_hit )); then
     echo "Dependencies are up to date."
 else
-    if ! "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1; then
+    dependency_check_status=0
+    "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1 || dependency_check_status=$?
+    if (( dependency_check_status > 1 && ! prerequisites_checked )); then
+        # The check exits 0 or 1. Any other status means the runtime did not run the script.
+        run_prerequisite_check
+        resolve_runtime_commands
+        dependency_check_status=0
+        "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1 || dependency_check_status=$?
+    fi
+
+    if (( dependency_check_status != 0 )); then
         prepare_package_install
 
         if [[ "$dependency_profile" == *development ]]; then
@@ -566,6 +589,14 @@ while true; do
     if (( server_exit_code == restart_exit_code )); then
         ((server_restart_count += 1))
         echo "Restarting SillyBunny..."
+        continue
+    fi
+
+    # 126 and 127 mean the shell could not run the runtime at all. Nothing before the server ran it
+    # on a warm boot, so the full prerequisite check gets one chance to repair it.
+    if (( (server_exit_code == 126 || server_exit_code == 127) && ! prerequisites_checked )); then
+        run_prerequisite_check
+        resolve_runtime_commands
         continue
     fi
 
