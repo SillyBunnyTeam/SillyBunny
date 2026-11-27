@@ -1084,6 +1084,16 @@ test.describe('desktop Escape at 1264x800', () => {
         await clearToasts(page);
         const settingsPage = page.locator('#sb-settings-page');
         const search = page.locator('#sb-universal-search');
+        const chatSidebar = page.locator('.sb-side-panel[data-sb-side-panel-id="sb-chat-sidebar"]');
+
+        // The Recent Chats panel is built when it first opens, and only a selected character can open it. Opening and closing it once leaves
+        // the hidden panel that the Escape steps below must not remove.
+        await selectSampleCharacter(page);
+        await page.evaluate(() => window.SillyBunnyShell.toggleChatSidebar());
+        await expect(chatSidebar).toBeVisible();
+        await page.evaluate(() => window.SillyBunnyShell.toggleChatSidebar());
+        await expect(chatSidebar).toBeHidden();
+        await clearToasts(page);
 
         // Leaving Characters on World Info keeps #WorldInfo laid out in the closed page.
         await page.evaluate(() => window.SillyBunnyShell.openTab('characters', 'world-info'));
@@ -1098,7 +1108,6 @@ test.describe('desktop Escape at 1264x800', () => {
             portrait.css('display', 'flex');
         });
         const portrait = page.locator('#zoomFor_smoke');
-        const chatSidebar = page.locator('.sb-side-panel[data-sb-side-panel-id="sb-chat-sidebar"]');
 
         // The open page hides the portrait, so Escape from outside the page leaves it alone.
         await page.evaluate(() => document.activeElement?.blur());
