@@ -1,8 +1,8 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest tests, not Playwright. */
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { readFileSync } from 'node:fs';
 
-import { readClientModule } from './util/load-declarations.js';
 import { importScriptModule } from './util/script-harness.js';
 
 let activeRuntime = null;
@@ -141,7 +141,7 @@ describe('generateRaw()', () => {
 
 describe('the seam in public/script.js', () => {
     test('is marked as a SillyBunny change, which the upstream-touch ledger names', () => {
-        const { source } = readClientModule('script.js');
+        const source = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
 
         expect(source).toContain('// SillyBunny: a conversation reply registers its commit plan on the signal that reaches fetchResumable()');
     });
