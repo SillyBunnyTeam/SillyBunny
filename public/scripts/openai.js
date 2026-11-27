@@ -1246,11 +1246,12 @@ async function primeChatHistoryTokenCache(preparedChatPrompts) {
             continue;
         }
 
-        candidates.push({ role, content });
-
+        // SillyBunny: Message.createAsync accepts name directly, so prime only the final named or unnamed payload.
         if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
             const name = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
             candidates.push({ role, content, name });
+        } else {
+            candidates.push({ role, content });
         }
     }
 
@@ -1398,18 +1399,30 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
             // trimming path below mutates prompt.content, so those rebuilds prepare again.
             const prepared = preparedPrompt ?? promptManager.preparePrompt(prompt);
             preparedPrompt = null;
-            const message = await Message.fromPromptAsync(prepared);
+            // SillyBunny: pass completion name into fromPromptAsync so Message counts once instead of discarding and recounting in setName.
+            const messageName = promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name
+                ? (promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name))
+                : undefined;
+            const message = await Message.fromPromptAsync(prepared, messageName);
             if (survivingContributions.length > 0) {
                 message.agentContributions = survivingContributions;
             }
-            if (promptManager.serviceSettings.names_behavior === character_names_behavior.COMPLETION && prompt.name) {
-                const messageName = promptManager.isValidName(prompt.name) ? prompt.name : promptManager.sanitizeName(prompt.name);
-                await message.setName(messageName);
-            }
             if (Array.isArray(chatPrompt.media) && chatPrompt.media.length) {
                 if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.LIST) {
-                    for (const media of chatPrompt.media) {
-                        await inlineMediaAttachment(media, message);
+                    // SillyBunny: fetch and prepare list attachments in parallel, then append in deterministic order.
+                    if (chatPrompt.media.length > 1) {
+                        const preparedItems = await Promise.all(chatPrompt.media.map(media => prepareInlineMediaAttachment(media, { imageInlining, videoInlining, audioInlining })));
+                        for (const item of preparedItems) {
+                            if (item) {
+                                message.content = message.ensureContentIsArray();
+                                message.content.push(item.contentBlock);
+                                message.tokens += item.tokens;
+                            }
+                        }
+                    } else {
+                        for (const media of chatPrompt.media) {
+                            await inlineMediaAttachment(media, message);
+                        }
                     }
                 }
                 if (chatPrompt.mediaDisplay === MEDIA_DISPLAY.GALLERY) {
@@ -1541,21 +1554,28 @@ async function populateDialogueExamples(prompts, chatCompletion, messageExamples
 
     chatCompletion.add(new MessageCollection('dialogueExamples'), prompts.index('dialogueExamples'));
     if (Array.isArray(messageExamples) && messageExamples.length) {
-        const newExampleChat = await Message.createAsync('system', substituteParams(oai_settings.new_example_chat_prompt), 'newChat');
+        const newExampleChatContent = substituteParams(oai_settings.new_example_chat_prompt);
+        // SillyBunny: prime dialogue example token counts in one parallel batch and pass name into Message.createAsync to avoid double-counting.
+        const exampleTokenCandidates = [];
+        if (typeof newExampleChatContent === 'string' && newExampleChatContent.length > 0) {
+            exampleTokenCandidates.push({ role: 'system', content: newExampleChatContent });
+        }
+        for (const dialogue of messageExamples) {
+            for (const prompt of dialogue) {
+                exampleTokenCandidates.push({ role: 'system', content: prompt.content || '', name: prompt.name });
+            }
+        }
+        await primeOpenAITokenCache(exampleTokenCandidates);
+
+        const newExampleChat = await Message.createAsync('system', newExampleChatContent, 'newChat');
         for (const dialogue of [...messageExamples]) {
             const dialogueIndex = messageExamples.indexOf(dialogue);
-            const chatMessages = [];
-
-            for (let promptIndex = 0; promptIndex < dialogue.length; promptIndex++) {
-                const prompt = dialogue[promptIndex];
+            const chatMessages = await Promise.all(dialogue.map((prompt, promptIndex) => {
                 const role = 'system';
                 const content = prompt.content || '';
                 const identifier = `dialogueExamples ${dialogueIndex}-${promptIndex}`;
-
-                const chatMessage = await Message.createAsync(role, content, identifier);
-                await chatMessage.setName(prompt.name);
-                chatMessages.push(chatMessage);
-            }
+                return Message.createAsync(role, content, identifier, prompt.name);
+            }));
 
             if (!chatCompletion.canAffordAll([newExampleChat, ...chatMessages])) {
                 break;
@@ -1644,6 +1664,27 @@ async function populateChatCompletion(prompts, chatCompletion, { bias, quietProm
     };
 
     chatCompletion.reserveBudget(3); // every reply is primed with <|start|>assistant<|message|>
+
+    // SillyBunny: prime token counts for all prompt markers, custom prompts, and relative extensions in one parallel batch.
+    const promptTokenCandidates = [];
+    const queuePromptCandidate = (prompt) => {
+        if (!prompt || typeof prompt.content !== 'string' || prompt.content.length === 0) {
+            return;
+        }
+        promptTokenCandidates.push({ role: prompt.role || 'system', content: prompt.content });
+    };
+    for (const source of ['worldInfoBefore', 'main', 'worldInfoAfter', 'charDescription', 'charPersonality', 'scenario', 'personaDescription', 'impersonate', 'quietPrompt', 'nsfw', 'jailbreak', 'enhanceDefinitions', 'bias', 'summary', 'authorsNote', 'vectorsMemory', 'vectorsDataBank', 'smartContext', 'groupNudge']) {
+        if (prompts.has(source)) {
+            queuePromptCandidate(prompts.get(source));
+        }
+    }
+    for (const prompt of prompts.collection) {
+        if (prompt && (prompt.system_prompt === false || (prompt.extension && prompt.position))) {
+            queuePromptCandidate(prompt);
+        }
+    }
+    await primeOpenAITokenCache(promptTokenCandidates);
+
     // Character and world information
     await addToChatCompletion('worldInfoBefore');
     await addToChatCompletion('main');
@@ -1762,8 +1803,9 @@ async function populateChatCompletion(prompts, chatCompletion, { bias, quietProm
         const namesInCompletion = oai_settings.names_behavior === character_names_behavior.COMPLETION;
         const assistantPrefill = isAssistantRole && supportsAssistantPrefill ? substituteParams(oai_settings.assistant_prefill) : '';
         const messageContent = [assistantPrefill, chatMessage.content].filter(x => x).join('\n\n');
-        const continueMessage = await Message.createAsync(chatMessage.role, messageContent, 'continuePrefill');
-        chatMessage.name && namesInCompletion && await continueMessage.setName(promptManager.sanitizeName(chatMessage.name));
+        // SillyBunny: pass completion name directly into createAsync to avoid discarding the initial token count.
+        const continueName = chatMessage.name && namesInCompletion ? promptManager.sanitizeName(chatMessage.name) : undefined;
+        const continueMessage = await Message.createAsync(chatMessage.role, messageContent, 'continuePrefill', continueName);
         controlPrompts.add(continueMessage);
         chatCompletion.reserveBudget(continueMessage);
     }
@@ -2045,7 +2087,20 @@ export async function prepareOpenAIMessages({
             chatCompletion.log('----------------------------------------------------');
         }
     } finally {
-        await chatCompletion.buildRuntimeAgentMessages();
+        // SillyBunny: the detached In-Chat Agent records are collected on every send, so the Agents row has its data
+        // when the Prompt Manager opens later. Their tokens are counted off the send path unless the panel is showing them.
+        const isRuntimeAgentPanelShown = Boolean(
+            dryRun
+            || promptManager?.activePopupArea === 'inspect'
+            || (typeof document?.getElementById === 'function' && (
+                document.getElementById(`${promptManager?.configuration?.prefix ?? ''}prompt_manager_popup`)?.classList?.contains('openDrawer')
+                || document.getElementById(`${promptManager?.configuration?.prefix ?? ''}prompt_manager_list`)?.offsetParent !== null
+            )),
+        );
+        const runtimeAgentCounts = Promise.resolve(chatCompletion.buildRuntimeAgentMessages());
+        if (isRuntimeAgentPanelShown) {
+            await runtimeAgentCounts;
+        }
         // Pass chat completion to prompt manager for inspection
         promptManager.setChatCompletion(chatCompletion);
 
@@ -2055,6 +2110,16 @@ export async function prepareOpenAIMessages({
 
         // All information is up-to-date, render.
         if (false === dryRun) promptManager.render(false);
+
+        if (!isRuntimeAgentPanelShown) {
+            void runtimeAgentCounts.then(runtimeMessages => {
+                // A newer prompt may have replaced this one while the counts ran.
+                if (runtimeMessages?.getCollection().length && promptManager.runtimeAgentMessages === runtimeMessages) {
+                    promptManager.setChatCompletion(chatCompletion);
+                    promptManager.render(false);
+                }
+            });
+        }
     }
 
     let chat = chatCompletion.getChat();
@@ -6071,6 +6136,239 @@ class InvalidCharacterNameError extends Error {
     }
 }
 
+// SillyBunny: bounded 32-entry LRU cache for inlined multimodal images keyed by (url, compressMode, quality).
+const MULTIMODAL_IMAGE_CACHE_MAX = 32;
+/** @type {Map<string, { dataUrl: string, width: number, height: number, tokens: number }>} */
+const multimodalImageCache = new Map();
+
+const COMPRESS_IMAGE_SOURCES = [
+    chat_completion_sources.OPENROUTER,
+    chat_completion_sources.MAKERSUITE,
+    chat_completion_sources.MISTRALAI,
+    chat_completion_sources.VERTEXAI,
+];
+
+function getMultimodalImageCompressMode(source = oai_settings.chat_completion_source) {
+    return COMPRESS_IMAGE_SOURCES.includes(source) ? 'compress' : 'passthrough';
+}
+
+function getMultimodalImageCacheKey(image, compressMode, quality) {
+    const raw = String(image ?? '');
+    if (raw.length <= 256) {
+        return `${compressMode}|${quality}|${raw}`;
+    }
+    return `${compressMode}|${quality}|len:${raw.length}|h:${getStringHash(raw)}|${raw.slice(0, 64)}|${raw.slice(-32)}`;
+}
+
+function getCachedMultimodalImage(key) {
+    if (!multimodalImageCache.has(key)) {
+        return null;
+    }
+    const entry = multimodalImageCache.get(key);
+    multimodalImageCache.delete(key);
+    multimodalImageCache.set(key, entry);
+    return entry;
+}
+
+function setCachedMultimodalImage(key, value) {
+    if (multimodalImageCache.has(key)) {
+        multimodalImageCache.delete(key);
+    } else if (multimodalImageCache.size >= MULTIMODAL_IMAGE_CACHE_MAX) {
+        const oldestKey = multimodalImageCache.keys().next().value;
+        multimodalImageCache.delete(oldestKey);
+    }
+    multimodalImageCache.set(key, value);
+}
+
+/**
+ * Clears the multimodal attachment LRU cache.
+ */
+export function clearMultimodalImageCache() {
+    multimodalImageCache.clear();
+}
+
+/**
+ * Returns the current number of entries in the multimodal attachment LRU cache.
+ * @returns {number}
+ */
+export function getMultimodalImageCacheSize() {
+    return multimodalImageCache.size;
+}
+
+/**
+ * Computes OpenAI vision token cost from image dimensions and quality mode.
+ * @param {number} width
+ * @param {number} height
+ * @param {string} quality
+ * @returns {number}
+ */
+function calculateImageTokensFromDimensions(width, height, quality) {
+    if (quality === 'low') {
+        return Message.tokensPerImage;
+    }
+    if (quality === 'auto' && width <= 512 && height <= 512) {
+        return Message.tokensPerImage;
+    }
+    const scale = 2048 / Math.min(width, height);
+    const scaledWidth = Math.round(width * scale);
+    const scaledHeight = Math.round(height * scale);
+    const finalScale = 768 / Math.min(scaledWidth, scaledHeight);
+    const finalWidth = Math.round(scaledWidth * finalScale);
+    const finalHeight = Math.round(scaledHeight * finalScale);
+    const squares = Math.ceil(finalWidth / 512) * Math.ceil(finalHeight / 512);
+    return squares * 170 + 85;
+}
+
+/**
+ * Resolves, compresses, and token-costs an image attachment using the bounded 32-entry LRU cache.
+ * @param {string} image Image URL or Data URL.
+ * @param {object} [options]
+ * @param {string} [options.compressMode]
+ * @param {string} [options.quality]
+ * @param {(url: string) => Promise<string>} [options.fetchDataUrl]
+ * @param {(dataUrl: string) => Promise<string>} [options.compressImage]
+ * @param {(dataUrl: string) => Promise<{ width: number, height: number }>} [options.getImageSize]
+ * @returns {Promise<{ dataUrl: string, width: number, height: number, tokens: number } | null>}
+ */
+export async function prepareMultimodalImage(image, {
+    compressMode = getMultimodalImageCompressMode(),
+    quality = oai_settings.inline_image_quality || default_settings.inline_image_quality,
+    fetchDataUrl = null,
+    compressImage = null,
+    getImageSize = getImageSizeFromDataURL,
+} = {}) {
+    const cacheKey = getMultimodalImageCacheKey(image, compressMode, quality);
+    const cached = getCachedMultimodalImage(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    let resolvedImage = image;
+    if (!isDataURL(resolvedImage)) {
+        try {
+            if (typeof fetchDataUrl === 'function') {
+                resolvedImage = await fetchDataUrl(resolvedImage);
+            } else {
+                const response = await fetch(resolvedImage, { method: 'GET', cache: 'force-cache' });
+                if (!response.ok) throw new Error('Failed to fetch image');
+                const blob = await response.blob();
+                resolvedImage = await getBase64Async(blob);
+            }
+        } catch (error) {
+            console.error('Image adding skipped', error);
+            return null;
+        }
+    }
+
+    if (typeof compressImage === 'function') {
+        resolvedImage = await compressImage(resolvedImage);
+    } else {
+        resolvedImage = await Message.prototype.compressImage.call(null, resolvedImage);
+    }
+
+    let width = 0;
+    let height = 0;
+    let tokens = Message.tokensPerImage;
+    if (quality !== 'low') {
+        try {
+            const size = await getImageSize(resolvedImage);
+            width = Number(size?.width) || 0;
+            height = Number(size?.height) || 0;
+            tokens = width > 0 && height > 0
+                ? calculateImageTokensFromDimensions(width, height, quality)
+                : Message.tokensPerImage;
+        } catch (error) {
+            tokens = Message.tokensPerImage;
+            console.error('Failed to get image token cost', error);
+        }
+    }
+
+    const prepared = { dataUrl: resolvedImage, width, height, tokens };
+    setCachedMultimodalImage(cacheKey, prepared);
+    return prepared;
+}
+
+/**
+ * Prepares a single media attachment without mutating the target Message so lists can run via Promise.all.
+ * @param {any} media
+ * @param {{ imageInlining: boolean, videoInlining: boolean, audioInlining: boolean }} flags
+ * @returns {Promise<{ contentBlock: object, tokens: number } | null>}
+ */
+async function prepareInlineMediaAttachment(media, { imageInlining, videoInlining, audioInlining }) {
+    if (!media || !media.url) {
+        return null;
+    }
+    if (!media.type) {
+        media.type = MEDIA_TYPE.IMAGE;
+    }
+    const quality = oai_settings.inline_image_quality || default_settings.inline_image_quality;
+
+    if (imageInlining && media.type === MEDIA_TYPE.IMAGE) {
+        const prepared = await prepareMultimodalImage(media.url, { quality });
+        if (!prepared) {
+            return null;
+        }
+        return {
+            contentBlock: { type: 'image_url', image_url: { url: prepared.dataUrl, detail: quality } },
+            tokens: prepared.tokens,
+        };
+    }
+
+    if (videoInlining && media.type === MEDIA_TYPE.VIDEO) {
+        let video = media.url;
+        if (!isDataURL(video)) {
+            try {
+                const response = await fetch(video, { method: 'GET', cache: 'force-cache' });
+                if (!response.ok) throw new Error('Failed to fetch video');
+                const blob = await response.blob();
+                video = await getBase64Async(blob);
+            } catch (error) {
+                console.error('Video adding skipped', error);
+                return null;
+            }
+        }
+        let tokens = 263 * 40;
+        try {
+            const duration = await getVideoDurationFromDataURL(video);
+            tokens = 263 * Math.ceil(duration);
+        } catch (error) {
+            console.error('Failed to get video token cost', error);
+        }
+        return {
+            contentBlock: { type: 'video_url', video_url: { url: video, detail: quality } },
+            tokens,
+        };
+    }
+
+    if (audioInlining && media.type === MEDIA_TYPE.AUDIO) {
+        let audio = media.url;
+        if (!isDataURL(audio)) {
+            try {
+                const response = await fetch(audio, { method: 'GET', cache: 'force-cache' });
+                if (!response.ok) throw new Error('Failed to fetch audio');
+                const blob = await response.blob();
+                audio = await getBase64Async(blob);
+            } catch (error) {
+                console.error('Audio adding skipped', error);
+                return null;
+            }
+        }
+        let tokens = 32 * 300;
+        try {
+            const duration = await getAudioDurationFromDataURL(audio);
+            tokens = 32 * Math.ceil(duration);
+        } catch (error) {
+            console.error('Failed to get audio token cost', error);
+        }
+        return {
+            contentBlock: { type: 'audio_url', audio_url: { url: audio } },
+            tokens,
+        };
+    }
+
+    return null;
+}
+
 /**
  * Used for creating, managing, and interacting with a specific message object.
  */
@@ -6123,12 +6421,17 @@ class Message {
      * @param {string} role
      * @param {string} content
      * @param {string} identifier
+     * @param {string} [name]
      * @returns {Promise<Message>} Message instance
      */
-    static async createAsync(role, content, identifier) {
+    static async createAsync(role, content, identifier, name = undefined) {
         const message = new Message(role, content, identifier);
 
-        if (typeof message.content === 'string' && message.content.length > 0) {
+        // SillyBunny: accept optional name upfront so callers count named messages once instead of recounting in setName.
+        if (name !== undefined) {
+            message.name = name;
+            message.tokens = await tokenHandler.countAsync({ role: message.role, content: message.content, name: message.name });
+        } else if (typeof message.content === 'string' && message.content.length > 0) {
             message.tokens = await tokenHandler.countAsync({ role: message.role, content: message.content });
         }
 
@@ -6193,31 +6496,18 @@ class Message {
      */
     async addImage(image) {
         this.content = this.ensureContentIsArray();
-        const isDataUrl = isDataURL(image);
-        if (!isDataUrl) {
-            try {
-                const response = await fetch(image, { method: 'GET', cache: 'force-cache' });
-                if (!response.ok) throw new Error('Failed to fetch image');
-                const blob = await response.blob();
-                image = await getBase64Async(blob);
-            } catch (error) {
-                console.error('Image adding skipped', error);
-                return;
-            }
-        }
-
-        image = await this.compressImage(image);
-
         const quality = oai_settings.inline_image_quality || default_settings.inline_image_quality;
-        this.content.push({ type: 'image_url', image_url: { 'url': image, 'detail': quality } });
-
-        try {
-            const tokens = await this.getImageTokenCost(image, quality);
-            this.tokens += tokens;
-        } catch (error) {
-            this.tokens += Message.tokensPerImage;
-            console.error('Failed to get image token cost', error);
+        // SillyBunny: reuse compressed dataUrl and vision token cost from bounded multimodal LRU across turns.
+        const prepared = await prepareMultimodalImage(image, {
+            quality,
+            compressImage: img => this.compressImage(img),
+        });
+        if (!prepared) {
+            return;
         }
+
+        this.content.push({ type: 'image_url', image_url: { 'url': prepared.dataUrl, 'detail': quality } });
+        this.tokens += prepared.tokens;
     }
 
     /**
@@ -6357,10 +6647,11 @@ class Message {
      * Create a new Message instance from a prompt asynchronously.
      * @static
      * @param {Object} prompt - The prompt object.
+     * @param {string} [name] - Optional completion name to include in the initial token count.
      * @returns {Promise<Message>} A new instance of Message.
      */
-    static async fromPromptAsync(prompt) {
-        const message = await Message.createAsync(prompt.role, prompt.content, prompt.identifier);
+    static async fromPromptAsync(prompt, name = undefined) {
+        const message = await Message.createAsync(prompt.role, prompt.content, prompt.identifier, name);
         const promptName = typeof prompt.name === 'string' ? prompt.name.trim() : '';
         if (prompt.extension && promptName) {
             message.displayName = promptName;
@@ -6498,31 +6789,54 @@ export class ChatCompletion {
         const excludeList = ['newMainChat', 'newChat', 'groupNudge'];
         this.messages.collection = this.messages.flatten();
 
-        let lastMessage = null;
-        let squashedMessages = [];
+        // SillyBunny: concatenate consecutive system runs first and count merged runs once in parallel
+        // instead of O(S^2) serial prefix counts, preserving upstream squashing boundaries verbatim.
+        const shouldSquash = (message) => {
+            return !excludeList.includes(message.identifier) && message.role === 'system' && !message.name;
+        };
 
-        for (let message of this.messages.collection) {
+        let lastMessage = null;
+        let lastParts = null;
+        const squashedMessages = [];
+        const mergedRuns = [];
+
+        const flushRun = () => {
+            if (lastMessage && lastParts && lastParts.length > 1) {
+                lastMessage.content = lastParts.join('\n');
+                mergedRuns.push(lastMessage);
+            }
+            lastParts = null;
+        };
+
+        for (const message of this.messages.collection) {
             // Force exclude empty messages
             if (message.role === 'system' && !message.content) {
                 continue;
             }
 
-            const shouldSquash = (message) => {
-                return !excludeList.includes(message.identifier) && message.role === 'system' && !message.name;
-            };
-
             if (shouldSquash(message)) {
                 if (lastMessage && shouldSquash(lastMessage)) {
-                    lastMessage.content += '\n' + message.content;
-                    lastMessage.tokens = await tokenHandler.countAsync({ role: lastMessage.role, content: lastMessage.content });
+                    if (!lastParts) {
+                        lastParts = [lastMessage.content];
+                    }
+                    lastParts.push(message.content);
                 } else {
+                    flushRun();
                     squashedMessages.push(message);
                     lastMessage = message;
                 }
             } else {
+                flushRun();
                 squashedMessages.push(message);
                 lastMessage = message;
             }
+        }
+        flushRun();
+
+        if (mergedRuns.length > 0) {
+            await Promise.all(mergedRuns.map(async (message) => {
+                message.tokens = await tokenHandler.countAsync({ role: message.role, content: message.content });
+            }));
         }
 
         this.messages.collection = squashedMessages;
@@ -6553,21 +6867,34 @@ export class ChatCompletion {
         return this.runtimeAgentMessages;
     }
 
+    /**
+     * Collects the detached In-Chat Agent inspection records into `runtimeAgentMessages`, which is set before the first
+     * await, so a caller that does not wait for the returned promise still has the records. The promise settles when
+     * every record has its token count.
+     * @returns {Promise<MessageCollection|null>} The collection, or null when the records could not be collected.
+     */
     async buildRuntimeAgentMessages() {
         this.runtimeAgentMessages = null;
         const runtimeMessages = new MessageCollection(RUNTIME_AGENTS_IDENTIFIER);
 
         try {
-            for (const record of collectInChatAgentInspectionRecords(this.messages.flatten())) {
-                const message = await Message.createAsync(record.role, record.content, record.identifier);
+            // SillyBunny: count detached In-Chat Agent inspection records concurrently in one batch.
+            const builtMessages = collectInChatAgentInspectionRecords(this.messages.flatten()).map((record) => {
+                const message = new Message(record.role, record.content, record.identifier);
                 message.displayName = record.name;
                 message.kind = record.kind;
                 runtimeMessages.add(message);
-            }
+                return message;
+            });
             this.runtimeAgentMessages = runtimeMessages;
+            await Promise.all(builtMessages.map(async (message) => {
+                message.tokens = await tokenHandler.countAsync({ role: message.role, content: message.content });
+            }));
         } catch (error) {
             console.warn('[PromptManager] Failed to count detached In-Chat Agent inspection tokens:', error);
         }
+
+        return this.runtimeAgentMessages;
     }
 
     /**

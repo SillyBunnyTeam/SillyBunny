@@ -273,6 +273,10 @@ async function getNetstatConnections(platform) {
     return parseNetstatOutput(stdout);
 }
 
+export function usesNetstatPolling(platform = os.platform()) {
+    return platform === 'win32' || platform === 'darwin';
+}
+
 async function getConnectionTable(platform = os.platform()) {
     switch (platform) {
         case 'linux':

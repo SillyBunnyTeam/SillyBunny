@@ -20,6 +20,7 @@ import helmet from 'helmet';
 // local library imports
 import './fetch-patch.js';
 import { APP_NAME, isBunRuntime } from './runtime.js';
+import { getKeepAliveAgentOptions } from './outbound-keep-alive.js';
 import { serverDirectory } from './server-directory.js';
 import { getServerBootId } from './server-boot-marker.js';
 import { getInstallType, INSTALL_TYPE } from './install-type.js';
@@ -112,8 +113,9 @@ if (!cliArgs.enableIPv6 && !cliArgs.enableIPv4) {
 }
 
 // Set keep-alive preference for all HTTP/HTTPS requests.
-http.globalAgent = new http.Agent({ keepAlive: cliArgs.enableKeepAlive });
-https.globalAgent = new https.Agent({ keepAlive: cliArgs.enableKeepAlive });
+// SillyBunny: pooled sockets idle for a limited time, so that this process closes a free socket before the server does.
+http.globalAgent = new http.Agent({ ...getKeepAliveAgentOptions(cliArgs.enableKeepAlive), keepAliveMsecs: 15000, maxSockets: 64 });
+https.globalAgent = new https.Agent({ ...getKeepAliveAgentOptions(cliArgs.enableKeepAlive), keepAliveMsecs: 15000, maxSockets: 64 });
 
 // SillyBunny: send a rejected promise from an async handler to the error handlers, because Express 4 ignores it and leaves the request unanswered.
 forwardAsyncRouteErrors();

@@ -9,7 +9,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { sync as writeFileAtomicSync } from 'write-file-atomic';
+import process from 'node:process';
+import writeFileAtomic, { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { getCommitChatKey } from '../public/scripts/generation-commit-plan.js';
 
@@ -38,20 +39,137 @@ const MAX_LOST_ENTRIES = 50;
 const journals = new Map();
 
 /**
+ * Coalesced async write state per journal file so hot send/finish paths never block on fsyncSync.
+ * @type {Map<string, { dirty: boolean, payload: string | null, promise: Promise<void> | null, generation: number }>}
+ */
+const pendingWrites = new Map();
+
+/**
+ * Writes the latest pending journal snapshot atomically using async I/O, coalescing rapid mutations.
+ * @param {string} file Journal file
+ */
+function drainPendingWrite(file) {
+    const state = pendingWrites.get(file);
+    if (!state || state.promise || !state.dirty) {
+        return;
+    }
+
+    const work = (async () => {
+        while (state.dirty) {
+            const snapshot = state.payload;
+            const snapshotGeneration = state.generation;
+            state.dirty = false;
+            try {
+                if (snapshot === null) {
+                    await fs.promises.rm(file, { force: true });
+                } else {
+                    await writeFileAtomic(file, snapshot, 'utf8');
+                }
+            } catch (error) {
+                if (state.generation === snapshotGeneration) {
+                    console.warn('Could not save the generation journal:', error);
+                }
+            }
+        }
+    })().finally(() => {
+        if (state.promise === work) {
+            state.promise = null;
+        }
+        if (state.dirty) {
+            drainPendingWrite(file);
+        } else if (pendingWrites.get(file) === state) {
+            pendingWrites.delete(file);
+        }
+    });
+
+    state.promise = work;
+}
+
+/**
+ * Schedules a coalesced async atomic write for the journal file.
  * @param {string} file Journal file
  * @param {Map<string, JournalEntry>} entries Entries to write
  */
 function saveJournal(file, entries) {
-    try {
-        if (entries.size === 0) {
-            fs.rmSync(file, { force: true });
-        } else {
-            writeFileAtomicSync(file, JSON.stringify([...entries.values()]), 'utf8');
+    const payload = entries.size === 0 ? null : JSON.stringify([...entries.values()]);
+    let state = pendingWrites.get(file);
+    if (!state) {
+        state = { dirty: false, payload: null, promise: null, generation: 0 };
+        pendingWrites.set(file, state);
+    }
+    state.payload = payload;
+    state.dirty = true;
+    state.generation += 1;
+    // Schedule on a microtask so synchronous bursts within the same tick coalesce into one write.
+    queueMicrotask(() => drainPendingWrite(file));
+}
+
+/**
+ * Waits for all coalesced async journal writes (or one file's write) to finish on disk.
+ * @param {string} [file] Optional journal file path
+ * @returns {Promise<void>}
+ */
+export async function flushJournal(file = undefined) {
+    if (file) {
+        while (pendingWrites.has(file)) {
+            drainPendingWrite(file);
+            const pending = pendingWrites.get(file)?.promise;
+            if (!pending) {
+                break;
+            }
+            await pending;
         }
-    } catch (error) {
-        console.warn('Could not save the generation journal:', error);
+        return;
+    }
+
+    while (pendingWrites.size > 0) {
+        const promises = [];
+        for (const key of [...pendingWrites.keys()]) {
+            drainPendingWrite(key);
+            const pending = pendingWrites.get(key)?.promise;
+            if (pending) {
+                promises.push(pending);
+            }
+        }
+        if (promises.length === 0) {
+            break;
+        }
+        await Promise.all(promises);
     }
 }
+
+/**
+ * Synchronously persists the latest in-memory journal snapshots (used on clean process exit or simulated restart).
+ * A snapshot whose async write is still in flight is no longer dirty, but the write may never finish, so it is written again.
+ * @param {string} [file] Optional journal file path
+ */
+function flushJournalSync(file = undefined) {
+    const targets = file ? (pendingWrites.has(file) ? [[file, pendingWrites.get(file)]] : []) : [...pendingWrites.entries()];
+    for (const [targetFile, state] of targets) {
+        if (!state || (!state.dirty && !state.promise)) {
+            continue;
+        }
+        const snapshot = state.payload;
+        state.dirty = false;
+        state.generation += 1;
+        try {
+            if (snapshot === null) {
+                fs.rmSync(targetFile, { force: true });
+            } else {
+                writeFileAtomicSync(targetFile, snapshot, 'utf8');
+            }
+        } catch (error) {
+            console.warn('Could not save the generation journal:', error);
+        }
+        if (!state.promise) {
+            pendingWrites.delete(targetFile);
+        }
+    }
+}
+
+process.on('exit', () => {
+    flushJournalSync();
+});
 
 /**
  * @param {Map<string, JournalEntry>} entries Journal entries
@@ -205,8 +323,11 @@ export function acknowledgeLostGenerations(user, ids) {
 export const testExports = {
     JOURNAL_FILE,
     MAX_LOST_ENTRIES,
-    /** Simulates a server restart: the next touch reads every journal from disk again. */
+    flushJournal,
+    flushJournalSync,
+    /** Simulates a server restart: flushes dirty state and forces the next touch to read from disk. */
     forgetLoadedJournals() {
+        flushJournalSync();
         journals.clear();
     },
 };

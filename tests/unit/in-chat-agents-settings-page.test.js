@@ -7,6 +7,7 @@ const fields = [
     ['connectionProfile', 'connectionProfile', '', 'profile', 'connections', 'change', 'profile-main'],
     ['companionConnectionProfile', 'companionConnectionProfile', '', 'profile', 'connections', 'change', 'profile-companion'],
     ['appendAgentsExecutionMode', 'appendAgentsExecutionMode', 'parallel', 'toggle', 'running-agents', 'change', 'sequential'],
+    ['patchAgentsExecutionMode', 'patchAgentsExecutionMode', 'sequential', 'toggle', 'running-agents', 'change', 'parallel'],
     ['companionExecutionMode', 'companionExecutionMode', 'parallel', 'toggle', 'running-agents', 'change', 'sequential'],
     ['companionConcurrent', 'companionConcurrentWithPostGen', false, 'switch', 'running-agents', 'change', true],
     ['separateRecentChats', 'separateRecentChats', false, 'switch', 'chats', 'change', true],
@@ -50,12 +51,12 @@ describe('A4 Settings page existing data contract', () => {
         expect(typeof module.createSettingsPageController).toBe('function');
     });
 
-    test('has five ordered groups and exactly ten setting IDs, with Reset kept out of persisted fields', async () => {
+    test('has five ordered groups and exactly eleven setting IDs, with Reset kept out of persisted fields', async () => {
         const module = await loadPage();
         const model = module.buildSettingsPageModel({});
         expect(model.groups.map(group => [group.id, group.rows.length])).toEqual([
             ['connections', 2],
-            ['running-agents', 3],
+            ['running-agents', 4],
             ['chats', 1],
             ['notifications-and-display', 2],
             ['advanced', 2],

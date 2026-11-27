@@ -14,7 +14,7 @@ const raw = readFileSync(LEXICON_URL, 'utf8');
 const entries = Object.values(JSON.parse(raw).entries);
 
 /** The inventory ids of the lexicon: A0 is the overview, and the last one is A89. */
-const INVENTORY_SIZE = 93;
+const INVENTORY_SIZE = 94;
 /** `world_info_position` before and after the character definitions, the only places that Conversation reads. */
 const ALLOWED_POSITIONS = [0, 1];
 const REMOVED_NAMES = [

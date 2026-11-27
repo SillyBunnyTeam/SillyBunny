@@ -1121,10 +1121,10 @@ test('Agents globals and Connections switches use the shared row semantics', asy
     const settings = agents.locator('[data-agent-page="settings"]');
     await expect(settings.locator('.ds-pref-group-heading')).toHaveText(['Connections', 'Running Agents', 'Chats', 'Notifications and Display', 'Advanced']);
     await expect(settings.locator('.ds-pref-group')).toHaveCount(6);
-    await expect(settings.locator('.ds-row')).toHaveCount(11);
+    await expect(settings.locator('.ds-row')).toHaveCount(12);
     await expect(settings.locator('.ds-select-row')).toHaveCount(2);
     await expect(settings.locator('.ds-select-row__menu')).toHaveCount(0);
-    await expect(settings.getByRole('radiogroup')).toHaveCount(2);
+    await expect(settings.getByRole('radiogroup')).toHaveCount(3);
     await expect(settings.locator('input[role="switch"]')).toHaveCount(5);
     await expect(settings.locator('#ica--resetDefaults')).toHaveClass(/is-destructive/);
     await expect(agents.locator('#ica--companionConcurrent')).toHaveAttribute('role', 'switch');

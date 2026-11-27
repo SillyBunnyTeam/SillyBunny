@@ -46,7 +46,7 @@ function createHost() {
         chat: [], chat_metadata: {}, characters: [{ name: 'Assistant', data: { extensions: {} } }],
         this_chid: 0, selected_group: null, is_group_generating: false, is_send_press: false, streamingProcessor: null,
         name1: 'User', name2: 'Assistant', main_api: 'openai', online_status: 'connected', generation_started: null,
-        power_user: { instruct: { enabled: false }, sysprompt: {}, context: {} },
+        power_user: { instruct: { enabled: false }, sysprompt: {}, context: {}, auto_continue: { enabled: false, allow_chat_completions: false, target_length: 400 } },
         oai_settings: { send_if_empty: '' }, kai_settings: {}, kai_flags: {}, nai_settings: {},
         amount_gen: 100, max_context: 4096, world_info_include_names: false,
         depth_prompt_depth_default: 4, depth_prompt_role_default: 0,
@@ -109,7 +109,7 @@ function createHost() {
     context.setExtensionPrompt = jest.fn((key, value) => { context.extension_prompts[key] = { value }; });
     context.getExtensionPrompt = async () => context.extension_prompts.pathfinder_pipeline_retrieval?.value ?? '';
     context.prepareOpenAIMessages = jest.fn(async data => [[{ role: 'system', content: data.extensionPrompts.pathfinder_pipeline_retrieval?.value ?? '' }], false]);
-    const scriptFunctions = ['setAgentGenerationContextProvider', 'Generate', 'generateQuietPrompt', 'showStopButton', 'hideStopButton', 'activateSendButtons', 'deactivateSendButtons', 'stopGeneration', 'unblockGeneration', 'getNextMessageId'];
+    const scriptFunctions = ['setAgentGenerationContextProvider', 'Generate', 'generateQuietPrompt', 'showStopButton', 'hideStopButton', 'activateSendButtons', 'deactivateSendButtons', 'stopGeneration', 'unblockGeneration', 'getNextMessageId', 'isAutoContinueAllowed', 'countLastMessageForAutoContinue'];
     vm.runInContext(scriptFunctions.map(name => functionSource(scriptSource, name)).join('\n'), context);
     vm.runInContext(functionSource(worldSource, 'getWorldInfoPrompt'), context);
     vm.runInContext(functionSource(runnerSource, 'onWorldInfoActivated'), context);

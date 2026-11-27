@@ -14,6 +14,24 @@ let priorPromptArrayItemForRawPromptDisplay;
 
 const promptStorage = localforage.createInstance({ name: 'SillyTavern_Prompts' });
 export let itemizedPrompts = [];
+// SillyBunny: track whether itemizedPrompts changed for the currently loaded chat so pre-send saves skip redundant IDB writes.
+let itemizedPromptsDirty = false;
+let itemizedPromptsLoadedChatId = null;
+
+/**
+ * Marks itemizedPrompts dirty so the next saveItemizedPrompts flushes to IndexedDB.
+ */
+export function markItemizedPromptsDirty() {
+    itemizedPromptsDirty = true;
+}
+
+/**
+ * Reports whether itemizedPrompts has unsaved mutations for the currently loaded chat.
+ * @returns {boolean}
+ */
+export function isItemizedPromptsDirty() {
+    return itemizedPromptsDirty;
+}
 
 /**
  * Gets the itemized prompts for a chat.
@@ -23,6 +41,8 @@ export async function loadItemizedPrompts(chatId) {
     try {
         if (!chatId) {
             itemizedPrompts = [];
+            itemizedPromptsDirty = false;
+            itemizedPromptsLoadedChatId = null;
             return;
         }
 
@@ -32,24 +52,39 @@ export async function loadItemizedPrompts(chatId) {
             itemizedPrompts = [];
         }
 
+        itemizedPromptsDirty = false;
+        itemizedPromptsLoadedChatId = chatId;
+
         await eventSource.emit(event_types.ITEMIZED_PROMPTS_LOADED, { chatId: chatId });
     } catch {
         console.log('Error loading itemized prompts for chat', chatId);
         itemizedPrompts = [];
+        itemizedPromptsDirty = false;
+        itemizedPromptsLoadedChatId = chatId ?? null;
     }
 }
 
 /**
  * Saves the itemized prompts for a chat.
  * @param {string} chatId Chat ID to save itemized prompts for
+ * @param {{ force?: boolean }} [options] Optional save controls
  */
-export async function saveItemizedPrompts(chatId) {
+export async function saveItemizedPrompts(chatId, { force = false } = {}) {
     try {
         if (!chatId) {
             return;
         }
 
+        // SillyBunny: skip full IndexedDB flush when nothing mutated itemizedPrompts for this chat.
+        if (!force && !itemizedPromptsDirty && chatId === itemizedPromptsLoadedChatId) {
+            return;
+        }
+
         await promptStorage.setItem(chatId, itemizedPrompts);
+        if (chatId === itemizedPromptsLoadedChatId || itemizedPromptsLoadedChatId === null) {
+            itemizedPromptsDirty = false;
+            itemizedPromptsLoadedChatId = chatId;
+        }
         await eventSource.emit(event_types.ITEMIZED_PROMPTS_SAVED, { chatId: chatId });
     } catch {
         console.log('Error saving itemized prompts for chat', chatId);
@@ -74,6 +109,8 @@ export async function replaceItemizedPromptText(mesId, promptText) {
     }
 
     itemizedPrompt.rawPrompt = promptText;
+    // SillyBunny: mark itemizedPrompts dirty after modifying a stored prompt.
+    itemizedPromptsDirty = true;
 }
 
 /**
@@ -87,6 +124,10 @@ export async function deleteItemizedPrompts(chatId) {
         }
 
         await promptStorage.removeItem(chatId);
+        if (chatId === itemizedPromptsLoadedChatId) {
+            itemizedPromptsDirty = false;
+            itemizedPromptsLoadedChatId = null;
+        }
         await eventSource.emit(event_types.ITEMIZED_PROMPTS_DELETED, { chatId: chatId, all: false });
     } catch {
         console.log('Error deleting itemized prompts for chat', chatId);
@@ -100,6 +141,8 @@ export async function clearItemizedPrompts() {
     try {
         await promptStorage.clear();
         itemizedPrompts = [];
+        itemizedPromptsDirty = false;
+        itemizedPromptsLoadedChatId = null;
         await eventSource.emit(event_types.ITEMIZED_PROMPTS_DELETED, { all: true });
     } catch {
         console.log('Error clearing itemized prompts');
@@ -382,6 +425,10 @@ export function swapItemizedPrompts(sourceMessageId, targetMessageId) {
     });
 
     itemizedPrompts.sort((a, b) => a.mesId - b.mesId);
+    // SillyBunny: mark itemizedPrompts dirty when swapped entries changed.
+    if (sourcePrompts.length > 0 || targetPrompts.length > 0) {
+        itemizedPromptsDirty = true;
+    }
 }
 
 /**
@@ -394,9 +441,17 @@ export function deleteItemizedPromptForMessage(messageId) {
         return;
     }
 
+    const previousLength = itemizedPrompts.length;
     itemizedPrompts = itemizedPrompts.filter(x => x.mesId !== messageId);
 
+    let shifted = false;
     for (const prompt of itemizedPrompts.filter(x => x.mesId > messageId)) {
         prompt.mesId -= 1;
+        shifted = true;
+    }
+
+    // SillyBunny: mark itemizedPrompts dirty when a prompt was removed or re-indexed.
+    if (itemizedPrompts.length !== previousLength || shifted) {
+        itemizedPromptsDirty = true;
     }
 }

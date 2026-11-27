@@ -295,6 +295,7 @@ describe('the SillyBunny Lexicon under the shipped World Info settings', () => {
         ['How do I stop my characters from messaging me first?', 'A87'],
         ['How do I move a conversation to my favorites?', 'A84'],
         ['How do I put a conversation in a folder?', 'A92'],
+        ['Can I run patch agents in parallel?', 'A93'],
         ['Why does the New Group list only show 50 characters?', 'A54'],
         ['How do I insert an emoji in Conversation mode?', 'A90'],
         ['How can I see who reacted to my message?', 'A91'],

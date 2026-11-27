@@ -220,6 +220,11 @@ export async function isOpenRouterModelCacheable(
         });
     }
 
+    // Stale-while-revalidate: once a catalog snapshot exists, return it immediately and refresh in background so /generate never stalls.
+    if (openRouterCacheableMap) {
+        return lookupInMap(openRouterCacheableMap);
+    }
+
     const loadedMap = await openRouterCacheableInFlight;
     return lookupInMap(loadedMap ?? openRouterCacheableMap);
 }

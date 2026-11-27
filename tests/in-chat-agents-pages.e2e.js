@@ -8,6 +8,7 @@ const fields = [
     ['connectionProfile', 'connectionProfile', 'profile'],
     ['companionConnectionProfile', 'companionConnectionProfile', 'profile'],
     ['appendAgentsExecutionMode', 'appendAgentsExecutionMode', 'toggle'],
+    ['patchAgentsExecutionMode', 'patchAgentsExecutionMode', 'toggle', 'parallel'],
     ['companionExecutionMode', 'companionExecutionMode', 'toggle'],
     ['companionConcurrent', 'companionConcurrentWithPostGen', 'switch'],
     ['separateRecentChats', 'separateRecentChats', 'switch'],
@@ -127,7 +128,7 @@ for (const width of [1440, 390]) {
                 const root = document.querySelector('.ica-agents-editor').parentElement;
                 return getAgentsPanelSearchEntries({ searchRoot: root, label: 'Agents' }).map(({ element, displayText, description, dedupeKey }) => ({ element, displayText, description, dedupeKey }));
             });
-            expect(descriptors).toHaveLength(10);
+            expect(descriptors).toHaveLength(11);
             expect(descriptors.every(item => item.element === null && item.displayText && item.description)).toBe(true);
             for (const phase of ['before', 'after']) {
                 for (const [id, key, kind] of fields) {
@@ -158,7 +159,7 @@ for (const width of [1440, 390]) {
             await expectClean(page, driver);
         });
 
-        test('all ten settings apply once, keep native handlers and survive guarded serialization/reload', async ({ page, baseURL }) => {
+        test('all eleven settings apply once, keep native handlers and survive guarded serialization/reload', async ({ page, baseURL }) => {
             test.setTimeout(90000);
             const driver = await openEditorAgents(page, baseURL, width);
             // Startup migrations may already have queued a debounced settings snapshot.
@@ -188,14 +189,14 @@ for (const width of [1440, 390]) {
             await expect(settings.locator('.ica-agents-page-body')).toHaveCSS('padding-top', '24px');
             await expect(settings.locator('.ica-agents-page-body')).toHaveCSS('padding-left', '12px');
             const changes = [];
-            for (const [id, key, kind] of fields) {
+            for (const [id, key, kind, choice = 'sequential'] of fields) {
                 const input = settings.locator(`#ica--${id}`);
                 const previous = await input.evaluate(node => node.type === 'checkbox' ? node.checked : node.value);
-                const value = kind === 'switch' ? !previous : kind === 'profile' ? 'qa-profile' : kind === 'toggle' ? 'sequential' : '[assistant] QA prefill';
+                const value = kind === 'switch' ? !previous : kind === 'profile' ? 'qa-profile' : kind === 'toggle' ? choice : '[assistant] QA prefill';
                 const before = savedWrites.length;
                 if (kind === 'switch') await input.setChecked(value);
                 else if (kind === 'textarea') await input.fill(value);
-                else if (kind === 'toggle') await settings.locator(`[data-sb-editor-field="${key}"]`).getByRole('radio', { name: 'Sequential', exact: true }).check();
+                else if (kind === 'toggle') await settings.locator(`[data-sb-editor-field="${key}"]`).getByRole('radio', { name: choice === 'parallel' ? 'Parallel' : 'Sequential', exact: true }).check();
                 else {
                     await input.evaluate(node => node.append(new Option('QA Profile', 'qa-profile')));
                     await settings.locator(`[data-sb-editor-field="${key}"] .ds-select-row__trigger`).click();

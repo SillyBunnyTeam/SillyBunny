@@ -308,6 +308,15 @@ async function* stitchHops(firstResponse, sendHop, signal, readEvent, cutOffEven
  * @returns {string} The text to forward
  */
 function readGenerateContentEvent(event, hop) {
+    // Fast-path ordinary token chunks that carry no continuation, finish, safety-block, or error metadata.
+    const hasControlField = event.includes('continuationToken')
+        || event.includes('finishReason')
+        || event.includes('promptFeedback')
+        || event.includes('"error"');
+    if (!hasControlField && (!hop.token || hop.contentSinceToken)) {
+        return event;
+    }
+
     const data = parseEventData(event);
     const candidate = data?.candidates?.[0];
     if (!candidate) {
@@ -352,8 +361,17 @@ function readGenerateContentEvent(event, hop) {
  */
 function readInteractionEvent(event, hop) {
     // forwardInteractionStream ends the reply at a done marker, and it writes its own when the last request ends.
-    if (/^data:\s*\[DONE\]/m.test(event)) {
+    if (event.includes('[DONE]') && /^data:\s*\[DONE\]/m.test(event)) {
         return null;
+    }
+
+    // Fast-path plain delta chunks that have no continuation token, status transition, completion, or error.
+    const hasControlField = event.includes('continuation_token')
+        || event.includes('interaction.completed')
+        || event.includes('interaction.status_update')
+        || event.includes('"error"');
+    if (!hasControlField && (!hop.token || hop.contentSinceToken)) {
+        return event;
     }
 
     const data = parseEventData(event);

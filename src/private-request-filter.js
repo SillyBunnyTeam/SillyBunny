@@ -8,6 +8,8 @@ import ipRegex from 'ip-regex';
 import { Agent } from 'agent-base';
 import { color } from './util.js';
 import { filterValidIpPatterns } from './express-common.js';
+// SillyBunny: a free socket is closed by this process before the server closes it.
+import { getKeepAliveAgentOptions } from './outbound-keep-alive.js';
 // SillyBunny: an IPv4-mapped IPv6 address reaches the IPv4 host, so the range checks read it as that host.
 import { unmapIpv4Address } from './private-address-forms.js';
 
@@ -77,7 +79,8 @@ class PrivateRequestAgent extends Agent {
      * @param {boolean} options.enableKeepAlive Whether to enable HTTP/HTTPS keep-alive.
      */
     constructor(options = { privateAddressWhitelist: [], logBlocked: true, logAllowed: false, allowUnresolvedHosts: false, enableKeepAlive: false }) {
-        super({ keepAlive: options.enableKeepAlive });
+        // SillyBunny: pooled sockets idle for a limited time.
+        super(getKeepAliveAgentOptions(options.enableKeepAlive));
 
         const logEntryWarning = (entry, message) => `${color.red('Warning')}: Ignoring invalid private whitelist entry ${color.yellow(entry)} - ${message}`;
         const whitelistArray = Array.isArray(options.privateAddressWhitelist) ? options.privateAddressWhitelist : [];

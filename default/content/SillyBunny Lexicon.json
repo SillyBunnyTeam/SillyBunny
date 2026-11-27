@@ -4573,6 +4573,52 @@
                     "use-conversation-folders"
                 ]
             }
+        },
+        "93": {
+            "uid": 93,
+            "key": [
+                "patch agents execution",
+                "patch agent execution",
+                "patch agents in parallel",
+                "parallel patch agents",
+                "run patch agents in parallel",
+                "patch agents one after another"
+            ],
+            "keysecondary": [],
+            "comment": "A93 Patch Agents Execution",
+            "content": "Patch Agents Execution is a setting of In-Chat Agents, in Backend ▸ Agents ▸ Agents Menu ▸ Settings ▸ Running Agents, below \"Append Agents Execution\". It has two choices, \"Sequential\" and \"Parallel\", and the default is \"Sequential\". It applies to agents with Mode \"Intercept\", Timing \"Before generation\" and Apply Mode \"Patch\". Sequential runs them one after another in Order ascending, and each agent is shown the text with the patches of the agents before it. Parallel starts agents that follow each other in that order together, so each of them is shown the text as it was before the group, and adds their patches in Order ascending once all of them have answered. Parallel sends several requests at once, which can reach the rate limit of a provider. If one agent fails, its patch is left out and the others are still added, and a stop discards the patches of the group that was running. Agents with Apply Mode \"Replace\" or \"Wrap\", and agents with Timing \"After main generation\", always run one after another.",
+            "constant": false,
+            "selective": false,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 885,
+            "position": 0,
+            "disable": false,
+            "displayIndex": 93,
+            "group": "",
+            "groupOverride": false,
+            "groupWeight": 100,
+            "sticky": 0,
+            "cooldown": 0,
+            "delay": 0,
+            "probability": 100,
+            "depth": 4,
+            "useProbability": true,
+            "role": null,
+            "vectorized": false,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "delayUntilRecursion": false,
+            "scanDepth": null,
+            "caseSensitive": null,
+            "matchWholeWords": true,
+            "useGroupScoring": null,
+            "automationId": "",
+            "extensions": {
+                "sb_topic": [
+                    "turn-on-an-agent"
+                ]
+            }
         }
     }
 }
