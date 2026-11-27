@@ -422,17 +422,18 @@ export function createChatActionsSearchController({
 
         const dateLabel = formatChatTimestamp(chatFile.lastMessage);
         button.classList.toggle('is-current', chatFile.fileName === currentChatId);
-        button.innerHTML = `
-        <div class="sb-chat-file-head">
-            <strong>${describeChatName(chatFile.fileName)}</strong>
-            <small>${dateLabel || ''}</small>
-        </div>
-        <span class="sb-chat-file-preview">${chatFile.preview}</span>
-        <div class="sb-chat-file-meta">
-            <small>${chatFile.chatItems ? `${chatFile.chatItems} msg` : ''}</small>
-            <small>${chatFile.fileSize || ''}</small>
-        </div>
-    `;
+        // The preview is raw message text from a chat file, and a chat name is user data, so neither may be parsed as markup.
+        const head = createElement('div', { className: 'sb-chat-file-head' });
+        head.append(
+            createElement('strong', { text: describeChatName(chatFile.fileName) }),
+            createElement('small', { text: dateLabel || '' }),
+        );
+        const meta = createElement('div', { className: 'sb-chat-file-meta' });
+        meta.append(
+            createElement('small', { text: chatFile.chatItems ? `${chatFile.chatItems} msg` : '' }),
+            createElement('small', { text: chatFile.fileSize || '' }),
+        );
+        button.append(head, createElement('span', { className: 'sb-chat-file-preview', text: chatFile.preview }), meta);
 
         button.addEventListener('click', () => {
             void onSelect(chatFile.fileName);
