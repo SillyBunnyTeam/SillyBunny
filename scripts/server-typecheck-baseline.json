@@ -1,0 +1,235 @@
+{
+    "version": 1,
+    "totalErrors": 399,
+    "files": {
+        "plugins.js": {
+            "TS2339": 1
+        },
+        "src/character-card-parser.js": {
+            "TS2538": 1
+        },
+        "src/charx.js": {
+            "TS2345": 2
+        },
+        "src/chat-recovery.js": {
+            "TS18046": 4,
+            "TS18047": 5,
+            "TS2339": 1
+        },
+        "src/connection-state-checker.js": {
+            "TS2345": 1,
+            "TS2769": 1
+        },
+        "src/conversation-migration-plan.js": {
+            "TS18046": 1,
+            "TS2322": 1,
+            "TS2339": 32,
+            "TS2345": 4
+        },
+        "src/conversation-migration-settings.js": {
+            "TS2790": 1
+        },
+        "src/conversation-migration.js": {
+            "TS18047": 1,
+            "TS2322": 2,
+            "TS2339": 8,
+            "TS2345": 1,
+            "TS2769": 1
+        },
+        "src/conversation-schema.js": {
+            "TS18046": 90,
+            "TS18047": 2,
+            "TS2322": 1,
+            "TS2339": 3,
+            "TS2353": 1,
+            "TS2698": 1
+        },
+        "src/conversation-store.js": {
+            "TS2322": 2,
+            "TS2339": 5,
+            "TS2345": 1,
+            "TS2353": 4
+        },
+        "src/encryption.js": {
+            "TS2345": 1
+        },
+        "src/endpoints/backends/chat-completions.js": {
+            "TS2322": 4,
+            "TS2339": 10,
+            "TS2353": 1,
+            "TS2740": 1,
+            "TS2790": 1
+        },
+        "src/endpoints/backends/google-models.js": {
+            "TS2339": 3
+        },
+        "src/endpoints/backends/text-completions.js": {
+            "TS2322": 1,
+            "TS2339": 2
+        },
+        "src/endpoints/backups.js": {
+            "TS2339": 1,
+            "TS2345": 2
+        },
+        "src/endpoints/characters.js": {
+            "TS2345": 4,
+            "TS2554": 1
+        },
+        "src/endpoints/chat-archive.js": {
+            "TS2339": 1,
+            "TS2345": 1,
+            "TS2722": 1
+        },
+        "src/endpoints/chats.js": {
+            "TS18047": 4,
+            "TS2322": 3,
+            "TS2339": 9,
+            "TS2353": 2,
+            "TS2488": 1
+        },
+        "src/endpoints/content-manager.js": {
+            "TS2345": 1
+        },
+        "src/endpoints/extensions.js": {
+            "TS2339": 1
+        },
+        "src/endpoints/groups.js": {
+            "TS2345": 2
+        },
+        "src/endpoints/image-models.js": {
+            "TS18046": 1,
+            "TS2345": 1
+        },
+        "src/endpoints/server-admin.js": {
+            "TS2339": 8,
+            "TS2345": 1
+        },
+        "src/endpoints/sillybunny-bundled-themes.js": {
+            "TS2339": 5,
+            "TS2345": 1
+        },
+        "src/endpoints/sillybunny-managed-content.js": {
+            "TS2339": 3
+        },
+        "src/endpoints/thumbnails.js": {
+            "TS2345": 2
+        },
+        "src/endpoints/tokenizers.js": {
+            "TS2322": 1,
+            "TS2345": 6,
+            "TS2790": 1
+        },
+        "src/endpoints/users-private.js": {
+            "TS2322": 2,
+            "TS2345": 5,
+            "TS2554": 1
+        },
+        "src/endpoints/worldinfo.js": {
+            "TS2339": 1
+        },
+        "src/express-common.js": {
+            "TS2554": 1
+        },
+        "src/external-media-import.js": {
+            "TS2345": 2
+        },
+        "src/fetch-patch.js": {
+            "TS2345": 1
+        },
+        "src/image-file-type.js": {
+            "TS18048": 1
+        },
+        "src/jimp-safe.js": {
+            "TS2339": 9
+        },
+        "src/middleware/sessionAuth.js": {
+            "TS2556": 2
+        },
+        "src/npm-launcher.js": {
+            "TS2538": 1
+        },
+        "src/plugin-loader.js": {
+            "TS2339": 1
+        },
+        "src/prompt-caching.js": {
+            "TS2322": 4,
+            "TS2345": 4
+        },
+        "src/request-cancellation.js": {
+            "TS1003": 1,
+            "TS1005": 1,
+            "TS2339": 6,
+            "TS8024": 1,
+            "TS8032": 5
+        },
+        "src/resumable-generations.js": {
+            "TS18047": 1,
+            "TS2322": 6,
+            "TS2339": 2,
+            "TS2554": 1
+        },
+        "src/runtime.js": {
+            "TS2867": 1
+        },
+        "src/server-directory.js": {
+            "TS2339": 1
+        },
+        "src/server-listen.js": {
+            "TS18048": 1,
+            "TS2322": 1,
+            "TS2339": 1,
+            "TS2345": 3,
+            "TS2810": 2
+        },
+        "src/server-log-buffer.js": {
+            "TS2345": 1
+        },
+        "src/server-main.js": {
+            "TS2339": 1,
+            "TS2345": 2,
+            "TS2769": 1
+        },
+        "src/server-plugin-manager.js": {
+            "TS18047": 1,
+            "TS18048": 4,
+            "TS2339": 1,
+            "TS2345": 2,
+            "TS2353": 5
+        },
+        "src/server-plugin-update-helper.js": {
+            "TS2339": 1
+        },
+        "src/server-plugin-update-ipc.js": {
+            "TS2339": 1,
+            "TS2722": 2
+        },
+        "src/server-startup.js": {
+            "TS1064": 1
+        },
+        "src/server-supervisor.js": {
+            "TS2339": 5,
+            "TS2810": 1
+        },
+        "src/sillybunny-bundled-themes.js": {
+            "TS18048": 9
+        },
+        "src/sillybunny-managed-content.js": {
+            "TS2339": 5
+        },
+        "src/sqlite-cache.js": {
+            "TS2300": 2,
+            "TS2307": 2
+        },
+        "src/transformers-image.js": {
+            "TS2345": 1,
+            "TS2365": 1,
+            "TS2769": 1
+        },
+        "src/util.js": {
+            "TS18047": 3,
+            "TS2322": 4,
+            "TS2339": 6,
+            "TS2345": 1
+        }
+    }
+}
