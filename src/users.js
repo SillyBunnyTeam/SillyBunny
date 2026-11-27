@@ -1301,29 +1301,33 @@ function shouldIgnoreBackupEntry(relativePosixPath) {
 }
 
 /**
- * Walks a user root directory without following symlinks inside it and returns regular files with size totals.
- * The root itself may be a symlink, or sit below one (a user folder moved to another disk, a symlinked data root).
+ * Resolves the user root once, so that the walk runs on the real path.
+ * The root itself may be a symlink, or sit below one (a user folder moved to another disk, a symlinked data root);
+ * symlinks below it are the ones that are never followed.
  * @param {string} rootDir Absolute user root directory
- * @returns {Promise<{ files: Array<{ absolutePath: string, entryName: string, size: number }>, totalUncompressedBytes: number, maxFileBytes: number }>} Ordered files and size summary
+ * @returns {Promise<string>} Real path of the user root
  */
-async function collectBackupFiles(rootDir) {
-    // Resolve the root once and walk the real path, so that the symlink rules below only apply to what the user folder contains.
+async function resolveBackupRoot(rootDir) {
     const resolvedRoot = await fs.promises.realpath(rootDir);
     const rootStat = await fs.promises.stat(resolvedRoot);
     if (!rootStat.isDirectory()) {
         throw new Error('User backup root is not a valid directory.');
     }
+    return resolvedRoot;
+}
 
-    /** @type {Array<{ absolutePath: string, entryName: string, size: number }>} */
-    const files = [];
-    let totalUncompressedBytes = 0;
-    let maxFileBytes = 0;
-
+/**
+ * Walks a resolved user root directory without following symlinks and yields its regular files in a stable order.
+ * @param {string} resolvedRoot Real path of the user root directory
+ * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number }>} Files to archive
+ */
+async function* walkBackupFiles(resolvedRoot) {
     /**
      * @param {string} currentDir
      * @param {string} relativePrefix
+     * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number }>}
      */
-    async function walk(currentDir, relativePrefix) {
+    async function* walk(currentDir, relativePrefix) {
         const dirents = await fs.promises.readdir(currentDir, { withFileTypes: true });
         dirents.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -1343,7 +1347,7 @@ async function collectBackupFiles(rootDir) {
             }
 
             if (dirent.isDirectory()) {
-                await walk(absolutePath, entryName);
+                yield* walk(absolutePath, entryName);
             } else if (dirent.isFile()) {
                 let stat;
                 try {
@@ -1357,39 +1361,61 @@ async function collectBackupFiles(rootDir) {
                 if (stat.isSymbolicLink() || !stat.isFile()) {
                     continue;
                 }
-                files.push({ absolutePath, entryName, size: stat.size });
-                totalUncompressedBytes += stat.size;
-                if (stat.size > maxFileBytes) {
-                    maxFileBytes = stat.size;
-                }
+                yield { absolutePath, entryName, size: stat.size };
             }
         }
     }
 
-    await walk(resolvedRoot, '');
-    return { files, totalUncompressedBytes, maxFileBytes };
+    yield* walk(resolvedRoot, '');
 }
 
 /**
  * Determines whether an archive exceeds ZIP32 bounds and must use the ZIP64 `archiver` fallback.
- * @param {{ files: Array<unknown>, totalUncompressedBytes: number, maxFileBytes: number }} collected Walked backup files and size summary
+ * @param {{ entryCount: number, totalUncompressedBytes: number, maxFileBytes: number }} summary Size summary of the files walked so far
  * @param {{ maxEntries?: number, maxFileBytes?: number, maxTotalBytes?: number }} [thresholds] Optional threshold overrides
  * @returns {boolean} True when ZIP64 fallback is required
  */
-function needsZip64Fallback(collected, thresholds = DEFAULT_ZIP64_THRESHOLDS) {
+function needsZip64Fallback(summary, thresholds = DEFAULT_ZIP64_THRESHOLDS) {
     const maxEntries = thresholds?.maxEntries ?? DEFAULT_ZIP64_THRESHOLDS.maxEntries;
     const maxFileBytes = thresholds?.maxFileBytes ?? DEFAULT_ZIP64_THRESHOLDS.maxFileBytes;
     const maxTotalBytes = thresholds?.maxTotalBytes ?? DEFAULT_ZIP64_THRESHOLDS.maxTotalBytes;
 
-    return collected.files.length > maxEntries
-        || collected.maxFileBytes >= maxFileBytes
-        || collected.totalUncompressedBytes >= maxTotalBytes;
+    return summary.entryCount > maxEntries
+        || summary.maxFileBytes >= maxFileBytes
+        || summary.totalUncompressedBytes >= maxTotalBytes;
+}
+
+/**
+ * Lists the files of a backup, and stops as soon as a ZIP32 limit is crossed. The list is therefore never longer than
+ * the entry limit, and an account that needs the ZIP64 fallback is walked again lazily by that fallback instead of
+ * being held in memory.
+ * @param {string} resolvedRoot Real path of the user root directory
+ * @param {{ maxEntries?: number, maxFileBytes?: number, maxTotalBytes?: number }} [thresholds] Optional threshold overrides
+ * @returns {Promise<{ needsZip64: boolean, files: Array<{ absolutePath: string, entryName: string, size: number }> }>} The files, or an empty list when ZIP64 is needed
+ */
+async function collectBackupFiles(resolvedRoot, thresholds = undefined) {
+    /** @type {Array<{ absolutePath: string, entryName: string, size: number }>} */
+    const files = [];
+    const summary = { entryCount: 0, totalUncompressedBytes: 0, maxFileBytes: 0 };
+
+    for await (const file of walkBackupFiles(resolvedRoot)) {
+        files.push(file);
+        summary.entryCount += 1;
+        summary.totalUncompressedBytes += file.size;
+        summary.maxFileBytes = Math.max(summary.maxFileBytes, file.size);
+
+        if (needsZip64Fallback(summary, thresholds)) {
+            return { needsZip64: true, files: [] };
+        }
+    }
+
+    return { needsZip64: false, files };
 }
 
 /**
  * Streams a ZIP64 backup archive using lazy-loaded `archiver` when an account exceeds ZIP32 limits.
  * @param {object} options Archive options
- * @param {Array<{ absolutePath: string, entryName: string }>} options.files Validated file list to archive
+ * @param {AsyncIterable<{ absolutePath: string, entryName: string }>} options.files Files to archive, walked lazily
  * @param {string} options.handle User handle
  * @param {import('express').Response} options.response Express response or writable stream
  * @param {() => Promise<typeof import('archiver').default>} [options.loadArchiver] Optional archiver loader override
@@ -1489,7 +1515,7 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
         archive.pipe(response);
 
         (async () => {
-            for (const file of files) {
+            for await (const file of files) {
                 if (aborted || response.destroyed) {
                     return;
                 }
@@ -1688,10 +1714,11 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
 
     console.info('Backup requested for', handle);
 
-    const collected = await collectBackupFiles(directories.root);
-    if (needsZip64Fallback(collected, zip64Thresholds)) {
+    const resolvedRoot = await resolveBackupRoot(directories.root);
+    const collected = await collectBackupFiles(resolvedRoot, zip64Thresholds);
+    if (collected.needsZip64) {
         await createBackupArchiveWithArchiver({
-            files: collected.files,
+            files: walkBackupFiles(resolvedRoot),
             handle,
             response,
             loadArchiver,

@@ -1170,6 +1170,46 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
         expect(unzipped['b-vanish.tmp']).toBeUndefined();
     });
 
+    test('the ZIP64 decision is taken as soon as a limit is crossed, without walking or listing the rest of the account', async () => {
+        const handle = `zip-zip64-early-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        const folderCount = 40;
+        const files = {};
+        for (let i = 0; i < folderCount; i++) {
+            files[`d${String(i).padStart(2, '0')}/file.txt`] = `content ${i}`;
+        }
+        writeFiles(userRoot, files);
+
+        const realReaddir = fs.promises.readdir;
+        let directoriesRead = 0;
+        const readdirSpy = jest.spyOn(fs.promises, 'readdir').mockImplementation((...args) => {
+            directoriesRead += 1;
+            return realReaddir(...args);
+        });
+
+        let directoriesReadAtDecision = null;
+        const chunks = [];
+        const output = new PassThrough();
+        output.on('data', chunk => chunks.push(chunk));
+        try {
+            await createBackupArchive(handle, output, {
+                zip64Thresholds: { maxEntries: 2 },
+                loadArchiver: async () => {
+                    directoriesReadAtDecision = directoriesRead;
+                    return (await import('archiver')).default;
+                },
+            });
+        } finally {
+            readdirSpy.mockRestore();
+        }
+
+        // The root and the first few folders were read to cross the limit; the 40 folders were not all read first.
+        expect(directoriesReadAtDecision).toBeLessThan(folderCount / 2);
+        // The fallback still archives every file.
+        const names = Object.keys(unzipSync(new Uint8Array(Buffer.concat(chunks)))).sort();
+        expect(names).toEqual(Object.keys(files).sort());
+    });
+
     test('ZIP64 fallback resolves without hanging when the client disconnects mid-archive, and keeps entry modes', async () => {
         const handle = `zip-zip64-abort-${Date.now()}`;
         const userRoot = path.join(global.DATA_ROOT, handle);
