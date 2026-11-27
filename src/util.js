@@ -3006,7 +3006,7 @@ export function readFirstLine(filePath) {
 }
 
 /**
- * If the file is an image, and the request's user agent matches Firefox, force ETag/Last-Modified revalidation.
+ * If the file is an image, and the request's user agent matches Firefox, then the response's headers are set to invalidate the cache.
  * Without this, Firefox ignores updated images even after a refresh.
  * https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control
  * @param {string} file File path
@@ -3016,7 +3016,6 @@ export function readFirstLine(filePath) {
 export function invalidateFirefoxCache(file, request, response) {
     const mimeType = isFirefox(request) && mime.lookup(file);
     if (mimeType && mimeType.startsWith('image/')) {
-        // SillyBunny: use no-cache so Firefox revalidates via ETag instead of re-downloading unchanged images on every view.
-        response.setHeader('Cache-Control', 'no-cache');
+        response.setHeader('Cache-Control', 'must-understand, no-store');
     }
 }

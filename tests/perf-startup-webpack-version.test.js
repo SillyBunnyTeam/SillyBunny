@@ -590,14 +590,14 @@ describe('memoized getVersion and util hotfixes', () => {
         }
     });
 
-    test('invalidateFirefoxCache sets Cache-Control: no-cache only for Firefox image responses', () => {
+    test('invalidateFirefoxCache sets Cache-Control: must-understand, no-store only for Firefox image responses', () => {
         const firefoxHeaders = new Map();
         invalidateFirefoxCache(
             'avatar.png',
             { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; rv:135.0) Gecko/20100101 Firefox/135.0' } },
             { setHeader: (k, v) => firefoxHeaders.set(k, v) },
         );
-        expect(firefoxHeaders.get('Cache-Control')).toBe('no-cache');
+        expect(firefoxHeaders.get('Cache-Control')).toBe('must-understand, no-store');
 
         const chromeHeaders = new Map();
         invalidateFirefoxCache(
