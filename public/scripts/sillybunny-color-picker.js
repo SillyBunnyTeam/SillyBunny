@@ -370,6 +370,7 @@ function openColorMenu(picker, button) {
     bindControls(state);
     render(state);
     button.setAttribute('aria-expanded', 'true');
+    let presentPopover = null;
     if (window.matchMedia(MENU_SHEET_QUERY).matches) {
         const header = state.menu.querySelector('.sb-color-picker-header');
         const closeButton = state.menu.querySelector('.sb-color-picker-close');
@@ -406,19 +407,13 @@ function openColorMenu(picker, button) {
             state.menu.setAttribute('popover', 'manual');
             state.menu.showPopover();
         }
-        const presentPopover = () => {
+        presentPopover = () => {
             if (active !== state) return;
             state.menu.style.visibility = '';
             syncPlacement();
             animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
             firstControl(state).focus({ preventScroll: true });
         };
-        if (stylesheetLoaded) {
-            presentPopover();
-        } else {
-            state.menu.style.visibility = 'hidden';
-            void stylesheetReady.then(presentPopover);
-        }
     }
     const surface = state.dialog?.root ?? state.menu;
     surface.addEventListener('sb-overlay-host-closing', () => {
@@ -429,6 +424,14 @@ function openColorMenu(picker, button) {
     state.unlink = linkChildLayer(surface, picker, () => {
         if (active === state) closeColorMenu({ restoreFocus: false });
     });
+    if (presentPopover) {
+        if (stylesheetLoaded) {
+            presentPopover();
+        } else {
+            state.menu.style.visibility = 'hidden';
+            void stylesheetReady.then(presentPopover);
+        }
+    }
 }
 
 function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {

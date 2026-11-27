@@ -46,7 +46,7 @@ function extractTailFromMarker(source, marker) {
     return source.slice(start);
 }
 
-describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation boot', () => {
+describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startup boundary', () => {
     describe('addLongPressEvent shared passive delegation (utils.js)', () => {
         test('registers one shared passive listener set and preserves long-press + click suppression (incl. iOS Text nodes)', () => {
             jest.useFakeTimers();
@@ -410,6 +410,7 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
                 removeEventListener(type, handler) {
                     if (this.listeners.get(type) === handler) this.listeners.delete(type);
                 }
+                dispatchEvent(event) { this.dispatchedEvents = [...(this.dispatchedEvents ?? []), event]; }
                 focus() { this.focused = true; }
                 getClientRects() { return [{ width: 52, height: 40 }]; }
                 getBoundingClientRect() {
@@ -469,6 +470,12 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
             };
             const context = vm.createContext({
                 Element: FakeElement,
+                CustomEvent: class FakeCustomEvent {
+                    constructor(type, init) {
+                        this.type = type;
+                        this.detail = init?.detail ?? null;
+                    }
+                },
                 document: docStub,
                 window: winStub,
                 customElements: {
@@ -492,8 +499,11 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
             const bpStub = new vm.SyntheticModule(['MENU_SHEET_QUERY'], function () {
                 this.setExport('MENU_SHEET_QUERY', '(max-width: 768px), (max-height: 360px)');
             }, { context });
-            const overlayStub = new vm.SyntheticModule(['hostOverlayLayer'], function () {
+            const unlinkChildLayer = jest.fn();
+            const linkChildLayer = jest.fn(() => unlinkChildLayer);
+            const overlayStub = new vm.SyntheticModule(['hostOverlayLayer', 'linkChildLayer'], function () {
                 this.setExport('hostOverlayLayer', (el) => { hostedMenu = el; });
+                this.setExport('linkChildLayer', linkChildLayer);
             }, { context });
             const dialogStub = new vm.SyntheticModule(['openDialog'], function () {
                 this.setExport('openDialog', jest.fn());
@@ -508,6 +518,7 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
                 throw new Error(`Unexpected import: ${specifier}`);
             });
             await module.evaluate();
+            expect(module.namespace.COLOR_PICKER_CLOSED_EVENT).toBe('sb-color-picker-closed');
             await module.namespace.initializeColorPickers();
 
             // Pre-connected picker outside #chat is enhanced immediately; picker inside #chat is left untouched.
@@ -524,6 +535,8 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
                 stopImmediatePropagation: jest.fn(),
             });
             expect(loadStylesheetAsync).toHaveBeenCalledTimes(1);
+            expect(loadStylesheetAsync).toHaveBeenCalledWith('css/sillybunny-color-picker.css?v=20261126a', { id: 'deferred-color-picker-css' });
+            expect(linkChildLayer).toHaveBeenCalledTimes(1);
             expect(hostedMenu).not.toBeNull();
             expect(hostedMenu.style.visibility).toBe('hidden');
             expect(hostedMenu.style.left).toBeUndefined();
@@ -725,13 +738,36 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
                 setAttribute(name, value) {
                     this.attributes.set(name, value);
                 },
+                hasAttribute(name) {
+                    return this.attributes.has(name);
+                },
+                addEventListener: jest.fn(),
+            };
+            const panelLink = {
+                dataset: { sbPanelStyle: '' },
+                rel: '',
+                media: '',
+                attributes: new Map([
+                    ['data-sb-panel-style', ''],
+                    ['data-sb-href', 'css/sillybunny-entity-list.css?v=20261118zza'],
+                    ['data-sb-media', 'all'],
+                ]),
+                getAttribute(name) {
+                    return this.attributes.get(name) ?? null;
+                },
+                setAttribute(name, value) {
+                    this.attributes.set(name, value);
+                },
+                hasAttribute(name) {
+                    return this.attributes.has(name);
+                },
                 addEventListener: jest.fn(),
             };
 
             const docStub = {
                 querySelectorAll: selector => {
-                    expect(selector).toBe('link[data-sb-deferred-style]:not([data-sb-panel-style])');
-                    return [fontLink];
+                    expect(selector).toBe('link[data-sb-deferred-style]');
+                    return [fontLink, panelLink];
                 },
             };
             const winStub = {
@@ -763,6 +799,7 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
             // Zero idle activations scheduled mid-boot before sb-app-ready.
             expect(winStub.requestIdleCallback).not.toHaveBeenCalled();
             expect(fontLink.rel).toBe('');
+            expect(panelLink.rel).toBe('');
 
             // Deliver sb-app-ready mark twice -> schedules idle work only once.
             markObserverCallback({ getEntries: () => [{ name: 'sb-boot-dismiss' }] });
@@ -776,214 +813,54 @@ describe('PR 5 compositor scroll, deferred CSS priority, and lazy conversation b
             expect(fontLink.getAttribute('href')).toBe('webfonts/NotoSans/stylesheet.css');
             expect(fontLink.rel).toBe('stylesheet');
             expect(fontLink.media).toBe('all');
+
+            // Panel stylesheets remain untouched until their owning panel opens.
+            expect(panelLink.getAttribute('href')).toBeNull();
+            expect(panelLink.rel).toBe('');
+            expect(panelLink.dataset.sbStyleActivated).toBeUndefined();
         });
     });
 
-    describe('lazy sillybunny-conversation-boot.js shim', () => {
-        test('keeps sillybunny-conversation.js and its module tree out of eager startup imports', () => {
+    describe('Conversation Mode lazy-parts startup boundary', () => {
+        test('keeps runtime.js and chrome.js out of static startup imports while index.js stays lightweight', () => {
             const html = readPublic('index.html');
-            expect(html).toContain('<script type="module" src="scripts/sillybunny-conversation-boot.js"></script>');
-            expect(html).not.toContain('href="scripts/sillybunny-conversation.js"');
-            expect(html).not.toContain('src="scripts/sillybunny-conversation.js"');
+            expect(html).toContain('<script type="module" src="scripts/sillybunny-conversation.js"></script>');
+            expect(html).not.toContain('sillybunny-conversation-boot.js');
+            expect(existsSync(path.join(publicRoot, 'scripts', 'sillybunny-conversation-boot.js'))).toBe(false);
 
             const entrypoints = [
                 ...Array.from(html.matchAll(/<script\b[^>]*\bsrc="([^"?]+)(?:\?[^" ]*)?"[^>]*>/g), match => match[1]),
                 ...Array.from(html.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"?]+)(?:\?[^" ]*)?"[^>]*>/g), match => match[1]),
             ];
             const eager = collectStaticModules(entrypoints);
+            const conversationDir = path.join(publicRoot, 'scripts', 'sillybunny-conversation');
 
-            expect(eager.has(path.join(publicRoot, 'scripts', 'sillybunny-conversation-boot.js'))).toBe(true);
-            expect(eager.has(path.join(publicRoot, 'scripts', 'sillybunny-conversation.js'))).toBe(false);
-            expect(eager.has(path.join(publicRoot, 'scripts', 'sillybunny-conversation', 'init.js'))).toBe(false);
-            expect(eager.has(path.join(publicRoot, 'scripts', 'sillybunny-conversation', 'chrome.js'))).toBe(false);
-        });
+            expect(eager.has(path.join(publicRoot, 'scripts', 'sillybunny-conversation.js'))).toBe(true);
+            expect(eager.has(path.join(conversationDir, 'index.js'))).toBe(true);
+            expect(eager.has(path.join(conversationDir, 'init.js'))).toBe(true);
+            expect(eager.has(path.join(conversationDir, 'lazy-parts.js'))).toBe(true);
 
-        test('detects stored or active Conversation Mode state without loading the full module graph', async () => {
-            const bootSource = readPublic('scripts', 'sillybunny-conversation-boot.js');
-            const dynamicImports = [];
-            const context = vm.createContext({
-                window: { addEventListener: jest.fn(), dispatchEvent: jest.fn() },
-                CustomEvent: class FakeCustomEvent {
-                    constructor(type, init) {
-                        this.type = type;
-                        this.detail = init?.detail ?? null;
-                    }
-                },
-            });
-            context.globalThis = context;
-
-            const eventsStub = new vm.SyntheticModule(['event_types', 'eventSource'], function () {
-                this.setExport('event_types', { APP_READY: 'app_ready', PERSONA_CHANGED: 'persona_changed' });
-                this.setExport('eventSource', { on: jest.fn() });
-            }, { context });
-            const extensionsStub = new vm.SyntheticModule(['extension_settings'], function () {
-                this.setExport('extension_settings', {});
-            }, { context });
-            const constantsStub = new vm.SyntheticModule(['CONVERSATION_STORE_KEY'], function () {
-                this.setExport('CONVERSATION_STORE_KEY', 'sillybunny_conversation');
-            }, { context });
-            const stateObj = { initialized: false, conversationWorkspaceOpen: false };
-            const stateStub = new vm.SyntheticModule(['conversationState'], function () {
-                this.setExport('conversationState', stateObj);
-            }, { context });
-
-            const conversationStub = new vm.SyntheticModule([], () => {}, { context });
-            await conversationStub.link(() => {});
-            await conversationStub.evaluate();
-
-            const module = new vm.SourceTextModule(bootSource, {
-                context,
-                importModuleDynamically: async (specifier) => {
-                    dynamicImports.push(specifier);
-                    stateObj.initialized = true;
-                    return conversationStub;
-                },
-            });
-
-            await module.link((specifier) => {
-                if (specifier === './events.js') return eventsStub;
-                if (specifier === './extensions.js') return extensionsStub;
-                if (specifier === './sillybunny-conversation/constants.js') return constantsStub;
-                if (specifier === './sillybunny-conversation/state.js') return stateStub;
-                throw new Error(`Unexpected static import: ${specifier}`);
-            });
-            await module.evaluate();
-
-            const { hasStoredConversationBootUsage, ensureConversationModuleLoaded } = module.namespace;
-            const emptyStorage = { length: 0, key: () => null };
-
-            expect(hasStoredConversationBootUsage({
-                extensionSettings: {},
-                storage: emptyStorage,
-                documentRef: { getElementById: () => null },
-            })).toBe(false);
-
-            expect(hasStoredConversationBootUsage({
-                extensionSettings: {
-                    sillybunny_conversation: {
-                        localStorageMigrated: true,
-                        groups: [],
-                        reminders: [],
-                        characters: {
-                            'alice.png': { settings: { enabled: false }, branches: { main: { messages: [], unread: 0 } } },
-                        },
-                    },
-                },
-                storage: { length: 1, key: () => 'sb_conv_settings_old' },
-                documentRef: { getElementById: () => null },
-            })).toBe(false);
-
-            expect(hasStoredConversationBootUsage({
-                extensionSettings: {
-                    sillybunny_conversation: {
-                        localStorageMigrated: true,
-                        characters: {
-                            'alice.png': { settings: { enabled: true }, branches: {} },
-                        },
-                    },
-                },
-                storage: emptyStorage,
-                documentRef: { getElementById: () => null },
-            })).toBe(true);
-
-            expect(hasStoredConversationBootUsage({
-                extensionSettings: {},
-                storage: { length: 1, key: () => 'sb_conv_unread_alice.png' },
-                documentRef: { getElementById: () => null },
-            })).toBe(true);
-
-            expect(dynamicImports).toEqual([]);
-            await ensureConversationModuleLoaded();
-            await ensureConversationModuleLoaded();
-            expect(dynamicImports).toEqual(['./sillybunny-conversation.js']);
-        });
-
-        test('retries transient import failures, coalesces rapid lazy open events, and guards welcome-screen cold boot', async () => {
-            const welcomeSource = readPublic('scripts', 'welcome-screen.js');
-            expect(welcomeSource).toContain('import { hasStoredConversationBootUsage } from \'./sillybunny-conversation-boot.js\'');
-            expect(welcomeSource).toMatch(/const getConversationChats = async \(\) => \{\s*\/\/[^\n]*\n\s*if \(!hasStoredConversationBootUsage\(\)\) \{\s*return \[\];\s*\}/);
-
-            const bootSource = readPublic('scripts', 'sillybunny-conversation-boot.js');
-            const windowListeners = new Map();
-            const dispatched = [];
-            const consoleError = jest.fn();
-            class FakeCustomEvent {
-                constructor(type, init) {
-                    this.type = type;
-                    this.detail = init?.detail ?? null;
-                }
+            // Runtime and workspace chrome remain strictly behind lazy-parts.js dynamic imports.
+            for (const deferred of ['runtime.js', 'chrome.js', 'auto-engine.js', 'generation.js', 'interface.js', 'timeline-render.js']) {
+                expect(eager.has(path.join(conversationDir, deferred))).toBe(false);
             }
-            const context = vm.createContext({
-                window: {
-                    addEventListener: (type, handler) => windowListeners.set(type, handler),
-                    dispatchEvent: event => dispatched.push(event),
-                },
-                CustomEvent: FakeCustomEvent,
-                console: { error: consoleError },
-            });
-            context.globalThis = context;
+        });
 
-            const eventsStub = new vm.SyntheticModule(['event_types', 'eventSource'], function () {
-                this.setExport('event_types', { APP_READY: 'app_ready', PERSONA_CHANGED: 'persona_changed' });
-                this.setExport('eventSource', { on: jest.fn() });
-            }, { context });
-            const extensionsStub = new vm.SyntheticModule(['extension_settings'], function () {
-                this.setExport('extension_settings', {});
-            }, { context });
-            const constantsStub = new vm.SyntheticModule(['CONVERSATION_STORE_KEY'], function () {
-                this.setExport('CONVERSATION_STORE_KEY', 'sillybunny_conversation');
-            }, { context });
-            const stateObj = { initialized: false, conversationWorkspaceOpen: false };
-            const stateStub = new vm.SyntheticModule(['conversationState'], function () {
-                this.setExport('conversationState', stateObj);
-            }, { context });
-            const conversationStub = new vm.SyntheticModule([], () => {}, { context });
-            await conversationStub.link(() => {});
-            await conversationStub.evaluate();
+        test('routes runtime.js and chrome.js through lazy-parts.js dynamic imports and keeps welcome-screen on loadConversationWelcomeChats', () => {
+            const indexSource = readPublic('scripts', 'sillybunny-conversation', 'index.js');
+            const lazyPartsSource = readPublic('scripts', 'sillybunny-conversation', 'lazy-parts.js');
+            const welcomeSource = readPublic('scripts', 'welcome-screen.js');
 
-            let attempt = 0;
-            let resolveSecondAttempt = null;
-            const module = new vm.SourceTextModule(bootSource, {
-                context,
-                importModuleDynamically: async (specifier) => {
-                    expect(specifier).toBe('./sillybunny-conversation.js');
-                    attempt += 1;
-                    if (attempt === 1) {
-                        throw new Error('transient network error');
-                    }
-                    await new Promise((resolve) => { resolveSecondAttempt = resolve; });
-                    stateObj.initialized = true;
-                    return conversationStub;
-                },
-            });
+            expect(indexSource).not.toMatch(/from\s+['"]\.\/(?:runtime|chrome)\.js['"]/);
+            expect(indexSource).toContain('from \'./lazy-parts.js\'');
+            expect(lazyPartsSource).not.toMatch(/(?:^|\n)\s*import\s+[^('"]*from\s+['"]\.\/(?:runtime|chrome)\.js['"]/);
+            expect(lazyPartsSource).toContain('import(\'./runtime.js\')');
+            expect(lazyPartsSource).toContain('import(\'./chrome.js\')');
+            expect(lazyPartsSource).toContain('{ capture: true, passive: true }');
 
-            await module.link((specifier) => {
-                if (specifier === './events.js') return eventsStub;
-                if (specifier === './extensions.js') return extensionsStub;
-                if (specifier === './sillybunny-conversation/constants.js') return constantsStub;
-                if (specifier === './sillybunny-conversation/state.js') return stateStub;
-                throw new Error(`Unexpected static import: ${specifier}`);
-            });
-            await module.evaluate();
-
-            const openHandler = windowListeners.get('sb:open-conversation-workspace');
-
-            // First attempt fails -> logs cleanly, clears cached promise, does not dispatch.
-            openHandler(new FakeCustomEvent('sb:open-conversation-workspace', { detail: { avatar: 'first.png' } }));
-            await new Promise(resolve => setTimeout(resolve, 0));
-            expect(attempt).toBe(1);
-            expect(consoleError).toHaveBeenCalledTimes(1);
-            expect(dispatched).toHaveLength(0);
-
-            // Second & third rapid opens while loading coalesce into ONE re-dispatched event with latest detail.
-            openHandler(new FakeCustomEvent('sb:open-conversation-workspace', { detail: { avatar: 'stale.png' } }));
-            openHandler(new FakeCustomEvent('sb:open-conversation-workspace', { detail: { avatar: 'latest.png' } }));
-            await Promise.resolve();
-            expect(attempt).toBe(2);
-            resolveSecondAttempt();
-            await new Promise(resolve => setTimeout(resolve, 0));
-            expect(dispatched).toHaveLength(1);
-            expect(dispatched[0].detail).toEqual({ avatar: 'latest.png' });
+            expect(welcomeSource).not.toContain('sillybunny-conversation-boot.js');
+            expect(welcomeSource).not.toContain('hasStoredConversationBootUsage');
+            expect(welcomeSource).toContain('loadConversationWelcomeChats');
         });
     });
 });
