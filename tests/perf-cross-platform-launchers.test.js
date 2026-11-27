@@ -105,7 +105,7 @@ function git(cwd, ...args) {
 
 let fixtureCounter = 0;
 
-function createSelfUpdateFixture() {
+function createSelfUpdateFixture({ gitInitArgs = [], gitCloneArgs = [] } = {}) {
     fixtureCounter += 1;
     const dir = path.join(suiteRoot, `fixture-${fixtureCounter}`);
     const remoteDir = path.join(dir, 'remote.git');
@@ -113,8 +113,8 @@ function createSelfUpdateFixture() {
     const cloneDir = path.join(dir, 'clone');
 
     fs.mkdirSync(dir, { recursive: true });
-    git(dir, 'init', '--quiet', '--bare', '--initial-branch=release', remoteDir);
-    git(dir, 'init', '--quiet', '--initial-branch=release', upstreamWorkDir);
+    git(dir, 'init', '--quiet', '--bare', '--initial-branch=release', ...gitInitArgs, remoteDir);
+    git(dir, 'init', '--quiet', '--initial-branch=release', ...gitInitArgs, upstreamWorkDir);
 
     fs.writeFileSync(path.join(upstreamWorkDir, 'README.md'), 'initial\n');
     fs.writeFileSync(path.join(upstreamWorkDir, 'bun.lock'), 'lockfile-v1\n');
@@ -122,7 +122,7 @@ function createSelfUpdateFixture() {
     git(upstreamWorkDir, 'commit', '--quiet', '-m', 'initial commit');
     git(upstreamWorkDir, 'remote', 'add', 'origin', remoteDir);
     git(upstreamWorkDir, 'push', '--quiet', '-u', 'origin', 'release');
-    git(dir, 'clone', '--quiet', '--branch', 'release', remoteDir, cloneDir);
+    git(dir, 'clone', '--quiet', '--branch', 'release', ...gitCloneArgs, remoteDir, cloneDir);
 
     return { dir, remoteDir, upstreamWorkDir, cloneDir };
 }
@@ -341,6 +341,130 @@ describe('cross-platform launcher static and line-ending contracts', () => {
     });
 });
 
+function gitSupports(initArgs) {
+    const probeDir = fs.mkdtempSync(path.join(suiteRoot, 'git-feature-probe-'));
+    const supported = spawnSync('git', ['init', '--quiet', ...initArgs, probeDir], { env: makeGitEnv(), windowsHide: true }).status === 0;
+    fs.rmSync(probeDir, { recursive: true, force: true });
+    return supported;
+}
+
+// A fresh clone keeps its remote-tracking ref in packed-refs. A fetch that moves the ref writes a loose file,
+// which is the state of an install that has been updated before.
+function makeRefLoose(cloneDir, ref) {
+    const sha = git(cloneDir, 'rev-parse', ref);
+    git(cloneDir, 'update-ref', '-d', ref);
+    git(cloneDir, 'update-ref', ref, sha);
+}
+
+function appendGitConfig(cloneDir, text) {
+    fs.appendFileSync(path.join(cloneDir, '.git', 'config'), `\n${text}\n`);
+}
+
+function writeEmptyIncludeFile(cloneDir) {
+    fs.writeFileSync(path.join(cloneDir, '.git', 'extra.gitconfig'), '');
+}
+
+/**
+ * `fast: true` cases let scripts/self-update.js read the upstream from .git/config and compare the loose refs without
+ * asking git. The other cases make it fall back to `git rev-parse @{upstream}` (and to `git rev-list` when the loose
+ * refs are not both there). The answer printed to the user is the same in every case.
+ */
+const upstreamPathCases = [
+    { name: 'a clone whose remote-tracking ref is a loose file', fast: true, upstream: 'origin/release' },
+    {
+        name: 'a branch name with slashes',
+        fast: true,
+        upstream: 'origin/feature/topic',
+        setup: (cloneDir) => {
+            git(cloneDir, 'checkout', '--quiet', '-b', 'feature/topic');
+            git(cloneDir, 'push', '--quiet', '-u', 'origin', 'feature/topic');
+        },
+    },
+    {
+        name: 'a branch that tracks a remote branch with another name',
+        fast: true,
+        upstream: 'origin/stable',
+        setup: (cloneDir) => {
+            git(cloneDir, 'push', '--quiet', 'origin', 'release:stable');
+            git(cloneDir, 'branch', '--quiet', '--set-upstream-to=origin/stable', 'release');
+        },
+    },
+    {
+        name: 'an SHA-256 repository',
+        fast: true,
+        upstream: 'origin/release',
+        requires: ['--object-format=sha256'],
+        fixture: { gitInitArgs: ['--object-format=sha256'] },
+    },
+    {
+        name: 'a remote-tracking ref that exists only in packed-refs',
+        fast: false,
+        revList: true,
+        upstream: 'origin/release',
+        setup: cloneDir => git(cloneDir, 'pack-refs', '--all', '--prune'),
+    },
+    {
+        name: 'a reftable repository',
+        fast: false,
+        revList: true,
+        looseRefs: false,
+        upstream: 'origin/release',
+        requires: ['--ref-format=reftable'],
+        fixture: { gitInitArgs: ['--ref-format=reftable'], gitCloneArgs: ['--ref-format=reftable'] },
+    },
+    {
+        name: 'an [include] section',
+        fast: false,
+        upstream: 'origin/release',
+        setup: (cloneDir) => {
+            writeEmptyIncludeFile(cloneDir);
+            appendGitConfig(cloneDir, '[include]\n\tpath = extra.gitconfig');
+        },
+    },
+    {
+        name: 'an [includeIf] section',
+        fast: false,
+        upstream: 'origin/release',
+        setup: (cloneDir) => {
+            writeEmptyIncludeFile(cloneDir);
+            appendGitConfig(cloneDir, '[includeIf "gitdir:/nowhere/"]\n\tpath = extra.gitconfig');
+        },
+    },
+    {
+        name: 'a quoted value',
+        fast: false,
+        upstream: 'origin/release',
+        setup: cloneDir => appendGitConfig(cloneDir, '[core]\n\teditor = "vim"'),
+    },
+    {
+        name: 'a value followed by a comment',
+        fast: false,
+        upstream: 'origin/release',
+        setup: cloneDir => appendGitConfig(cloneDir, '[core]\n\teditor = vim # my editor'),
+    },
+    {
+        name: 'a value with a backslash',
+        fast: false,
+        upstream: 'origin/release',
+        setup: cloneDir => appendGitConfig(cloneDir, '[core]\n\teditor = C:\\\\tools\\\\vim'),
+    },
+    {
+        name: 'a second fetch refspec for the remote',
+        fast: false,
+        upstream: 'origin/release',
+        setup: cloneDir => git(cloneDir, 'config', '--add', 'remote.origin.fetch', '+refs/tags/*:refs/tags/*'),
+    },
+    {
+        name: 'a single-branch fetch refspec',
+        fast: false,
+        upstream: 'origin/release',
+        setup: cloneDir => git(cloneDir, 'config', 'remote.origin.fetch', '+refs/heads/release:refs/remotes/origin/release'),
+    },
+].map(testCase => ({
+    ...testCase,
+    supported: (testCase.requires ?? []).every(arg => gitSupports([arg])),
+}));
+
 describe.each(runtimeMatrix)('scripts/self-update.js parity on %s', (_runtimeName, runtimeBin) => {
     test('reports up to date on a clean checkout and runs git status at most once', () => {
         const { cloneDir, dir } = createSelfUpdateFixture();
@@ -525,6 +649,48 @@ describe.each(runtimeMatrix)('scripts/self-update.js parity on %s', (_runtimeNam
         const detachedOptional = runJsSelfUpdate(runtimeBin, offlineClone, ['--optional']);
         expect(detachedOptional.status).toBe(0);
         expect(detachedOptional.stderr).toContain('Skipping self-update: detached HEAD checkouts cannot be updated automatically.');
+    });
+
+    for (const testCase of upstreamPathCases) {
+        const describeCase = testCase.supported ? describe : describe.skip;
+        describeCase(`upstream lookup and ref comparison with ${testCase.name}`, () => {
+            test('prints the same answer as git and takes the expected path', () => {
+                const { cloneDir, dir } = createSelfUpdateFixture(testCase.fixture);
+                if (testCase.looseRefs !== false) {
+                    makeRefLoose(cloneDir, 'refs/remotes/origin/release');
+                }
+                testCase.setup?.(cloneDir);
+                const tracePath = path.join(dir, 'git-trace.log');
+
+                const result = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional'], { GIT_TRACE: tracePath });
+                expect(result.status).toBe(0);
+                expect(result.stderr).toBe('');
+                expect(result.stdout).toContain(`Checking for updates on ${testCase.upstream}...`);
+                expect(result.stdout).toContain('SillyBunny is already up to date.');
+
+                const traceText = fs.readFileSync(tracePath, 'utf8');
+                expect(/built-in: git rev-parse --abbrev-ref/.test(traceText)).toBe(!testCase.fast);
+                expect(/built-in: git rev-list --left-right/.test(traceText)).toBe(Boolean(testCase.revList));
+            });
+        });
+    }
+
+    test('a loose remote-tracking ref from before the fetch does not hide a new upstream commit', () => {
+        const { cloneDir, upstreamWorkDir } = createSelfUpdateFixture();
+        makeRefLoose(cloneDir, 'refs/remotes/origin/release');
+        const beforeShort = git(cloneDir, 'rev-parse', '--short', 'HEAD');
+
+        fs.writeFileSync(path.join(upstreamWorkDir, 'README.md'), 'moved on\n');
+        git(upstreamWorkDir, 'add', 'README.md');
+        git(upstreamWorkDir, 'commit', '--quiet', '-m', 'upstream commit');
+        git(upstreamWorkDir, 'push', '--quiet', 'origin', 'release');
+        const afterShort = git(upstreamWorkDir, 'rev-parse', '--short', 'HEAD');
+
+        const result = runJsSelfUpdate(runtimeBin, cloneDir, ['--optional']);
+        expect(result.status).toBe(0);
+        expect(result.stdout).not.toContain('SillyBunny is already up to date.');
+        expect(result.stdout).toContain(`Updated SillyBunny from ${beforeShort} to ${afterShort}.`);
+        expect(fs.readFileSync(path.join(cloneDir, 'README.md'), 'utf8')).toBe('moved on\n');
     });
 });
 
