@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
@@ -251,6 +252,17 @@ export const tokenizerResidencyManager = new TokenizerResidencyManager();
 
 /** @type {Map<string, number>} Lightweight JS token count LRU preserved across WASM evictions. */
 const tokenCountCache = new Map();
+
+/**
+ * Builds a count cache key from a namespace and a digest of the text. The cache is shared by
+ * every user, so it must keep the digest and the count but never the prompt or message itself.
+ * @param {string} namespace Tokenizer or model the count belongs to
+ * @param {string} text Text that was counted
+ * @returns {string} Cache key
+ */
+function buildTokenCountCacheKey(namespace, text) {
+    return `${namespace}\0${crypto.createHash('sha256').update(text).digest('base64')}`;
+}
 
 function getCachedTokenCount(cacheKey) {
     if (!tokenCountCache.has(cacheKey)) {
@@ -937,7 +949,7 @@ async function countSentencepieceArrayTokens(tokenizer, array) {
     const convertedPrompt = convertClaudePrompt(array, false, '', false, false, '', false);
     // SillyBunny: serve repeat counts from the lightweight JS count cache even after WASM eviction.
     const cacheKey = tokenizer?.residencyKey && convertedPrompt.length <= TOKEN_COUNT_CACHE_MAX_TEXT_LENGTH
-        ? `${tokenizer.residencyKey}\0${convertedPrompt}`
+        ? buildTokenCountCacheKey(tokenizer.residencyKey, convertedPrompt)
         : null;
     if (cacheKey) {
         const cached = getCachedTokenCount(cacheKey);
@@ -1500,7 +1512,7 @@ router.post('/openai/decode', async function (req, res) {
 async function countCachedWebTokenizerMessages(tokenizerWrapper, label, messages) {
     const jsonBody = messages.flatMap(x => Object.values(x)).join('\n\n');
     const cacheKey = jsonBody.length <= TOKEN_COUNT_CACHE_MAX_TEXT_LENGTH
-        ? `${tokenizerWrapper.residencyKey}\0${jsonBody}`
+        ? buildTokenCountCacheKey(tokenizerWrapper.residencyKey, jsonBody)
         : null;
     if (cacheKey) {
         const cached = getCachedTokenCount(cacheKey);
@@ -1581,7 +1593,7 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
             num_tokens += tokensPerMessage;
             for (const [key, value] of Object.entries(msg)) {
                 if (typeof value === 'string' && value.length <= TOKEN_COUNT_CACHE_MAX_TEXT_LENGTH) {
-                    const cacheKey = `tiktoken:${model}\0${value}`;
+                    const cacheKey = buildTokenCountCacheKey(`tiktoken:${model}`, value);
                     const cached = getCachedTokenCount(cacheKey);
                     if (cached !== undefined) {
                         num_tokens += cached;

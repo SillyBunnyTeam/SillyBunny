@@ -356,6 +356,59 @@ describe('1. Tokenizer WASM Residency Manager', () => {
         }
     });
 
+    test('keeps a digest and the count in the token count cache, never the text', async () => {
+        const app = express();
+        app.use(express.json());
+        app.use('/api/tokenizers', tokenizersRouter);
+        const server = await new Promise(resolve => {
+            const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
+        });
+        const baseUrl = `http://127.0.0.1:${server.address().port}`;
+        const countTokens = async (model, text) => {
+            const response = await openRawHttpRequest(`${baseUrl}/api/tokenizers/openai/count?model=${model}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([{ role: 'user', content: text }]),
+            });
+            return JSON.parse(response.body.toString('utf8')).token_count;
+        };
+
+        const storedKeys = [];
+        const originalSet = Map.prototype.set;
+        const setSpy = jest.spyOn(Map.prototype, 'set').mockImplementation(function (key, value) {
+            if (typeof key === 'string') {
+                storedKeys.push(key);
+            }
+            return originalSet.call(this, key, value);
+        });
+
+        try {
+            // One request per cached code path: Tiktoken values, the Claude web tokenizer and Sentencepiece.
+            for (const model of ['gpt-4', 'claude', 'llama']) {
+                const text = `private chat line for ${model} `.repeat(200);
+                const sizeBefore = getTokenizerResidencyStatus().countCacheSize;
+
+                const firstCount = await countTokens(model, text);
+                expect(firstCount).toBeGreaterThan(0);
+                expect(getTokenizerResidencyStatus().countCacheSize).toBeGreaterThan(sizeBefore);
+                expect(storedKeys.filter(key => key.includes('private chat line'))).toEqual([]);
+
+                const cacheKeys = storedKeys.filter(key => key.includes('\0'));
+                expect(cacheKeys.length).toBeGreaterThan(0);
+                for (const key of cacheKeys) {
+                    expect(key.length).toBeLessThan(128);
+                }
+
+                disposeAllTokenizers();
+                expect(await countTokens(model, text)).toBe(firstCount);
+                expect(getTokenizerResidencyStatus().activeCount).toBe(0);
+            }
+        } finally {
+            setSpy.mockRestore();
+            await new Promise(resolve => server.close(resolve));
+        }
+    }, 60_000);
+
     test('disposes SentencePieceProcessor and ClaudeTokenizer WASM instances cleanly and reloads on demand', async () => {
         jest.spyOn(console, 'info').mockImplementation(() => {});
         tokenizerResidencyManager.configure({ maxActive: 1, idleTtlMs: 300_000 });
