@@ -542,10 +542,9 @@ describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startu
     describe('index.html deferred CSS priority, in-place adoption, and --doc-height coalescing', () => {
         const indexHtml = readPublic('index.html');
 
-        test('gates sillybunny-mobile-navigation.css to BOTTOM_BAR_COMPACT_QUERY, eliminates preload-as-style socket starvation, and leaves boot prefetch to PR 10', () => {
+        test('gates sillybunny-mobile-navigation.css to BOTTOM_BAR_COMPACT_QUERY and eliminates preload-as-style socket starvation', () => {
             expect(indexHtml).toMatch(/<link\b[^>]*href="css\/sillybunny-mobile-navigation\.css\?v=[^"]+"[^>]*media="\(max-width: 768px\), \(pointer: coarse\) and \(max-height: 450px\)"/);
             expect(indexHtml).not.toMatch(/<link\b[^>]*rel="preload"[^>]*data-sb-deferred-style/);
-            expect(indexHtml).not.toContain('window.__sbBootPrefetch');
 
             for (const panelSheet of [
                 'css/sillybunny-entity-list.css',
