@@ -4,6 +4,9 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createSandboxUser, PERSONA, PERSONA_TWO } from './util/conversation-store-sandbox.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 const {
     ConversationStoreError,
@@ -167,12 +170,14 @@ describe('updateConversationFolders', () => {
         expect(() => updateConversationFolders(user, PERSONA, [create(FOLDER_A)])).not.toThrow();
     });
 
-    test('does not follow a link that leads out of the conversations folder', () => {
-        const outside = path.join(sandbox.root, 'outside.json');
-        fs.writeFileSync(outside, '{"personas":{}}');
-        fs.symlinkSync(outside, filePath);
-        expect(() => readConversationFolders(user)).toThrow();
-        expect(fs.readFileSync(outside, 'utf8')).toBe('{"personas":{}}');
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('does not follow a link that leads out of the conversations folder', () => {
+            const outside = path.join(sandbox.root, 'outside.json');
+            fs.writeFileSync(outside, '{"personas":{}}');
+            fs.symlinkSync(outside, filePath);
+            expect(() => readConversationFolders(user)).toThrow();
+            expect(fs.readFileSync(outside, 'utf8')).toBe('{"personas":{}}');
+        });
     });
 
     test('has no handle on a user with no conversations folder', () => {

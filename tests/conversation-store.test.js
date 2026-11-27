@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createSandboxUser, header, IMAGES, line, PERSONA, PERSONA_TWO, readJson } from './util/conversation-store-sandbox.js';
+import { createDirectoryLink } from './util/platform-capabilities.js';
 
 const {
     ConversationStoreError,
@@ -280,7 +281,7 @@ describe('readConversation', () => {
         const outside = path.join(sandbox.root, 'outside');
         fs.mkdirSync(outside);
         fs.writeFileSync(path.join(outside, 'conversation.json'), JSON.stringify({ id: 'conv_1_abcd', kind: 'direct' }));
-        fs.symlinkSync(outside, path.join(user.directories.conversations, 'conv_1_abcd'), 'dir');
+        createDirectoryLink(outside, path.join(user.directories.conversations, 'conv_1_abcd'));
 
         expect(codeOf(() => readConversation(user, 'conv_1_abcd'))).toBe('invalid_id');
     });
@@ -595,7 +596,7 @@ describe('deleteConversation', () => {
         const outside = path.join(sandbox.root, 'outside');
         fs.mkdirSync(outside);
         fs.writeFileSync(path.join(outside, 'keep.txt'), 'x');
-        fs.symlinkSync(outside, path.join(user.directories.conversations, 'conv_1_abcd'), 'dir');
+        createDirectoryLink(outside, path.join(user.directories.conversations, 'conv_1_abcd'));
 
         expect(codeOf(() => deleteConversation(user, 'conv_1_abcd'))).toBe('invalid_id');
         expect(fs.readFileSync(path.join(outside, 'keep.txt'), 'utf8')).toBe('x');

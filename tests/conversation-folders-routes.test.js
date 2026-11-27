@@ -5,6 +5,9 @@ import express from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createSandboxUser, PERSONA, PERSONA_TWO } from './util/conversation-store-sandbox.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 const { router } = await import('../src/endpoints/sillybunny-conversation.js');
 const { createConversation } = await import('../src/conversation-store.js');
@@ -208,17 +211,19 @@ describe('POST /folders/update and /folders/get', () => {
         }
     });
 
-    test('a folders.json that is a link out of the conversations folder is not followed, and the answer names no path', async () => {
-        const outside = path.join(sandbox.root, 'outside.json');
-        fs.writeFileSync(outside, '{"version":1,"personas":{}}');
-        fs.symlinkSync(outside, foldersFile());
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('a folders.json that is a link out of the conversations folder is not followed, and the answer names no path', async () => {
+            const outside = path.join(sandbox.root, 'outside.json');
+            fs.writeFileSync(outside, '{"version":1,"personas":{}}');
+            fs.symlinkSync(outside, foldersFile());
 
-        const written = await update([create()]);
-        const read = await post('/folders/get', {});
+            const written = await update([create()]);
+            const read = await post('/folders/get', {});
 
-        expect(written).toMatchObject({ status: 400, json: { error: 'invalid_id' } });
-        expect(read).toMatchObject({ status: 400, json: { error: 'invalid_id' } });
-        expect(written.text + read.text).not.toContain(sandbox.root);
-        expect(fs.readFileSync(outside, 'utf8')).toBe('{"version":1,"personas":{}}');
+            expect(written).toMatchObject({ status: 400, json: { error: 'invalid_id' } });
+            expect(read).toMatchObject({ status: 400, json: { error: 'invalid_id' } });
+            expect(written.text + read.text).not.toContain(sandbox.root);
+            expect(fs.readFileSync(outside, 'utf8')).toBe('{"version":1,"personas":{}}');
+        });
     });
 });

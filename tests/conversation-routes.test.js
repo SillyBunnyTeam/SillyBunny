@@ -6,6 +6,7 @@ import express from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { chat, createSandboxUser, header, IMAGES, line, listBackups, PERSONA } from './util/conversation-store-sandbox.js';
+import { createDirectoryLink } from './util/platform-capabilities.js';
 
 const { router } = await import('../src/endpoints/sillybunny-conversation.js');
 const { createChat, createConversation, loadChat, saveChat } = await import('../src/conversation-store.js');
@@ -604,7 +605,7 @@ describe('what the routes refuse', () => {
         fs.mkdirSync(path.join(outside, 'chats'), { recursive: true });
         fs.writeFileSync(path.join(outside, 'conversation.json'), JSON.stringify({ id: 'conv_7_linked', kind: 'direct', chats: [{ id: 'main' }] }));
         fs.writeFileSync(path.join(outside, 'chats', 'main.jsonl'), JSON.stringify(header()));
-        fs.symlinkSync(outside, path.join(user.directories.conversations, 'conv_7_linked'), 'dir');
+        createDirectoryLink(outside, path.join(user.directories.conversations, 'conv_7_linked'));
 
         for (const [route, body] of [['/get', { id: 'conv_7_linked' }], ['/delete', { id: 'conv_7_linked' }], ['/chat/get', { id: 'conv_7_linked', chatId: 'main' }]]) {
             const { status } = await post(route, body);
