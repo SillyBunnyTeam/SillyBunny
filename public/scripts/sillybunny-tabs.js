@@ -180,11 +180,8 @@ const chatActionsSearchLoader = createLazyController(new URL('./sillybunny-tabs/
         createElement,
         formatChatTokenEstimate,
         normalizeChatFileName,
-        formatChatPreview,
-        getChatSortTimestamp,
         formatChatTimestamp,
-        getAuthorizedRequestHeadersOrNull,
-        getRequestHeadersFromContext,
+        getChatFilesForContext,
         getChatUiContext,
         getBottomChatBarState,
         getChatbarState,
@@ -4339,8 +4336,118 @@ function formatChatSelectorLabel(fileName, tokenEstimate = 0) {
     return tokenLabel ? `${displayName} (${tokenLabel})` : displayName;
 }
 
+function sortChatFiles(files) {
+    return [...files].sort((left, right) => {
+        if (right.sortTimestamp !== left.sortTimestamp) {
+            return right.sortTimestamp - left.sortTimestamp;
+        }
+
+        return left.fileName.localeCompare(right.fileName);
+    });
+}
+
+function normalizeChatInfo(chatInfo) {
+    const rawFileName = chatInfo?.file_name ?? chatInfo?.id ?? chatInfo?.chat_id ?? chatInfo ?? '';
+    const fileName = normalizeChatFileName(rawFileName);
+
+    return {
+        fileName,
+        preview: formatChatPreview(chatInfo?.mes ?? chatInfo?.preview ?? chatInfo?.message ?? ''),
+        lastMessage: chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? '',
+        sortTimestamp: getChatSortTimestamp(chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? ''),
+        chatItems: Number(chatInfo?.chat_items ?? chatInfo?.message_count ?? 0) || 0,
+        tokenEstimate: Number(chatInfo?.token_estimate ?? chatInfo?.tokenEstimate ?? 0) || 0,
+        fileSize: String(chatInfo?.file_size ?? '').trim(),
+    };
+}
+
+async function fetchCharacterChatFiles(chatContext) {
+    const avatarUrl = chatContext.character?.avatar;
+
+    if (!avatarUrl) {
+        return [];
+    }
+
+    try {
+        const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
+        if (!headers) {
+            return [];
+        }
+
+        const response = await fetch('/api/characters/chats', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ avatar_url: avatarUrl }),
+        });
+
+        if (!response.ok) {
+            return [];
+        }
+
+        const data = await response.json();
+        if (typeof data === 'object' && data?.error === true) {
+            return [];
+        }
+
+        const chats = Array.isArray(data) ? data : Object.values(data ?? {});
+        return sortChatFiles(chats.map(normalizeChatInfo).filter(chat => chat.fileName));
+    } catch (error) {
+        console.error('Failed to fetch character chats', error);
+        return [];
+    }
+}
+
+async function fetchGroupChatFiles(chatContext) {
+    const groupChats = Array.isArray(chatContext.group?.chats) ? chatContext.group.chats : [];
+
+    if (!groupChats.length) {
+        return [];
+    }
+
+    try {
+        const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
+        if (!headers) {
+            return [];
+        }
+
+        const chats = await Promise.all(groupChats.map(async chatId => {
+            try {
+                const response = await fetchWithCsrfRetry('/api/chats/group/info', () => ({
+                    method: 'POST',
+                    headers: getRequestHeadersFromContext(chatContext.context),
+                    body: JSON.stringify({ id: chatId }),
+                }), { refreshCsrfToken });
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        return null;
+                    }
+
+                    return normalizeChatInfo({ file_name: chatId });
+                }
+
+                const chatInfo = normalizeChatInfo(await response.json());
+                return chatInfo.fileName ? chatInfo : normalizeChatInfo({ file_name: chatId });
+            } catch {
+                return normalizeChatInfo({ file_name: chatId });
+            }
+        }));
+
+        return sortChatFiles(chats.filter(chat => chat?.fileName));
+    } catch (error) {
+        console.error('Failed to fetch group chats', error);
+        return [];
+    }
+}
+
 async function getChatFilesForContext(chatContext = getChatUiContext()) {
-    return (await loadChatActionsSearchController()).getChatFilesForContext(chatContext);
+    if (!chatContext.canBrowseChats) {
+        return [];
+    }
+
+    return chatContext.group
+        ? fetchGroupChatFiles(chatContext)
+        : fetchCharacterChatFiles(chatContext);
 }
 
 async function openChatById(chatId) {
@@ -4756,8 +4863,7 @@ async function refreshChatbarState() {
     const refreshToken = ++chatbarState.refreshToken;
 
     const chatContext = getChatUiContext();
-    const chatActions = await loadChatActionsSearchController();
-    const files = await chatActions.getChatFilesForContext(chatContext);
+    const files = await getChatFilesForContext(chatContext);
 
     if (refreshToken !== chatbarState.refreshToken) {
         return;
@@ -4766,10 +4872,12 @@ async function refreshChatbarState() {
     const chatNames = files.map(chat => chat.fileName);
 
     if (chatContext.chatId && !chatNames.includes(chatContext.chatId)) {
-        files.unshift(chatActions.normalizeChatInfo(chatContext.chatId));
+        files.unshift(normalizeChatInfo(chatContext.chatId));
     }
 
-    chatActions.renderChatFiles(getChatSidebarRefs()?.list, files, chatContext.chatId, {
+    // SillyBunny: the sidebar list is built by the chat sidebar module, so a refresh that runs before the module has loaded
+    // has no list to fill. Opening the sidebar loads the module and refreshes again. The fetch above never waits for it.
+    chatActionsSearchController?.renderChatFiles(getChatSidebarRefs()?.list, files, chatContext.chatId, {
         onSelect: chatId => openChatById(chatId),
     });
 

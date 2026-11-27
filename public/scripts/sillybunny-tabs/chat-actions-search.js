@@ -1,11 +1,9 @@
-import { fetchWithCsrfRetry } from '../csrf-token-refresh.js';
 import { t } from '../i18n.js';
 import { openMassDeleteChatDialog } from '../sillybunny-chat-dialogs.js';
 import { openAlert } from '../sillybunny-editor/dialog.js';
 import { registerSidePanel } from '../sillybunny-editor/side-panel.js';
 import { isReservedChatName } from '../sillybunny-temporary-chat-state.js';
 import { escapeRegex } from '../util/escape-regex.js';
-import { refreshCsrfToken } from '../../script.js';
 
 function countRegexMatches(value, regex) {
     const text = String(value ?? '');
@@ -69,16 +67,6 @@ function getMassDeleteOlderThanDays(files, days, currentChatId) {
     return files.filter(chatFile => chatFile.fileName !== currentChatId && chatFile.sortTimestamp > 0 && chatFile.sortTimestamp < cutoff);
 }
 
-function sortChatFiles(files) {
-    return [...files].sort((left, right) => {
-        if (right.sortTimestamp !== left.sortTimestamp) {
-            return right.sortTimestamp - left.sortTimestamp;
-        }
-
-        return left.fileName.localeCompare(right.fileName);
-    });
-}
-
 async function waitForNextAnimationFrame() {
     await new Promise(resolve => window.requestAnimationFrame(resolve));
 }
@@ -95,11 +83,8 @@ export function createChatActionsSearchController({
     createElement,
     formatChatTokenEstimate,
     normalizeChatFileName,
-    formatChatPreview,
-    getChatSortTimestamp,
     formatChatTimestamp,
-    getAuthorizedRequestHeadersOrNull,
-    getRequestHeadersFromContext,
+    getChatFilesForContext,
     getChatUiContext,
     getBottomChatBarState,
     getChatbarState,
@@ -124,110 +109,6 @@ export function createChatActionsSearchController({
         const tokenLabel = formatChatTokenEstimate(tokenEstimate);
         const displayName = describeChatName(fileName);
         return tokenLabel ? `${displayName} (${tokenLabel})` : displayName;
-    }
-
-    function normalizeChatInfo(chatInfo) {
-        const rawFileName = chatInfo?.file_name ?? chatInfo?.id ?? chatInfo?.chat_id ?? chatInfo ?? '';
-        const fileName = normalizeChatFileName(rawFileName);
-
-        return {
-            fileName,
-            preview: formatChatPreview(chatInfo?.mes ?? chatInfo?.preview ?? chatInfo?.message ?? ''),
-            lastMessage: chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? '',
-            sortTimestamp: getChatSortTimestamp(chatInfo?.last_mes ?? chatInfo?.updated_at ?? chatInfo?.create_date ?? ''),
-            chatItems: Number(chatInfo?.chat_items ?? chatInfo?.message_count ?? 0) || 0,
-            tokenEstimate: Number(chatInfo?.token_estimate ?? chatInfo?.tokenEstimate ?? 0) || 0,
-            fileSize: String(chatInfo?.file_size ?? '').trim(),
-        };
-    }
-
-    async function fetchCharacterChatFiles(chatContext) {
-        const avatarUrl = chatContext.character?.avatar;
-
-        if (!avatarUrl) {
-            return [];
-        }
-
-        try {
-            const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
-            if (!headers) {
-                return [];
-            }
-
-            const response = await fetch('/api/characters/chats', {
-                method: 'POST',
-                headers,
-                body: JSON.stringify({ avatar_url: avatarUrl }),
-            });
-
-            if (!response.ok) {
-                return [];
-            }
-
-            const data = await response.json();
-            if (typeof data === 'object' && data?.error === true) {
-                return [];
-            }
-
-            const chats = Array.isArray(data) ? data : Object.values(data ?? {});
-            return sortChatFiles(chats.map(normalizeChatInfo).filter(chat => chat.fileName));
-        } catch (error) {
-            console.error('Failed to fetch character chats', error);
-            return [];
-        }
-    }
-
-    async function fetchGroupChatFiles(chatContext) {
-        const groupChats = Array.isArray(chatContext.group?.chats) ? chatContext.group.chats : [];
-
-        if (!groupChats.length) {
-            return [];
-        }
-
-        try {
-            const headers = await getAuthorizedRequestHeadersOrNull(2000, chatContext.context);
-            if (!headers) {
-                return [];
-            }
-
-            const chats = await Promise.all(groupChats.map(async chatId => {
-                try {
-                    const response = await fetchWithCsrfRetry('/api/chats/group/info', () => ({
-                        method: 'POST',
-                        headers: getRequestHeadersFromContext(chatContext.context),
-                        body: JSON.stringify({ id: chatId }),
-                    }), { refreshCsrfToken });
-
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            return null;
-                        }
-
-                        return normalizeChatInfo({ file_name: chatId });
-                    }
-
-                    const chatInfo = normalizeChatInfo(await response.json());
-                    return chatInfo.fileName ? chatInfo : normalizeChatInfo({ file_name: chatId });
-                } catch {
-                    return normalizeChatInfo({ file_name: chatId });
-                }
-            }));
-
-            return sortChatFiles(chats.filter(chat => chat?.fileName));
-        } catch (error) {
-            console.error('Failed to fetch group chats', error);
-            return [];
-        }
-    }
-
-    async function getChatFilesForContext(chatContext = getChatUiContext()) {
-        if (!chatContext.canBrowseChats) {
-            return [];
-        }
-
-        return chatContext.group
-            ? fetchGroupChatFiles(chatContext)
-            : fetchCharacterChatFiles(chatContext);
     }
 
     async function openChatById(chatId) {
@@ -831,8 +712,6 @@ export function createChatActionsSearchController({
     return {
         describeChatName,
         formatChatSelectorLabel,
-        normalizeChatInfo,
-        getChatFilesForContext,
         openChatById,
         handleRenameChat,
         handleDeleteChat,

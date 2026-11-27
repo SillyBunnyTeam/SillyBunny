@@ -1,8 +1,9 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest unit tests for PR 14 perf optimizations. */
-import { afterEach, describe, expect, test } from '@jest/globals';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -359,6 +360,62 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
             const subSource = readRepoFile('public', 'scripts', 'sillybunny-tabs', file);
             expect(subSource).toContain(`export function ${factory}(`);
         }
+    });
+
+    describe('the chat list refresh at boot', () => {
+        /** Runs the shell's own refreshChatbarState with stubbed collaborators; the module loader is the one to watch. */
+        function runRefresh({ controller = null, loadModule }) {
+            const marker = 'async function refreshChatbarState(';
+            const start = tabsSource.indexOf(marker);
+            expect(start).toBeGreaterThanOrEqual(0);
+            const bodyStart = tabsSource.indexOf('{', tabsSource.indexOf(')', start));
+            let depth = 0;
+            let end = bodyStart;
+            for (; end < tabsSource.length; end++) {
+                if (tabsSource[end] === '{') depth++;
+                else if (tabsSource[end] === '}' && --depth === 0) break;
+            }
+            const source = tabsSource.slice(start, end + 1);
+
+            const calls = [];
+            const chatbarState = { refreshToken: 0 };
+            const files = [{ fileName: 'older' }];
+            const sandbox = {
+                getChatbarState: () => chatbarState,
+                getChatUiContext: () => ({ chatId: 'current', canBrowseChats: true, hasChat: true }),
+                getChatFilesForContext: jest.fn(async () => { calls.push('fetch'); return files; }),
+                normalizeChatInfo: id => ({ fileName: id }),
+                loadChatActionsSearchController: jest.fn(() => { calls.push('load module'); return loadModule(); }),
+                chatActionsSearchController: controller,
+                getChatSidebarRefs: () => ({ list: 'list element' }),
+                openChatById: jest.fn(),
+                setChatSidebarOpenState: jest.fn(),
+                clearChatSearchHighlights: jest.fn(),
+                getSearchTerms: () => [],
+                scheduleChatSearchHighlight: jest.fn(),
+            };
+            const run = vm.runInNewContext(`(${source})`, sandbox);
+            return { run, calls, sandbox, files };
+        }
+
+        test('fetches the chat files without waiting for the chat sidebar module', async () => {
+            const { run, calls, sandbox } = runRefresh({ loadModule: () => new Promise(() => {}) });
+            await run();
+            expect(calls).toEqual(['fetch']);
+            expect(sandbox.loadChatActionsSearchController).not.toHaveBeenCalled();
+        });
+
+        test('fills the sidebar list, with the open chat first, once the module has built it', async () => {
+            const renderChatFiles = jest.fn();
+            const { run, sandbox, files } = runRefresh({ controller: { renderChatFiles }, loadModule: () => new Promise(() => {}) });
+            await run();
+            expect(renderChatFiles).toHaveBeenCalledTimes(1);
+            const [list, rendered, currentChatId] = renderChatFiles.mock.calls[0];
+            expect([list, currentChatId]).toEqual(['list element', 'current']);
+            expect(rendered).toBe(files);
+            expect(rendered.map(file => file.fileName)).toEqual(['current', 'older']);
+            expect(sandbox.loadChatActionsSearchController).not.toHaveBeenCalled();
+        });
     });
 
     test('preserves the full globalThis.SillyBunnyShell public API surface', () => {
