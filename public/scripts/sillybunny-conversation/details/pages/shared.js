@@ -35,9 +35,10 @@ function describeSender(item) {
  * @param {(itemsOf: (keys: string[]) => any[]) => import('../bulk-selection.js').BulkAction[]} options.actions
  * @param {boolean} [options.gestures] A secondary click or a long press on a row starts selection; for rows that have no menu.
  * @param {(row: HTMLElement) => string} [options.getKey] How a row names its key; the key of the row's own attribute by default.
+ * @param {(row: HTMLElement) => string} [options.rowLabel] The accessible name of a row's check; a row that has no name of its own gives it.
  * @param {(row: HTMLElement) => HTMLElement|null} [options.focusTarget]
  */
-function createSharedPage({ conversationId, nav, className, title, pick, createList, rowSelector, keyOf, renderItem, empty, actions, gestures = false, getKey, focusTarget }) {
+function createSharedPage({ conversationId, nav, className, title, pick, createList, rowSelector, keyOf, renderItem, empty, actions, gestures = false, getKey, rowLabel, focusTarget }) {
     requireView(conversationId);
     const { page, clamp } = createPage(className);
     const body = el('div', 'sb-details-shared');
@@ -56,6 +57,7 @@ function createSharedPage({ conversationId, nav, className, title, pick, createL
         getList: () => list,
         rowSelector,
         getKey: getKey ?? (row => row.dataset.sbListKey),
+        rowLabel,
         getAllKeys: () => current.map(keyOf),
         gestures,
         actions: actions(selected => selected.map(key => byKey.get(key)).filter(Boolean)),
@@ -204,6 +206,7 @@ export function buildMedia({ conversationId, nav }) {
         empty: { icon: 'image', title: 'No Media' },
         rowSelector: '.sb-details-media-item',
         getKey: row => row.dataset.sbSelectKey,
+        rowLabel: row => row.querySelector('.sb-details-media-cell')?.getAttribute('aria-label') ?? '',
         keyOf: item => item.key,
         // A cell is a button and a button cannot hold a check, so the selectable box is the item that holds the cell.
         focusTarget: row => row?.querySelector('.sb-details-media-cell') ?? null,

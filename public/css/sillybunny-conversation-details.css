@@ -367,6 +367,13 @@
 
 .sb-details-media-item { position: relative; }
 
+/* A long press on a cell starts selection, so the browser's own press menu for a picture must not open over it. */
+.sb-details-media-cell {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 /* The check that shows over a picture while the pointer is on it, and the check of selection mode, share a corner. */
 .sb-details-media-item > .sb-selection-check,
 .sb-details-media-check {
@@ -397,9 +404,9 @@
     cursor: pointer;
 }
 
+/* It is a pointer's route. The keyboard has the Select button of the header, so keyboard focus does not show it. */
 @media (hover: hover) {
-    .sb-details-media-item:hover > .sb-details-media-check,
-    .sb-details-media-item:focus-within > .sb-details-media-check { display: grid; }
+    .sb-details-media-item:hover > .sb-details-media-check { display: grid; }
 }
 
 .sb-details-media-check:focus-visible {
@@ -410,12 +417,13 @@
 
 .sb-dialog__page[data-selection-mode='true'] .sb-details-media-check { display: none; }
 
-/* A chosen picture gets a ring in the accent. It is a layer over the picture, because an inset shadow of the cell would sit under it. */
+/* A chosen picture gets a ring in the accent. It is a layer over the picture, because a border of the cell would sit under it. */
 .sb-details-media-item.is-selection-selected::after {
     content: '';
     position: absolute;
     inset: 0;
+    box-sizing: border-box;
+    border: 3px solid var(--sb-accent);
     border-radius: var(--sb-radius-control);
-    box-shadow: inset 0 0 0 3px var(--sb-accent);
     pointer-events: none;
 }

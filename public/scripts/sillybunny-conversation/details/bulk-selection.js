@@ -80,6 +80,8 @@ export function createBulkSelection({ getList, rowSelector, getKey, getAllKeys, 
                 rowLabel,
                 range: true,
                 iconOnlyAtNarrow: true,
+                // A heading is in header capitalisation (DESIGN.md, The Capitalisation Rule); the shared default is not.
+                title: count => `${count} Selected`,
                 actionBar: bar,
                 actions: guardedActions,
                 headerSlots: {
