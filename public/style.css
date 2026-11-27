@@ -18,7 +18,7 @@
 @import url(css/backgrounds.css?v=20261118s);
 @import url(css/chat-backups.css?v=20261118zh);
 @import url(css/spacing-system.css?v=20261118zy);
-@import url(css/streaming-display.css);
+@import url(css/streaming-display.css?v=20261127a);
 
 :root {
     /* SillyBunny: removed upstream interpolate-size: allow-keywords from :root to avoid whole-document keyword-interpolation invalidation. */
