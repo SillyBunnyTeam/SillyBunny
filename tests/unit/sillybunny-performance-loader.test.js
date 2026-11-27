@@ -282,3 +282,32 @@ describe('performance loader: the activation in a browser that observes marks', 
         expect(page.activated()).toBe(0);
     });
 });
+
+describe('performance loader: the on-demand functions of the page', () => {
+    const withPanel = () => {
+        const font = fakePlaceholder('webfonts/NotoSans/stylesheet.css');
+        const panel = fakePlaceholder('css/sillybunny-entity-list.css', { panel: true });
+        return { font, panel, page: loadPage({ links: [font, panel], observeMarks: {} }) };
+    };
+
+    test.each(['SillyBunnyLoadStylesheet', 'SillyBunnyLoadWideFontFallbacks'])('%s activates every deferred sheet, panel sheets included', (name) => {
+        const { font, panel, page } = withPanel();
+
+        page.window[name]();
+
+        expect(font.rel).toBe('stylesheet');
+        expect(panel.rel).toBe('stylesheet');
+        expect(panel.getAttribute('href')).toBe('css/sillybunny-entity-list.css');
+    });
+
+    test('the idle activation after the app is ready leaves a panel sheet to the panel that needs it', () => {
+        const { font, panel, page } = withPanel();
+        page.fire('load');
+
+        page.mark('sb-app-ready');
+        page.runIdle();
+
+        expect(font.rel).toBe('stylesheet');
+        expect(panel.rel).toBe('');
+    });
+});

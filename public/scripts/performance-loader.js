@@ -4,11 +4,16 @@ function isPanelStyle(style) {
         || (typeof style.getAttribute === 'function' && style.getAttribute('data-sb-panel-style') !== null);
 }
 
-function activateDeferredStyles() {
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.includePanels=false] Panel sheets wait for their panel, which loads them through
+ * `loadStylesheetAsync()`. A caller that asks for every sheet through the page functions below gets those too.
+ */
+function activateDeferredStyles({ includePanels = false } = {}) {
     const styles = document.querySelectorAll('link[data-sb-deferred-style]');
 
     for (const style of styles) {
-        if (isPanelStyle(style) || style.dataset.sbStyleActivated === 'true') {
+        if ((!includePanels && isPanelStyle(style)) || style.dataset.sbStyleActivated === 'true') {
             continue;
         }
 
@@ -41,8 +46,8 @@ function activateDeferredStyles() {
     }
 }
 
-function loadWideFontFallbacks() {
-    activateDeferredStyles();
+function activateAllDeferredStyles() {
+    activateDeferredStyles({ includePanels: true });
 }
 
 function scheduleIdleWork(callback) {
@@ -64,7 +69,7 @@ function schedulePostAppReadyActivation() {
     }
 
     postReadyActivationScheduled = true;
-    scheduleIdleWork(activateDeferredStyles);
+    scheduleIdleWork(() => activateDeferredStyles());
 }
 
 /**
@@ -152,7 +157,7 @@ function waitForAppReadyThenActivate() {
     }
 }
 
-window.SillyBunnyLoadStylesheet = activateDeferredStyles;
-window.SillyBunnyLoadWideFontFallbacks = loadWideFontFallbacks;
+window.SillyBunnyLoadStylesheet = activateAllDeferredStyles;
+window.SillyBunnyLoadWideFontFallbacks = activateAllDeferredStyles;
 
 waitForAppReadyThenActivate();
