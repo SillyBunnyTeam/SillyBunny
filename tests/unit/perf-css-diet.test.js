@@ -23,7 +23,6 @@ function extractRuleBlock(css, selectorPattern) {
 describe('PR 7 CSS diet regressions', () => {
     const styleCss = readPublic('style.css');
     const tabsCss = readPublic('css', 'sillybunny-tabs.css');
-    const themeCss = readPublic('css', 'sillybunny-theme.css');
     const mobileShellCss = readPublic('css', 'sillybunny-mobile-shell.css');
     const bgGalleryCss = readPublic('css', 'sillybunny-background-gallery.css');
     const wiEditorCss = readPublic('css', 'sillybunny-world-info-editor.css');
@@ -59,18 +58,31 @@ describe('PR 7 CSS diet regressions', () => {
         expect(mobileShellCss).toContain('body.sb-slide-toggle-shown #send_form');
     });
 
-    test('removes backdrop-filter from .sb-bg-cell-menu and .streaming-display and avoids #chat double-blur', () => {
+    test('removes backdrop-filter from .sb-bg-cell-menu and .streaming-display', () => {
         const bgMenuRule = extractRuleBlock(bgGalleryCss, '\\.sb-bg-cell-menu');
         expect(bgMenuRule).not.toBeNull();
         expect(bgMenuRule).toContain('background: var(--sb-osd-bg)');
         expect(bgMenuRule).not.toMatch(/backdrop-filter/);
 
         expect(stripComments(streamingDisplayCss)).not.toMatch(/backdrop-filter/);
+    });
 
-        const chatBlurReset = extractRuleBlock(themeCss, 'body\\.sb-sheld-blur\\s+#chat');
-        expect(chatBlurReset).not.toBeNull();
-        expect(chatBlurReset).toContain('backdrop-filter: none');
-        expect(chatBlurReset).toContain('-webkit-backdrop-filter: none');
+    test('the theme blur of #chat stays when Sheld Blur is on', () => {
+        // Sheld Blur blurs #sheld::before, and the theme blur of #chat adds to it, as on the base.
+        const cssDir = path.join(repoRoot, 'public', 'css');
+        const sheets = [
+            ['style.css', styleCss],
+            ...readdirSync(cssDir).filter(name => name.endsWith('.css')).map(name => [name, readPublic('css', name)]),
+        ];
+        const offenders = [];
+        for (const [name, css] of sheets) {
+            for (const [, selector, body] of stripComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+                if (/sb-sheld-blur[^,]*#chat\b/.test(selector) && /backdrop-filter\s*:\s*none/.test(body)) {
+                    offenders.push(`${name}: ${selector.trim().replace(/\s+/g, ' ')}`);
+                }
+            }
+        }
+        expect(offenders).toEqual([]);
     });
 
     test('only the character list rows and the chat messages skip rendering when off screen', () => {
