@@ -1456,6 +1456,8 @@ async function firstLoadInit() {
         scheduleDeferredStartupStylesheets();
         // SillyBunny: start the splash fade-out without stalling getCharacters() or APP_READY on CSS transitionend.
         void dismissPreloader();
+        // SillyBunny: /bg, the background gallery and APP_READY handlers read this list, so boot awaits it before APP_INITIALIZED; the request runs beside the avatar and character reads.
+        const backgroundsLoad = ensureBackgroundsLoaded();
         await getUserAvatars(true, user_avatar);
         await getCharacters();
         // SillyBunny: convert opt-in legacy tag folders once, after characters and groups exist to classify tag_map keys.
@@ -1470,6 +1472,7 @@ async function firstLoadInit() {
             tagFilterType: FILTER_TYPES.TAG,
             notify: () => globalThis.toastr?.info?.(t`Your tag folders are now folders. Manage them from Manage Folders in the Characters menu.`),
         });
+        await backgroundsLoad;
         await initTokenizers();
         initBackgrounds();
         initAuthorsNote();
@@ -1503,12 +1506,6 @@ async function firstLoadInit() {
         await eventSource.emit(event_types.APP_INITIALIZED);
         await fixViewport();
         await eventSource.emit(event_types.APP_READY);
-        // SillyBunny: active background CSS is already applied by loadBackgroundSettings(); hydrate gallery list off the critical APP_READY path.
-        if ('requestIdleCallback' in window) {
-            window.requestIdleCallback(() => { void ensureBackgroundsLoaded(); }, { timeout: 2500 });
-        } else {
-            window.setTimeout(() => { void ensureBackgroundsLoaded(); }, 250);
-        }
         rememberBootSurface();
         window.addEventListener('pagehide', rememberBootSurface);
     } catch (error) {

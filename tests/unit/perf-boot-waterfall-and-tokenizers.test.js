@@ -203,6 +203,68 @@ function extractSliceBetween(source, startMarker, endMarker) {
     return source.slice(startIndex, endIndex);
 }
 
+/**
+ * Runs the real firstLoadInit() from script.js in a vm sandbox. Every function it calls is a stub that resolves on a later
+ * tick, except the ones in `overrides`, so the test observes the order that boot gives to the stubs it cares about.
+ * @param {Record<string, unknown>} overrides Sandbox entries that replace the generated stubs.
+ */
+function createFirstLoadInitSandbox(overrides = {}) {
+    const bootSlice = extractSliceBetween(scriptSource, 'async function firstLoadInit() {', 'async function fixViewport() {');
+    const notCalls = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'async', 'await', 'return', 'typeof']);
+    const callNames = new Set(
+        Array.from(bootSlice.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g), match => match[1]).filter(name => !notCalls.has(name)),
+    );
+
+    const listeners = new Map();
+    const eventSource = {
+        on: (name, listener) => {
+            listeners.set(name, [...(listeners.get(name) ?? []), listener]);
+        },
+        emit: async (name, ...args) => {
+            for (const listener of listeners.get(name) ?? []) {
+                await listener(...args);
+            }
+        },
+    };
+    const eventTypes = new Proxy({}, { get: (_target, name) => String(name) });
+    const nextTick = () => new Promise(resolve => setImmediate(resolve));
+
+    const sandbox = {
+        console,
+        toastr: { error: jest.fn(), info: jest.fn() },
+        t: (strings) => strings[0],
+        document: { querySelector: () => null },
+        window: {
+            requestIdleCallback: (callback) => setImmediate(callback),
+            setTimeout: (callback) => setImmediate(callback),
+            addEventListener: jest.fn(),
+        },
+        ToolManager: { initToolSlashCommands: jest.fn() },
+        FILTER_TYPES: { TAG: 'tag' },
+        power_user: {},
+        tags: [],
+        tag_map: {},
+        characters: [],
+        groups: [],
+        accountStorage: {},
+        entitiesFilter: {},
+        user_avatar: 'user-default.png',
+        showdown: {},
+        event_types: eventTypes,
+        eventSource,
+    };
+    // Functions that boot passes as values instead of calling.
+    for (const name of [...callNames, 'forgetAllCardScripts', 'executeSlashCommandsWithOptions']) {
+        sandbox[name] = jest.fn(nextTick);
+    }
+    sandbox.beginBootApiPrefetch = jest.fn(() => () => undefined);
+    Object.assign(sandbox, overrides);
+    sandbox.globalThis = sandbox;
+
+    vm.runInNewContext(bootSlice, sandbox);
+    return { sandbox, eventSource };
+}
+
 describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimodal hashing', () => {
     beforeEach(() => {
         resetTokenizerPerfStateForTests();
@@ -526,6 +588,31 @@ describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimoda
 });
 
 describe('boot waterfall, inline extension manifests, loopback SW retirement, and script.js hotfixes', () => {
+    test('boot fills the background list before APP_INITIALIZED and APP_READY listeners run', async () => {
+        const backgroundList = [];
+        let backgroundLoad = null;
+        const loadBackgrounds = () => {
+            backgroundLoad ??= new Promise(resolve => setTimeout(() => {
+                backgroundList.push('forest.png');
+                resolve();
+            }, 15));
+            return backgroundLoad;
+        };
+        const { sandbox, eventSource } = createFirstLoadInitSandbox({
+            getBackgrounds: jest.fn(loadBackgrounds),
+            ensureBackgroundsLoaded: jest.fn(loadBackgrounds),
+        });
+
+        const seen = {};
+        eventSource.on('APP_INITIALIZED', () => { seen.appInitialized = [...backgroundList]; });
+        eventSource.on('APP_READY', () => { seen.appReady = [...backgroundList]; });
+
+        await sandbox.firstLoadInit();
+
+        expect(seen.appInitialized).toEqual(['forest.png']);
+        expect(seen.appReady).toEqual(['forest.png']);
+    });
+
     test('extensions getManifests uses inline manifests without HTTP fetches and falls back per-extension when absent', async () => {
         const discoverSlice = extractSliceBetween(
             extensionsSource,
