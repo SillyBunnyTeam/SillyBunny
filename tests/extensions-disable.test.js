@@ -408,10 +408,79 @@ describe('disabled extensions', () => {
 
     test('Summarize exposes a disable hook that clears the memory prompt', async () => {
         const manifest = JSON.parse(await readFile(new URL('../public/scripts/extensions/memory/manifest.json', import.meta.url), 'utf8'));
-        const source = await readFile(new URL('../public/scripts/extensions/memory/index.js', import.meta.url), 'utf8');
-
         expect(manifest.hooks.disable).toBe('deactivate');
-        expect(source).toContain('export function deactivate()');
-        expect(source).toContain('setExtensionPrompt(MODULE_NAME, \'\',');
+
+        const setExtensionPrompt = jest.fn();
+        jest.resetModules();
+        jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+            getStringHash: jest.fn(() => 0),
+            debounce: jest.fn(fn => fn),
+            waitUntilCondition: jest.fn(async () => {}),
+            extractAllWords: jest.fn(() => []),
+            isTrueBoolean: v => v === true || v === 'true',
+        }));
+        jest.unstable_mockModule('../public/scripts/extensions.js', () => ({
+            getContext: jest.fn(() => ({ chat: [], chatMetadata: {} })),
+            getApiUrl: jest.fn(() => ''),
+            extension_settings: { memory: {} },
+            doExtrasFetch: jest.fn(),
+            modules: [],
+            renderExtensionTemplateAsync: jest.fn(async () => ''),
+        }));
+        jest.unstable_mockModule('../public/script.js', () => ({
+            activateSendButtons: jest.fn(),
+            deactivateSendButtons: jest.fn(),
+            animation_duration: 0,
+            animation_easing: 'linear',
+            eventSource: { on: jest.fn(), removeListener: jest.fn(), emit: jest.fn() },
+            event_types: {},
+            extension_prompt_roles: { SYSTEM: 0 },
+            extension_prompt_types: { IN_PROMPT: 0, IN_CHAT: 1 },
+            generateQuietPrompt: jest.fn(),
+            is_send_press: false,
+            saveSettingsDebounced: jest.fn(),
+            substituteParamsExtended: jest.fn(text => text),
+            generateRaw: jest.fn(),
+            getMaxPromptTokens: jest.fn(() => 4096),
+            setExtensionPrompt,
+            streamingProcessor: null,
+        }));
+        jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ is_group_generating: false, selected_group: null }));
+        jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ loadMovingUIState: jest.fn(), power_user: {} }));
+        jest.unstable_mockModule('../public/scripts/RossAscends-mods.js', () => ({ dragElement: jest.fn() }));
+        jest.unstable_mockModule('../public/scripts/tokenizers.js', () => ({
+            getTextTokens: jest.fn(() => []),
+            getTokenCountAsync: jest.fn(async () => 0),
+            tokenizers: {},
+        }));
+        jest.unstable_mockModule('../public/scripts/constants.js', () => ({ debounce_timeout: { relaxed: 0 } }));
+        jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: strings => Array.isArray(strings) ? strings.join('') : String(strings ?? '') }));
+        jest.unstable_mockModule('../public/scripts/slash-commands/SlashCommandParser.js', () => ({ SlashCommandParser: { addCommandObject: jest.fn() } }));
+        jest.unstable_mockModule('../public/scripts/slash-commands/SlashCommand.js', () => ({ SlashCommand: { fromProps: jest.fn(p => p) } }));
+        jest.unstable_mockModule('../public/scripts/slash-commands/SlashCommandArgument.js', () => ({
+            ARGUMENT_TYPE: { STRING: 'string' },
+            SlashCommandArgument: { fromProps: jest.fn(p => p) },
+            SlashCommandNamedArgument: { fromProps: jest.fn(p => p) },
+        }));
+        jest.unstable_mockModule('../public/scripts/slash-commands/SlashCommandCommonEnumsProvider.js', () => ({
+            commonEnumProviders: new Proxy({}, { get: () => jest.fn(() => []) }),
+        }));
+        jest.unstable_mockModule('../public/scripts/macros/macro-system.js', () => ({ macros: { register: jest.fn() }, MacroCategory: {} }));
+        jest.unstable_mockModule('../public/scripts/extensions/shared.js', () => ({
+            countWebLlmTokens: jest.fn(),
+            generateWebLlmChatPrompt: jest.fn(),
+            getWebLlmContextSize: jest.fn(),
+            isWebLlmSupported: jest.fn(() => false),
+        }));
+        jest.unstable_mockModule('../public/scripts/reasoning.js', () => ({ removeReasoningFromString: v => v }));
+        jest.unstable_mockModule('../public/scripts/macros.js', () => ({ MacrosParser: { registerMacro: jest.fn() } }));
+        jest.unstable_mockModule('../public/scripts/sillybunny-editor/adapters/utility-dialogs.js', () => ({ adoptSummarizeSettings: jest.fn() }));
+
+        const memory = await import('../public/scripts/extensions/memory/index.js');
+        expect(typeof memory[manifest.hooks.disable]).toBe('function');
+
+        memory[manifest.hooks.disable]();
+
+        expect(setExtensionPrompt).toHaveBeenCalledWith(memory.MODULE_NAME, '', expect.anything(), expect.anything(), expect.anything(), expect.anything());
     });
 });

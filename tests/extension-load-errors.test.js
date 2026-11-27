@@ -1,11 +1,15 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+/** @jest-environment jsdom */
+/* global globalThis */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createExtensionScriptLoadError, formatExtensionLoadError } from '../public/scripts/extension-load-errors.js';
+import { importExtensionsModule } from './util/extensions-module-harness.js';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+afterEach(() => {
+    jest.restoreAllMocks();
+    document.body.replaceChildren();
+});
 
 describe('extension load error diagnostics', () => {
     test('wraps script load events with extension and script details', () => {
@@ -34,12 +38,55 @@ describe('extension load error diagnostics', () => {
         expect(formatExtensionLoadError({})).toBe('Unknown extension load error');
     });
 
-    test('wires diagnostics into extension activation and script loading', () => {
-        const extensionsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions.js'), 'utf8');
+    test('formats real extension script load failures during activation without [object Object]', async () => {
+        document.body.innerHTML = '<div id="extensions_details"></div>';
+        Object.defineProperty(globalThis.navigator, 'connection', { value: {}, configurable: true });
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-        expect(extensionsSource).toContain('import { createExtensionScriptLoadError, formatExtensionLoadError } from \'./extension-load-errors.js\';');
-        expect(extensionsSource).toContain('const loadError = formatExtensionLoadError(err);');
-        expect(extensionsSource).toContain('extensionLoadErrors.add(t`Extension "${displayName}" failed to load: ${loadError}`);');
-        expect(extensionsSource).toContain('reject(createExtensionScriptLoadError(name, url, err));');
+        const originalAppend = document.body.appendChild.bind(document.body);
+        jest.spyOn(document.body, 'appendChild').mockImplementation((node) => {
+            const appended = originalAppend(node);
+            if (node?.tagName === 'SCRIPT') {
+                queueMicrotask(() => {
+                    node.onerror?.({ type: 'error', target: { src: node.getAttribute('src') } });
+                });
+            }
+            return appended;
+        });
+
+        const fetchMock = jest.fn(async (url) => {
+            const text = String(url);
+            if (text.endsWith('/api/extensions/discover')) {
+                return { ok: true, json: async () => [{ name: 'third-party/Broken-Ext', type: 'local' }] };
+            }
+            if (text.includes('/scripts/extensions/third-party/Broken-Ext/manifest.json')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        display_name: 'Broken Ext',
+                        loading_order: 100,
+                        js: 'index.js',
+                    }),
+                };
+            }
+            return { ok: false, json: async () => ({}) };
+        });
+
+        const { extensions } = await importExtensionsModule({ fetch: fetchMock });
+        await extensions.loadExtensionSettings({
+            extension_settings: { lockedExtensionsUnlockApplied: true, disabledExtensions: [] },
+        }, false, false);
+
+        expect(document.getElementById('extensions_details').classList.contains('warning')).toBe(true);
+        expect(errorSpy).toHaveBeenCalledWith(
+            'Could not activate extension',
+            'third-party/Broken-Ext',
+            'Could not load extension script for "third-party/Broken-Ext": /scripts/extensions/third-party/Broken-Ext/index.js',
+            expect.objectContaining({
+                extensionName: 'third-party/Broken-Ext',
+                extensionScriptUrl: '/scripts/extensions/third-party/Broken-Ext/index.js',
+            }),
+        );
+        expect(errorSpy.mock.calls.flat().join(' ')).not.toContain('[object Object]');
     });
 });

@@ -9,10 +9,10 @@ import {
     buildChatCompletionSamplingProfileKey,
     buildChatCompletionSamplingSettingsSnapshot,
 } from '../public/scripts/openai-preset-utils.js';
+import { importConnectionManagerModule } from './util/connection-manager-harness.js';
 import { importOpenAiModule } from './util/openai-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const connectionManagerSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'connection-manager', 'index.js'), 'utf8');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const toggleDependentCss = readFileSync(path.join(repoRoot, 'public', 'css', 'toggle-dependent.css'), 'utf8');
 const jquerySource = readFileSync(path.join(repoRoot, 'public', 'lib', 'jquery-3.5.1.min.js'), 'utf8');
@@ -23,23 +23,6 @@ $.fn.sortable = function () { return this; };
 
 const { openai, mocks } = await importOpenAiModule();
 const initialDefaults = structuredClone(openai.oai_settings);
-
-function getFunctionSourceFrom(source, name) {
-    const marker = `function ${name}(`;
-    const start = source.indexOf(marker);
-    expect(start).toBeGreaterThanOrEqual(0);
-    const bodyStart = source.indexOf(') {', start) + 2;
-    let depth = 0;
-    for (let index = bodyStart; index < source.length; index++) {
-        const char = source[index];
-        if (char === '{') depth++;
-        else if (char === '}') {
-            depth--;
-            if (depth === 0) return source.slice(start, index + 1);
-        }
-    }
-    throw new Error(`Unable to find function source for ${name}`);
-}
 
 function mountSamplingDom() {
     document.body.innerHTML = `
@@ -185,18 +168,53 @@ describe('OpenAI sampling profile behaviour', () => {
         }
     });
 
-    test('re-applies the final model sampling profile after connection profile backend switches', () => {
-        const applyConnectionProfileSource = getFunctionSourceFrom(connectionManagerSource, 'applyConnectionProfile');
-        const commandLoopIndex = applyConnectionProfileSource.indexOf('for (const command of commands) {');
-        const applyProfileIndex = applyConnectionProfileSource.indexOf('maybeApplyModelSamplingProfile();');
-        const cancelSaveIndex = applyConnectionProfileSource.indexOf('cancelDebounce(saveSettingsDebounced);', applyProfileIndex);
-        const stopSpinnerIndex = applyConnectionProfileSource.indexOf('spinner.stop();');
+    test('re-applies the final model sampling profile after connection profile backend switches', async () => {
+        const events = [];
+        const profile = {
+            id: 'p-claude',
+            name: 'Claude Profile',
+            mode: 'cc',
+            api: 'claude',
+            preset: 'Story',
+            model: 'claude-opus-5',
+            exclude: [],
+        };
+        document.body.innerHTML = '<div id="rm_api_block"></div>';
+        const { mocks: cmMocks } = await importConnectionManagerModule({
+            extension_settings: {
+                connectionManager: { selectedProfile: '', profiles: [profile], folders: [], favorites: [] },
+            },
+            commands: {
+                api: async (_a, v) => { events.push(`cmd:api:${v}`); return v; },
+                preset: async (_a, v) => { events.push(`cmd:preset:${v}`); return v; },
+                model: async (_a, v) => { events.push(`cmd:model:${v}`); return v; },
+            },
+            openai: {
+                maybeApplyModelSamplingProfile: jest.fn(() => {
+                    const spinner = document.getElementById('connection_profile_spinner');
+                    events.push(`maybeApply:spinnerVisible=${!spinner.classList.contains('hidden')}`);
+                }),
+            },
+            utils: {
+                cancelDebounce: jest.fn(() => events.push('cancelDebounce')),
+            },
+        });
+
+        const select = document.getElementById('connection_profiles');
+        select.value = 'p-claude';
+        select.dispatchEvent(new Event('change'));
+        for (let i = 0; i < 20; i++) await Promise.resolve();
 
         expect(typeof openai.maybeApplyModelSamplingProfile).toBe('function');
-        expect(connectionManagerSource).toContain('maybeApplyModelSamplingProfile');
-        expect(commandLoopIndex).toBeGreaterThanOrEqual(0);
-        expect(applyProfileIndex).toBeGreaterThan(commandLoopIndex);
-        expect(cancelSaveIndex).toBeGreaterThan(applyProfileIndex);
-        expect(stopSpinnerIndex).toBeGreaterThan(applyProfileIndex);
+        expect(cmMocks.openai.maybeApplyModelSamplingProfile).toHaveBeenCalledTimes(1);
+
+        const lastModelIndex = events.lastIndexOf('cmd:model:claude-opus-5');
+        const applyIndex = events.indexOf('maybeApply:spinnerVisible=true');
+        const cancelAfterApplyIndex = events.indexOf('cancelDebounce', applyIndex + 1);
+
+        expect(lastModelIndex).toBeGreaterThan(-1);
+        expect(applyIndex).toBeGreaterThan(lastModelIndex);
+        expect(cancelAfterApplyIndex).toBeGreaterThan(applyIndex);
+        expect(document.getElementById('connection_profile_spinner').classList.contains('hidden')).toBe(true);
     });
 });

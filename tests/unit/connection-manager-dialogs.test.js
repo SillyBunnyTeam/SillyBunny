@@ -1,7 +1,8 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom DOM assertions. */
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
+
+import { importConnectionManagerModule } from '../util/connection-manager-harness.js';
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join(''), translate: text => text }));
 const { adaptProfileDeletion, adaptProfileDetails, adaptProfileFolders, createProfileChoices, profileDialogOptions, releaseProfileDialog } = await import('../../public/scripts/extensions/connection-manager/sillybunny-dialogs.js');
@@ -134,13 +135,56 @@ describe('Connection Manager dialog adapters', () => {
         expect(node.querySelector('[data-sb-editor-field="omitted-settings"] .ds-row-property__value').textContent).toBe('Model');
     });
 
-    test('upstream entry points opt into adapters before constructing Popup', () => {
-        const source = readFileSync(new URL('../../public/scripts/extensions/connection-manager/index.js', import.meta.url), 'utf8');
-        expect(source).toContain('suggestedName, profileDialogOptions(template[0])');
-        expect(source).toContain('...profileDialogOptions(template[0], { edit: true })');
-        expect(source).toContain('...adaptProfileDeletion(html[0])');
-        expect(source).toContain('defaultResult: POPUP_RESULT.NEGATIVE');
-        expect(source).toContain('adaptProfileFolders(template[0]);');
-        expect(source).toContain('adaptProfileDetails(details[0]);');
+    test('upstream entry points opt into adapters before constructing Popup', async () => {
+        const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); };
+        const profile = {
+            id: 'p1',
+            name: 'Alpha Profile',
+            mode: 'cc',
+            api: 'openai',
+            model: 'gpt-4o',
+            preset: 'Default',
+            exclude: [],
+        };
+        const { mocks, popupCalls } = await importConnectionManagerModule({
+            extension_settings: {
+                connectionManager: {
+                    selectedProfile: 'p1',
+                    profiles: [profile],
+                    folders: [{ id: 'f1', name: 'Work' }],
+                    favorites: [],
+                },
+            },
+            commandValues: { api: 'openai', model: 'gpt-4o', preset: 'Default' },
+        });
+
+        // 1. Create dialog passes profileDialogOptions(template[0]) to callGenericPopup.
+        document.getElementById('create_connection_profile').click();
+        await settle();
+        expect(mocks.dialogs.profileDialogOptions).toHaveBeenCalledWith(expect.any(HTMLElement));
+        expect(popupCalls.at(-1).options).toMatchObject({ tier: 'dialog', edit: false });
+
+        // 2. Edit dialog passes profileDialogOptions(template[0], { edit: true }).
+        mocks.dialogs.profileDialogOptions.mockClear();
+        document.getElementById('edit_connection_profile').click();
+        await settle();
+        expect(mocks.dialogs.profileDialogOptions).toHaveBeenCalledWith(expect.any(HTMLElement), { edit: true });
+        expect(popupCalls.at(-1).options).toMatchObject({ tier: 'dialog', edit: true });
+
+        // 3. Delete All dialog passes adaptProfileDeletion(html[0]) with defaultResult: NEGATIVE (0).
+        document.getElementById('delete_all_connection_profiles').click();
+        await settle();
+        expect(mocks.dialogs.adaptProfileDeletion).toHaveBeenCalledWith(expect.any(HTMLElement));
+        expect(popupCalls.at(-1).options).toMatchObject({ tier: 'dialog', defaultResult: 0 });
+
+        // 4. Manage Folders invokes adaptProfileFolders before Popup.
+        document.getElementById('manage_profile_folders').click();
+        await settle();
+        expect(mocks.dialogs.adaptProfileFolders).toHaveBeenCalledWith(expect.any(HTMLElement));
+
+        // 5. View Details invokes adaptProfileDetails before Popup.
+        document.getElementById('view_connection_profile').click();
+        await settle();
+        expect(mocks.dialogs.adaptProfileDetails).toHaveBeenCalledWith(expect.any(HTMLElement));
     });
 });

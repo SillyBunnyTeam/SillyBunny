@@ -1,12 +1,22 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+/** @jest-environment jsdom */
+/* global globalThis */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
+import { describe, expect, jest, test } from '@jest/globals';
+import { fileURLToPath } from 'node:url';
 import {
     PROFILE_CONNECTION_COMMANDS, PROFILE_SNAPSHOT_NAMES, PROFILE_SWITCH_COPY, PROFILE_WATCH_LIST, SAMPLER_GROUP_BY_API,
     countSamplerChanges, createBusyHintTracker, diffProfileSnapshots, formatProfileChange, getAppliedCommands, getAppliedOverrideCommands,
     getProfileCommandList, getWatchEntriesForApi, isAppliedOnSwitch, normalizeStopStrings, regexPresetMatchesLive, resolveRegexPresetName,
     resolveReportBaseline, waitForProfileSettle,
 } from '../../public/scripts/extensions/connection-manager/profile-change-model.js';
+import { importConnectionManagerModule } from '../util/connection-manager-harness.js';
+
+const pub = relative => fileURLToPath(new URL(`../../public/${relative}`, import.meta.url));
+
+// Capture the live runtime command tables passed by connection-manager/index.js into initProfileChangeNotice.
+const { mocks: cmInitMocks } = await importConnectionManagerModule();
+const LIVE_CM_TABLES = cmInitMocks.notice.initProfileChangeNotice.mock.calls[0][0];
+document.body.replaceChildren();
 
 // Fixtures: verbatim copies of the command tables in connection-manager/index.js; a test below holds them equal to it.
 const ALLOW_EMPTY = [
@@ -100,20 +110,6 @@ const EXPECTED_OVERRIDES = [
     'tokenizer',
 ];
 
-const CM_INDEX_SOURCE = readFileSync(new URL('../../public/scripts/extensions/connection-manager/index.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-
-/**
- * Reads the ids of one `const NAME = [ ... ];` table from the source of cm/index.js. Only lines that hold one quoted
- * id and a comma count, so the comment lines inside a table are skipped.
- * @param {string} name Table name
- * @returns {string[]} Ids in source order, duplicates kept
- */
-function readSourceTable(name) {
-    const start = CM_INDEX_SOURCE.indexOf(`const ${name} = [`);
-    const block = CM_INDEX_SOURCE.slice(start, CM_INDEX_SOURCE.indexOf('];', start));
-    return [...block.matchAll(/^\s*'([^']+)',$/gm)].map(match => match[1]);
-}
-
 // Every id in either table with the mode that owns it, computed here so the test body has no conditionals.
 const ALL_IDS = [...new Set([...CC_COMMANDS, ...TC_COMMANDS])].map(id => ({ id, mode: CC_COMMANDS.includes(id) ? 'cc' : 'tc' }));
 const TABLES = { ccCommands: CC_COMMANDS, tcCommands: TC_COMMANDS, allowEmpty: ALLOW_EMPTY };
@@ -121,17 +117,16 @@ const ccProfile = { mode: 'cc', api: 'openai', preset: 'Default', model: 'gpt', 
 const tcProfile = { mode: 'tc', api: 'ooba', preset: 'Default', 'sysprompt-state': 'true', sysprompt: 'Neutral', instruct: 'Alpaca', context: 'Alpaca', 'instruct-state': 'false', tokenizer: 'best', 'stop-strings': '', 'start-reply-with': '', 'reasoning-template': 'DeepSeek', exclude: [] };
 
 describe('command classification', () => {
-    test('the fixture tables equal the command tables in cm/index.js', () => {
-        expect(CM_INDEX_SOURCE).toContain('const CC_COMMANDS = [');
-        expect(CC_COMMANDS).toEqual(readSourceTable('CC_COMMANDS'));
-        expect(TC_COMMANDS).toEqual(readSourceTable('TC_COMMANDS'));
-        expect(ALLOW_EMPTY).toEqual(readSourceTable('ALLOW_EMPTY'));
+    test('the fixture tables equal the live command tables passed by connection-manager/index.js', () => {
+        expect(CC_COMMANDS).toEqual(LIVE_CM_TABLES.ccCommands);
+        expect(TC_COMMANDS).toEqual(LIVE_CM_TABLES.tcCommands);
+        expect(ALLOW_EMPTY).toEqual(LIVE_CM_TABLES.allowEmpty);
     });
     test('every CC and TC id is classified as a connection field or an expected override', () => {
-        const sourceIds = new Set([...readSourceTable('CC_COMMANDS'), ...readSourceTable('TC_COMMANDS')]);
+        const runtimeIds = new Set([...LIVE_CM_TABLES.ccCommands, ...LIVE_CM_TABLES.tcCommands]);
         expect(new Set(EXPECTED_OVERRIDES).size).toBe(18);
         expect(EXPECTED_OVERRIDES.filter(id => PROFILE_CONNECTION_COMMANDS.has(id))).toEqual([]);
-        expect([...sourceIds].sort()).toEqual([...PROFILE_CONNECTION_COMMANDS, ...EXPECTED_OVERRIDES].sort());
+        expect([...runtimeIds].sort()).toEqual([...PROFILE_CONNECTION_COMMANDS, ...EXPECTED_OVERRIDES].sort());
     });
     test('a profile that sets one id applies it, and lists it as an override only when it is one', () => {
         for (const { id, mode } of ALL_IDS) {
@@ -181,13 +176,10 @@ describe('command classification', () => {
         expect([...PROFILE_CONNECTION_COMMANDS]).toEqual(['api', 'api-url', 'model', 'secret-id', 'proxy', 'service-tier', 'custom-endpoint-profile', 'custom-include-body', 'custom-exclude-body', 'custom-include-headers', 'prompt-post-processing', 'custom-reasoning-preset', 'custom-reasoning-param-format', 'custom-reasoning-param-name', 'custom-reasoning-enabled-value', 'custom-reasoning-disabled-value']);
     });
     test('FANCY_NAMES labels are unique and the snapshot labels moved out', () => {
-        const source = readFileSync(new URL('../../public/scripts/extensions/connection-manager/index.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-        const start = source.indexOf('const FANCY_NAMES = {');
-        const block = source.slice(start, source.indexOf('};', start));
-        const labels = [...block.matchAll(/: '([^']+)',/g)].map(m => m[1]);
+        const labels = Object.values(LIVE_CM_TABLES.fancyNames);
         expect(new Set(labels).size).toBe(labels.length);
-        expect(block).not.toContain('\'instruct-template\'');
-        expect(block).toContain('\'secret-id\': \'Secret\',');
+        expect(LIVE_CM_TABLES.fancyNames).not.toHaveProperty('instruct-template');
+        expect(LIVE_CM_TABLES.fancyNames['secret-id']).toBe('Secret');
     });
 });
 
@@ -558,43 +550,146 @@ describe('regex preset match', () => {
         })).toBe(false);
     });
     test('a report waits for a native order-only reapply across a delayed save', async () => {
-        const source = readFileSync(new URL('../../public/scripts/extensions/regex/index.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-        const engine = readFileSync(new URL('../../public/scripts/extensions/regex/engine.js', import.meta.url), 'utf8');
-        const classStart = source.indexOf('class RegexPresetManager {');
-        const classEnd = source.indexOf('\nconst presetManager =', classStart);
-        const scriptTypes = engine.match(/export const SCRIPT_TYPES = \{[\s\S]*?\n\};/);
-        expect(classStart).toBeGreaterThanOrEqual(0);
-        expect(classEnd).toBeGreaterThan(classStart);
-        expect(scriptTypes).not.toBeNull();
-
         const selected = preset({ scoped: [{ id: 'a' }, { id: 'b' }] });
         const scoped = [{ id: 'b', disabled: false }, { id: 'a', disabled: false }];
-        const scripts = new Map();
+        // Keep the exact property order of engine.js SCRIPT_TYPES (GLOBAL, PRESET, SCOPED).
+        const SCRIPT_TYPES = { GLOBAL: 0, PRESET: 2, SCOPED: 1 };
+        const scripts = new Map([
+            [SCRIPT_TYPES.GLOBAL, []],
+            [SCRIPT_TYPES.PRESET, []],
+            [SCRIPT_TYPES.SCOPED, scoped],
+        ]);
         let releaseSave;
         let markSaveStarted;
         const saveStarted = new Promise(resolve => { markSaveStarted = resolve; });
         const saved = new Promise(resolve => { releaseSave = resolve; });
-        const { manager, types } = runInNewContext(`${scriptTypes[0].replace('export ', '')}\n${source.slice(classStart, classEnd)}\n({ manager: new RegexPresetManager(), types: SCRIPT_TYPES })`, {
-            extension_settings: { regex_presets: [selected] },
+
+        const addedCommands = new Map();
+        const eventSource = { on: jest.fn(), emit: jest.fn(async () => {}) };
+        document.body.innerHTML = `
+            <div id="extensions_settings2"></div>
+            <div id="regex_container">
+                <select id="regex_presets"></select>
+                <button id="regex_preset_create"></button>
+                <button id="regex_preset_update"></button>
+                <button id="regex_preset_apply"></button>
+                <button id="regex_preset_delete"></button>
+            </div>
+        `;
+        globalThis.toastr = { info: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
+        const $ = globalThis.window.jQuery;
+        if (!$.fn.sortable) $.fn.sortable = function sortable() { return this; };
+
+        jest.resetModules();
+        await jest.unstable_mockModule(pub('script.js'), () => ({
+            characters: [],
+            eventSource,
+            event_types: { CHAT_CHANGED: 'chat', PRESET_CHANGED: 'preset', CHARACTER_EDITED: 'char', APP_READY: 'ready' },
+            getCurrentChatId: jest.fn(() => 'chat-1'),
+            messageFormatting: jest.fn(v => v),
+            reloadCurrentChat: jest.fn(async () => {}),
+            saveSettingsDebounced: jest.fn(),
+            this_chid: 0,
+        }));
+        await jest.unstable_mockModule(pub('scripts/extensions.js'), () => ({
+            extension_settings: { disabledExtensions: [], regex: [], regex_presets: [selected] },
+            renderExtensionTemplateAsync: jest.fn(async () => ''),
+        }));
+        await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({ selected_group: null }));
+        await jest.unstable_mockModule(pub('scripts/popup.js'), () => ({
+            callGenericPopup: jest.fn(async () => 0),
+            Popup: class { show = jest.fn(async () => 0); },
+            POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0 },
+            POPUP_TYPE: { CONFIRM: 2, INPUT: 3, TEXT: 1 },
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-delete-confirm.js'), () => ({ confirmVerb: jest.fn(async () => true) }));
+        await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommand.js'), () => ({ SlashCommand: { fromProps: p => p } }));
+        await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandArgument.js'), () => {
+            class MockSlashCommandArgument {
+                constructor(...args) { this.args = args; }
+                static fromProps(p) { return p; }
+            }
+            class MockSlashCommandNamedArgument {
+                constructor(...args) { this.args = args; }
+                static fromProps(p) { return p; }
+            }
+            return {
+                ARGUMENT_TYPE: { STRING: 'string', BOOLEAN: 'boolean' },
+                SlashCommandArgument: MockSlashCommandArgument,
+                SlashCommandNamedArgument: MockSlashCommandNamedArgument,
+            };
+        });
+        await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandCommonEnumsProvider.js'), () => ({
+            commonEnumProviders: new Proxy({ boolean: () => () => ['true', 'false'] }, { get: (t, k) => t[k] ?? (() => []) }),
+            enumIcons: new Proxy({}, { get: () => '' }),
+        }));
+        await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandEnumValue.js'), () => ({
+            SlashCommandEnumValue: class {},
+            enumTypes: { enum: 'enum' },
+        }));
+        await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandParser.js'), () => ({
+            SlashCommandParser: { addCommandObject: jest.fn(cmd => addedCommands.set(cmd.name, cmd)) },
+        }));
+        await jest.unstable_mockModule(pub('scripts/utils.js'), () => ({
+            download: jest.fn(),
+            equalsIgnoreCaseAndAccents: (a, b) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase(),
+            escapeHtml: v => String(v ?? ''),
+            getFileText: jest.fn(async () => ''),
+            getSortableDelay: () => 0,
+            isFalseBoolean: v => v === false || v === 'false',
+            isTrueBoolean: v => v === true || v === 'true',
+            regexFromString: v => new RegExp(v),
+            setInfoBlock: jest.fn(),
+            uuidv4: () => 'id-1',
+        }));
+        await jest.unstable_mockModule(pub('scripts/extensions/regex/engine.js'), () => ({
+            allowPresetScripts: jest.fn(),
+            allowScopedScripts: jest.fn(),
+            disallowPresetScripts: jest.fn(),
+            disallowScopedScripts: jest.fn(),
+            getCurrentPresetAPI: () => 'openai',
+            getCurrentPresetName: () => 'Default',
+            getRegexScripts: () => [],
             getScriptsByType: type => scripts.get(type),
+            isPresetScriptsAllowed: () => true,
+            isScopedScriptsAllowed: () => true,
+            regex_placement: {},
+            RegexProvider: { instance: { loadSettings: jest.fn() } },
+            runRegexScript: jest.fn(v => v),
             saveScriptsByType: (list, type) => {
-                if (type === types.PRESET) {
+                if (type === SCRIPT_TYPES.PRESET) {
                     markSaveStarted();
                     return saved;
                 }
                 return Promise.resolve();
             },
-            loadRegexScripts: async () => {},
-            reloadCurrentChat: async () => {},
-        });
-        scripts.set(types.GLOBAL, []);
-        scripts.set(types.PRESET, []);
-        scripts.set(types.SCOPED, scoped);
+            SCRIPT_TYPE_UNKNOWN: -1,
+            SCRIPT_TYPES,
+            substitute_find_regex: {},
+        }));
+        await jest.unstable_mockModule(pub('scripts/i18n.js'), () => ({ t: s => s.join('') }));
+        await jest.unstable_mockModule(pub('scripts/util/AccountStorage.js'), () => ({ accountStorage: { getItem: () => null, setItem: jest.fn() } }));
+        await jest.unstable_mockModule(pub('scripts/preset-manager.js'), () => ({ getPresetManager: jest.fn() }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-editor/adapters/utility-dialogs.js'), () => ({
+            adoptRegexScriptList: jest.fn(),
+            adoptRegexScriptRow: jest.fn(),
+            regexImportOptions: jest.fn(() => ({})),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-editor/toggle-row.js'), () => ({ createToggleRow: jest.fn() }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-editor/select-row.js'), () => ({ createSelectRow: jest.fn() }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-editor/rows.js'), () => ({ createEntryRow: jest.fn() }));
+
+        const regexMod = await import('../../public/scripts/extensions/regex/index.js');
+        await regexMod.init();
+
         const readLive = () => live({ scoped: scoped.filter(script => !script.disabled).map(script => script.id) });
         const snapshot = () => ({ mainApi: 'openai', values: { 'regex.preset': selected.name, 'regex.content': { global: [], preset: [], scoped: readLive().scoped.enabled } } });
         const before = snapshot();
-        const applying = manager.applyPreset(selected.id);
+
+        // Trigger the real /regex-preset slash command so the real RegexPresetManager reapplies across the delayed save.
+        addedCommands.get('regex-preset').callback({ quiet: 'true' }, selected.id);
         await saveStarted;
+
         const clock = makeClock();
         let finished = false;
         const reporting = waitForProfileSettle({
@@ -616,7 +711,8 @@ describe('regex preset match', () => {
             expect(finished).toBe(false);
         } finally {
             releaseSave();
-            await applying;
+            for (let i = 0; i < 15; i++) await Promise.resolve();
+            document.body.replaceChildren();
         }
         expect(scoped.map(script => script.id)).toEqual(['a', 'b']);
         clock.advance(900);
