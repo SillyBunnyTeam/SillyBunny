@@ -114,7 +114,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-editor/lazy-image.j
         return img;
     }),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-editor/dialog.js', () => ({ openAlert: jest.fn(async () => 'cancel'), openDialog }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/dialog.js', () => ({ createIconButton: jest.fn(() => document.createElement('button')), openAlert: jest.fn(async () => 'cancel'), openDialog }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu }));
 await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({ world_names: [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({
@@ -135,6 +135,14 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settin
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
     scheduleTimelineRender,
+}));
+// The pages' selection mode imports the shared selection mode and the Show More row, which read the page's locale data through `t`; the bulk actions reach the whole app.
+await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: (strings, ...values) => strings.reduce((text, string, index) => text + string + (values[index] ?? ''), '') }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/details/bulk-actions.js', () => ({
+    deleteChats: jest.fn(async () => true),
+    downloadAttachmentsArchive: jest.fn(async () => true),
+    exportChatsArchive: jest.fn(async () => true),
+    removeAttachmentsFromChat: jest.fn(async () => true),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/details/styles.js', () => ({
     ensureDetailsStyles,
@@ -190,6 +198,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/detail
     writeSetting: jest.fn(),
 }));
 
+const dialogModule = await import('../public/scripts/sillybunny-editor/dialog.js');
 const { buildAdvanced } = await import('../public/scripts/sillybunny-conversation/details/pages/advanced.js');
 const { buildFiles, buildPinned } = await import('../public/scripts/sillybunny-conversation/details/pages/shared.js');
 const { buildAddMember } = await import('../public/scripts/sillybunny-conversation/details/pages/add-member.js');
@@ -198,11 +207,16 @@ const { buildBehaviour } = await import('../public/scripts/sillybunny-conversati
 const { toAvatarDataUrl } = await import('../public/scripts/sillybunny-conversation/details/avatar-upload.js');
 
 let lastWindowNav = null;
+const leaveSelection = jest.fn();
+const canClose = jest.fn(() => true);
+const onMount = jest.fn();
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/details/pages/index.js', () => ({
     isKnownPage: id => ['general', 'add-member'].includes(id),
     buildPage: (id, ctx) => {
         lastWindowNav = ctx.nav;
-        return id === 'add-member' ? buildAddMember(ctx) : buildGeneral(ctx);
+        const spec = id === 'add-member' ? buildAddMember(ctx) : buildGeneral(ctx);
+        // The pages of selection mode have this; the window calls it, whichever page it is.
+        return Object.assign(spec, { leaveSelection, canClose, onMount });
     },
 }));
 const { openConversationDetails } = await import('../public/scripts/sillybunny-conversation/details/window.js');
@@ -477,6 +491,97 @@ describe('details pages lifecycle, URL safety, and row ID cleanup', () => {
         await flush();
         expect(errorSpy).toHaveBeenCalled();
         expect(globalThis.toastr.error).toHaveBeenCalledWith('This action could not be completed');
+    });
+
+    describe('selection mode and the window', () => {
+        let pushed;
+
+        async function openWindowOnAddMember() {
+            pushed = [];
+            openDialog.mockImplementation(() => ({
+                isOpen: true,
+                surface: document.createElement('div'),
+                body: document.createElement('div'),
+                close: jest.fn(),
+                forceClose: jest.fn(),
+                setTitle: jest.fn(),
+                setSubtitle: jest.fn(),
+                closed: new Promise(() => {}),
+                push: jest.fn((spec) => {
+                    const handle = { closed: new Promise(() => {}), close: jest.fn(), forceClose: jest.fn(), setResponseEnabled: jest.fn(), setTitle: jest.fn(), page: document.createElement('section'), body: document.createElement('div'), header: document.createElement('header'), headerStart: document.createElement('div'), headerEnd: document.createElement('div'), titleNode: document.createElement('h2'), closeButton: null, search: null };
+                    pushed.push({ spec, handle });
+                    return handle;
+                }),
+            }));
+            views.set('conv-1', makeView());
+            leaveSelection.mockClear();
+            await openConversationDetails('conv-1', { page: 'add-member' });
+        }
+
+        test('a page pushed over a page leaves that page\'s selection mode first, and so does a picture', async () => {
+            await openWindowOnAddMember();
+            expect(leaveSelection).not.toHaveBeenCalled();
+
+            lastWindowNav.push('add-member');
+            expect(leaveSelection).toHaveBeenCalledTimes(1);
+
+            lastWindowNav.viewPicture({ title: 'Good', src: '/characters/ada.png', kind: 'image' });
+            expect(leaveSelection).toHaveBeenCalledTimes(2);
+        });
+
+        test('a picture refused for its address leaves selection mode alone', async () => {
+            await openWindowOnAddMember();
+            lastWindowNav.viewPicture({ title: 'Bad', src: 'javascript:alert(1)', kind: 'image' });
+            expect(leaveSelection).not.toHaveBeenCalled();
+        });
+
+        test('hands a page its frame for selection mode, with the dialog\'s icon button, and its canClose to the dialog', async () => {
+            onMount.mockClear();
+            await openWindowOnAddMember();
+            const { spec, handle } = pushed[0];
+            expect(spec.canClose).toBe(canClose);
+            expect(onMount).toHaveBeenCalledTimes(1);
+            const [{ frame }] = onMount.mock.calls[0];
+            expect(frame).toEqual({
+                page: handle.page,
+                body: handle.body,
+                header: handle.header,
+                headerStart: handle.headerStart,
+                headerEnd: handle.headerEnd,
+                titleNode: handle.titleNode,
+                closeButton: null,
+                search: null,
+                createIconButton: dialogModule.createIconButton,
+            });
+        });
+
+        test('a picture with onRemove has a menu with Remove From Chat that closes the page once the item is gone, and not before', async () => {
+            await openWindowOnAddMember();
+            const onRemove = jest.fn(async () => false);
+            lastWindowNav.viewPicture({ title: 'Good', src: '/characters/ada.png', kind: 'image', onRemove });
+            const { spec, handle } = pushed.at(-1);
+            expect(spec.menuLabel).toBe('Picture Menu');
+            const [item] = spec.menu().flatMap(section => section.items);
+            expect(item).toMatchObject({ label: 'Remove From Chat', danger: true });
+
+            item.onSelect();
+            await flush();
+            expect(onRemove).toHaveBeenCalledTimes(1);
+            expect(handle.close).not.toHaveBeenCalled();
+
+            onRemove.mockResolvedValue(true);
+            item.onSelect();
+            await flush();
+            expect(handle.close).toHaveBeenCalledTimes(1);
+        });
+
+        test('a picture without onRemove has no menu, and a video is a Video Menu', async () => {
+            await openWindowOnAddMember();
+            lastWindowNav.viewPicture({ title: 'Plain', src: '/characters/ada.png', kind: 'image' });
+            expect(pushed.at(-1).spec.menu).toBeUndefined();
+            lastWindowNav.viewPicture({ title: 'Clip', src: '/u/clip.mp4', kind: 'video', onRemove: async () => true });
+            expect(pushed.at(-1).spec.menuLabel).toBe('Video Menu');
+        });
     });
 
     test('avatar-upload accepts extension fallback when file.type is empty and guards zero dimensions and missing 2d context', async () => {
