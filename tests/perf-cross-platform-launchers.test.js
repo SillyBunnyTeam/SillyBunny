@@ -298,6 +298,7 @@ describe('cross-platform launcher static and line-ending contracts', () => {
 
         expect(startBatSource).toContain('"%RUNTIME_CMD%" "%~dp0scripts\\self-update.js" --optional');
         expect(startBatSource).toContain('powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\\Self-Update.ps1" -Optional');
+        expect(startBatSource).toContain('if !errorlevel! neq 0 echo Skipping self-update: the updater stopped with exit code !errorlevel!.');
 
         expect(startBatSource).toContain('if exist "%USERPROFILE%\\.bun\\bin\\bun.exe"');
         expect(startBatSource).toContain('if exist "%ProgramFiles%\\nodejs\\node.exe"');
@@ -824,6 +825,19 @@ describeWin32('Windows batch launcher stamp and updater failure handling', () =>
         expect(boot().status).toBe(0);
         expect(takeBootCalls(appDir)).toEqual(['server']);
     });
+
+    test('Start.bat starts the server when the optional updater exits with a non-zero code', () => {
+        const appDir = createBootApp('win-updater-crash', startBatPath);
+        fs.writeFileSync(
+            path.join(appDir, 'scripts', 'self-update.js'),
+            'import fs from "node:fs"; fs.appendFileSync("boot-calls.log", "updater\\n"); process.exit(3);\n',
+        );
+
+        const result = runBatIn(appDir, 'Start.bat', { SILLYBUNNY_AUTO_UPDATE: '1' });
+        expect(result.status).toBe(0);
+        expect(result.stdout).toContain('Skipping self-update: the updater stopped with exit code 3.');
+        expect(takeBootCalls(appDir)).toEqual(['updater', ...BOOT_FIXTURE_COLD_CALLS]);
+    });
 });
 
 describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () => {
@@ -973,6 +987,28 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
         // The stamp saved after init covers the rewritten file, so the next boot is warm again.
         expect(boot().status).toBe(0);
         expect(takeBootCalls(appDir)).toEqual(['server']);
+    });
+
+    test.each([1, 3, 127])('start.sh starts the server when the optional updater exits with code %i', (exitCode) => {
+        const appDir = createBootApp(`posix-updater-crash-${exitCode}`);
+        fs.writeFileSync(
+            path.join(appDir, 'scripts', 'self-update.sh'),
+            `#!/usr/bin/env bash\necho "updater" >> boot-calls.log\nexit ${exitCode}\n`,
+        );
+
+        const result = runStartShIn(appDir, []);
+        expect(result.status).toBe(0);
+        expect(result.stderr).toContain(`Skipping self-update: the updater stopped with exit code ${exitCode}.`);
+        expect(takeBootCalls(appDir)).toEqual(['updater', ...BOOT_FIXTURE_COLD_CALLS]);
+    });
+
+    test('start.sh still stops when an explicit --self-update fails', () => {
+        const appDir = createBootApp('posix-updater-explicit');
+        fs.writeFileSync(path.join(appDir, 'scripts', 'self-update.sh'), '#!/usr/bin/env bash\necho "updater" >> boot-calls.log\nexit 1\n');
+
+        const result = runStartShIn(appDir, ['--self-update']);
+        expect(result.status).not.toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(['updater']);
     });
 
     test('start.sh compute_boot_stamp handles Darwin GNU stat fallback, BSD stat fallback, and total stat failure', () => {

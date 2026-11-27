@@ -359,7 +359,13 @@ fi
 if (( self_update_requested )); then
     bash "$SCRIPT_DIR/scripts/self-update.sh"
 elif (( auto_update_enabled )); then
-    bash "$SCRIPT_DIR/scripts/self-update.sh" --optional
+    # A defect in the updater cannot be repaired by an update, so an optional
+    # update must never be able to stop the launch.
+    optional_update_status=0
+    bash "$SCRIPT_DIR/scripts/self-update.sh" --optional || optional_update_status=$?
+    if (( optional_update_status != 0 )); then
+        echo "Skipping self-update: the updater stopped with exit code $optional_update_status." >&2
+    fi
 fi
 
 if (( self_update_only )); then

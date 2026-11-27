@@ -190,7 +190,7 @@ if "%_need_git%"=="1" if "%_auto_update%"=="1" (
     ) else (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Self-Update.ps1" -Optional
     )
-    if !errorlevel! neq 0 goto end
+    if !errorlevel! neq 0 echo Skipping self-update: the updater stopped with exit code !errorlevel!.
 )
 
 if "%_need_git%"=="0" if "%_auto_update%"=="1" (
