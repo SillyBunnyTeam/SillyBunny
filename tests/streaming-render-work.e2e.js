@@ -6,6 +6,7 @@ const scriptSource = read('../public/script.js');
 const copyFunction = scriptSource.match(/^export function addCopyToCodeBlocks\([\s\S]*?^}/m)[0];
 const modules = new Map([
     ['/scripts/util/stream-fadein.js', read('../public/scripts/util/stream-fadein.js')],
+    ['/scripts/ooc-blocks.js', read('../public/scripts/ooc-blocks.js')],
     ['/scripts/a11y.js', read('../public/scripts/a11y.js')],
     ['/lib.js', 'export { default as morphdom } from \'/morphdom.js\';'],
     ['/morphdom.js', read('../node_modules/morphdom/dist/morphdom-esm.js')],
