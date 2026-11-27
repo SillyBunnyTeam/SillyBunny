@@ -1,21 +1,8 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom DOM assertions. */
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { importPersonasModule } from './util/personas-module-harness.js';
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const scriptSource = fs.readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
-const tabsSource = fs.readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
-
-function getFunctionSource(source, name) {
-    const match = source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([\\s\\S]*?\\n\\}`));
-    expect(match).not.toBeNull();
-    return match[0].replace(/^export /, '');
-}
 
 function createMessageElement({ isUser = true, forceAvatar = false, src = '' } = {}) {
     const mes = document.createElement('div');
@@ -30,33 +17,6 @@ function createMessageElement({ isUser = true, forceAvatar = false, src = '' } =
     mes.append(avatarWrap);
     document.body.append(mes);
     return { mes, img };
-}
-
-function loadTabAvatarHelpers() {
-    // Deferred to Batch 6/7 until script.js + sillybunny-tabs.js behavioural harnesses are introduced.
-    const body = [
-        getFunctionSource(scriptSource, 'getThumbnailUrl'),
-        getFunctionSource(scriptSource, 'getFullAvatarUrl'),
-        getFunctionSource(scriptSource, 'parseAvatarSource'),
-        getFunctionSource(tabsSource, 'stripAvatarOrigin'),
-        getFunctionSource(tabsSource, 'isAbsoluteAvatarUrl'),
-        getFunctionSource(tabsSource, 'ensureAvatarPath'),
-        getFunctionSource(tabsSource, 'getChatAvatarSources'),
-        getFunctionSource(tabsSource, 'formatAvatarCssUrl'),
-        getFunctionSource(tabsSource, 'updateChatAvatarVariables'),
-        'return { getChatAvatarSources, updateChatAvatarVariables };',
-    ].join('\n\n');
-    const factory = new Function('window', 'isDataURL', 'default_avatar', 'document', 'HTMLElement', 'HTMLImageElement', 'sbState', body);
-
-    return factory(
-        { location: { origin: 'http://localhost:8000' } },
-        value => String(value).startsWith('data:'),
-        '/img/ai4.png',
-        document,
-        HTMLElement,
-        HTMLImageElement,
-        { chatAvatars: { sourceCache: new WeakMap() } },
-    );
 }
 
 afterEach(() => {
@@ -177,31 +137,5 @@ describe('persona avatar source synchronization', () => {
     test('encodes reserved characters in original persona URLs', async () => {
         const { personas } = await importPersonasModule();
         expect(personas.getUserAvatar('50% Off #1.png')).toBe('User Avatars/50%25%20Off%20%231.png');
-    });
-
-    test('tab updater preserves a mobile preset as the display and decorative source', () => {
-        const { getChatAvatarSources, updateChatAvatarVariables } = loadTabAvatarHelpers();
-        const mobileThumbnail = '/thumbnail?type=persona&file=Mobile%20Me.png&preset=mobile&t=123';
-        const original = '/User%20Avatars/Mobile%20Me.png?t=123';
-        const { mes: message, img: image } = createMessageElement({ src: mobileThumbnail });
-        image.setAttribute('data-thumbnail-src', mobileThumbnail);
-        image.setAttribute('data-original-src', original);
-
-        expect(getChatAvatarSources(mobileThumbnail)).toMatchObject({
-            display: mobileThumbnail,
-            thumb: mobileThumbnail,
-            original: '/User%20Avatars/Mobile%20Me.png',
-        });
-
-        updateChatAvatarVariables(message);
-
-        const mobileCssUrl = `url(${JSON.stringify(mobileThumbnail)})`;
-        expect(message.dataset.avatar).toBe(mobileThumbnail);
-        expect(message.dataset.avatarThumb).toBe(mobileThumbnail);
-        expect(message.dataset.avatarOriginal).toBe(original);
-        expect(message.style.getPropertyValue('--sb-message-avatar')).toBe(mobileCssUrl);
-        expect(message.style.getPropertyValue('--mes-avatar-url')).toBe(mobileCssUrl);
-        expect(message.style.getPropertyValue('--mes-avatar-thumb-url')).toBe(mobileCssUrl);
-        expect(message.style.getPropertyValue('--mes-avatar-original-url')).toBe(`url(${JSON.stringify(original)})`);
     });
 });

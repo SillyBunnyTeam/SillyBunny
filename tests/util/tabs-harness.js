@@ -697,7 +697,11 @@ export async function importTabsModule(options = {}) {
         },
         'scripts/sillybunny-prompt-editor.js': { initializePromptEditor: jest.fn() },
         'scripts/extensions/in-chat-agents/ui/agent-list.js': {
-            mountAgentsPanel: jest.fn(),
+            mountAgentsPanel: jest.fn(() => ({
+                prepareReveal: jest.fn(),
+                onReveal: jest.fn(),
+                destroy: jest.fn(),
+            })),
             getAgentsPanelSearchEntries: jest.fn(() => []),
         },
         'scripts/sillybunny-character-editor.js': { initCharacterEditor: jest.fn() },

@@ -1,13 +1,7 @@
 /** @jest-environment jsdom */
 import { describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { importScriptModule } from './util/script-harness.js';
-
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// Deferred to Batch 6 (`tabs-harness.js`) where `sillybunny-tabs.js` is executed directly.
-const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8').replace(/\r\n/g, '\n');
+import { importTabsModule } from './util/tabs-harness.js';
 
 describe('Conversation mode character selection', () => {
     test('dispatches sb:roleplay-character-selected with the chosen character avatar when selecting a character', async () => {
@@ -38,10 +32,30 @@ describe('Conversation mode character selection', () => {
             window.removeEventListener('sb:roleplay-character-selected', onSelected);
             loaded.cleanup();
         }
+    });
 
-        expect(tabsSource).toContain('characters, displayVersion, flushCharacterSaveDebounced');
-        expect(tabsSource).toContain('saveSettingsDebounced, this_chid } from \'../script.js\';');
-        expect(tabsSource).toContain('avatar: characters[this_chid]?.avatar || \'\',');
-        expect(tabsSource).toContain('showToast: false,');
+    test('switching to Conversation mode from the top-bar mode menu dispatches the active character avatar without a toast', async () => {
+        const loaded = await importTabsModule({
+            characters: [{ name: 'Alice', avatar: 'alice.png' }],
+            this_chid: 0,
+        });
+        const openedEvents = [];
+        const onOpen = event => openedEvents.push(event.detail);
+        window.addEventListener('sb:open-conversation-workspace', onOpen);
+        try {
+            document.getElementById('sb-mode-toggle').click();
+            const conversationItem = [...document.querySelectorAll('#sb-mode-menu .sb-mode-menu-item')]
+                .find(item => !item.classList.contains('is-active'));
+            expect(conversationItem).not.toBeUndefined();
+            conversationItem.click();
+
+            expect(openedEvents).toEqual([{
+                avatar: 'alice.png',
+                showToast: false,
+            }]);
+        } finally {
+            window.removeEventListener('sb:open-conversation-workspace', onOpen);
+            loaded.cleanup();
+        }
     });
 });

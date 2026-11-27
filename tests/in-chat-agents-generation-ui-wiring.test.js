@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { importScriptModule } from './util/script-harness.js';
+import { importTabsModule } from './util/tabs-harness.js';
 import { buildAgentListModel } from '../public/scripts/extensions/in-chat-agents/ui/agent-list-model.js';
 import { getAgentEditorVisibility } from '../public/scripts/extensions/in-chat-agents/ui/agent-editor-model.js';
 import { COMPANION_RESULTS_EXTRA_KEY } from '../public/scripts/extensions/in-chat-agents/companion/companion-shared.js';
@@ -14,8 +15,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 const publicIndexSource = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const extensionStyleSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'in-chat-agents', 'style.css'), 'utf8');
-// Deferred to Batch 6 (`tabs-harness.js`) where `sillybunny-tabs.js` mounts panels directly.
-const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
 
 const LEVEL_UP_TEMPLATE_ID = 'tpl-level-up-companion';
 const USER_BASED_STATS_TEMPLATE_ID = 'tpl-user-based-stats-generator';
@@ -918,9 +917,6 @@ describe('in-chat agents generation UI wiring', () => {
     test('mounts shared entity rows with touch-sized grips, groups companions separately, and supports selection mode', async () => {
         // Genuine CSS contract for 44px touch-sized drag grips.
         expect(extensionStyleSource).toMatch(/\.ica-agents-editor \.ica-agent-grip[^{]*\{\s*min-width: 44px;\s*min-height: 44px;/);
-        // Deferred to Batch 6 (`tabs-harness.js`).
-        expect(tabsSource).toContain('const controller = mountAgentsPanel(column);');
-        expect(tabsSource).not.toContain('id: \'in_chat_agents_container\'');
 
         const preAgent = makeAgent({ id: 'a-pre', name: 'Pre Agent', phase: 'pre' });
         const bothAgent = makeAgent({ id: 'a-both', name: 'Both Agent', phase: 'both' });
@@ -1185,5 +1181,20 @@ describe('in-chat agents generation UI wiring', () => {
 
         // Ran on assistant messages 0, 2, 4 plus composer (4 targets).
         expect(runTargets.length).toBe(4);
+    });
+});
+
+describe('in-chat agents Backend shell mounting', () => {
+    test('mounts the Agents panel directly into the Backend column without legacy in_chat_agents_container', async () => {
+        const tabsLoaded = await importTabsModule();
+        activeCleanups.push(() => tabsLoaded.cleanup());
+
+        tabsLoaded.shell.openTab('left', 'agents');
+        await tabsLoaded.flush();
+
+        const mountAgentsPanel = tabsLoaded.mocks['scripts/extensions/in-chat-agents/ui/agent-list.js'].mountAgentsPanel;
+        expect(mountAgentsPanel).toHaveBeenCalledTimes(1);
+        expect(mountAgentsPanel.mock.calls[0][0]).toBeInstanceOf(HTMLElement);
+        expect(document.getElementById('in_chat_agents_container')).toBeNull();
     });
 });
