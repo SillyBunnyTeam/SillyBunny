@@ -447,7 +447,8 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type, p
         } else if (type === 'avatar' || type === 'persona') {
             // Crop and resize to fixed dimensions
             const [configWidth, configHeight] = dimensionSource[type];
-            safeCover(thumbImage, { w: configWidth, h: configHeight, mode: ResizeStrategy.BILINEAR });
+            // SillyBunny: a thumbnail is a preview, so a small source is cropped to the box ratio but never enlarged.
+            safeCover(thumbImage, { w: configWidth, h: configHeight, mode: ResizeStrategy.BILINEAR, withoutEnlargement: true });
         }
 
         // SillyBunny: support WebP encoding via @jimp/wasm-webp alongside PNG and JPEG.

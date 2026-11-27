@@ -83,6 +83,7 @@ const {
 const {
     AVERAGE_COLOR_MAX_DIMENSION,
     getAverageColorWithJimp,
+    getThumbnailDimensions,
 } = await import('../src/endpoints/image-metadata.js');
 
 const {
@@ -402,11 +403,14 @@ describe('2. Image & Thumbnail Pipeline Modernization', () => {
         fs.rmSync(tempRoot, { recursive: true, force: true });
     });
 
-    test('safeCover clamps scale <= 1 (withoutEnlargement) so small cards are never upscaled', () => {
+    test('safeCover enlarges by default and keeps the source size only with withoutEnlargement', () => {
+        const enlarged = new Jimp({ width: 400, height: 600, color: 0x336699ff });
+        safeCover(enlarged, { w: 864, h: 1280 });
+        expect(enlarged.bitmap.width).toBe(864);
+        expect(enlarged.bitmap.height).toBe(1280);
+
         const smallCard = new Jimp({ width: 400, height: 600, color: 0x336699ff });
-        safeCover(smallCard, { w: 864, h: 1280 });
-        expect(smallCard.bitmap.width).toBeLessThanOrEqual(400);
-        expect(smallCard.bitmap.height).toBeLessThanOrEqual(600);
+        safeCover(smallCard, { w: 864, h: 1280, withoutEnlargement: true });
         expect(smallCard.bitmap.width).toBe(400);
         expect(smallCard.bitmap.height).toBe(593);
 
@@ -414,11 +418,39 @@ describe('2. Image & Thumbnail Pipeline Modernization', () => {
         safeCover(largeCard, { w: 400, h: 600 });
         expect(largeCard.bitmap.width).toBe(400);
         expect(largeCard.bitmap.height).toBe(600);
+    });
 
-        const explicitEnlarge = new Jimp({ width: 40, height: 60, color: 0x336699ff });
-        safeCover(explicitEnlarge, { w: 80, h: 120, withoutEnlargement: false });
-        expect(explicitEnlarge.bitmap.width).toBe(80);
-        expect(explicitEnlarge.bitmap.height).toBe(120);
+    test('a 300x300 source is enlarged by the avatar crop path and not by the thumbnail path', async () => {
+        const { applyAvatarCropResize } = await import('../src/endpoints/characters.js');
+        const sourcePng = createMinimalPng(300, 300);
+
+        const cropped = await applyAvatarCropResize(await Jimp.read(sourcePng), {
+            x: 0,
+            y: 0,
+            width: 300,
+            height: 300,
+            want_resize: true,
+        });
+        expect(imageSize(cropped)).toMatchObject({ width: 512, height: 768 });
+
+        const directories = {
+            characters: path.join(tempRoot, 'characters'),
+            thumbnailsAvatar: path.join(tempRoot, 'thumbnails', 'avatar'),
+            thumbnailsAvatarMobile: path.join(tempRoot, 'thumbnails', 'avatar', 'mobile'),
+        };
+        for (const dir of Object.values(directories)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(path.join(directories.characters, 'Small.png'), sourcePng);
+        setThumbnailRuntimeSettings({ enabled: true, format: 'png', quality: 90 });
+
+        const result = await generateThumbnail(directories, 'avatar', 'Small.png', true);
+        expect(result.path).toBe(path.join(directories.thumbnailsAvatar, 'Small.png'));
+        const thumbnailSize = imageSize(fs.readFileSync(result.path));
+        const [boxWidth, boxHeight] = getThumbnailDimensions().avatar;
+        expect(thumbnailSize.width).toBeLessThanOrEqual(300);
+        expect(thumbnailSize.height).toBeLessThanOrEqual(300);
+        expect(thumbnailSize.width / thumbnailSize.height).toBeCloseTo(boxWidth / boxHeight, 1);
     });
 
     test('stripped Jimp keeps resize + WebP MIME and drops unused plugins', () => {

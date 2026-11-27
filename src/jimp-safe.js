@@ -63,12 +63,13 @@ export function safeCrop(image, options = {}) {
 /**
  * Resizes to fill the target box, then crops the overflow.
  * Mirrors Jimp's cover behavior without relying on the broken crop plugin.
- * Clamps scale to 1 by default (withoutEnlargement) so smaller images are never upscaled.
+ * A source smaller than the box is enlarged unless `withoutEnlargement` is set. Avatar
+ * crops rely on the enlargement to reach their fixed output size; thumbnails opt out.
  * @param {import('./jimp.js').Jimp} image
  * @param {{w: number, h: number, mode?: ResizeStrategy, withoutEnlargement?: boolean}} options
  * @returns {import('./jimp.js').Jimp}
  */
-export function safeCover(image, { w, h, mode = ResizeStrategy.BILINEAR, withoutEnlargement = true }) {
+export function safeCover(image, { w, h, mode = ResizeStrategy.BILINEAR, withoutEnlargement = false }) {
     assertJimpLikeImage(image);
 
     const targetWidth = Math.max(1, Math.round(Number(w) || 0));
@@ -78,7 +79,7 @@ export function safeCover(image, { w, h, mode = ResizeStrategy.BILINEAR, without
     const rawScale = targetWidth / targetHeight > sourceWidth / sourceHeight
         ? targetWidth / sourceWidth
         : targetHeight / sourceHeight;
-    // SillyBunny: clamp cover scale to <= 1 by default so smaller cards are never upscaled into bloated bitmaps.
+    // With withoutEnlargement the scale stops at 1, so the crop box shrinks instead of the source growing.
     const scale = withoutEnlargement ? Math.min(1, rawScale) : rawScale;
 
     let cropWidth = targetWidth;
