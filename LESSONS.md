@@ -968,6 +968,7 @@ This is the largest class by a wide margin.
 - **Fixes:** #560 (bind endpoint profiles to their saved secrets), #621 (persist the endpoint profile secret), #765 (select endpoint profiles by name and record the Additional Parameters in connection profiles), #1006 (store the Additional Parameters with each endpoint profile).
 
 ### Upstream compatibility and sync
+- `calculateClaudeBudgetTokens()` must return `null` early when `reasoningEffort` is falsy so callers that omit `reasoning_effort` do not trigger a default 1024-token thinking budget on traditional Claude models alongside forced `tool_choice` (`src/prompt-converters.js`, early port of upstream ST #6144; guarded by `tests/prompt-converters.test.js` and `tests/claude-sonnet5.test.js`).
 
 - **Breaks:** the version map reports the wrong SillyTavern base, so extensions that need a newer SillyTavern fail.
 - **Breaks:** a merged SillyTavern condition on a reasoning effort changes meaning, because the two projects map efforts differently. On GPT-6 Sol and Luna, SillyTavern sends Min as `'none'`. SillyBunny sends Min as `'minimal'` and None as `'none'`.
