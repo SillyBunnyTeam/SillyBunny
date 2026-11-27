@@ -114,7 +114,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-editor/lazy-image.j
         return img;
     }),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-editor/dialog.js', () => ({ openAlert: jest.fn(async () => 'cancel'), openDialog }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-editor/dialog.js', () => ({ createIconButton: jest.fn(() => document.createElement('button')), openAlert: jest.fn(async () => 'cancel'), openDialog }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-action-menu.js', () => ({ openActionMenu }));
 await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({ world_names: [] }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/dialogs.js', () => ({
@@ -135,6 +135,14 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settin
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
     scheduleTimelineRender,
+}));
+// The pages' selection mode imports the shared selection mode and the Show More row, which read the page's locale data through `t`; the bulk actions reach the whole app.
+await jest.unstable_mockModule('../public/scripts/i18n.js', () => ({ t: (strings, ...values) => strings.reduce((text, string, index) => text + string + (values[index] ?? ''), '') }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/details/bulk-actions.js', () => ({
+    deleteChats: jest.fn(async () => true),
+    downloadAttachmentsArchive: jest.fn(async () => true),
+    exportChatsArchive: jest.fn(async () => true),
+    removeAttachmentsFromChat: jest.fn(async () => true),
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/details/styles.js', () => ({
     ensureDetailsStyles,
