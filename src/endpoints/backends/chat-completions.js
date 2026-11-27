@@ -1228,7 +1228,8 @@ async function sendDeepSeekRequest(request, response) {
 
     try {
         let bodyParams = {};
-        const isThinkingModel = /(?:^|-)reasoner$|deepseek-v4/i.test(String(request.body.model || ''));
+        // SillyBunny: include deepseek-flash so reasoning_effort and tool-call reasoning_content stay wired after the rename (ST #6041).
+        const isThinkingModel = /(?:^|-)reasoner$|deepseek-v4|deepseek-flash/i.test(String(request.body.model || ''));
 
         if (request.body.logprobs > 0 && !isThinkingModel) {
             bodyParams['top_logprobs'] = request.body.logprobs;

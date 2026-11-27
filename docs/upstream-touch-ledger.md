@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/index.html`, `public/scripts/openai.js` and `src/endpoints/backends/chat-completions.js` - DeepSeek Flash default, vision and thinking model
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js`. |
+| Area | DeepSeek default model, inline media control, vision detection and server thinking-model detection. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6041 reconciled with upstream PR #6213 before the next full upstream sync, switching DeepSeek's default and vision model to `deepseek-flash`, enabling media inlining for DeepSeek, guarding `saveModelList()` against empty lists, and widening `isThinkingModel` in `chat-completions.js` for `deepseek-flash` reasoning content. |
+| Target seam | `sendDeepSeekRequest()` in `src/endpoints/backends/chat-completions.js` plus DeepSeek defaults/vision checks in `public/scripts/openai.js` and `public/index.html` (adapted early port of upstream SillyTavern PR #6041 / #6213, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Switch the DeepSeek picker and default to `deepseek-flash`, add `deepseek` to the inline media `data-source`, keep both `deepseek-flash` and `deepseek-v4-flash*` vision ids, guard `saveModelList` on non-empty model lists, and widen `isThinkingModel` in `sendDeepSeekRequest()` to match `deepseek-flash`. |
+| Protecting tests | `tests/deepseek-reasoning-effort.test.js`, `tests/openai-static-models.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- deepseek-reasoning-effort.test.js openai-static-models.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove `deepseek` from `#openai_media_inlining` and `deepseek-flash` from `#model_deepseek_select` in `public/index.html`, restore `deepseek_model: 'deepseek-v4-flash'`, the previous `saveModelList()`, vision regex, and vision model list in `public/scripts/openai.js`, restore `isThinkingModel` in `src/endpoints/backends/chat-completions.js`, and revert `tests/deepseek-reasoning-effort.test.js`. Existing saved DeepSeek selections remain valid. Reconcile or drop this entry on the upstream sync carrying ST #6041 / #6213. |
+| Last reviewed | 2026-11-27 (adapted early port of ST #6041 / #6213). |
+| Owner | Server and API compatibility integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
