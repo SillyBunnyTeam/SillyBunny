@@ -67,16 +67,40 @@ function schedulePostAppReadyActivation() {
     scheduleIdleWork(activateDeferredStyles);
 }
 
-function hasAppReadyMark() {
-    return Boolean(globalThis.performance?.getEntriesByName?.('sb-app-ready')?.length);
+/**
+ * The marks that start the idle activation. `sb-app-ready` ends a normal start. A first run holds startup on the
+ * Welcome dialog until the persona has a name, and a start that fails never reaches `sb-app-ready`, so the Welcome
+ * dialog (`sb-welcome-shown`, made where it opens) and the timer below start the activation as well.
+ */
+const ACTIVATION_MARKS = Object.freeze(['sb-app-ready', 'sb-welcome-shown']);
+/** How long after `load` the sheets activate when none of the marks has come. */
+const ACTIVATION_FALLBACK_AFTER_LOAD_MS = 3000;
+
+function hasActivationMark() {
+    return ACTIVATION_MARKS.some(name => globalThis.performance?.getEntriesByName?.(name)?.length);
+}
+
+function activateAfterLoadTimeout() {
+    const arm = () => {
+        if (typeof window.setTimeout === 'function') {
+            window.setTimeout(schedulePostAppReadyActivation, ACTIVATION_FALLBACK_AFTER_LOAD_MS);
+        }
+    };
+
+    if (document.readyState === 'complete') {
+        arm();
+    } else if (typeof window.addEventListener === 'function') {
+        window.addEventListener('load', arm, { once: true, passive: true });
+    }
 }
 
 // An activated sheet delays the window `load` event until it has loaded, and script.js waits for `load` at its top
-// level before the app starts. Wait for `sb-app-ready` (or `window` `load` / `readyState === 'complete'` when mark
-// observation is unavailable) before scheduling idle activation so slow sheets never stall boot. A caller that needs a
-// sheet earlier activates it through the two functions below.
+// level before the app starts. Wait for the earliest of `sb-app-ready`, the Welcome dialog and a timer that starts at
+// `load` (or `window` `load` / `readyState === 'complete'` when mark observation is unavailable) before scheduling idle
+// activation, so slow sheets never stall boot and are never left unloaded when the app does not become ready. A caller
+// that needs a sheet earlier activates it through the two functions below.
 function waitForAppReadyThenActivate() {
-    if (hasAppReadyMark()) {
+    if (hasActivationMark()) {
         schedulePostAppReadyActivation();
         return;
     }
@@ -86,16 +110,18 @@ function waitForAppReadyThenActivate() {
         && globalThis.PerformanceObserver.supportedEntryTypes.includes('mark')) {
         try {
             const observer = new globalThis.PerformanceObserver((list) => {
-                if (list.getEntries().some(entry => entry.name === 'sb-app-ready')) {
+                if (list.getEntries().some(entry => ACTIVATION_MARKS.includes(entry.name))) {
                     observer.disconnect();
                     schedulePostAppReadyActivation();
                 }
             });
             observer.observe({ type: 'mark', buffered: true });
-            if (hasAppReadyMark()) {
+            if (hasActivationMark()) {
                 observer.disconnect();
                 schedulePostAppReadyActivation();
+                return;
             }
+            activateAfterLoadTimeout();
             return;
         } catch {
             // Fall through to context readiness check when mark observation is unavailable.

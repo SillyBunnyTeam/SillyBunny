@@ -444,6 +444,9 @@ export async function openWelcomeDialog({ firstRun = false, avatarId = user_avat
         language?.destroy();
         throw error;
     }
+    // A first run holds startup on this dialog, so `sb-app-ready` does not come until the persona has a name. The loader
+    // of the deferred fonts starts on this mark as well (`public/scripts/performance-loader.js`).
+    globalThis.performance?.mark?.('sb-welcome-shown');
     // The dialog of a first run ends only once the persona has a name, so its first page offers no Close.
     if (firstRun) {
         dialog.page.querySelector('.sb-dialog__cancel')?.setAttribute('hidden', '');
