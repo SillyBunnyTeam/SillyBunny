@@ -51,7 +51,9 @@ describe('reasoning effort \'none\'', () => {
             const settings = { chat_completion_source: source, reasoning_effort: 'none' };
             expect(getReasoningEffort(settings, 'gpt-6-sol')).toBe('none');
             expect(getReasoningEffort(settings, 'gpt-6-luna')).toBe('none');
+            expect(getReasoningEffort(settings, 'gpt-6.1-terra')).toBe('none');
             expect(getReasoningEffort(settings, 'gpt-6-astra')).toBeUndefined();
+            expect(getReasoningEffort(settings, 'gpt-6.1-sol')).toBeUndefined();
         }
     });
 
@@ -72,10 +74,14 @@ describe('reasoning effort \'none\'', () => {
                 expect(supportsTools(source, 'gpt-6-sol', effort)).toBe(false);
                 expect(supportsTools(source, 'gpt-6-luna', effort)).toBe(false);
                 expect(supportsTools(source, 'gpt-6-astra', effort)).toBe(false);
+                expect(supportsTools(source, 'gpt-6.1-sol', effort)).toBe(false);
+                expect(supportsTools(source, 'gpt-6.1-terra', effort)).toBe(false);
             }
             expect(supportsTools(source, 'gpt-6-sol', 'none')).toBe(true);
             expect(supportsTools(source, 'gpt-6-luna', 'none')).toBe(true);
             expect(supportsTools(source, 'gpt-6-astra', 'none')).toBe(false);
+            expect(supportsTools(source, 'gpt-6.1-sol', 'none')).toBe(false);
+            expect(supportsTools(source, 'gpt-6.1-terra', 'none')).toBe(false);
         }
     });
 

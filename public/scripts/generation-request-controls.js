@@ -28,7 +28,7 @@ export function requestUsesReasoning(data) {
     }
 
     // These models reason even when the host's default effort is 'none' (unsent).
-    if (isKimiK3Model(model) || /(?:^|[/:])o[134](?:[-/:]|$)|gpt-6-astra|gpt-oss|grok-(?:3-mini|4|code)|deepseek[-_](?:r1|reasoner|v4)|qwq|qvq|magistral|(?:^|[-_/:])(?:reasoner|reasoning|thinking)(?:[-_/:]|$)/.test(model)) {
+    if (isKimiK3Model(model) || /(?:^|[/:])o[134](?:[-/:]|$)|gpt-(?:6-astra|6\.1-sol)|gpt-oss|grok-(?:3-mini|4|code)|deepseek[-_](?:r1|reasoner|v4)|qwq|qvq|magistral|(?:^|[-_/:])(?:reasoner|reasoning|thinking)(?:[-_/:]|$)/.test(model)) {
         return true;
     }
     if (/gemini-(?:2\.5|3|4)/.test(model)) {
@@ -43,7 +43,7 @@ export function requestUsesReasoning(data) {
     if (effort === 'none' || effort === 'disabled') {
         return false;
     }
-    if (/(?:^|[/:])gpt-5|(?:reasoner|reasoning|thinking)|qwen3(?!.*instruct)|glm-(?:4\.[5-9]|5)|kimi-k2\.5/.test(model)) {
+    if (/(?:^|[/:])gpt-(?:5|6\.1-terra)|(?:reasoner|reasoning|thinking)|qwen3(?!.*instruct)|glm-(?:4\.[5-9]|5)|kimi-k2\.5/.test(model)) {
         return true;
     }
 

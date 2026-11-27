@@ -581,7 +581,8 @@ export function getTokenizerModel(requestModel) {
         return 'o1';
     }
 
-    if (requestModel.includes('gpt-5') || requestModel.includes('gpt-6-') || requestModel.includes('o3') || requestModel.includes('o4-mini')) {
+    // SillyBunny: match GPT-6.x models for o1 tokenizer selection (ST #6213).
+    if (requestModel.includes('gpt-5') || /gpt-6(?:\.\d+)?-/.test(requestModel) || requestModel.includes('o3') || requestModel.includes('o4-mini')) {
         return 'o1';
     }
 

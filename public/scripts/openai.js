@@ -5028,10 +5028,11 @@ function getReasoningEffort(settings = null, model = null) {
 
         switch (settings.reasoning_effort) {
             case reasoning_effort_types.none:
-                // GPT-5.1 and newer, GPT-6 Sol and GPT-6 Luna accept 'none' as a real value that pins thinking off;
+                // GPT-5.1 and newer, GPT-6 Sol, GPT-6 Luna, and GPT-6.1 Terra accept 'none' as a real value that pins thinking off;
                 // omitting the field instead lets the model pick its own default depth.
                 // Everywhere else 'none' stays unsent, since endpoints that do not list it reject it.
-                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^(?:gpt-5\.(?:[1-9]|\d{2,})|gpt-6-(?:sol|luna))/.test(model)
+                // SillyBunny: adapt ST #6213 gpt-6.1-terra reasoning-off check to SillyBunny's 'none' rung.
+                return [chat_completion_sources.OPENAI, chat_completion_sources.OPENAI_RESPONSES, chat_completion_sources.AZURE_OPENAI, chat_completion_sources.CUSTOM].includes(settings.chat_completion_source) && /^(?:gpt-5\.(?:[1-9]|\d{2,})|gpt-6-(?:sol|luna)|gpt-6\.1-terra)/.test(model)
                     ? reasoning_effort_types.none
                     : undefined;
             case reasoning_effort_types.min:
@@ -5548,10 +5549,11 @@ export async function createGenerationParameters(settings, model, type, messages
         }
     }
 
-    if (gptSources.includes(settings.chat_completion_source) && /gpt-6-/.test(model)) {
+    // SillyBunny: include GPT-6.1 Sol and Terra parameter rules (ST #6213).
+    if (gptSources.includes(settings.chat_completion_source) && /gpt-6(?:\.\d+)?-/.test(model)) {
         generate_data.max_completion_tokens = generate_data.max_tokens;
         delete generate_data.max_tokens;
-        if (model.includes('gpt-6-astra') || generate_data.reasoning_effort !== 'none') {
+        if (model.includes('gpt-6-astra') || model.includes('gpt-6.1-sol') || generate_data.reasoning_effort !== 'none') {
             delete generate_data.temperature;
             delete generate_data.top_p;
             delete generate_data.logprobs;
@@ -8116,7 +8118,8 @@ function getMaxContextOpenAI(value) {
 
     /** @type {[RegExp, number][]} */
     const contextMap = [
-        [/^gpt-6-/, max_1050k],
+        // SillyBunny: match GPT-6.x models at 1.05M context (ST #6213).
+        [/^gpt-6(?:\.\d+)?-/, max_1050k],
         [/^gpt-5\.6/, max_1050k],
         [/^gpt-5\.[45]/, max_1mil],
         [/^gpt-5/, max_400k],
@@ -9525,6 +9528,9 @@ export function isImageInliningSupported() {
         'gpt-4.5-preview',
         'gpt-4o',
         'gpt-6-astra',
+        // SillyBunny: GPT-6.1 Sol and Terra vision support (ST #6213).
+        'gpt-6.1-sol',
+        'gpt-6.1-terra',
         'gpt-6-sol',
         'gpt-6-luna',
         'gpt-5',
