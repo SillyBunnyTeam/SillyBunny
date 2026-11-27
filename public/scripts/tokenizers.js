@@ -1290,7 +1290,9 @@ function isLargeBase64OrMediaString(value, parentKey = '') {
     if (typeof value !== 'string' || value.length <= LARGE_MEDIA_STRING_THRESHOLD) {
         return false;
     }
-    if (value.startsWith('data:') || value.includes(';base64,')) {
+    // A data URI has no whitespace in its header. Text that merely contains ";base64," or starts with "data:" is not media:
+    // the compact form samples a few characters, so it would give two different long texts the same cache key and a 256-token estimate.
+    if (value.startsWith('data:') && !/\s/.test(value.slice(0, 128))) {
         return true;
     }
     if (

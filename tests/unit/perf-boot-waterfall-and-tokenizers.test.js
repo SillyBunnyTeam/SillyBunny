@@ -669,6 +669,38 @@ describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimoda
         expect(estimatedTokens).toBeLessThan(2000);
     });
 
+    test('hashes and estimates long text in full when it only contains ";base64," or starts with "data:" prose', () => {
+        const filler = 'lorem ipsum dolor sit amet '.repeat(200);
+        const original = { role: 'user', content: `${filler} data:image/png;base64,AAAA ${'x'.repeat(2000)}` };
+        const editedAt = 300;
+        const edited = {
+            role: 'user',
+            content: `${original.content.slice(0, editedAt)}!${original.content.slice(editedAt + 1)}`,
+        };
+        expect(edited.content).toHaveLength(original.content.length);
+        expect(edited.content).not.toBe(original.content);
+        expect(getOpenAIMessageHash(original)).not.toBe(getOpenAIMessageHash(edited));
+
+        const dataProse = `data: ${'alpha beta gamma '.repeat(300)}`;
+        const editedDataProse = `${dataProse.slice(0, 2000)}!${dataProse.slice(2001)}`;
+        expect(editedDataProse).toHaveLength(dataProse.length);
+        expect(editedDataProse).not.toBe(dataProse);
+        expect(getOpenAIMessageHash({ role: 'user', content: dataProse }))
+            .not.toBe(getOpenAIMessageHash({ role: 'user', content: editedDataProse }));
+
+        // A long text with the marker at its end is counted as text, not as one 256-token image.
+        const longText = { role: 'user', content: `${'word '.repeat(10_000)} data:image/png;base64,AAAA` };
+        expect(guesstimateOpenAIMessage(longText)).toBeGreaterThan(10_000);
+
+        // A real data URI keeps the compact form: no JSON.stringify of the payload, and two images that differ at the tail do not collide.
+        const imageA = { role: 'user', content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${'A'.repeat(5000)}ONE` } }] };
+        const imageB = { role: 'user', content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${'A'.repeat(5000)}TWO` } }] };
+        hashInputs.length = 0;
+        expect(getOpenAIMessageHash(imageA)).not.toBe(getOpenAIMessageHash(imageB));
+        expect(hashInputs.every(input => input.length < 1024)).toBe(true);
+        expect(guesstimateOpenAIMessage(imageA)).toBeLessThan(2000);
+    });
+
     test('getTextTokensAsync encodes asynchronously and drawChunks commits via a single DocumentFragment', async () => {
         globalThis.jQuery.ajax.mockImplementation(({ async: isAsync, success }) => {
             expect(isAsync).toBe(true);
