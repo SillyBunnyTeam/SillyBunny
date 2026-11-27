@@ -227,9 +227,14 @@ export async function openConversationDetailsAt(page, pageId, { avatar = FIXTURE
     await settle(page, { root: DETAILS_WINDOW });
 }
 
-/** Closes the details window, one page at a time, as Escape does. */
+/** Closes the details window, one page at a time, as Escape does. A page in selection mode leaves it first, with the first Escape. */
 export async function closeConversationDetails(page) {
+    const selecting = `${DETAILS_WINDOW} .sb-dialog__header.is-selection-mode`;
     while (await page.locator(DETAILS_WINDOW).count()) {
+        if (await page.locator(selecting).count()) {
+            await page.keyboard.press('Escape');
+            await page.locator(selecting).waitFor({ state: 'detached' });
+        }
         const before = await page.locator(`${DETAILS_WINDOW} .sb-dialog__page`).count();
         await page.keyboard.press('Escape');
         await page.waitForFunction(({ selector, count }) => document.querySelectorAll(selector).length < count, { selector: `${DETAILS_WINDOW} .sb-dialog__page`, count: before });

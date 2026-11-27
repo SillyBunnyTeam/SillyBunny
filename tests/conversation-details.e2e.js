@@ -313,7 +313,8 @@ test.describe('Chats', () => {
 test.describe('Media, Files and Pinned', () => {
     const SHARED = [
         { id: 's-1', role: 'character', name: 'Character', mes: 'Here is the map.', extra: { media: [{ url: '/img/logo.png', type: 'image', title: 'map.png' }] } },
-        { id: 's-2', role: 'user', name: 'Tester', mes: 'Thanks, and the notes.', extra: { files: [{ url: 'data:text/plain;base64,aGVsbG8=', name: 'notes.txt', size: 1200 }] } },
+        // A file has to be an address of the app or a site: the page filters out a `data:` address of a file.
+        { id: 's-2', role: 'user', name: 'Tester', mes: 'Thanks, and the notes.', extra: { files: [{ url: '/robots.txt', name: 'notes.txt', size: 1200 }] } },
         { id: 's-3', role: 'character', name: 'Character', mes: 'Noon on Saturday, at the old oak.', extra: { conversation_pinned: true } },
     ];
 
