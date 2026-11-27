@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
@@ -60,11 +61,14 @@ function createPluginUpdateOperations() {
     };
 }
 
+const EXAMPLE_PLUGIN_PATH = path.resolve('/plugins/ExamplePlugin');
+const DIFFERENT_PLUGIN_PATH = path.resolve('/plugins/DifferentPlugin');
+
 function updatePayload() {
     return {
         transactionId: '11111111-1111-4111-8111-111111111111',
         expectedPluginId: 'example-plugin',
-        pluginPath: '/plugins/ExamplePlugin',
+        pluginPath: EXAMPLE_PLUGIN_PATH,
     };
 }
 
@@ -171,7 +175,7 @@ describe('server supervisor', () => {
         expect(spawnFn.mock.calls[1][1]).toEqual(['--max-old-space-size=2048', 'server.js']);
         children[1].emit('message', {
             type: SERVER_STARTUP_READY_MESSAGE,
-            plugins: [{ id: 'example-plugin', directoryPath: '/plugins/ExamplePlugin' }],
+            plugins: [{ id: 'example-plugin', directoryPath: EXAMPLE_PLUGIN_PATH }],
         });
         await tick();
         expect(pluginUpdate.finalize).toHaveBeenCalledWith(expect.objectContaining({ expectedPluginId: 'example-plugin' }));
@@ -220,7 +224,7 @@ describe('server supervisor', () => {
         await tick();
         children[1].emit('message', {
             type: SERVER_STARTUP_READY_MESSAGE,
-            plugins: [{ id: 'example-plugin', directoryPath: '/plugins/ExamplePlugin' }],
+            plugins: [{ id: 'example-plugin', directoryPath: EXAMPLE_PLUGIN_PATH }],
         });
         await tick();
 
@@ -251,7 +255,7 @@ describe('server supervisor', () => {
         await tick();
         children[1].emit('message', {
             type: SERVER_STARTUP_READY_MESSAGE,
-            plugins: [{ id: 'example-plugin', directoryPath: '/plugins/ExamplePlugin' }],
+            plugins: [{ id: 'example-plugin', directoryPath: EXAMPLE_PLUGIN_PATH }],
         });
         await tick();
 
@@ -286,7 +290,7 @@ describe('server supervisor', () => {
 
         children[1].emit('message', {
             type: SERVER_STARTUP_READY_MESSAGE,
-            plugins: [{ id: 'example-plugin', directoryPath: '/plugins/DifferentPlugin' }],
+            plugins: [{ id: 'example-plugin', directoryPath: DIFFERENT_PLUGIN_PATH }],
         });
         await tick();
         expect(children[1].send).toHaveBeenCalledWith(SUPERVISOR_SHUTDOWN_MESSAGE, expect.any(Function));

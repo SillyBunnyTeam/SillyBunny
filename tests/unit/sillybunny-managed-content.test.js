@@ -23,6 +23,9 @@ import {
     writeInside,
 } from '../../src/sillybunny-managed-content.js';
 import { createCard, createCardFile, createPng, createSpriteFile, createWorldFile } from '../fixtures/managed-content/fixture-builder.js';
+import { canCreateFileSymlinks } from '../util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 const temporaryRoots = [];
 
@@ -652,14 +655,16 @@ describe('the status of managed content', () => {
         expect(statusOf(managed, REISEN).status).toBe('modified');
     });
 
-    test('is modified for a card that is a link, so a file outside the data folder is never read or replaced', () => {
-        const { managed, user } = setup({ installed: bundleFiles(1) });
-        const outside = path.join(makeDirectory(), 'outside.png');
-        fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
-        fs.rmSync(path.join(user.characters, REISEN));
-        fs.symlinkSync(outside, path.join(user.characters, REISEN));
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('is modified for a card that is a link, so a file outside the data folder is never read or replaced', () => {
+            const { managed, user } = setup({ installed: bundleFiles(1) });
+            const outside = path.join(makeDirectory(), 'outside.png');
+            fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
+            fs.rmSync(path.join(user.characters, REISEN));
+            fs.symlinkSync(outside, path.join(user.characters, REISEN));
 
-        expect(statusOf(managed, REISEN).status).toBe('modified');
+            expect(statusOf(managed, REISEN).status).toBe('modified');
+        });
     });
 
     test('is modified for a world with an entry of the user, and never offers an update', () => {
@@ -694,15 +699,17 @@ describe('the status of managed content', () => {
         expect(statusOf(managed, REISEN).status).toBe('modified');
     });
 
-    test('does not offer an update for a card that is a link, because applying it is refused', () => {
-        const { managed, user } = setup({ published: [1, 2], installed: bundleFiles(1) });
-        const outside = path.join(makeDirectory(), 'outside.png');
-        fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
-        fs.rmSync(path.join(user.characters, REISEN));
-        fs.symlinkSync(outside, path.join(user.characters, REISEN));
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('does not offer an update for a card that is a link, because applying it is refused', () => {
+            const { managed, user } = setup({ published: [1, 2], installed: bundleFiles(1) });
+            const outside = path.join(makeDirectory(), 'outside.png');
+            fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
+            fs.rmSync(path.join(user.characters, REISEN));
+            fs.symlinkSync(outside, path.join(user.characters, REISEN));
 
-        expect(statusOf(managed, REISEN)).toMatchObject({ status: 'modified', installedVersion: null, updateAvailable: false });
-        expect(() => managed.apply(REISEN)).toThrow(expect.objectContaining({ code: 'unsafe_target' }));
+            expect(statusOf(managed, REISEN)).toMatchObject({ status: 'modified', installedVersion: null, updateAvailable: false });
+            expect(() => managed.apply(REISEN)).toThrow(expect.objectContaining({ code: 'unsafe_target' }));
+        });
     });
 
     test('is modified for a world with root extensions of the user, which its entries do not show', () => {
@@ -834,17 +841,19 @@ describe('reconciling managed content', () => {
         expect(readUserBytes(user, SPRITES, 'joy.webp')).toEqual(createSpriteFile(2));
     });
 
-    test('leaves a card that is a link alone, and does not write through it', () => {
-        const { managed, user } = setup({ published: [1, 2], installed: bundleFiles(1) });
-        const outside = path.join(makeDirectory(), 'outside.png');
-        fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
-        fs.rmSync(path.join(user.characters, REISEN));
-        fs.symlinkSync(outside, path.join(user.characters, REISEN));
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('leaves a card that is a link alone, and does not write through it', () => {
+            const { managed, user } = setup({ published: [1, 2], installed: bundleFiles(1) });
+            const outside = path.join(makeDirectory(), 'outside.png');
+            fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
+            fs.rmSync(path.join(user.characters, REISEN));
+            fs.symlinkSync(outside, path.join(user.characters, REISEN));
 
-        managed.reconcile();
+            managed.reconcile();
 
-        expect(fs.readFileSync(outside)).toEqual(bundleFiles(1)[REISEN]);
-        expect(fs.lstatSync(path.join(user.characters, REISEN)).isSymbolicLink()).toBe(true);
+            expect(fs.readFileSync(outside)).toEqual(bundleFiles(1)[REISEN]);
+            expect(fs.lstatSync(path.join(user.characters, REISEN)).isSymbolicLink()).toBe(true);
+        });
     });
 
     test('does not bring back an item the user deleted, or add one that was never seeded', () => {
@@ -964,17 +973,19 @@ describe('applying an update', () => {
         expect(backupFiles(user)).toEqual([]);
     });
 
-    test('is refused for a card that is a link, and writes nothing through it', () => {
-        const { managed, user } = setup({ published: [1, 2], installed: bundleFiles(1) });
-        const outside = path.join(makeDirectory(), 'outside.png');
-        fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
-        fs.rmSync(path.join(user.characters, REISEN));
-        fs.symlinkSync(outside, path.join(user.characters, REISEN));
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('is refused for a card that is a link, and writes nothing through it', () => {
+            const { managed, user } = setup({ published: [1, 2], installed: bundleFiles(1) });
+            const outside = path.join(makeDirectory(), 'outside.png');
+            fs.writeFileSync(outside, bundleFiles(1)[REISEN]);
+            fs.rmSync(path.join(user.characters, REISEN));
+            fs.symlinkSync(outside, path.join(user.characters, REISEN));
 
-        expect(() => managed.apply(REISEN)).toThrow(expect.objectContaining({ code: 'unsafe_target' }));
+            expect(() => managed.apply(REISEN)).toThrow(expect.objectContaining({ code: 'unsafe_target' }));
 
-        expect(fs.readFileSync(outside)).toEqual(bundleFiles(1)[REISEN]);
-        expect(backupFiles(user)).toEqual([]);
+            expect(fs.readFileSync(outside)).toEqual(bundleFiles(1)[REISEN]);
+            expect(backupFiles(user)).toEqual([]);
+        });
     });
 });
 
@@ -1034,16 +1045,18 @@ describe('restoring bundled content', () => {
         expect(() => managed.restore('Other.png')).toThrow(expect.objectContaining({ code: 'unknown_item' }));
     });
 
-    test('is refused for sprites that are a link, and writes nothing through it', () => {
-        const { managed, user } = setup({ installed: bundleFiles(1) });
-        const outside = makeDirectory();
-        fs.writeFileSync(path.join(outside, 'sad.webp'), createSpriteFile(55));
-        fs.rmSync(path.join(user.characters, SPRITES, 'sad.webp'));
-        fs.symlinkSync(path.join(outside, 'sad.webp'), path.join(user.characters, SPRITES, 'sad.webp'));
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('is refused for sprites that are a link, and writes nothing through it', () => {
+            const { managed, user } = setup({ installed: bundleFiles(1) });
+            const outside = makeDirectory();
+            fs.writeFileSync(path.join(outside, 'sad.webp'), createSpriteFile(55));
+            fs.rmSync(path.join(user.characters, SPRITES, 'sad.webp'));
+            fs.symlinkSync(path.join(outside, 'sad.webp'), path.join(user.characters, SPRITES, 'sad.webp'));
 
-        expect(() => managed.restore(SPRITES)).toThrow(expect.objectContaining({ code: 'unsafe_target' }));
+            expect(() => managed.restore(SPRITES)).toThrow(expect.objectContaining({ code: 'unsafe_target' }));
 
-        expect(fs.readFileSync(path.join(outside, 'sad.webp'))).toEqual(createSpriteFile(55));
+            expect(fs.readFileSync(path.join(outside, 'sad.webp'))).toEqual(createSpriteFile(55));
+        });
     });
 });
 

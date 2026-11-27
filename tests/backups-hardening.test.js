@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { setConfigFilePath } from '../src/util.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
 
@@ -83,7 +86,6 @@ describe('chat backup route hardening', () => {
         fs.writeFileSync(path.join(backupDirectory, 'chat_wrong.txt'), 'ignored');
         fs.writeFileSync(path.join(backupDirectory, 'settings.jsonl'), 'ignored');
         fs.mkdirSync(path.join(backupDirectory, 'chat_directory.jsonl'));
-        fs.symlinkSync(path.join(backupDirectory, 'chat_corrupt.jsonl'), path.join(backupDirectory, 'chat_link.jsonl'));
 
         const readStreamSpy = jest.spyOn(fs, 'createReadStream');
         try {
@@ -128,13 +130,12 @@ describe('chat backup route hardening', () => {
         }
     });
 
-    test('download and delete reject aliases, unrelated files, directories, and symlinks', async () => {
+    test('download and delete reject aliases, unrelated files, and directories', async () => {
         const outsidePath = path.join(outsideDirectory, 'chat_outside.jsonl');
         const sanitizedTarget = path.join(backupDirectory, 'chat_bad.jsonl');
         fs.writeFileSync(outsidePath, 'outside');
         fs.writeFileSync(sanitizedTarget, 'inside');
         fs.mkdirSync(path.join(backupDirectory, 'chat_not_file.jsonl'));
-        fs.symlinkSync(outsidePath, path.join(backupDirectory, 'chat_outside_link.jsonl'));
 
         const rejectedNames = [
             '../chat_outside.jsonl',
@@ -142,7 +143,6 @@ describe('chat backup route hardening', () => {
             'chat_bad.txt',
             'settings.jsonl',
             'chat_not_file.jsonl',
-            'chat_outside_link.jsonl',
         ];
 
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -159,6 +159,34 @@ describe('chat backup route hardening', () => {
 
         expect(fs.readFileSync(outsidePath, 'utf8')).toBe('outside');
         expect(fs.readFileSync(sanitizedTarget, 'utf8')).toBe('inside');
+    });
+
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('omits symlinked backups from listings and rejects them on download and delete', async () => {
+            const outsidePath = path.join(outsideDirectory, 'chat_outside_symlink.jsonl');
+            const insideLink = path.join(backupDirectory, 'chat_link.jsonl');
+            const outsideLink = path.join(backupDirectory, 'chat_outside_link.jsonl');
+            fs.writeFileSync(outsidePath, 'outside');
+            fs.symlinkSync(path.join(backupDirectory, 'chat_corrupt.jsonl'), insideLink);
+            fs.symlinkSync(outsidePath, outsideLink);
+
+            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const backups = await listChatBackupModels(backupDirectory);
+                expect(backups.some(backup => backup.file_name === 'chat_link.jsonl')).toBe(false);
+                expect(backups.some(backup => backup.file_name === 'chat_outside_link.jsonl')).toBe(false);
+
+                for (const endpoint of ['download', 'delete']) {
+                    const response = await postBackupRequest(endpoint, 'chat_outside_link.jsonl');
+                    expect(response.status).toBe(400);
+                }
+                expect(fs.readFileSync(outsidePath, 'utf8')).toBe('outside');
+            } finally {
+                warnSpy.mockRestore();
+                fs.rmSync(insideLink, { force: true });
+                fs.rmSync(outsideLink, { force: true });
+            }
+        });
     });
 
     test('download and delete operate on regular scoped backups', async () => {
