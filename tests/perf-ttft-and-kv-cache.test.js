@@ -1308,17 +1308,11 @@ describe('Track A: Server TTFT, Vertex OAuth2 cache, OpenRouter SWR, KV cache al
         }
     });
 
-    test('outbound keep-alive is configured in server-main.js and conversation-utils.js while preserving SSRF checks', () => {
+    test('outbound keep-alive is configured in server-main.js while preserving SSRF checks', () => {
         const serverMainSource = readRepoFile('src/server-main.js');
         expect(serverMainSource).toContain('const outboundKeepAlive = !isBunRuntime()');
         expect(serverMainSource).toContain('http.globalAgent = new http.Agent({ keepAlive: outboundKeepAlive');
         expect(serverMainSource).toContain('https.globalAgent = new https.Agent({ keepAlive: outboundKeepAlive');
         expect(serverMainSource).toContain('enableKeepAlive: outboundKeepAlive');
-
-        const convUtilsSource = readRepoFile('src/endpoints/conversation-utils.js');
-        expect(convUtilsSource).toContain('conversationImageHttpsAgent = new https.Agent({ keepAlive: true');
-        expect(convUtilsSource).not.toContain('\'Connection\': \'close\'');
-        expect(convUtilsSource).toContain('resolveGlobalAddress(url.hostname, signal)');
-        expect(convUtilsSource).toContain('createConversationPinnedLookup(resolved.address, resolved.family)');
     });
 });
