@@ -2,7 +2,7 @@
 import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { checkLabel } from '../helpers/capitalisation.js';
-import { fileExists, inventorySwitchNames, isMarked, markupLabels, placeText, readSource, scriptLabels, sourceFiles, translatedKeys, upstreamOriginFiles } from '../helpers/label-reader.js';
+import { POSITIONAL_HELPERS, fileExists, inventorySwitchNames, isMarked, markupLabels, placeText, readSource, scriptLabels, sourceFiles, translatedKeys, upstreamOriginFiles } from '../helpers/label-reader.js';
 import { COPY_RULE_MODULES } from '../helpers/copy-rule-modules.js';
 
 // DESIGN.md, The Capitalisation Rule and the writing-style rules. Every role-tagged label that SillyBunny writes is read from
@@ -123,6 +123,27 @@ describe('the source reader', () => {
         expect(scriptLabels(source, 'public/scripts/sillybunny-tabs.js').map(({ role, text }) => [role, text])).toEqual([
             ['heading', 'Presets'], ['caption', 'Choose a preset.'], ['heading', 'Stopping'], ['caption', 'Choose a string.'],
         ]);
+    });
+
+    test('reads the group helpers and the group table of the tab modules that the shell loads on demand', () => {
+        const source = 'createBackendGroupHeader(\'Presets\', {}, \'Choose a preset.\'); createGroup(\'id\', \'Stopping\', \'Choose a string.\'); createPromptingGroup(\'id\', \'Reply\', \'Set a reply.\'); createBackendPromptGroup(\'id\', \'Prompt\'); for (const [id, title, description] of [[\'sb-tc-names\', \'Character Names\', \'Choose a name.\']]) go(id, title, description);';
+        expect(scriptLabels(source, 'public/scripts/sillybunny-tabs/backend-panels.js').map(({ role, text }) => [role, text])).toEqual([
+            ['heading', 'Presets'], ['caption', 'Choose a preset.'], ['heading', 'Stopping'], ['caption', 'Choose a string.'],
+            ['heading', 'Reply'], ['caption', 'Set a reply.'], ['heading', 'Prompt'], ['heading', 'Character Names'], ['caption', 'Choose a name.'],
+        ]);
+        expect(scriptLabels('createBackendGroupHeader(\'Sampling\', {}, \'Choose a value.\');', 'public/scripts/sillybunny-tabs/sampling-panel.js').map(({ role, text }) => [role, text]))
+            .toEqual([['heading', 'Sampling'], ['caption', 'Choose a value.']]);
+    });
+
+    test('every tab module that calls a group helper has an entry for it', () => {
+        const missing = [];
+        for (const file of sourceFiles().filter(each => each.startsWith('public/scripts/sillybunny-tabs/'))) {
+            const source = readSource(file);
+            for (const helper of ['createBackendGroupHeader', 'createBackendPromptGroup', 'createGroup', 'createPromptingGroup']) {
+                if (new RegExp(`\\b${helper}\\(`).test(source) && !POSITIONAL_HELPERS[file]?.[helper]) missing.push(`${file}: ${helper}`);
+            }
+        }
+        expect(missing).toEqual([]);
     });
 
     test('reads a table of [id, title, description] as a heading and a caption', () => {
