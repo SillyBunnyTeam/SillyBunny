@@ -1830,9 +1830,15 @@ if (typeof document !== 'undefined' && document.readyState === 'loading') {
         watchBootstrapTargetsOnce();
     }, { once: true });
 }
+// Nothing polls the settings any more, so the panels re-read them when the app says that they may have changed:
+// any code that changes extension settings from outside this file saves them afterwards (SETTINGS_UPDATED), and a
+// settings load rebuilds them. The sync only writes what differs, so an unsaved divider field is kept.
 for (const eventName of [
     event_types?.APP_READY,
+    event_types?.SETTINGS_LOADED,
     event_types?.SETTINGS_LOADED_AFTER,
+    event_types?.SETTINGS_UPDATED,
+    event_types?.EXTENSION_SETTINGS_LOADED,
     event_types?.OAI_PRESET_CHANGED_AFTER,
     event_types?.CHAT_CHANGED,
 ].filter(Boolean)) {

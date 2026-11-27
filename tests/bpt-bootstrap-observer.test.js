@@ -6,7 +6,10 @@ await jest.unstable_mockModule('../public/script.js', () => ({
     eventSource: { on: jest.fn(), emit: jest.fn() },
     event_types: {
         APP_READY: 'app_ready',
+        SETTINGS_LOADED: 'settings_loaded',
         SETTINGS_LOADED_AFTER: 'settings_loaded_after',
+        SETTINGS_UPDATED: 'settings_updated',
+        EXTENSION_SETTINGS_LOADED: 'extension_settings_loaded',
         OAI_PRESET_CHANGED_AFTER: 'oai_preset_changed_after',
         CHAT_CHANGED: 'chat_changed',
     },
@@ -98,5 +101,42 @@ describe('BunnyPresetTools bootstrap observer', () => {
         window.document.getElementById('completion_prompt_manager').append(list);
         await flush();
         expect(window.document.getElementById('bpt-prompt-toolbar')).not.toBeNull();
+    });
+
+    test('re-reads settings that changed elsewhere when the app reports them, and keeps an unsaved divider field', async () => {
+        const { eventSource } = await import('../public/script.js');
+        const { extension_settings: extensionSettings } = await import('../public/scripts/extensions.js');
+        const { document: pageDocument } = testWindow;
+        // Longer than the 40 ms background sync timer that every bootstrap arms, so none is pending when the globals are restored.
+        const flush = () => new Promise(resolve => setTimeout(resolve, 80));
+        const report = async (eventName) => {
+            const handlers = eventSource.on.mock.calls.filter(([name]) => name === eventName).map(([, handler]) => handler);
+            expect(handlers.length).toBeGreaterThan(0);
+            handlers.forEach(handler => handler());
+            await flush();
+        };
+        const field = pageDocument.getElementById('bpt-divider-patterns');
+        const sectionsToggle = pageDocument.getElementById('bpt-enable-sections');
+        expect(field).not.toBeNull();
+
+        field.value = 'typed, not saved';
+        await report('settings_updated');
+        expect(field.value).toBe('typed, not saved');
+
+        extensionSettings.BunnyPresetTools.dividerRegexPattern = 'changed elsewhere';
+        extensionSettings.BunnyPresetTools.enablePromptSections = false;
+        await report('settings_updated');
+        expect(field.value).toBe('changed elsewhere');
+        expect(sectionsToggle.checked).toBe(false);
+
+        extensionSettings.BunnyPresetTools.dividerRegexPattern = 'after a settings load';
+        extensionSettings.BunnyPresetTools.enablePromptSections = true;
+        await report('extension_settings_loaded');
+        expect(field.value).toBe('after a settings load');
+        expect(sectionsToggle.checked).toBe(true);
+
+        extensionSettings.BunnyPresetTools.dividerRegexPattern = 'after the settings event';
+        await report('settings_loaded');
+        expect(field.value).toBe('after the settings event');
     });
 });
