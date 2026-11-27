@@ -277,7 +277,7 @@ import { markdownUnderscoreExt } from './scripts/showdown-underscore.js';
 import { MARKDOWN_ENGINES, createMarkdownItConverter, normalizeMarkdownEngine } from './scripts/markdown-engine.js';
 import { NOTE_MODULE_NAME, getAuthorsNoteDepth, getAuthorsNotePosition, getAuthorsNoteRole, initAuthorsNote, setFloatingPrompt, shouldWIAddPrompt } from './scripts/authors-note.js';
 import { registerPromptManagerMigration } from './scripts/PromptManager.js';
-import { getRegexedString, regex_placement } from './scripts/extensions/regex/engine.js';
+import { getRegexedString, hasApplicableRegexScripts, regex_placement } from './scripts/extensions/regex/engine.js';
 import { AGENT_REGEX_PLACEMENT, applyRegexScriptList } from './scripts/extensions/in-chat-agents/regex-scripts.js';
 import { resolveRegexScriptsForSnapshot } from './scripts/extensions/in-chat-agents/regex-snapshot-store.js';
 import { consolidateCompanionChatHistory, hasCompanionChatHistoryForHiddenHost, selectCompanionChatHistory } from './scripts/extensions/in-chat-agents/companion/companion-shared.js';
@@ -435,6 +435,7 @@ import {
 import {
     CARD_SCRIPT_MARKER_TAG,
     buildCardScriptToastKey,
+    containsEmbeddedCardScript,
     forgetAllCardScripts,
     getCardScriptSnapshot,
     hasCardScriptToastBeenShown,
@@ -4283,6 +4284,24 @@ export async function sendTextareaMessage() {
     return generation;
 }
 
+// SillyBunny: shared by prepareMessageDisplayText and the streaming block-format check, so both pick the same regex placement.
+function getDisplayRegexPlacement(messageId, isUser, isReasoning) {
+    try {
+        if (isReasoning) {
+            return regex_placement.REASONING;
+        }
+        if (isUser) {
+            return regex_placement.USER_INPUT;
+        } else if (chat[messageId]?.extra?.type === 'narrator') {
+            return regex_placement.SLASH_COMMAND;
+        } else {
+            return regex_placement.AI_OUTPUT;
+        }
+    } catch {
+        return regex_placement.AI_OUTPUT;
+    }
+}
+
 // SillyBunny: Extracted message text preparation from messageFormatting for mobile streaming performance.
 // Allows plain-text preview rendering without full markdown/sanitizer pipeline on Android.
 function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, isReasoning = false) {
@@ -4320,24 +4339,7 @@ function prepareMessageDisplayText(mes, ch_name, isSystem, isUser, messageId, is
     }
 
     if (!isSystem) {
-        const getRegexPlacement = () => {
-            try {
-                if (isReasoning) {
-                    return regex_placement.REASONING;
-                }
-                if (isUser) {
-                    return regex_placement.USER_INPUT;
-                } else if (chat[messageId]?.extra?.type === 'narrator') {
-                    return regex_placement.SLASH_COMMAND;
-                } else {
-                    return regex_placement.AI_OUTPUT;
-                }
-            } catch {
-                return regex_placement.AI_OUTPUT;
-            }
-        };
-
-        const regexPlacement = getRegexPlacement();
+        const regexPlacement = getDisplayRegexPlacement(messageId, isUser, isReasoning);
         const depth = getNonSystemMessageDepth(chat, resolvedMessageId);
         const agentRegexScripts = resolveRegexScriptsForSnapshot(chatMessage?.extra?.inChatAgents);
 
@@ -4429,9 +4431,11 @@ function sanitizeMessageHtml(mes, sanitizerOverrides = {}) {
  *   overrides. Merged on top of the default config.
  * @param {boolean} [isReasoning=false] - Whether the message is reasoning/thinking
  *   output (affects regex placement and some display rules).
+ * @param {((html: string) => void) | null} [onConvertedHtml=null] - SillyBunny: receives the HTML string that
+ *   goes into the sanitizer, before it runs. The streaming renderer uses it to check that a block stands alone.
  * @returns {string} Sanitized HTML string ready to assign to `innerHTML`.
  */
-export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false) {
+export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, sanitizerOverrides = {}, isReasoning = false, onConvertedHtml = null) {
     if (!mes) {
         return '';
     }
@@ -4536,7 +4540,57 @@ export function messageFormatting(mes, ch_name, isSystem, isUser, messageId, san
     mes = restoreOocBlocksForDisplay(mes, oocBlocks);
     // SillyBunny: card script detection - see #94.
     mes = markCardScriptHtml(mes, messageId, originalMessageHtml);
+    onConvertedHtml?.(mes);
     return sanitizeMessageHtml(mes, sanitizerOverrides);
+}
+
+/**
+ * SillyBunny: decides whether the streaming renderer may format the settled blocks of a message on their own.
+ * Every step of {@link messageFormatting} that reads text outside one block makes the answer `null`: regex
+ * scripts, extension hooks, prompt-bias stripping, the one-time replacement of a reasoning marker, and card
+ * script capture. The result is re-read on every tick, so a change in these settings during the stream
+ * switches that stream to whole-message formatting for as long as it holds.
+ * @param {string} source Message text that the next render formats
+ * @param {number} messageId Index of the message in the chat array
+ * @param {string} name Character name of the message
+ * @param {boolean} isSystem Whether the message is a system message
+ * @param {boolean} isUser Whether the message was sent by the user
+ * @returns {string | null} A key for everything else that shapes the formatted output (a different key means
+ *   that formatted blocks must be formatted again), or `null` when the whole message has to be formatted at once
+ */
+function getStreamingBlockFormatSignature(source, messageId, name, isSystem, isUser) {
+    if (isSystem || isUser || messageId === 0 || MessageFormatter.hasHooks() || containsEmbeddedCardScript(source)) {
+        return null;
+    }
+    // Showdown joins lists, tables and loose text across blank lines in ways that the block scan does not follow.
+    if (normalizeMarkdownEngine(power_user.markdown_engine) !== MARKDOWN_ENGINES.MARKDOWN_IT) {
+        return null;
+    }
+
+    const placement = getDisplayRegexPlacement(messageId, isUser, false);
+    const depth = getNonSystemMessageDepth(chat, Number(messageId));
+    if (hasApplicableRegexScripts(placement, { isMarkdown: true, depth })) {
+        return null;
+    }
+    if (resolveRegexScriptsForSnapshot(chat[messageId]?.extra?.inChatAgents).length > 0) {
+        return null;
+    }
+    if (!power_user.show_user_prompt_bias && getEffectivePromptBias()) {
+        return null;
+    }
+    for (const marker of [power_user.reasoning?.prefix, power_user.reasoning?.suffix]) {
+        if (marker && marker.trim().length > 0 && source.includes(marker)) {
+            return null;
+        }
+    }
+
+    return [
+        messageId, name,
+        power_user.auto_fix_generated_markdown ? 1 : 0,
+        power_user.encode_tags ? 1 : 0,
+        power_user.allow_name2_display ? 1 : 0,
+        power_user.markdown_escape_strings ?? '',
+    ].join('\0');
 }
 
 function notifyCardScriptStripped(messageElement, messageId) {
@@ -7022,7 +7076,10 @@ class StreamingProcessor {
             if (this.incrementalBlockFormatterKey !== formatKey) {
                 this.incrementalBlockFormatter?.reset?.();
                 this.incrementalBlockFormatter = typeof createIncrementalBlockFormatter === 'function'
-                    ? createIncrementalBlockFormatter(block => messageFormatting(block, name, is_system, is_user, messageId, {}, false))
+                    ? createIncrementalBlockFormatter(
+                        (block, hooks) => messageFormatting(block, name, is_system, is_user, messageId, {}, false, hooks?.onConvertedHtml),
+                        { getSignature: source => getStreamingBlockFormatSignature(source, messageId, name, is_system, is_user) },
+                    )
                     : null;
                 this.incrementalBlockFormatterKey = formatKey;
             }

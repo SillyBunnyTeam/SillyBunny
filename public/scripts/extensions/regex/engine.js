@@ -573,6 +573,34 @@ export function getRegexedString(rawString, placement, { characterOverride, isMa
     return finalString;
 }
 
+// SillyBunny: lets the streaming renderer ask whether any script would touch a message before it formats the message in blocks.
+/**
+ * Tells whether {@link getRegexedString} would run at least one script for these parameters.
+ * The filters match the ones in `getRegexedString`; change both together.
+ * @param {regex_placement} placement The placement of the string
+ * @param {RegexParams} params The parameters to use for the regex script
+ * @returns {boolean} True when at least one script applies
+ */
+export function hasApplicableRegexScripts(placement, { isMarkdown, isPrompt, isEdit, depth } = {}) {
+    if (extension_settings.disabledExtensions?.includes('regex') || placement === undefined) {
+        return false;
+    }
+
+    const bucket = getCompiledBucket(placement, Boolean(isMarkdown), Boolean(isPrompt));
+    const hasDepth = typeof depth === 'number';
+    for (let i = 0; i < bucket.length; i++) {
+        const entry = bucket[i];
+        if (isEdit && !entry.runOnEdit) {
+            continue;
+        }
+        if (hasDepth && ((entry.hasMinDepth && depth < entry.minDepth) || (entry.hasMaxDepth && depth > entry.maxDepth))) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
 /**
  * Runs the provided regex script on the given string
  * @param {RegexScript} regexScript The regex script to run

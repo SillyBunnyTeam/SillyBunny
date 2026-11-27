@@ -1,4 +1,5 @@
 import { morphdom } from '../../lib.js';
+import { extractOocBlocksForDisplay } from '../ooc-blocks.js';
 
 // SillyBunny: bound live stream fade-in spans to the active tail and provide incremental block splitting/caching.
 /** Maximum `.text_segment` spans kept live in the active streaming tail (< 60 budget). */
@@ -12,21 +13,36 @@ const DESCENDABLE_CONTAINER_TAGS = new Set([
     'UL', 'OL', 'BLOCKQUOTE', 'DIV', 'SECTION', 'ARTICLE', 'ASIDE',
 ]);
 
+// The tags that markdown-it keeps raw from the opening tag to the matching closing tag across blank lines
+// (`SHOWDOWN_BLOCK_TAGS` in markdown-engine.js), plus `details` and `svg`.
 const UNSPLITTABLE_HTML_TAGS = new Set([
     'pre', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'dl', 'ol', 'ul',
     'script', 'noscript', 'form', 'fieldset', 'iframe', 'math', 'style', 'section', 'header',
     'footer', 'nav', 'article', 'aside', 'address', 'audio', 'canvas', 'figure', 'hgroup',
-    'output', 'video', 'details', 'svg',
+    'output', 'video', 'details', 'svg', 'p',
 ]);
 
+// Markdown ends a block at a line that holds only spaces and tabs. A no-break space or another Unicode space
+// is text, which `String.prototype.trim` would treat as blank.
+const MARKDOWN_BLANK_LINE_RE = /^[ \t]*$/;
 const REFERENCE_DEF_RE = /^[ \t]{0,3}\[[^\r\n\]]+\]:[ \t]*/m;
 const REFERENCE_LINK_USE_RE = /\]\[[^\r\n\]]*\]/;
 // CommonMark fenced code blocks allow 0-3 leading spaces (a leading tab starts an indented code block).
 const FENCE_OPEN_OR_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const HTML_TAG_TOKEN_RE = /<!--|-->|<(\/?)([a-zA-Z][a-zA-Z0-9:-]*)\b([^>]*?)(\/?)>/g;
-const LIST_ITEM_START_RE = /^[ \t]{0,3}(?:[-*+]|\d+[.)])[ \t]/;
-const INDENTED_CODE_START_RE = /^(?: {4}|\t)/;
-const CONTINUATION_BLOCK_START_RE = /^(?:[ \t]{4,}|[ \t]{0,3}(?:[-*+]|\d+[.)])[ \t]|[ \t]{0,3}>|[ \t]{0,3}\||[ \t]{0,3}(?:===+|---+)[ \t]*(?:\r?\n|$))/;
+// A marker with nothing after it is an empty list item, and the next item of the list starts with it
+// while the user has not typed the text of the item yet. The markdown-it HTML block rule lets text that follows
+// the closing tag on the same line start a new block, so a marker can follow a `>` on its line.
+const LIST_MARKER_SOURCE = String.raw`(?:[ \t]{0,3}|[^\n]*>[ \t]*)(?:[-*+]|\d+[.)])(?:[ \t\r\n]|$)`;
+const LIST_ITEM_START_RE = new RegExp(`^${LIST_MARKER_SOURCE}`);
+// A list can start in the middle of a block, after a line of text, and still go on in the next block.
+const LIST_ITEM_LINE_RE = new RegExp(`^${LIST_MARKER_SOURCE}`, 'm');
+// A tab after up to three spaces reaches the fourth column as well.
+const INDENTED_CODE_START_RE = /^(?: {4}| {0,3}\t)/;
+// Indented code can also start after a `>`, because text after a closing HTML tag on its line starts a new block.
+const INDENTED_CODE_LINE_RE = /(?:^|>)(?: {4}| {0,3}\t)/;
+const LIST_CONTINUATION_INDENT_RE = /^(?:[ \t]{2,}|\t)/;
+const CONTINUATION_BLOCK_START_RE = new RegExp(`^(?:[ \\t]{4,}| {0,3}\\t|${LIST_MARKER_SOURCE}|[ \\t]{0,3}>|[ \\t]{0,3}\\||[ \\t]{0,3}(?:===+|---+)[ \\t]*(?:\\r?\\n|$))`);
 
 /** @type {Map<string, Intl.Segmenter>} */
 const segmenterCache = new Map();
@@ -520,6 +536,15 @@ export function applyStreamFadeIn(messageTextElement, htmlContent, { bypassFadeI
 }
 
 /**
+ * @param {string} text
+ * @returns {string} The last line of `text` that holds a character other than whitespace, or an empty string
+ */
+function lastNonBlankLine(text) {
+    const trimmed = text.trimEnd();
+    return trimmed.slice(trimmed.lastIndexOf('\n') + 1);
+}
+
+/**
  * Splits a streaming Markdown source string into an immutable settled `prefix` and an active `tail`.
  *
  * Never splits inside:
@@ -561,6 +586,7 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
 
     let fenceChar = '';
     let fenceLength = 0;
+    let sawIndentedFence = false;
     let oocDepth = 0;
     let inHtmlComment = false;
     /** @type {string[]} */
@@ -574,22 +600,42 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
             ? source.length
             : (newlineIdx > lineStart && source.charCodeAt(newlineIdx - 1) === 0x0D ? newlineIdx - 1 : newlineIdx);
         const line = source.slice(lineStart, lineBodyEnd);
-        const isBlankLine = line.trim().length === 0;
+        const isBlankLine = MARKDOWN_BLANK_LINE_RE.test(line);
+        const oocDepthAtLineStart = oocDepth;
 
-        if (!inHtmlComment && oocDepth === 0 && htmlTagStack.length === 0) {
+        // OOC extraction reads the raw text, so a `((` inside a fence or a comment counts as well.
+        if (oocDepth > 0 || line.includes('((')) {
+            for (let i = 0; i < line.length - 1; i++) {
+                const c = line.charCodeAt(i);
+                if (c === 0x28 && line.charCodeAt(i + 1) === 0x28) {
+                    oocDepth++;
+                    i++;
+                } else if (oocDepth > 0 && c === 0x29 && line.charCodeAt(i + 1) === 0x29) {
+                    oocDepth--;
+                    i++;
+                }
+            }
+        }
+
+        if (!inHtmlComment && oocDepthAtLineStart === 0 && htmlTagStack.length === 0) {
             const fenceMatch = FENCE_OPEN_OR_CLOSE_RE.exec(line);
             if (fenceMatch) {
                 const marker = fenceMatch[1];
                 const rest = fenceMatch[2];
                 if (fenceLength === 0) {
                     if (!(marker[0] === '`' && rest.includes('`'))) {
+                        // An indented fence can belong to a list item that ends before the fence is closed, and
+                        // this scan does not know where list items end, so it makes no further split.
+                        if (line.charCodeAt(0) === 0x20) {
+                            sawIndentedFence = true;
+                        }
                         fenceChar = marker[0];
                         fenceLength = marker.length;
                         sawContentInBlock = true;
                         lineStart = lineEnd;
                         continue;
                     }
-                } else if (marker[0] === fenceChar && marker.length >= fenceLength && rest.trim() === '') {
+                } else if (marker[0] === fenceChar && marker.length >= fenceLength && MARKDOWN_BLANK_LINE_RE.test(rest)) {
                     fenceChar = '';
                     fenceLength = 0;
                     sawContentInBlock = true;
@@ -600,20 +646,6 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
         }
 
         if (fenceLength === 0) {
-            // Track OOC (( ... )) outside HTML comments
-            if (!inHtmlComment && (oocDepth > 0 || line.includes('(('))) {
-                for (let i = 0; i < line.length - 1; i++) {
-                    const c = line.charCodeAt(i);
-                    if (c === 0x28 && line.charCodeAt(i + 1) === 0x28) {
-                        oocDepth++;
-                        i++;
-                    } else if (oocDepth > 0 && c === 0x29 && line.charCodeAt(i + 1) === 0x29) {
-                        oocDepth--;
-                        i++;
-                    }
-                }
-            }
-
             // Track HTML comments & block-level HTML tags outside OOC
             if (oocDepth === 0 && (inHtmlComment || htmlTagStack.length > 0 || line.includes('<'))) {
                 HTML_TAG_TOKEN_RE.lastIndex = 0;
@@ -627,6 +659,10 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
                     }
                     if (token === '<!--') {
                         inHtmlComment = true;
+                        continue;
+                    }
+                    // A `-->` outside a comment, as in the arrow `<-->`, is plain text and has no tag name.
+                    if (token === '-->') {
                         continue;
                     }
                     const isClosing = match[1] === '/';
@@ -650,7 +686,7 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
             }
         }
 
-        const isTopLevel = fenceLength === 0 && oocDepth === 0 && !inHtmlComment && htmlTagStack.length === 0;
+        const isTopLevel = fenceLength === 0 && oocDepth === 0 && !inHtmlComment && htmlTagStack.length === 0 && !sawIndentedFence;
         if (isTopLevel && isBlankLine && sawContentInBlock) {
             // Absorb consecutive blank lines into the completed block's trailing separator.
             while (lineEnd < source.length) {
@@ -659,7 +695,7 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
                 const nextBodyEnd = nextNl === -1
                     ? source.length
                     : (nextNl > lineEnd && source.charCodeAt(nextNl - 1) === 0x0D ? nextNl - 1 : nextNl);
-                if (source.slice(lineEnd, nextBodyEnd).trim().length !== 0) {
+                if (!MARKDOWN_BLANK_LINE_RE.test(source.slice(lineEnd, nextBodyEnd))) {
                     break;
                 }
                 lineEnd = nextEnd;
@@ -689,10 +725,10 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
             const prev = blocks[blocks.length - 1];
             const prevTrimmed = prev.replace(/^\s+/, '');
             const currTrimmed = block.replace(/^\s+/, '');
-            const bothLists = LIST_ITEM_START_RE.test(prevTrimmed) && (LIST_ITEM_START_RE.test(currTrimmed) || /^[ \t]{2,}/.test(block));
+            const bothLists = LIST_ITEM_LINE_RE.test(prev) && (LIST_ITEM_START_RE.test(currTrimmed) || LIST_CONTINUATION_INDENT_RE.test(block));
             const bothQuotes = prevTrimmed.startsWith('>') && currTrimmed.startsWith('>');
             const bothTables = prevTrimmed.startsWith('|') && currTrimmed.startsWith('|');
-            const bothIndentedCode = INDENTED_CODE_START_RE.test(prev) && INDENTED_CODE_START_RE.test(block);
+            const bothIndentedCode = INDENTED_CODE_START_RE.test(block) && INDENTED_CODE_LINE_RE.test(lastNonBlankLine(prev));
             if (bothLists || bothQuotes || bothTables || bothIndentedCode) {
                 blocks[blocks.length - 1] = prev + block;
                 continue;
@@ -744,18 +780,266 @@ export function splitStreamingBlocks(text, { isFinal = false } = {}) {
     };
 }
 
+const HTML_VOID_TAGS = new Set([
+    'area', 'base', 'basefont', 'bgsound', 'br', 'col', 'embed', 'frame', 'hr', 'image', 'img', 'input',
+    'keygen', 'link', 'meta', 'param', 'source', 'track', 'wbr',
+]);
+
+/** Elements whose content is text up to the matching end tag, so tags inside them are not markup. */
+const HTML_RAW_TEXT_TAGS = new Set(['iframe', 'noembed', 'noframes', 'script', 'style', 'textarea', 'title', 'xmp']);
+
 /**
- * Creates a stateful incremental block formatter that caches formatted HTML of settled
- * prefix blocks while ALWAYS running the full formatter + sanitizer (`formatFn`) on the
- * active tail, and running a single full-document pass on `isFinal = true` for 100% parity.
+ * Elements that change parser state beyond their own subtree (document structure, foreign content,
+ * insertion modes). A block that holds one is never treated as standing alone.
+ */
+const HTML_STATEFUL_TAGS = new Set(['body', 'frameset', 'head', 'html', 'math', 'plaintext', 'svg', 'template']);
+
+const HTML_WHITESPACE_CODES = new Set([0x09, 0x0A, 0x0C, 0x0D, 0x20]);
+
+function isAsciiLetterCode(code) {
+    return (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A);
+}
+
+/**
+ * Reads one tag from `html`, starting at the `<` at `start`, as the HTML tokenizer does.
+ * @param {string} html
+ * @param {number} start Index of the `<`
+ * @returns {{ name: string, isClosing: boolean, end: number } | null} `end` is the index after the `>`; null for
+ *   markup that is not a plain, complete tag (an unquoted `"` or `<` in an attribute, a missing `>`, and so on)
+ */
+function readHtmlTag(html, start) {
+    const length = html.length;
+    const isClosing = html.charCodeAt(start + 1) === 0x2F;
+    const nameStart = start + (isClosing ? 2 : 1);
+    let i = nameStart;
+    while (i < length) {
+        const code = html.charCodeAt(i);
+        if (HTML_WHITESPACE_CODES.has(code) || code === 0x2F || code === 0x3E) break;
+        i++;
+    }
+    const name = html.slice(nameStart, i).toLowerCase();
+
+    while (i < length) {
+        while (i < length && HTML_WHITESPACE_CODES.has(html.charCodeAt(i))) i++;
+        const code = html.charCodeAt(i);
+        if (code === 0x3E) {
+            return { name, isClosing, end: i + 1 };
+        }
+        if (code === 0x2F) {
+            if (html.charCodeAt(i + 1) !== 0x3E) return null;
+            return { name, isClosing, end: i + 2 };
+        }
+        if (isClosing) return null;
+
+        const attributeStart = i;
+        while (i < length) {
+            const c = html.charCodeAt(i);
+            if (HTML_WHITESPACE_CODES.has(c) || c === 0x2F || c === 0x3E || c === 0x3D) break;
+            if (c === 0x22 || c === 0x27 || c === 0x3C) return null;
+            i++;
+        }
+        if (i === attributeStart) return null;
+        while (i < length && HTML_WHITESPACE_CODES.has(html.charCodeAt(i))) i++;
+        if (html.charCodeAt(i) !== 0x3D) continue;
+
+        i++;
+        while (i < length && HTML_WHITESPACE_CODES.has(html.charCodeAt(i))) i++;
+        const quote = html.charCodeAt(i);
+        if (quote === 0x22 || quote === 0x27) {
+            const close = html.indexOf(String.fromCharCode(quote), i + 1);
+            if (close === -1) return null;
+            i = close + 1;
+        } else {
+            const valueStart = i;
+            while (i < length) {
+                const c = html.charCodeAt(i);
+                if (HTML_WHITESPACE_CODES.has(c) || c === 0x3E) break;
+                if (c === 0x22 || c === 0x27 || c === 0x3C || c === 0x3D || c === 0x60) return null;
+                i++;
+            }
+            if (i === valueStart) return null;
+        }
+    }
+    return null;
+}
+
+/**
+ * Tells whether an HTML string closes everything that it opens, in order, so that the parser is in the same
+ * state after it as before it. Only then does the string parse the same alone as it does inside a longer
+ * document. It answers `false` for anything that it cannot show to be so: a missing, stray or misplaced end
+ * tag, a start tag that relies on an implied end tag, a comment or tag that is not closed, a declaration or
+ * processing instruction, and the elements in {@link HTML_STATEFUL_TAGS}.
+ * @param {string} html HTML before it goes into the sanitizer
+ * @returns {boolean}
+ */
+export function isHtmlSelfContained(html) {
+    const source = String(html ?? '');
+    /** @type {string[]} */
+    const stack = [];
+    let index = source.indexOf('<');
+
+    while (index !== -1) {
+        const next = source.charCodeAt(index + 1);
+        if (source.startsWith('<!--', index)) {
+            const end = source.indexOf('-->', index + 4);
+            if (end === -1) return false;
+            index = source.indexOf('<', end + 3);
+            continue;
+        }
+
+        const isClosing = next === 0x2F;
+        if (!isAsciiLetterCode(source.charCodeAt(index + (isClosing ? 2 : 1)))) {
+            // `<!`, `<?` and `</` followed by a non-letter start a declaration, an instruction or a bogus comment.
+            if (next === 0x21 || next === 0x3F || isClosing) return false;
+            index = source.indexOf('<', index + 1);
+            continue;
+        }
+
+        const tag = readHtmlTag(source, index);
+        if (!tag) return false;
+        const { name } = tag;
+
+        if (tag.isClosing) {
+            if (stack.pop() !== name || HTML_VOID_TAGS.has(name)) return false;
+        } else if (HTML_STATEFUL_TAGS.has(name)) {
+            return false;
+        } else if (!HTML_VOID_TAGS.has(name)) {
+            // The parser ignores a `/` on an HTML element that is not void, so `<div/>` opens a div.
+            stack.push(name);
+            if (HTML_RAW_TEXT_TAGS.has(name)) {
+                const closer = new RegExp(`</${name}(?=[\\s/>])`, 'ig');
+                closer.lastIndex = tag.end;
+                const found = closer.exec(source);
+                if (!found) return false;
+                const closeTag = readHtmlTag(source, found.index);
+                if (!closeTag) return false;
+                stack.pop();
+                index = source.indexOf('<', closeTag.end);
+                continue;
+            }
+        }
+        index = source.indexOf('<', tag.end);
+    }
+
+    return stack.length === 0;
+}
+
+// `messageFormatting` rewrites `&amp;` to `&` inside each run that its pattern `<code(.*)>[\s\S]*?<\/code>` matches.
+// A run reaches from a `<code` to a `</code>` of a later block, and where a run ends decides where the next one
+// starts, so a block has no run of its own. The rewrite changes what the user sees only when the `&` is followed
+// by a character reference: a `#`, or a name of at least two letters or digits.
+const ENTITY_LIKE_AMPERSAND_RE = /&(?:#|[A-Za-z][A-Za-z0-9])/;
+
+// The pattern of `messageFormatting` that wraps double quotes in `<q>`, with a capture group around each
+// alternative that can run across blank lines. Its backtick, tilde-fence and `<style>` alternatives can pair
+// with text of a later block.
+const QUOTE_WRAP_SCAN_RE = /(<style>[\s\S]*?<\/style>)|(```[\s\S]*?```)|(~~~[\s\S]*?~~~)|(``[\s\S]*?``)|(`[\s\S]*?`)|(".*?")|(\u201C.*?\u201D)|(\u00AB.*?\u00BB)|(\u300C.*?\u300D)|(\u300E.*?\u300F)|(\uFF02.*?\uFF02)/gim;
+// `messageFormatting` hides quotes inside a `<...>` run from that pattern, and the run can reach into a later block.
+const ANGLE_RUN_SCAN_RE = /<[^>]+>/g;
+const AUTO_FIX_FENCE_OPENING_RE = /^[ \t]*(`{3,}|~{3,})([\s\S]*)$/;
+
+/**
+ * Tells whether the text of a block can pair with text after it in a step of `messageFormatting` that reads the
+ * whole message, so that formatting the block alone could differ from formatting it inside the message:
+ * - a backtick, `~~~` or `<style>` that the quote-wrapping pattern leaves unpaired inside the block;
+ * - a run of backticks that the pattern pairs as a shorter run, because it finds no closer in the block, where a
+ *   closer after the block would pair it as a longer run;
+ * - a `<` with no `>` after it in the block;
+ * - a fence that `fixMarkdown` opens in the block and does not close in it.
+ * The pattern and the `<...>` run read the text after OOC extraction, so the scans do as well.
+ * @param {string} block Markdown source of one settled block
+ * @returns {boolean}
+ */
+export function hasCrossBlockTextHazard(block) {
+    if (!block.includes('<') && !block.includes('`') && !block.includes('~~~')) {
+        return false;
+    }
+
+    const text = extractOocBlocksForDisplay(block, []);
+
+    if (text.includes('<')) {
+        let rest = '';
+        let last = 0;
+        ANGLE_RUN_SCAN_RE.lastIndex = 0;
+        for (let match = ANGLE_RUN_SCAN_RE.exec(text); match; match = ANGLE_RUN_SCAN_RE.exec(text)) {
+            rest += text.slice(last, match.index);
+            last = match.index + match[0].length;
+        }
+        rest += text.slice(last);
+        if (rest.includes('<')) return true;
+    }
+
+    if (text.includes('`') || text.includes('~~~') || /<style>/i.test(text)) {
+        let rest = '';
+        let last = 0;
+        QUOTE_WRAP_SCAN_RE.lastIndex = 0;
+        for (let match = QUOTE_WRAP_SCAN_RE.exec(text); match; match = QUOTE_WRAP_SCAN_RE.exec(text)) {
+            if (match[2] || match[4] || match[5]) {
+                let run = 0;
+                while (text.charCodeAt(match.index + run) === 0x60) run++;
+                const openerLength = match[2] ? 3 : match[4] ? 2 : 1;
+                if (openerLength < Math.min(run, 3)) return true;
+            }
+            rest += text.slice(last, match.index);
+            last = match.index + match[0].length;
+        }
+        rest += text.slice(last);
+        if (rest.includes('`') || rest.includes('~~~') || /<style>/i.test(rest)) return true;
+    }
+
+    if (block.includes('`') || block.includes('~~~')) {
+        let fence = '';
+        for (const line of block.split('\n')) {
+            if (fence) {
+                const marks = line.trim();
+                if (marks.length >= fence.length && marks === fence[0].repeat(marks.length)) fence = '';
+                continue;
+            }
+            const opening = AUTO_FIX_FENCE_OPENING_RE.exec(line);
+            if (opening && !(opening[1][0] === '`' && opening[2].includes('`'))) fence = opening[1];
+        }
+        if (fence) return true;
+    }
+
+    return false;
+}
+
+/**
+ * Creates a stateful incremental block formatter for a streamed message. It formats each settled block once,
+ * keeps the result until `reset()`, and formats the rest of the message (the tail, and any
+ * settled block that cannot stand alone) in one `formatFn` call, so the output equals `formatFn(markdown)` at every
+ * tick. It formats the whole message in one call when `getSignature` returns `null`, and on `isFinal`.
  *
- * @param {(markdown: string) => string} formatFn Full Markdown + DOMPurify formatter (never bypassed)
+ * A settled block is reused only while all of these hold:
+ * - `getSignature` returns a key, and the key is the one the block was formatted under;
+ * - the splitter ends the block outside every construct that spans blank lines;
+ * - the HTML that `formatFn` hands to `onConvertedHtml` for the block is self-contained ({@link isHtmlSelfContained});
+ * - the text of the block has no {@link hasCrossBlockTextHazard};
+ * - the text holds no `&` that is followed by a character reference while a block that was reused holds a `<code`
+ *   (see {@link ENTITY_LIKE_AMPERSAND_RE}).
+ * The first block that fails ends the reused prefix, and the message text from there on is formatted whole.
+ * A `formatFn` that never calls `onConvertedHtml` therefore never has a block reused.
+ *
+ * @param {(markdown: string, hooks?: { onConvertedHtml: (html: string) => void }) => string} formatFn Full
+ *   Markdown + DOMPurify formatter, never bypassed
+ * @param {object} [options]
+ * @param {(markdown: string) => string | null} [options.getSignature] Returns a key for the settings and message
+ *   state that shape the output of `formatFn`, or `null` when `formatFn` reads text outside a block and the whole
+ *   message must be formatted in one call. Read on every tick. Formatted blocks are dropped when the key changes.
  * @returns {{ format: (markdown: string, options?: { isFinal?: boolean }) => string, reset: () => void }}
  */
-export function createIncrementalBlockFormatter(formatFn) {
-    /** @type {Map<string, string>} */
-    const blockHtmlCache = new Map();
+export function createIncrementalBlockFormatter(formatFn, { getSignature = () => '' } = {}) {
+    /** @type {Map<string, { text: string, html: string | null, standsAlone: boolean, hasCode: boolean }>} Formatted blocks by text. */
+    const entriesByText = new Map();
     const MAX_CACHED_BLOCKS = 256;
+    let signature = null;
+
+    function formatBlock(text) {
+        let convertedHtml = null;
+        const html = formatFn(text, { onConvertedHtml: (value) => { convertedHtml = value; } });
+        const standsAlone = convertedHtml !== null && !hasCrossBlockTextHazard(text) && isHtmlSelfContained(convertedHtml);
+        return { text, html: standsAlone ? html : null, standsAlone, hasCode: standsAlone && convertedHtml.includes('<code') };
+    }
 
     return {
         format(markdown, { isFinal = false } = {}) {
@@ -764,8 +1048,18 @@ export function createIncrementalBlockFormatter(formatFn) {
                 return formatFn(source);
             }
             if (isFinal) {
-                blockHtmlCache.clear();
+                entriesByText.clear();
+                signature = null;
                 return formatFn(source);
+            }
+
+            const nextSignature = getSignature(source);
+            if (nextSignature === null) {
+                return formatFn(source);
+            }
+            if (nextSignature !== signature) {
+                entriesByText.clear();
+                signature = nextSignature;
             }
 
             const split = splitStreamingBlocks(source, { isFinal: false });
@@ -773,30 +1067,42 @@ export function createIncrementalBlockFormatter(formatFn) {
                 return formatFn(source);
             }
 
+            const { prefixBlocks } = split;
             const htmlParts = [];
-            for (const block of split.prefixBlocks) {
-                let cached = blockHtmlCache.get(block);
-                if (cached === undefined) {
-                    cached = formatFn(block);
-                    if (blockHtmlCache.size >= MAX_CACHED_BLOCKS) {
-                        const oldest = blockHtmlCache.keys().next().value;
-                        blockHtmlCache.delete(oldest);
+            let reusedHasCode = false;
+            let reused = 0;
+            for (; reused < prefixBlocks.length; reused++) {
+                let entry = entriesByText.get(prefixBlocks[reused]);
+                if (!entry) {
+                    entry = formatBlock(prefixBlocks[reused]);
+                    if (entriesByText.size >= MAX_CACHED_BLOCKS) {
+                        entriesByText.delete(entriesByText.keys().next().value);
                     }
-                    blockHtmlCache.set(block, cached);
+                    entriesByText.set(prefixBlocks[reused], entry);
                 }
-                if (cached) {
-                    htmlParts.push(cached);
+                if (!entry.standsAlone) {
+                    break;
+                }
+                reusedHasCode ||= entry.hasCode;
+                if (entry.html) {
+                    htmlParts.push(entry.html);
                 }
             }
 
-            const tailHtml = split.tail ? formatFn(split.tail) : '';
+            if (reusedHasCode && ENTITY_LIKE_AMPERSAND_RE.test(source)) {
+                return formatFn(source);
+            }
+
+            const tailText = reused === prefixBlocks.length ? split.tail : source.slice(prefixBlocks.slice(0, reused).join('').length);
+            const tailHtml = tailText ? formatFn(tailText) : '';
             if (tailHtml) {
                 htmlParts.push(tailHtml);
             }
             return htmlParts.join('\n');
         },
         reset() {
-            blockHtmlCache.clear();
+            entriesByText.clear();
+            signature = null;
         },
     };
 }
