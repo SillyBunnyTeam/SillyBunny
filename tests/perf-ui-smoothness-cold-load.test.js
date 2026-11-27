@@ -126,6 +126,15 @@ if (!global.localStorage) {
     global.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 }
 
+// i18n.js creates its MutationObserver while the module loads, and Node has none.
+if (!global.MutationObserver) {
+    global.MutationObserver = class {
+        observe() {}
+        disconnect() {}
+        takeRecords() { return []; }
+    };
+}
+
 // Shared mock state for modules that depend on browser-boot singletons.
 const mockExtensionSettings = {};
 const mockCharacters = [];
@@ -1328,7 +1337,7 @@ describe('Workstream 4: editor session, picker windowing, list-focus cleanup, mo
     });
 });
 
-describe('Workstream 5: cold-load pollers, structuredClone polyfill gate, and i18n scheduler.yield() chunking', () => {
+describe('Workstream 5: cold-load pollers, structuredClone polyfill gate, and locale application', () => {
     test('zero setInterval pollers remain in BunnyPresetTools, ChatCompletionTabs, and extensions.js menu watcher', () => {
         const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
@@ -1393,75 +1402,69 @@ describe('Workstream 5: cold-load pollers, structuredClone polyfill gate, and i1
         expect(global.structuredClone).toBe(nativeRef);
     });
 
-    test('i18n.js keeps var TDZ guards, synchronous applyLocale, and cooperatively chunks hidden DOM with scheduler.yield()', async () => {
-        const i18nSrc = readPublic('scripts/i18n.js');
-        expect(i18nSrc).toMatch(/\bvar\s+langs;/);
-        expect(i18nSrc).toMatch(/\bvar\s+localeData;/);
-        expect(i18nSrc).toMatch(/\bvar\s+trackMissingDynamicTranslate\s*=\s*null;/);
-        expect(i18nSrc).toContain('export function applyLocale(');
-        expect(i18nSrc).toContain('globalThis.scheduler?.yield');
+    test('initLocales translates every [data-i18n] element in one pass and the observer then translates added ones', async () => {
+        const dom = new JSDOM(`<!doctype html><html><body>
+            <span id="visible" data-i18n="hello">hello</span>
+            <div hidden id="panel"></div>
+        </body></html>`);
+        const { window } = dom;
+        const panel = window.document.getElementById('panel');
+        const localeMap = { hello: 'hola', late: 'tarde' };
+        for (let i = 0; i < 250; i++) {
+            const item = window.document.createElement('span');
+            item.dataset.i18n = `item_${i}`;
+            item.textContent = `item_${i}`;
+            panel.append(item);
+            localeMap[`item_${i}`] = `elemento_${i}`;
+        }
 
-        // Exercise real initLocales() -> applyLocaleChunked() with 2 visible + 250 hidden elements.
         const storage = new Map([['language', 'es']]);
-        global.localStorage = {
-            getItem: k => storage.get(k) ?? null,
-            setItem: (k, v) => storage.set(k, String(v)),
-            removeItem: k => storage.delete(k),
-        };
-        const makeEl = (key, hidden) => ({
-            attrs: new Map([['data-i18n', key]]),
-            textContent: key,
-            style: { display: hidden ? 'none' : '' },
-            getAttribute(name) { return this.attrs.has(name) ? this.attrs.get(name) : null; },
-            setAttribute(name, val) { this.attrs.set(name, val); },
-            closest: () => (hidden ? {} : null),
-        });
-        const visibleEls = [makeEl('hello', false), makeEl('world', false)];
-        const hiddenEls = Array.from({ length: 250 }, (_, i) => makeEl(`item_${i}`, true));
-        const allEls = [...visibleEls, ...hiddenEls];
-
-        const localeMap = { hello: 'hola', world: 'mundo' };
-        for (let i = 0; i < 250; i++) localeMap[`item_${i}`] = `elemento_${i}`;
-
         const yieldSpy = jest.fn(async () => {});
-        global.scheduler = { yield: yieldSpy };
-        global.fetch = jest.fn(async url => ({
-            ok: true,
-            json: async () => (String(url).includes('lang.json') ? [{ lang: 'es', display: 'Español' }] : localeMap),
-        }));
-        global.$ = () => ({
-            find: () => ({
-                filter: () => ({
-                    append: () => {},
-                    each: () => {},
-                    on: () => {},
-                    val: () => {},
-                }),
+        const jqueryShim = target => ({
+            find: selector => ({
+                each: callback => [...target.querySelectorAll(selector)].forEach((element, index) => callback.call(element, index, element)),
+                filter: () => ({ append: () => {}, each: () => {}, on: () => {}, val: () => {} }),
             }),
         });
-        global.document = {
-            documentElement: { lang: '' },
-            querySelectorAll: () => allEls,
-            createElement: () => ({}),
-        };
+        Object.assign(global, {
+            window,
+            document: window.document,
+            Document: window.Document,
+            Element: window.Element,
+            Node: window.Node,
+            MutationObserver: window.MutationObserver,
+            localStorage: {
+                getItem: key => storage.get(key) ?? null,
+                setItem: (key, value) => storage.set(key, String(value)),
+                removeItem: key => storage.delete(key),
+            },
+            scheduler: { yield: yieldSpy },
+            $: jqueryShim,
+            fetch: jest.fn(async url => ({
+                ok: true,
+                json: async () => (String(url).includes('lang.json') ? [{ lang: 'es', display: 'Español' }] : localeMap),
+            })),
+        });
 
-        const i18nMod = await import(`../public/scripts/i18n.js?chunked_test=${Date.now()}`);
-        await i18nMod.initLocales();
+        try {
+            const i18nModule = await import(`../public/scripts/i18n.js?initial_locale=${Date.now()}`);
+            await i18nModule.initLocales();
 
-        // All visible and hidden elements translated, and scheduler.yield() was called between hidden chunks!
-        expect(visibleEls[0].textContent).toBe('hola');
-        expect(visibleEls[1].textContent).toBe('mundo');
-        expect(hiddenEls[0].textContent).toBe('elemento_0');
-        expect(hiddenEls[249].textContent).toBe('elemento_249');
-        expect(yieldSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
+            // One synchronous pass leaves no gap between applying the locale and attaching the observer.
+            expect(yieldSpy).not.toHaveBeenCalled();
+            expect(window.document.getElementById('visible').textContent).toBe('hola');
+            expect(panel.firstElementChild.textContent).toBe('elemento_0');
+            expect(panel.lastElementChild.textContent).toBe('elemento_249');
 
-        // Also test applyLocaleChunked directly with custom chunkSize.
-        const customYields = [];
-        const directResult = await i18nMod.applyLocaleChunked(
-            { querySelectorAll: () => allEls },
-            { chunkSize: 100, yieldToMain: async () => { customYields.push(1); } },
-        );
-        expect(directResult).toEqual({ visibleCount: 2, hiddenCount: 250, yields: 3 });
-        expect(customYields).toHaveLength(3);
+            const added = window.document.createElement('span');
+            added.dataset.i18n = 'late';
+            added.textContent = 'late';
+            window.document.body.append(added);
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(added.textContent).toBe('tarde');
+        } finally {
+            delete global.Document;
+            delete global.Node;
+        }
     });
 });

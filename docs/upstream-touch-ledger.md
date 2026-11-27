@@ -2967,17 +2967,17 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
 | Owner | UI shell and performance integrator. |
 
-### `public/css/brands.min.css`, `public/scripts/extensions.js` and `public/scripts/i18n.js` - cold-load font swap, wand-menu observer and cooperative i18n chunking
+### `public/css/brands.min.css` and `public/scripts/extensions.js` - cold-load font swap and wand-menu observer
 | Field | Value |
 | --- | --- |
-| File | `public/css/brands.min.css`; `public/scripts/extensions.js`; `public/scripts/i18n.js`. |
-| Area | Cold-load font rendering (`font-display`), extensions wand-menu visibility watcher, and cold-load locale application INP chunking. |
-| Divergence reason | Upstream's `brands.min.css` blocks icon paint with `font-display: block`, `extensions.js` leaks a 1-second `setInterval(showHideExtensionsMenu, 1000)` when the wand menu is empty, and `i18n.js` translates thousands of hidden DOM nodes synchronously in one blocking task on non-English boots. |
+| File | `public/css/brands.min.css`; `public/scripts/extensions.js`. |
+| Area | Cold-load font rendering (`font-display`), extensions wand-menu visibility watcher. |
+| Divergence reason | Upstream's `brands.min.css` blocks icon paint with `font-display: block`, and `extensions.js` leaks a 1-second `setInterval(showHideExtensionsMenu, 1000)` when the wand menu is empty. |
 | Target seam | none yet; direct marked edits in each upstream-origin file. |
-| Adapter shape | Marked `SillyBunny:` blocks: `font-display:swap` in `public/css/brands.min.css`; `#extensionsMenu` `MutationObserver` + `APP_READY` check replacing `setInterval(showHideExtensionsMenu, 1000)` in `public/scripts/extensions.js`; cooperative `applyLocaleChunked()` using `scheduler?.yield?.()` (keeping `var` TDZ guards and synchronous `applyLocale()` intact) in `public/scripts/i18n.js`. |
+| Adapter shape | Marked `SillyBunny:` blocks: `font-display:swap` in `public/css/brands.min.css`; `#extensionsMenu` `MutationObserver` + `APP_READY` check replacing `setInterval(showHideExtensionsMenu, 1000)` in `public/scripts/extensions.js`. |
 | Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js`; `tests/css-has-scope.test.js`; `tests/webkit-prefix-companions.test.js`; `tests/audit-design-rules.test.js`; `tests/startup-module-graph.test.js`. |
 | Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites. |
-| Rollback path | Revert the marked `SillyBunny:` hunks in `brands.min.css`, `extensions.js`, and `i18n.js`. No saved user data, locale files, or settings keys change. |
+| Rollback path | Revert the marked `SillyBunny:` hunks in `brands.min.css` and `extensions.js`. No saved user data, locale files, or settings keys change. |
 | Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
 | Owner | UI shell and performance integrator. |
 
