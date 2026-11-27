@@ -8,12 +8,11 @@ import { isBunRuntime } from './src/runtime.js';
 import { serverDirectory } from './src/server-directory.js';
 import { getVersion, color } from './src/util.js';
 
-// SillyBunny: cache signatures and input hashing cover Bun pre-minified aliases and UI moment locales.
+// SillyBunny: cache signatures and input hashing cover the Bun pre-minified vendor aliases.
 const BUN_LIB_BUNDLE_SIGNATURE = 'bun-premin-vendors-v3';
 const PUBLIC_LIB_CONFIG_SIGNATURE = 'slim-hljs-moment-ui-locales-v3';
 const WEBPACK_CACHE_KEEP_COUNT = 3;
 const PUBLIC_LIB_FILENAME = 'lib.js';
-const REGIONAL_MOMENT_LOCALES = ['en-au', 'en-ca', 'en-gb', 'pt-br'];
 
 function hashFileIfPresent(hasher, filePath) {
     if (!fs.existsSync(filePath)) {
@@ -28,9 +27,8 @@ function hashFileIfPresent(hasher, filePath) {
 function getPublicLibInputsSignature() {
     const hasher = crypto.createHash('sha256');
 
-    // SillyBunny: invalidate cached /lib.js when webpack config or UI locale catalog changes.
+    // SillyBunny: invalidate cached /lib.js when the webpack config changes.
     hashFileIfPresent(hasher, path.join(serverDirectory, 'webpack.config.js'));
-    hashFileIfPresent(hasher, path.join(serverDirectory, 'public', 'locales', 'lang.json'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'public', 'lib.js'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'package.json'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'package-lock.json'));
@@ -181,7 +179,7 @@ function getVendorResolveAliases({ usePreminified = false } = {}) {
     }
 
     // SillyBunny: alias large vendor libraries to their official pre-minified browser bundles on Bun,
-    // leaving moment on its modular entry so ContextReplacementPlugin preserves all UI locales.
+    // where Webpack minification is disabled.
     const candidates = {
         chevrotain$: 'chevrotain/lib/chevrotain.min.mjs',
         handlebars$: 'handlebars/dist/handlebars.min.js',
@@ -200,43 +198,6 @@ function getVendorResolveAliases({ usePreminified = false } = {}) {
         aliases.chevrotain$ = chevrotainFallback;
     }
     return aliases;
-}
-
-// SillyBunny: derive the kept moment locales from public/locales/lang.json plus regional English/Portuguese
-// so localized timestamps and reasoning durations keep working while unused locales are pruned.
-function getSupportedMomentLocaleRegExp() {
-    const momentLocaleDir = path.join(serverDirectory, 'node_modules', 'moment', 'locale');
-    const langCatalogPath = path.join(serverDirectory, 'public', 'locales', 'lang.json');
-    const keptLocales = new Set(REGIONAL_MOMENT_LOCALES);
-
-    try {
-        const catalog = JSON.parse(fs.readFileSync(langCatalogPath, 'utf8'));
-        if (Array.isArray(catalog)) {
-            for (const entry of catalog) {
-                const rawLang = typeof entry?.lang === 'string' ? entry.lang.trim().toLowerCase() : '';
-                if (!rawLang) {
-                    continue;
-                }
-                if (fs.existsSync(path.join(momentLocaleDir, `${rawLang}.js`))) {
-                    keptLocales.add(rawLang);
-                    continue;
-                }
-                const baseLang = rawLang.split('-')[0];
-                if (baseLang && fs.existsSync(path.join(momentLocaleDir, `${baseLang}.js`))) {
-                    keptLocales.add(baseLang);
-                }
-            }
-        }
-    } catch (error) {
-        console.warn('Failed to read public/locales/lang.json for moment locale pruning; keeping fallback locale set.', error);
-    }
-
-    const escaped = Array.from(keptLocales)
-        .filter(locale => fs.existsSync(path.join(momentLocaleDir, `${locale}.js`)))
-        .sort()
-        .map(locale => locale.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-
-    return new RegExp(`^(?:\\.\\/)?(?:${escaped.join('|')})(?:\\.js)?$`);
 }
 
 /**
@@ -281,10 +242,6 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
             alias: getVendorResolveAliases({ usePreminified: !minimize }),
         },
         module: {},
-        plugins: [
-            // SillyBunny: keep only the moment locales used by SillyBunny's UI plus regional English/Portuguese.
-            new webpack.ContextReplacementPlugin(/moment[/\\]locale$/, getSupportedMomentLocaleRegExp()),
-        ],
         stats: {
             preset: 'minimal',
             assets: false,

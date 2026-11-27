@@ -9,6 +9,7 @@ import zlib from 'node:zlib';
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from '@jest/globals';
 import fullHljs from 'highlight.js';
+import fullMoment from 'moment';
 
 import {
     createDeterministicTarGz,
@@ -625,13 +626,11 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         }
     });
 
-    test('(f) built lib.js keeps the full highlight.js language set and preserves all exports & shims', async () => {
+    test('(f) built lib.js keeps the full highlight.js languages and moment locales, and preserves all exports & shims', async () => {
         const libEntry = manifest.assets['lib.js'];
         expect(libEntry).toBeDefined();
 
         const webpackSource = fs.readFileSync(webpackConfigPath, 'utf8');
-        expect(webpackSource).toContain('ContextReplacementPlugin');
-        expect(webpackSource).not.toContain('IgnorePlugin');
         expect(webpackSource).not.toContain('terser-webpack-plugin');
         expect(webpackSource).not.toContain('chevrotain-esm-alias-v1');
 
@@ -741,44 +740,24 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         hljs.registerLanguage('stscript-test', () => ({ keywords: 'echo' }));
         expect(hljs.getLanguage('stscript-test')).toBeTruthy();
 
-        // Moment preserves English plus all 16 SillyBunny UI locales and regional en/pt while pruning unused locales.
+        // Every locale file of the installed moment package stays in the bundle, so a browser language outside the UI
+        // languages (pl-PL, tr-TR, ...) keeps its localized dates.
         const sampleIso = '2026-01-15T12:00:00Z';
-        expect(moment(sampleIso).locale('en').format('YYYY-MM-DD')).toBe('2026-01-15');
-        expect(moment(sampleIso).locale('en-gb').format('LL')).toBe('15 January 2026');
-        expect(moment(sampleIso).locale('ja-jp').format('LL')).toBe('2026年1月15日');
-        expect(moment(sampleIso).locale('zh-cn').format('LL')).toBe('2026年1月15日');
-        expect(moment(sampleIso).locale('zh-tw').format('LL')).toBe('2026年1月15日');
-        expect(moment(sampleIso).locale('de-de').format('LL')).toBe('15. Januar 2026');
-        expect(moment(sampleIso).locale('fr-fr').format('LL')).toBe('15 janvier 2026');
-        expect(moment(sampleIso).locale('ar-sa').locale()).toBe('ar-sa');
-        expect(moment(sampleIso).locale('ar-sa').format('LL')).not.toBe('January 15, 2026');
-        expect(moment(sampleIso).locale('pt-br').format('LL')).toBe('15 de janeiro de 2026');
-        expect(moment.duration(125000).locale('ja-jp').humanize()).toBe('2分');
+        const momentLocaleDir = path.join(repoRoot, 'node_modules', 'moment', 'locale');
+        const momentLocaleCodes = fs.readdirSync(momentLocaleDir)
+            .filter(fileName => fileName.endsWith('.js'))
+            .map(fileName => fileName.slice(0, -'.js'.length));
+        expect(momentLocaleCodes.length).toBeGreaterThan(100);
 
-        const uiLangCatalog = JSON.parse(fs.readFileSync(path.join(publicRoot, 'locales', 'lang.json'), 'utf8'));
-        for (const entry of uiLangCatalog) {
-            expect(moment(sampleIso).locale(entry.lang).locale()).not.toBe('en');
+        for (const code of [...momentLocaleCodes, 'pl-pl', 'tr-tr', 'sv-se', 'cs-cz', 'id-id', 'he-il', 'hi-in', 'ar-ae', 'ja-jp', 'de-de']) {
+            const bundled = moment(sampleIso).utc().locale(code);
+            const reference = fullMoment(sampleIso).utc().locale(code);
+            expect(bundled.locale()).toBe(reference.locale());
+            expect(bundled.format('LLLL')).toBe(reference.format('LLLL'));
         }
-        // Also touch regional locales to verify total bundled count stays tightly bounded.
-        for (const regional of ['en-au', 'en-ca', 'en-gb', 'pt-br']) {
-            expect(moment(sampleIso).locale(regional).locale()).toBe(regional);
-        }
-        // Unused locales remain stripped and safely fall back to English.
-        for (const unused of ['tlh', 'af', 'eo']) {
-            expect(moment(sampleIso).locale(unused).locale()).toBe('en');
-        }
-        // moment.locales() includes negative-cache keys for failed alias lookups (e.g. de-de, tlh);
-        // count distinct genuinely loaded locale definitions via localeData().
-        const loadedLocales = new Set(
-            moment.locales()
-                .map(loc => moment.localeData(loc)?._abbr)
-                .filter(Boolean),
-        );
-        expect(loadedLocales.size).toBe(21);
-        expect(loadedLocales.size).toBeLessThanOrEqual(25);
-        expect(loadedLocales.has('tlh')).toBe(false);
-        expect(loadedLocales.has('af')).toBe(false);
-        expect(loadedLocales.has('eo')).toBe(false);
+        expect(moment(sampleIso).locale('pl-pl').locale()).toBe('pl');
+        expect(moment(sampleIso).locale('tr-tr').locale()).toBe('tr');
+        expect(moment.duration(125000).locale('ja-jp').humanize()).toBe('2分');
     });
 
     test('(g) --tarball produces a deterministic pure-Node POSIX .tar.gz archive and release.yml attaches it', async () => {
