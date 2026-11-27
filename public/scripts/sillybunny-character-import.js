@@ -47,11 +47,28 @@ function resultButton(label, glyph, action) {
     return control;
 }
 
-/** Loads retryable deferred styles before the Import surface is revealed. @param {{href: string, id: string}[]} stylesheets */
+// The page prints file names in the code face. A web font loads on first use, and nothing else lays out text in that
+// face before this page does, so without this wait the first open shows a fallback face and then changes height when
+// the real face arrives. The wait is bounded so that a slow font file cannot hold the page back.
+const CODE_FACE_WAIT_MS = 1500;
+
+function loadCodeFace() {
+    const family = getComputedStyle(document.documentElement).getPropertyValue('--monoFontFamily').trim();
+    if (!family || typeof document.fonts?.load !== 'function') return Promise.resolve();
+    return new Promise(resolve => {
+        const timer = setTimeout(resolve, CODE_FACE_WAIT_MS);
+        document.fonts.load(`1em ${family}`).catch(() => {}).finally(() => {
+            clearTimeout(timer);
+            resolve();
+        });
+    });
+}
+
+/** Loads retryable deferred styles, and the code face the page uses, before the Import surface is revealed. @param {{href: string, id: string}[]} stylesheets */
 export async function loadCharacterImportStyles(stylesheets) {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
     if (!loader) throw new Error('Deferred stylesheet loader is unavailable');
-    await Promise.all(stylesheets.map(async ({ href, id }) => {
+    await Promise.all([loadCodeFace(), ...stylesheets.map(async ({ href, id }) => {
         let link;
         try {
             const loading = loader(href, { id });
@@ -61,7 +78,7 @@ export async function loadCharacterImportStyles(stylesheets) {
             if (link instanceof HTMLLinkElement && document.getElementById(id) === link) link.remove();
             throw error;
         }
-    }));
+    })]);
 }
 
 /**
