@@ -3034,6 +3034,11 @@ describe('PR 8 observer firewalls', () => {
         }
         const flushBtn = dom.document.getElementById('gg_flush_guides_button');
         expect(flushBtn.dataset.activeCount).toBe('1');
+
+        // A change that no eventSource event announces, such as a typed /flushinject, arrives as a DOM event.
+        activeGuides = [];
+        dom.document.dispatchEvent({ type: 'sb:guided-generations-guides-changed' });
+        expect(flushBtn.dataset.activeCount).toBe('0');
     });
 
     test('quick-image-gen defers top-level localStorage JSON.parse and scopes qigMessageActionObserver to #chat addedNodes', async () => {

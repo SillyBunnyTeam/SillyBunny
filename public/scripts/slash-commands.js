@@ -3850,6 +3850,13 @@ const NARRATOR_NAME_DEFAULT = 'System';
 export const COMMENT_NAME_DEFAULT = 'Note';
 const SCRIPT_PROMPT_KEY = 'script_inject_';
 
+// SillyBunny: no event says that the injects of the chat changed, and the Guided Generations flush button follows them.
+const SCRIPT_INJECTS_CHANGED_EVENT = 'sb:guided-generations-guides-changed';
+
+function notifyScriptInjectsChanged() {
+    document.dispatchEvent(new CustomEvent(SCRIPT_INJECTS_CHANGED_EVENT));
+}
+
 /**
  * Adds a new script injection to the chat.
  * @param {import('./slash-commands/SlashCommand.js').NamedArguments} args Named arguments
@@ -3902,6 +3909,7 @@ function injectCallback(args, value) {
 
     setExtensionPrompt(prefixedId, String(value), position, depth, scan, role, filterFunction);
     saveMetadataDebounced();
+    notifyScriptInjectsChanged();
 
     if (ephemeral) {
         let deleted = false;
@@ -3913,6 +3921,7 @@ function injectCallback(args, value) {
             delete chat_metadata.script_injects[id];
             setExtensionPrompt(prefixedId, '', position, depth, scan, role, filterFunction);
             saveMetadataDebounced();
+            notifyScriptInjectsChanged();
             deleted = true;
         };
         eventSource.once(event_types.GENERATION_ENDED, unsetInject);
@@ -3965,6 +3974,7 @@ function flushInjectsCallback(_, value) {
     }
 
     saveMetadataDebounced();
+    notifyScriptInjectsChanged();
     return '';
 }
 
