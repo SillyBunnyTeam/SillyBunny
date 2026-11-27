@@ -1,6 +1,6 @@
 import { DEFAULT_SCROLL_EDGE_SETTLE_DELAYS, jumpScrollElementToEdge } from './chat-scroll-edges.js';
 import { createDeferredPanel } from './deferred-panel.js';
-import { createDeferredModule } from './deferred-module.js';
+import { createDeferredModule, createLazyController } from './deferred-module.js';
 import { hasServerReturnedAfterRestart } from './server-restart-monitor.js';
 import { initInstallNotice } from './sillybunny-install-notice.js';
 import {
@@ -111,163 +111,138 @@ let appearanceModule = null;
 // SillyBunny: lazy sub-module loaders shrink the eager boot chunk by deferring panel builders,
 // universal search, chat management/search, and importer UI until first activation.
 let samplingPanelController = null;
-let samplingPanelControllerPromise = null;
 let backendPanelsController = null;
-let backendPanelsControllerPromise = null;
 let importerUiController = null;
-let importerUiControllerPromise = null;
 let chatActionsSearchController = null;
-let chatActionsSearchControllerPromise = null;
 let universalSearchController = null;
-let universalSearchControllerPromise = null;
+
+const samplingPanelLoader = createLazyController(new URL('./sillybunny-tabs/sampling-panel.js', import.meta.url), module => {
+    samplingPanelController = module.createSamplingPanelController({
+        createElement,
+        createShellPanel,
+        createBackendSectionHeader,
+        createBackendGroupHeader,
+        getCurrentMainApiValue,
+        isShellTabOpen,
+        loadSamplingModule,
+        hideEmptyGroupedSettingsDrawers: () => backendPanelsController?.hideEmptyGroupedSettingsDrawers(),
+    });
+    return samplingPanelController;
+});
 
 function loadSamplingPanelController() {
-    samplingPanelControllerPromise ??= import('./sillybunny-tabs/sampling-panel.js')
-        .then(module => {
-            samplingPanelController = module.createSamplingPanelController({
-                createElement,
-                createShellPanel,
-                createBackendSectionHeader,
-                createBackendGroupHeader,
-                getCurrentMainApiValue,
-                isShellTabOpen,
-                loadSamplingModule,
-                hideEmptyGroupedSettingsDrawers: () => backendPanelsController?.hideEmptyGroupedSettingsDrawers(),
-            });
-            return samplingPanelController;
-        })
-        .catch(error => {
-            samplingPanelControllerPromise = null;
-            throw error;
-        });
-    return samplingPanelControllerPromise;
+    return samplingPanelLoader.load();
 }
+
+const backendPanelsLoader = createLazyController(new URL('./sillybunny-tabs/backend-panels.js', import.meta.url), module => {
+    backendPanelsController = module.createBackendPanelsController({
+        createElement,
+        createBackendSectionHeader,
+        createBackendGroupHeader,
+        createBackendPromptGroup,
+        getShellState,
+        getCurrentMainApiValue,
+        isShellTabOpen,
+        openShell,
+        getAppearanceModule: () => appearanceModule,
+        getBackendPagesModule: () => backendPagesModule,
+        backendPagesContext,
+        invalidateUserSettingsTabSearchIndexes,
+        updateSamplingSectionVisibility: section => samplingPanelController?.updateSamplingCardVisibility(section),
+    });
+    return backendPanelsController;
+});
 
 function loadBackendPanelsController() {
-    backendPanelsControllerPromise ??= import('./sillybunny-tabs/backend-panels.js')
-        .then(module => {
-            backendPanelsController = module.createBackendPanelsController({
-                createElement,
-                createBackendSectionHeader,
-                createBackendGroupHeader,
-                createBackendPromptGroup,
-                getShellState,
-                getCurrentMainApiValue,
-                isShellTabOpen,
-                openShell,
-                getAppearanceModule: () => appearanceModule,
-                getBackendPagesModule: () => backendPagesModule,
-                backendPagesContext,
-                invalidateUserSettingsTabSearchIndexes,
-                updateSamplingSectionVisibility: section => samplingPanelController?.updateSamplingCardVisibility(section),
-            });
-            return backendPanelsController;
-        })
-        .catch(error => {
-            backendPanelsControllerPromise = null;
-            throw error;
-        });
-    return backendPanelsControllerPromise;
+    return backendPanelsLoader.load();
 }
+
+const importerUiLoader = createLazyController(new URL('./sillybunny-tabs/importer-ui.js', import.meta.url), module => {
+    importerUiController = module.createImporterUiController({
+        createElement,
+        getImporterState,
+        getImporterRefs,
+        setButtonDisabled,
+        setServerAdminPill,
+        handleSillyTavernFolderImport,
+        handleSillyTavernExtensionSync,
+        handleSillyTavernZipImport,
+    });
+    return importerUiController;
+});
 
 function loadImporterUiController() {
-    importerUiControllerPromise ??= import('./sillybunny-tabs/importer-ui.js')
-        .then(module => {
-            importerUiController = module.createImporterUiController({
-                createElement,
-                getImporterState,
-                getImporterRefs,
-                setButtonDisabled,
-                setServerAdminPill,
-                handleSillyTavernFolderImport,
-                handleSillyTavernExtensionSync,
-                handleSillyTavernZipImport,
-            });
-            return importerUiController;
-        })
-        .catch(error => {
-            importerUiControllerPromise = null;
-            throw error;
-        });
-    return importerUiControllerPromise;
+    return importerUiLoader.load();
 }
+
+const chatActionsSearchLoader = createLazyController(new URL('./sillybunny-tabs/chat-actions-search.js', import.meta.url), module => {
+    chatActionsSearchController = module.createChatActionsSearchController({
+        createElement,
+        formatChatTokenEstimate,
+        normalizeChatFileName,
+        formatChatPreview,
+        getChatSortTimestamp,
+        formatChatTimestamp,
+        getAuthorizedRequestHeadersOrNull,
+        getRequestHeadersFromContext,
+        getChatUiContext,
+        getBottomChatBarState,
+        getChatbarState,
+        getChatSidebarRefs,
+        getChatScriptModule,
+        getSillyTavernContext,
+        getChatScrollElement,
+        getReducedMotionScrollBehavior,
+        setButtonDisabled,
+        setSearchStatusText,
+        scheduleChatbarRefresh,
+        scheduleBottomChatBarRefresh,
+        scrollElementIntoManagedView,
+        SB_CHAT_SEARCH_MARK_SELECTOR,
+        SB_CHATBAR_SEARCH_DEBOUNCE,
+    });
+    return chatActionsSearchController;
+});
 
 function loadChatActionsSearchController() {
-    chatActionsSearchControllerPromise ??= import('./sillybunny-tabs/chat-actions-search.js')
-        .then(module => {
-            chatActionsSearchController = module.createChatActionsSearchController({
-                createElement,
-                formatChatTokenEstimate,
-                normalizeChatFileName,
-                formatChatPreview,
-                getChatSortTimestamp,
-                formatChatTimestamp,
-                getAuthorizedRequestHeadersOrNull,
-                getRequestHeadersFromContext,
-                getChatUiContext,
-                getBottomChatBarState,
-                getChatbarState,
-                getChatSidebarRefs,
-                getChatScriptModule,
-                getSillyTavernContext,
-                getChatScrollElement,
-                getReducedMotionScrollBehavior,
-                setButtonDisabled,
-                setSearchStatusText,
-                scheduleChatbarRefresh,
-                scheduleBottomChatBarRefresh,
-                scrollElementIntoManagedView,
-                SB_CHAT_SEARCH_MARK_SELECTOR,
-                SB_CHATBAR_SEARCH_DEBOUNCE,
-            });
-            return chatActionsSearchController;
-        })
-        .catch(error => {
-            chatActionsSearchControllerPromise = null;
-            throw error;
-        });
-    return chatActionsSearchControllerPromise;
+    return chatActionsSearchLoader.load();
 }
 
+const universalSearchLoader = createLazyController(new URL('./sillybunny-tabs/universal-search-panel.js', import.meta.url), module => {
+    universalSearchController = module.createUniversalSearchController({
+        sbState,
+        sbSubpageStacks,
+        sbSearchRenderRequests,
+        SB_SEARCH_TARGET_SELECTOR,
+        SB_SIDEBAR_SECTION_MATCH_SELECTOR,
+        SB_CHARACTER_PANEL_TABS,
+        SB_UNIVERSAL_SEARCH_IDLE_TITLE,
+        SB_UNIVERSAL_SEARCH_IDLE_HINT,
+        SB_UNIVERSAL_SEARCH_EMPTY_HINT,
+        SB_UNIVERSAL_SEARCH_RESULT_LIMIT,
+        SB_UNIVERSAL_SEARCH_GROUP_LIMIT,
+        SB_UNIVERSAL_ENTITY_SCAN_LIMIT,
+        createElement,
+        escapeRegex,
+        getShellConfig,
+        getCharacterPanel,
+        getUniversalSearchState,
+        getSearchEntryDedupeKey,
+        getExtraTabSearchEntries,
+        getEntityPersonaSearchEntries,
+        createTabSearchIndex: createSearchIndex,
+        isMobileViewport,
+        prepareShellSearch,
+        setUniversalSearchOpenState,
+        scrollElementIntoManagedView,
+        getSillyTavernContext,
+        scheduleUniversalSearchRender,
+    });
+    return universalSearchController;
+});
+
 function loadUniversalSearchController() {
-    universalSearchControllerPromise ??= import('./sillybunny-tabs/universal-search-panel.js')
-        .then(module => {
-            universalSearchController = module.createUniversalSearchController({
-                sbState,
-                sbSubpageStacks,
-                sbSearchRenderRequests,
-                SB_SEARCH_TARGET_SELECTOR,
-                SB_SIDEBAR_SECTION_MATCH_SELECTOR,
-                SB_CHARACTER_PANEL_TABS,
-                SB_UNIVERSAL_SEARCH_IDLE_TITLE,
-                SB_UNIVERSAL_SEARCH_IDLE_HINT,
-                SB_UNIVERSAL_SEARCH_EMPTY_HINT,
-                SB_UNIVERSAL_SEARCH_RESULT_LIMIT,
-                SB_UNIVERSAL_SEARCH_GROUP_LIMIT,
-                SB_UNIVERSAL_ENTITY_SCAN_LIMIT,
-                createElement,
-                escapeRegex,
-                getShellConfig,
-                getCharacterPanel,
-                getUniversalSearchState,
-                getSearchEntryDedupeKey,
-                getExtraTabSearchEntries,
-                getEntityPersonaSearchEntries,
-                createTabSearchIndex: createSearchIndex,
-                isMobileViewport,
-                prepareShellSearch,
-                setUniversalSearchOpenState,
-                scrollElementIntoManagedView,
-                getSillyTavernContext,
-                scheduleUniversalSearchRender,
-            });
-            return universalSearchController;
-        })
-        .catch(error => {
-            universalSearchControllerPromise = null;
-            throw error;
-        });
-    return universalSearchControllerPromise;
+    return universalSearchLoader.load();
 }
 
 /** Appearance holds raw upstream rows until its module has regrouped them, and the settings passes must not reshape them first. */

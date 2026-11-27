@@ -352,8 +352,8 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
             const fullPath = path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs', file);
             expect(existsSync(fullPath)).toBe(true);
 
-            // Wired through dynamic import() on activation, never static top-level import.
-            expect(tabsSource).toContain(`import('./sillybunny-tabs/${file}')`);
+            // Loaded on activation through the repository's deferred-module loader (a dynamic import with a retry URL), never by a static import.
+            expect(tabsSource).toContain(`createLazyController(new URL('./sillybunny-tabs/${file}', import.meta.url)`);
             expect(tabsSource).not.toMatch(new RegExp(`^\\s*import\\s+[^;]*sillybunny-tabs/${file.replace('.', '\\.')}`, 'm'));
 
             const subSource = readRepoFile('public', 'scripts', 'sillybunny-tabs', file);
