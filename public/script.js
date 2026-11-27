@@ -13195,7 +13195,9 @@ async function saveSettingsInner(loopCounter = 0) {
             throw new Error(`Failed to save settings: ${result.statusText}`);
         }
         // SillyBunny: record recent server contact after a successful settings save.
-        recordSuccessfulServerContact();
+        if (typeof recordSuccessfulServerContact === 'function') {
+            recordSuccessfulServerContact();
+        }
 
         const saveResult = await result.json().catch(() => ({}));
         const savedSettingsVersion = normalizeSettingsVersion(saveResult?.version);
