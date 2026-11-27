@@ -27,8 +27,8 @@ export function setPublicAssetHeaders(res, requestPath) {
     res.setHeader('Cache-Control', 'public, max-age=3600');
 }
 
-export function getFrontendAssetMiddleware() {
-    const distImmutable = express.static(FRONTEND_DIST_ROOT, {
+export function getFrontendAssetMiddleware({ distRoot = FRONTEND_DIST_ROOT } = {}) {
+    const distImmutable = express.static(distRoot, {
         fallthrough: true,
         setHeaders: applyFrontendAssetHeaders,
     });
@@ -52,13 +52,13 @@ export function getFrontendAssetMiddleware() {
             // worker scripts) to fall back to public/ without duplicating raw files into dist/frontend/.
             return publicRelativeFallback(req, res, next);
         }),
-        publicAssets: express.static(FRONTEND_DIST_ROOT, {
+        publicAssets: express.static(distRoot, {
             fallthrough: true,
             setHeaders: setPublicAssetHeaders,
         }),
     };
 }
 
-export function shouldServeFrontendAssets() {
-    return getFrontendAssetsEnabled() && Boolean(loadFrontendManifest());
+export function shouldServeFrontendAssets(manifestPaths = {}) {
+    return getFrontendAssetsEnabled() && Boolean(loadFrontendManifest(manifestPaths));
 }

@@ -13,7 +13,6 @@ export const FRONTEND_MANIFEST_VERSION = 2;
 export const FRONTEND_ASSET_PREFIX = '/frontend-assets/';
 export const HASHED_FRONTEND_ASSET_RE = /-[a-f0-9]{8,}\.[a-z0-9]+$/i;
 
-const MANIFEST_UNSET = Symbol('manifest-unset');
 const REWRITTEN_HTML_CACHE_MAX_ENTRIES = 16;
 
 const IGNORED_PATH_SEGMENTS = new Set([
@@ -117,7 +116,8 @@ const REWRITABLE_LINK_EXTENSIONS = new Set([
     '.ico',
 ]);
 
-let manifestCache = MANIFEST_UNSET;
+/** @type {Map<string, object|null>} */
+const manifestCache = new Map();
 let inputsHashCache = null;
 let inputsStatStampCache = null;
 let warnedMismatchHash = null;
@@ -382,8 +382,8 @@ function getCachedFrontendStatStamp() {
     return inputsStatStampCache;
 }
 
-export function getFrontendManifestPath() {
-    return path.join(FRONTEND_DIST_ROOT, FRONTEND_MANIFEST_FILE);
+export function getFrontendManifestPath(distRoot = FRONTEND_DIST_ROOT) {
+    return path.join(distRoot, FRONTEND_MANIFEST_FILE);
 }
 
 export function getFrontendAssetsEnabled({ env = process.env, enabled = undefined } = {}) {
@@ -410,7 +410,7 @@ export function getFrontendImmutableMaxAge() {
 }
 
 export function clearFrontendManifestCache() {
-    manifestCache = MANIFEST_UNSET;
+    manifestCache.clear();
     inputsHashCache = null;
     inputsStatStampCache = null;
     warnedMismatchHash = null;
@@ -447,9 +447,7 @@ export function isManifestFresh(manifest, {
 
     if (hasInputsHash) {
         const defaultPublicRoot = path.join(serverDirectory, 'public');
-        const usesDefaultPaths = distRoot === FRONTEND_DIST_ROOT
-            && repoRoot === serverDirectory
-            && publicRoot === defaultPublicRoot;
+        const usesDefaultPaths = repoRoot === serverDirectory && publicRoot === defaultPublicRoot;
 
         const currentStatStamp = usesDefaultPaths
             ? getCachedFrontendStatStamp()
@@ -483,26 +481,43 @@ export function isManifestFresh(manifest, {
     return true;
 }
 
-export function loadFrontendManifest() {
-    if (manifestCache !== MANIFEST_UNSET) {
-        return manifestCache;
-    }
-
-    const manifestPath = getFrontendManifestPath();
+function readFreshFrontendManifest({ distRoot, repoRoot, publicRoot }) {
+    const manifestPath = getFrontendManifestPath(distRoot);
     if (!fs.existsSync(manifestPath)) {
-        manifestCache = null;
         return null;
     }
 
     try {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        manifestCache = isManifestFresh(manifest) ? manifest : null;
+        return isManifestFresh(manifest, { distRoot, repoRoot, publicRoot }) ? manifest : null;
     } catch (error) {
         console.warn('Failed to read frontend asset manifest.', error);
-        manifestCache = null;
+        return null;
+    }
+}
+
+/**
+ * Loads the frontend asset manifest when it matches the checkout. The verdict is cached per set of paths until
+ * clearFrontendManifestCache() runs; every option defaults to the running server's directories.
+ * @param {object} [options]
+ * @param {string} [options.distRoot=FRONTEND_DIST_ROOT]
+ * @param {string} [options.repoRoot=serverDirectory]
+ * @param {string} [options.publicRoot]
+ * @returns {object|null}
+ */
+export function loadFrontendManifest({
+    distRoot = FRONTEND_DIST_ROOT,
+    repoRoot = serverDirectory,
+    publicRoot = path.join(repoRoot, 'public'),
+} = {}) {
+    const cacheKey = [distRoot, repoRoot, publicRoot].join('\0');
+    if (manifestCache.has(cacheKey)) {
+        return manifestCache.get(cacheKey);
     }
 
-    return manifestCache;
+    const manifest = readFreshFrontendManifest({ distRoot, repoRoot, publicRoot });
+    manifestCache.set(cacheKey, manifest);
+    return manifest;
 }
 
 export function resolveFrontendAssetPath(publicPath, manifest = loadFrontendManifest()) {
@@ -690,12 +705,12 @@ function getManifestCacheKey(manifest) {
     return crypto.createHash('sha256').update(JSON.stringify(manifest)).digest('hex');
 }
 
-export function rewriteFrontendHtml(html, { enabled = getFrontendAssetsEnabled() } = {}) {
+export function rewriteFrontendHtml(html, { enabled = getFrontendAssetsEnabled(), ...manifestPaths } = {}) {
     if (!enabled || isFrontendDevMode() || typeof html !== 'string') {
         return html;
     }
 
-    const manifest = loadFrontendManifest();
+    const manifest = loadFrontendManifest(manifestPaths);
     if (!manifest || !manifest.assets || typeof manifest.assets !== 'object') {
         return html;
     }
@@ -733,8 +748,8 @@ export function rewriteFrontendHtml(html, { enabled = getFrontendAssetsEnabled()
  * @param {boolean} [options.enabled]
  * @returns {string}
  */
-export function readRewrittenFrontendHtml(filePath, { enabled = getFrontendAssetsEnabled() } = {}) {
-    const manifest = enabled && !isFrontendDevMode() ? loadFrontendManifest() : null;
+export function readRewrittenFrontendHtml(filePath, { enabled = getFrontendAssetsEnabled(), ...manifestPaths } = {}) {
+    const manifest = enabled && !isFrontendDevMode() ? loadFrontendManifest(manifestPaths) : null;
     const manifestKey = manifest ? getManifestCacheKey(manifest) : 'raw';
 
     try {
@@ -746,7 +761,7 @@ export function readRewrittenFrontendHtml(filePath, { enabled = getFrontendAsset
         }
 
         const rawHtml = fs.readFileSync(filePath, 'utf8');
-        const resultHtml = manifest ? rewriteFrontendHtml(rawHtml, { enabled: true }) : rawHtml;
+        const resultHtml = manifest ? rewriteFrontendHtml(rawHtml, { enabled: true, ...manifestPaths }) : rawHtml;
 
         if (fileHtmlCache.size >= REWRITTEN_HTML_CACHE_MAX_ENTRIES) {
             const oldestKey = fileHtmlCache.keys().next().value;

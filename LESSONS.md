@@ -1905,11 +1905,13 @@ This is the largest class by a wide margin.
   - `isManifestFresh()` in `src/frontend-assets.js` synchronously read and SHA-256-hashed every file in `public/` on the first request to validate `inputsHash`.
   - `EXCLUDED_PUBLIC_DIRECTORIES` excluded all of `scripts/extensions/third-party`, leaving git-tracked bundled extensions (`BunnyPresetTools`, `ChatCompletionTabs`) outside `dist/frontend/` and the importmap.
   - `scripts/build-frontend-assets.js` statically imported `terser` (a devDependency), breaking production-only Docker builds (`bun install --frozen-lockfile --production`).
+  - `tests/perf-esm-importmap-and-slim-lib.test.js` and `tests/frontend-assets.test.js` wrote a manifest into the repository's own `dist/frontend` and removed it afterwards, so a unit run deleted a developer's `asset-manifest.json` and `.inputs-stamp.json` and the server then fell back to raw `public/` without a message.
 - **Guards:**
   - `default/config.yaml` defaults `performance.frontendBuild.enabled: auto` and `getFrontendAssetsEnabled()` accepts `auto`/boolean values while keeping `SB_DEV=1` as an immediate raw-`public/` override.
   - `src/frontend-assets.js` persists and checks a machine-local `.inputs-stamp.json` `(size, mtimeMs)` stat stamp (`computeFrontendStatStamp()`, `writeFrontendInputsStamp()`, `isManifestFresh()`) with automatic full-content hash fallback; `scripts/build-frontend-assets.js` excludes `.inputs-stamp.json` from `walkDirectoryFiles()` so deterministic tarballs stay identical across machines and writes the stamp after tarball creation.
   - `isExcludedFrontendPublicPath()` allows traversal into `scripts/extensions/third-party` for `BUNDLED_THIRD_PARTY_EXTENSIONS` (`BunnyPresetTools`, `ChatCompletionTabs`) while keeping `.gitkeep` and all user-installed `third-party/*` directories excluded.
   - `scripts/build-frontend-assets.js` loads `terser` lazily via `loadTerserMinify()` and degrades cleanly when `terser` is not installed.
+  - `loadFrontendManifest()`, `rewriteFrontendHtml()`, `readRewrittenFrontendHtml()`, `shouldServeFrontendAssets()` and `getFrontendAssetMiddleware()` take the dist directory (and `repoRoot`/`publicRoot` for the manifest functions) as an option, with the manifest verdict cached per set of paths; every case of both suites uses a temporary dist directory, and case (i) of the new suite compares the repository's own dist before and after the run.
 - **Tests:** `tests/perf-esm-importmap-and-slim-lib.test.js`, `tests/frontend-assets.test.js`, `tests/frontend-asset-middleware.test.js`.
 
 ## Reverts and release problems

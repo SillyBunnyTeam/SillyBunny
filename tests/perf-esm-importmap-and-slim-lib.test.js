@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,15 +19,15 @@ import {
 } from '../scripts/build-frontend-assets.js';
 import {
     FRONTEND_ASSET_PREFIX,
+    FRONTEND_DIST_ROOT,
     FRONTEND_INPUTS_STAMP_FILE,
+    FRONTEND_MANIFEST_FILE,
     FRONTEND_MANIFEST_VERSION,
     clearFrontendManifestCache,
     computeFrontendInputsHash,
     computeFrontendStatStamp,
     getFrontendAssetsEnabled,
     getFrontendHtmlCacheStats,
-    getFrontendInputsStampPath,
-    getFrontendManifestPath,
     isExcludedFrontendPublicPath,
     isManifestFresh,
     loadFrontendManifest,
@@ -134,6 +135,21 @@ function collectStaticReachableModules(entryRelPaths) {
     return visited;
 }
 
+/**
+ * Describes the repository's own dist/frontend (the one a developer's server serves), without reading beyond its manifest and stamp.
+ * @returns {string}
+ */
+function snapshotRepositoryDist() {
+    const files = {};
+    for (const name of [FRONTEND_MANIFEST_FILE, FRONTEND_INPUTS_STAMP_FILE]) {
+        const filePath = path.join(FRONTEND_DIST_ROOT, name);
+        files[name] = fs.existsSync(filePath)
+            ? `${fs.statSync(filePath).mtimeMs}:${fs.readFileSync(filePath, 'utf8').length}`
+            : null;
+    }
+    return JSON.stringify({ exists: fs.existsSync(FRONTEND_DIST_ROOT), files });
+}
+
 function parseTarEntryNames(tarBuffer) {
     const entries = [];
     let offset = 0;
@@ -180,17 +196,12 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
     let tmpTarballPath;
     let manifest;
 
-    const manifestPath = getFrontendManifestPath();
-    const stampPath = getFrontendInputsStampPath();
-    const manifestDir = path.dirname(manifestPath);
-    const distParentDir = path.dirname(manifestDir);
-    let previousManifestContent = null;
-    let previousStampContent = null;
-    let hadManifestDirBeforeTest = false;
-    let hadDistParentBeforeTest = false;
     let previousSbDev;
+    let fixtureCounter = 0;
+    let repositoryDistBefore;
 
     beforeAll(() => {
+        repositoryDistBefore = snapshotRepositoryDist();
         tmpWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-pr13-test-'));
         tmpDistDir = path.join(tmpWorkDir, 'dist', 'frontend');
         tmpTarballPath = path.join(tmpWorkDir, 'sillybunny-frontend-assets.tar.gz');
@@ -221,44 +232,33 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
             process.env.SB_DEV = previousSbDev;
         }
         previousSbDev = undefined;
-
-        if (previousStampContent === null) {
-            fs.rmSync(stampPath, { force: true });
-        } else {
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.writeFileSync(stampPath, previousStampContent, 'utf8');
-        }
-        previousStampContent = null;
-
-        if (previousManifestContent === null) {
-            fs.rmSync(manifestPath, { force: true });
-            if (!hadManifestDirBeforeTest && fs.existsSync(manifestDir) && fs.readdirSync(manifestDir).length === 0) {
-                fs.rmdirSync(manifestDir);
-            }
-            if (!hadDistParentBeforeTest && fs.existsSync(distParentDir) && fs.readdirSync(distParentDir).length === 0) {
-                fs.rmdirSync(distParentDir);
-            }
-        } else {
-            fs.mkdirSync(manifestDir, { recursive: true });
-            fs.writeFileSync(manifestPath, previousManifestContent, 'utf8');
-        }
-        previousManifestContent = null;
-        hadManifestDirBeforeTest = false;
-        hadDistParentBeforeTest = false;
         clearFrontendManifestCache();
     });
 
-    function installManifestForServerTest(customManifest) {
-        previousSbDev = process.env.SB_DEV;
-        delete process.env.SB_DEV;
-        hadDistParentBeforeTest = fs.existsSync(distParentDir);
-        hadManifestDirBeforeTest = fs.existsSync(manifestDir);
-        previousManifestContent = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf8') : null;
-        previousStampContent = fs.existsSync(stampPath) ? fs.readFileSync(stampPath, 'utf8') : null;
-        fs.mkdirSync(manifestDir, { recursive: true });
-        fs.writeFileSync(manifestPath, JSON.stringify(customManifest), 'utf8');
-        fs.rmSync(stampPath, { force: true });
-        clearFrontendManifestCache();
+    function setSbDev(value) {
+        previousSbDev ??= process.env.SB_DEV;
+        if (value === undefined) {
+            delete process.env.SB_DEV;
+        } else {
+            process.env.SB_DEV = value;
+        }
+    }
+
+    /**
+     * Creates a throwaway dist directory next to the built one, so no case reads or writes the repository's own dist/frontend.
+     * @param {object} customManifest Manifest to write
+     * @param {Record<string, string>} [files] Extra files (relative path to text) to write beside it
+     * @returns {string} The dist directory
+     */
+    function createDistFixture(customManifest, files = {}) {
+        fixtureCounter += 1;
+        const distDir = path.join(tmpWorkDir, `dist-fixture-${fixtureCounter}`);
+        fs.mkdirSync(distDir, { recursive: true });
+        fs.writeFileSync(path.join(distDir, 'asset-manifest.json'), JSON.stringify(customManifest), 'utf8');
+        for (const [relativePath, content] of Object.entries(files)) {
+            fs.writeFileSync(path.join(distDir, relativePath), content, 'utf8');
+        }
+        return distDir;
     }
 
     test('(a) importmap covers 100% of /lib.js, /script.js, public/scripts/**, and every reachable module', () => {
@@ -305,10 +305,9 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
     });
 
     test('(b) rewriteFrontendHtml injects strictly ONE <script type="importmap"> before the first modulepreload/module and caches in RAM', () => {
-        installManifestForServerTest(manifest);
-
+        setSbDev(undefined);
         const rawHtml = fs.readFileSync(indexHtmlPath, 'utf8');
-        const rewritten = rewriteFrontendHtml(rawHtml, { enabled: true });
+        const rewritten = rewriteFrontendHtml(rawHtml, { enabled: true, distRoot: tmpDistDir });
 
         const importMapTags = [...rewritten.matchAll(/<script\b[^>]*\btype="importmap"[^>]*>([\s\S]*?)<\/script>/gi)];
         expect(importMapTags).toHaveLength(1);
@@ -350,23 +349,25 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(rewritten).not.toContain('/frontend-assets/css/user');
 
         // Attribute rewriting must not interpolate $ replacement patterns or choke on nested quotes.
-        const specialManifest = {
+        const specialContent = 'body{color:red}';
+        const specialHash = crypto.createHash('sha256').update(specialContent).digest('hex').slice(0, 12);
+        const specialOutput = `style-$&$1-${specialHash}.css`;
+        const specialDist = createDistFixture({
             ...manifest,
             assets: {
                 ...manifest.assets,
-                'style.css': { output: 'style-$&$1-abcdef123456.css' },
+                'style.css': { hash: specialHash, output: specialOutput, bytes: specialContent.length },
             },
-        };
-        installManifestForServerTest(specialManifest);
+        }, { [specialOutput]: specialContent });
         const specialHtml = '<head><base href="/"><meta charset="utf-8"><link rel="stylesheet" href="style.css?v=a\'b"></head>';
-        const rewrittenSpecial = rewriteFrontendHtml(specialHtml, { enabled: true });
-        expect(rewrittenSpecial).toContain('href="/frontend-assets/style-$&$1-abcdef123456.css"');
+        const rewrittenSpecial = rewriteFrontendHtml(specialHtml, { enabled: true, distRoot: specialDist });
+        expect(rewrittenSpecial).toContain(`href="/frontend-assets/${specialOutput}"`);
 
-        // Reinstall the standard manifest to check RAM cache hits on index.html.
-        installManifestForServerTest(manifest);
-        const cachedFirst = rewriteFrontendHtml(rawHtml, { enabled: true });
+        // The standard manifest must hit the RAM cache for index.html.
+        clearFrontendManifestCache();
+        const cachedFirst = rewriteFrontendHtml(rawHtml, { enabled: true, distRoot: tmpDistDir });
         const statsBefore = getFrontendHtmlCacheStats();
-        const rewrittenAgain = rewriteFrontendHtml(rawHtml, { enabled: true });
+        const rewrittenAgain = rewriteFrontendHtml(rawHtml, { enabled: true, distRoot: tmpDistDir });
         const statsAfter = getFrontendHtmlCacheStats();
 
         expect(cachedFirst).toBe(rewritten);
@@ -466,23 +467,23 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         const sampleHtml = fs.readFileSync(indexHtmlPath, 'utf8');
 
         // 1. Stale inputsHash mismatch must reject manifest and return raw HTML untouched.
-        installManifestForServerTest({
+        const staleDist = createDistFixture({
             ...manifest,
             inputsHash: '0'.repeat(64),
         });
 
-        expect(loadFrontendManifest()).toBeNull();
-        expect(shouldServeFrontendAssets()).toBe(false);
-        expect(rewriteFrontendHtml(sampleHtml, { enabled: true })).toBe(sampleHtml);
+        expect(loadFrontendManifest({ distRoot: staleDist })).toBeNull();
+        expect(shouldServeFrontendAssets({ distRoot: staleDist })).toBe(false);
+        expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: staleDist })).toBe(sampleHtml);
 
         // 2. Fresh manifest enables frontend serving; SB_DEV=1 overrides it back to raw public/.
-        installManifestForServerTest(manifest);
-        expect(loadFrontendManifest()).not.toBeNull();
-        expect(shouldServeFrontendAssets()).toBe(true);
+        setSbDev(undefined);
+        expect(loadFrontendManifest({ distRoot: tmpDistDir })).not.toBeNull();
+        expect(shouldServeFrontendAssets({ distRoot: tmpDistDir })).toBe(true);
 
-        process.env.SB_DEV = '1';
-        expect(shouldServeFrontendAssets()).toBe(false);
-        expect(rewriteFrontendHtml(sampleHtml, { enabled: true })).toBe(sampleHtml);
+        setSbDev('1');
+        expect(shouldServeFrontendAssets({ distRoot: tmpDistDir })).toBe(false);
+        expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: tmpDistDir })).toBe(sampleHtml);
 
         // 3. computeFrontendInputsHash ignores .DS_Store/Thumbs.db, normalizes CRLF across tracked text files,
         // and invalidates when package.json or scripts/build-frontend-assets.js changes.
@@ -839,5 +840,9 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         } finally {
             fs.rmSync(stampFixtureRoot, { recursive: true, force: true });
         }
+    });
+
+    test('(i) no case reads or writes the repository\'s own dist/frontend', () => {
+        expect(snapshotRepositoryDist()).toBe(repositoryDistBefore);
     });
 });
