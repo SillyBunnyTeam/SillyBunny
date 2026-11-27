@@ -95,11 +95,9 @@ describe('server supervisor', () => {
         }
     });
 
-    test('shouldSupervise skips duplicate supervisor VM under launchers unless plugins or --supervise are enabled', () => {
+    test('shouldSupervise lets launchers wrap one built-in supervisor', () => {
         expect(shouldSupervise({})).toBe(true);
-        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1' }, { enableServerPlugins: false })).toBe(false);
-        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1', SILLYTAVERN_ENABLESERVERPLUGINS: 'true' })).toBe(true);
-        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1' }, { enableServerPlugins: false, argv: ['bun', 'server.js', '--supervise'] })).toBe(true);
+        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1' })).toBe(true);
         expect(shouldSupervise({ SILLYBUNNY_SUPERVISED: '1' })).toBe(false);
         expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '', SILLYBUNNY_SUPERVISED: '' })).toBe(true);
     });

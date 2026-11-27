@@ -44,10 +44,6 @@ import getResponseCompressionMiddleware, {
     negotiateCompressionEncoding,
     parseAcceptEncoding,
 } from '../src/middleware/response-compression.js';
-import {
-    isServerPluginsEnabledForSupervisor,
-    shouldSupervise,
-} from '../src/server-supervisor.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const originalWorkingDirectory = process.cwd();
@@ -543,7 +539,7 @@ describe('2. Image & Thumbnail Pipeline Modernization', () => {
     });
 });
 
-describe('3. Server Supervisor Direct Mode, Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', () => {
+describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', () => {
     let tempRoot;
 
     beforeEach(() => {
@@ -558,20 +554,6 @@ describe('3. Server Supervisor Direct Mode, Lazy Startup, Native Zstd, Async Loc
         clearAssetsCache();
         jest.restoreAllMocks();
         fs.rmSync(tempRoot, { recursive: true, force: true });
-    });
-
-    test('server-supervisor skips duplicate VM under SILLYBUNNY_LAUNCHER=1 when plugins are disabled', () => {
-        const disabledConfig = path.join(tempRoot, 'disabled.yaml');
-        const enabledConfig = path.join(tempRoot, 'enabled.yaml');
-        fs.writeFileSync(disabledConfig, 'enableServerPlugins: false # default\n', 'utf8');
-        fs.writeFileSync(enabledConfig, 'enableServerPlugins: true\n', 'utf8');
-
-        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1' }, { configPath: disabledConfig })).toBe(false);
-        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1' }, { configPath: enabledConfig })).toBe(true);
-        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1' }, { configPath: disabledConfig, argv: ['bun', 'server.js', '--supervise'] })).toBe(true);
-        expect(shouldSupervise({ SILLYBUNNY_LAUNCHER: '1', SILLYBUNNY_SUPERVISE: '1' }, { configPath: disabledConfig })).toBe(true);
-        expect(shouldSupervise({}, { configPath: disabledConfig })).toBe(true);
-        expect(isServerPluginsEnabledForSupervisor({}, { configPath: path.join(tempRoot, 'missing.yaml') })).toBe(false);
     });
 
     test('loadServerPluginsLazy and createLazyRouter defer module loading until enabled or requested', async () => {
