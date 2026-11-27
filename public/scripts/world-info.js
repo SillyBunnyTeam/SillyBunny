@@ -5821,7 +5821,10 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
 
         // SillyBunny: batch per-entry token counts via Promise.all instead of O(K^2) serial cumulative prefix counts,
         // verifying the exact joined nextContent only when close to budget.
-        const STATEFUL_MACRO_PATTERN = /\{\{\s*(?:(?:set|add|inc|dec)(?:global)?var|roll|random|pick)\b/i;
+        // Any macro outside this list can read or write variables or other shared state, so its entry is expanded in the
+        // loop below, in activation order, after the probability and budget checks that gate it.
+        const ORDER_INDEPENDENT_MACRO_PATTERN = /\{\{\s*(?:char|user|group|trim|\/\/[^{}]*)\s*\}\}/gi;
+        const expandsIndependentOfOrder = content => !content.replace(ORDER_INDEPENDENT_MACRO_PATTERN, '').includes('{{');
         const needsBudgetCheck = !token_budget_overflowed && newEntries.some(entry => !entry.ignoreBudget);
         /** @type {Map<object, string>} */
         const preSubstitutedContent = new Map();
@@ -5830,7 +5833,7 @@ export async function checkWorldInfo(chat, maxContext, isDryRun, globalScanData 
         if (needsBudgetCheck) {
             for (const entry of newEntries) {
                 const rawContent = String(entry.content ?? '');
-                if (!STATEFUL_MACRO_PATTERN.test(rawContent)) {
+                if (expandsIndependentOfOrder(rawContent)) {
                     const substituted = substitute(rawContent);
                     preSubstitutedContent.set(entry, substituted);
                     entriesToPreCount.push(entry);
