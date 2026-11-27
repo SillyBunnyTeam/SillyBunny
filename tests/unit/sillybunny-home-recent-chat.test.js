@@ -27,14 +27,15 @@ const conversationRow = () => row({
     avatar: 'reisen.png',
     file: 'Reisen - c',
     group: '',
-    'conversation-branch-id': 'branch-2',
-    'conversation-branch-name': 'Evening',
+    'conversation-id': 'conv_1_reisen',
+    'conversation-chat-id': 'chat-2',
+    'conversation-chat-name': 'Evening',
 });
 
 describe('readRecentChatIdentity', () => {
-    test('reads the four identity attributes and turns a missing one into an empty string', () => {
-        expect(readRecentChatIdentity(characterRow())).toEqual({ file: 'Tewi - 1', avatar: 'tewi.png', group: '', branchId: '' });
-        expect(readRecentChatIdentity(conversationRow())).toEqual({ file: 'Reisen - c', avatar: 'reisen.png', group: '', branchId: 'branch-2' });
+    test('reads the identity attributes and turns a missing one into an empty string', () => {
+        expect(readRecentChatIdentity(characterRow())).toEqual({ file: 'Tewi - 1', avatar: 'tewi.png', group: '', conversationId: '', chatId: '' });
+        expect(readRecentChatIdentity(conversationRow())).toEqual({ file: 'Reisen - c', avatar: 'reisen.png', group: '', conversationId: 'conv_1_reisen', chatId: 'chat-2' });
     });
 });
 
@@ -54,11 +55,13 @@ describe('findRecentChatRow', () => {
         expect(findRecentChatRow(panelWith(other, mine), readRecentChatIdentity(mine))).toBe(mine);
     });
 
-    test('tells apart conversation branches of one character', () => {
-        const first = row({ avatar: 'a.png', file: 'c', group: '', 'conversation-branch-id': 'one' });
-        const second = row({ avatar: 'a.png', file: 'c', group: '', 'conversation-branch-id': 'two' });
+    test('tells apart the chats of one conversation, and the conversations of one character', () => {
+        const first = row({ avatar: 'a.png', file: 'c', group: '', 'conversation-id': 'conv_1_a', 'conversation-chat-id': 'one' });
+        const second = row({ avatar: 'a.png', file: 'c', group: '', 'conversation-id': 'conv_1_a', 'conversation-chat-id': 'two' });
+        const third = row({ avatar: 'a.png', file: 'c', group: '', 'conversation-id': 'conv_2_a', 'conversation-chat-id': 'two' });
 
-        expect(findRecentChatRow(panelWith(first, second), readRecentChatIdentity(second))).toBe(second);
+        expect(findRecentChatRow(panelWith(first, second, third), readRecentChatIdentity(second))).toBe(second);
+        expect(findRecentChatRow(panelWith(first, second, third), readRecentChatIdentity(third))).toBe(third);
     });
 
     test('returns null when the row is gone', () => {
@@ -72,7 +75,7 @@ describe('resolveRecentChatTarget', () => {
     const chats = [
         { chat_name: 'Tewi - 1', avatar: 'tewi.png', is_group: false, group: '' },
         { chat_name: 'Party - 3', avatar: '', is_group: true, group: 'g-17' },
-        { chat_name: 'Reisen - c', avatar: 'reisen.png', is_group: false, is_conversation: true, group: '', conversation_branch_id: 'branch-2' },
+        { chat_name: 'Reisen - c', avatar: 'reisen.png', is_group: false, is_conversation: true, group: '', conversation_id: 'conv_1_reisen', conversation_chat_id: 'chat-2' },
         { chat_name: 'Tewi - 1', avatar: 'other.png', is_group: false, group: '' },
     ];
 
@@ -90,10 +93,10 @@ describe('resolveRecentChatTarget', () => {
         expect(target.recentChat).toBe(chats[1]);
     });
 
-    test('resolves a Conversation branch with its id and name', () => {
+    test('resolves a Conversation chat with the ids of its conversation and itself, and its name', () => {
         const target = resolveRecentChatTarget(conversationRow(), chats);
 
-        expect(target).toMatchObject({ avatarId: 'reisen.png', branchId: 'branch-2', branchName: 'Evening', isConversation: true });
+        expect(target).toMatchObject({ avatarId: 'reisen.png', conversationId: 'conv_1_reisen', chatId: 'chat-2', chatName: 'Evening', isConversation: true });
         expect(target.recentChat).toBe(chats[2]);
     });
 

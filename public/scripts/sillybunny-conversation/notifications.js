@@ -1,133 +1,73 @@
 import { playMessageSound } from '../power-user.js';
-import { selectConversationThread } from './chrome.js';
-import { CHROME_IDS, SAFE_TOAST_OPTIONS } from './constants.js';
+import { CHROME_IDS, CONVERSATION_UNREAD_CHANGED_EVENT, CONVERSATION_UNREAD_DATASET, SAFE_TOAST_OPTIONS } from './constants.js';
 import {
     clearLegacyConversationUnreadStorage,
-    getActiveConversationBranch,
-    getConversationGroupById,
+    getCharacterForAvatar,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
-    getConversationStore,
-    getConversationThreadStore,
-    getConversationThreadKey,
+    getConversationRecord,
+    getConversationKey,
     getCurrentCharAvatar,
-    isConversationThreadKeyForPersona,
-    parseConversationThreadKey,
-    parsePositiveInt,
-    persistConversationStore,
     shouldSurfaceConversationNotification,
 } from './context.js';
-import { getCharacterForAvatar } from './media.js';
-import {
-    clearConversationUnreadStore,
-    getConversationThreadUnreadCount,
-    sanitizeConversationUnreadStore,
-    setConversationThreadUnreadCount,
-} from './notification-utils.js';
-import { getSettings, isConversationModeEnabled } from './settings-store.js';
+import { conversationData } from './conversation-data-browser.js';
+import { selectConversation } from './lazy-parts.js';
+import { stripPreviewText } from './preview-utils.js';
+import { getSettings } from './settings-store.js';
 import { conversationState } from './state.js';
-import { stripPreviewText } from './typing.js';
 
-export function getUnreadCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (branchId) {
-        return parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.unread, 0, 0);
+/** The messages after the read marker that the user has not seen, in one chat or in the whole conversation. */
+export function getUnreadCount(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view) {
+        return 0;
     }
-
-    return getConversationThreadUnreadCount(getConversationThreadStore(avatar, { create: false, groupId, personaId }));
+    return chatId ? view.chats.find(chat => chat.id === chatId)?.unread ?? 0 : view.unread ?? 0;
 }
 
-export function setUnreadCount(avatar, count, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
-    if (!threadStore) {
+/**
+ * Sets the read marker of a chat, or of every chat of the conversation, to its last message. A chat that is not loaded
+ * is loaded first, because its last message is not in the list.
+ * @returns {Promise<void>}
+ */
+export async function markConversationRead(avatar, { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const view = getConversationRecord(avatar, { groupId, personaId });
+    if (!view) {
         return;
     }
-
-    if (!setConversationThreadUnreadCount(threadStore, count, { branchId })) {
-        return;
-    }
-    persistConversationStore();
+    const chats = chatId ? view.chats.filter(chat => chat.id === chatId) : view.chats;
+    await Promise.all(chats.filter(chat => chat.unread > 0).map(chat => conversationData.markRead({ conversationId: view.id, chatId: chat.id })));
 }
 
-export function clearUnreadCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    setUnreadCount(avatar, 0, { branchId, groupId, personaId });
+export function clearUnreadCount(avatar, options = {}) {
+    return markConversationRead(avatar, options);
 }
 
-export function incrementUnreadCount(avatar, { branchId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    if (!avatar) {
-        return;
-    }
-
-    const currentUnread = parsePositiveInt(getActiveConversationBranch(avatar, { branchId, create: false, groupId, personaId })?.unread, 0, 0);
-    setUnreadCount(avatar, currentUnread + 1, { branchId, groupId, personaId });
+/** A conversation counts toward the badges when its character is in the library (a group: when one of its members is). */
+function isUnreadConversationCountable(view) {
+    return view.characters.some(avatar => getCharacterForAvatar(avatar));
 }
 
-function isUnreadThreadCountable(avatar, groupId) {
-    if (!avatar || !getCharacterForAvatar(avatar)) {
-        return false;
-    }
-
-    if (groupId) {
-        const group = getConversationGroupById(groupId);
-        if (!group?.members?.includes(avatar) || group.disabled_members?.includes(avatar)) {
-            return false;
-        }
-    }
-
-    return isConversationModeEnabled(avatar, { groupId });
-}
-
-function getUnreadThreadIdentity(threadKey) {
-    const parsed = parseConversationThreadKey(threadKey);
-    return {
-        avatar: parsed.avatar,
-        groupId: parsed.groupId || '',
-    };
-}
-
-export function sanitizeConversationUnreadCounts() {
-    const result = sanitizeConversationUnreadStore(getConversationStore(), (threadKey) => {
-        if (!isConversationThreadKeyForPersona(threadKey)) {
-            return true;
-        }
-
-        const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
-        return isUnreadThreadCountable(avatar, groupId);
-    });
-
-    if (result.changed) {
-        persistConversationStore();
-    }
-    return result;
-}
-
-export function clearAllConversationUnreadCounts() {
-    const storeResult = clearConversationUnreadStore(getConversationStore(), threadKey => isConversationThreadKeyForPersona(threadKey));
+/**
+ * Marks every conversation of the current persona as read.
+ * @returns {Promise<{ changed: boolean, cleared: number, removedLegacy: number }>} `cleared` is the number of messages that were unread.
+ */
+export async function clearAllConversationUnreadCounts() {
+    const personaId = getConversationPersonaId();
+    const views = conversationData.list({ personaId }).filter(view => view.unread > 0 && isUnreadConversationCountable(view));
+    const cleared = views.reduce((sum, view) => sum + view.unread, 0);
+    await Promise.all(views.map(view => Promise.all(view.chats.filter(chat => chat.unread > 0).map(chat => conversationData.markRead({ conversationId: view.id, chatId: chat.id })))));
     const removedLegacy = clearLegacyConversationUnreadStorage();
-    const changed = storeResult.changed || removedLegacy > 0;
-
-    if (storeResult.changed) {
-        persistConversationStore();
-    }
+    const changed = cleared > 0 || removedLegacy > 0;
     if (changed) {
         updateConversationNotificationIndicators();
     }
 
-    return { ...storeResult, changed, removedLegacy };
+    return { changed, cleared, removedLegacy };
 }
 
 export function getTotalUnreadCount() {
-    return Object.entries(getConversationStore().characters || {}).reduce((sum, [threadKey, threadStore]) => {
-        if (!isConversationThreadKeyForPersona(threadKey)) {
-            return sum;
-        }
-
-        const { avatar, groupId } = getUnreadThreadIdentity(threadKey);
-        if (!isUnreadThreadCountable(avatar, groupId)) {
-            return sum;
-        }
-
-        return sum + getConversationThreadUnreadCount(threadStore);
-    }, 0);
+    return conversationData.totalUnread(getConversationPersonaId(), isUnreadConversationCountable);
 }
 
 export function getBadgeLabel(count) {
@@ -217,8 +157,8 @@ export function updateConversationFaviconBadge(totalUnread = getTotalUnreadCount
     image.src = sourceHref;
 }
 
-export function updatePalsToggleBadge(totalUnread = getTotalUnreadCount()) {
-    const badge = document.querySelector(`#${CHROME_IDS.palsToggle} .sb-conversation-pals-toggle-badge`);
+export function updateListToggleBadge(totalUnread = getTotalUnreadCount()) {
+    const badge = document.querySelector(`#${CHROME_IDS.listToggle} .sb-conversation-list-toggle-badge`);
     if (!(badge instanceof HTMLElement)) {
         return;
     }
@@ -227,98 +167,91 @@ export function updatePalsToggleBadge(totalUnread = getTotalUnreadCount()) {
     badge.hidden = totalUnread <= 0;
 }
 
-export function updateConversationTabBadge(totalUnread = getTotalUnreadCount()) {
-    const modeButton = document.querySelector('#sb_character_mode_toggle [data-sb-character-mode="conversation"]');
-    if (!(modeButton instanceof HTMLElement)) {
-        return;
+/**
+ * The unread badge of the control for the chat mode: the count and its accessible name, or null when none shows. A user in
+ * Conversation Mode does not need it, because the list there holds the counts.
+ * @param {number} totalUnread
+ * @param {boolean} workspaceOpen
+ * @returns {{ text: string, name: string }|null}
+ */
+export function describeModeToggleUnread(totalUnread, workspaceOpen) {
+    if (workspaceOpen || !(totalUnread > 0)) {
+        return null;
     }
-    let badge = modeButton.querySelector('.sb-tab-notification-badge');
-    if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'sb-tab-notification-badge';
-        modeButton.appendChild(badge);
-    }
-    badge.textContent = getBadgeLabel(totalUnread);
-    badge.style.display = totalUnread > 0 ? 'inline-flex' : 'none';
+
+    const text = getBadgeLabel(totalUnread);
+    return { text, name: `${text} Unread` };
 }
 
-export function updateCharactersDrawerBadge(totalUnread = getTotalUnreadCount()) {
-    const ids = ['rm_button_characters', 'rightNavDrawerIcon'];
-    for (const id of ids) {
-        const drawerButton = document.getElementById(id);
-        if (!drawerButton) {
-            continue;
-        }
-        let badge = drawerButton.querySelector('.sb-drawer-notification-badge');
-        if (totalUnread <= 0) {
-            badge?.remove();
-            continue;
-        }
-
-        if (!badge) {
-            badge = document.createElement('span');
-            badge.className = 'sb-drawer-notification-badge';
-            drawerButton.appendChild(badge);
-        }
-        badge.style.display = 'block';
-        badge.textContent = '';
+/** Publishes the badge of `describeModeToggleUnread()` for the top bar, and sends the event when it changes. */
+export function updateModeToggleUnread(totalUnread = getTotalUnreadCount()) {
+    const badge = describeModeToggleUnread(totalUnread, Boolean(conversationState.conversationWorkspaceOpen));
+    const text = badge?.text ?? '';
+    const name = badge?.name ?? '';
+    const { dataset } = document.documentElement;
+    if ((dataset[CONVERSATION_UNREAD_DATASET.text] ?? '') === text && (dataset[CONVERSATION_UNREAD_DATASET.name] ?? '') === name) {
+        return;
     }
+
+    if (badge) {
+        dataset[CONVERSATION_UNREAD_DATASET.text] = text;
+        dataset[CONVERSATION_UNREAD_DATASET.name] = name;
+    } else {
+        delete dataset[CONVERSATION_UNREAD_DATASET.text];
+        delete dataset[CONVERSATION_UNREAD_DATASET.name];
+    }
+    window.dispatchEvent(new CustomEvent(CONVERSATION_UNREAD_CHANGED_EVENT, { detail: { text, name } }));
 }
 
 export function updateConversationNotificationIndicators() {
     const totalUnread = getTotalUnreadCount();
-    updatePalsToggleBadge(totalUnread);
+    updateListToggleBadge(totalUnread);
     updateConversationTitleBadge(totalUnread);
     updateConversationFaviconBadge(totalUnread);
-    updateConversationTabBadge(totalUnread);
-    updateCharactersDrawerBadge(totalUnread);
+    updateModeToggleUnread(totalUnread);
 }
 
-export function getActiveConversationThreadKey() {
+export function getActiveConversationKey() {
     if (!conversationState.conversationWorkspaceOpen) {
         return '';
     }
 
-    return getConversationThreadKey(getCurrentCharAvatar(), conversationState.conversationSelectedGroupId || '');
+    return getConversationKey(getCurrentCharAvatar(), conversationState.conversationSelectedGroupId || '');
 }
 
-export function isConversationActiveThread(avatar, groupId = getConversationGroupIdForAvatar(avatar), { branchId = '', personaId = getConversationPersonaId() } = {}) {
+export function isConversationActive(avatar, groupId = getConversationGroupIdForAvatar(avatar), { chatId = '', personaId = getConversationPersonaId() } = {}) {
     const currentPersonaId = getConversationPersonaId();
-    const threadStore = getConversationThreadStore(avatar, { create: false, groupId, personaId });
+    const conversationRecord = getConversationRecord(avatar, { groupId, personaId });
     return Boolean(
         conversationState.conversationWorkspaceOpen
         && avatar
         && personaId === currentPersonaId
-        && getConversationThreadKey(avatar, groupId || '', { personaId }) === getActiveConversationThreadKey()
-        && (!branchId || branchId === threadStore?.activeBranchId),
+        && getConversationKey(avatar, groupId || '', { personaId }) === getActiveConversationKey()
+        && (!chatId || chatId === conversationRecord?.activeChatId),
     );
 }
 
-export function isConversationActiveForAvatar(avatar) {
-    return isConversationActiveThread(avatar);
+export async function openConversationFromNotification(avatar, { chatId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
+    return selectConversation(avatar, { chatId, groupId, personaId, showToast: false });
 }
 
-export async function openConversationFromNotification(avatar, { branchId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
-    return selectConversationThread(avatar, { branchId, groupId, personaId, showToast: false });
-}
-
-export function showConversationToast(avatar, message, { branchId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
+export function showConversationToast(avatar, message, { chatId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
     const toastr = globalThis.toastr;
     if (!toastr?.info) {
         return;
     }
 
     const character = getCharacterForAvatar(avatar);
-    const title = `New DM from ${message.name || character?.name || 'Character'}`;
+    const title = `New message from ${message.name || character?.name || 'Character'}`;
     const preview = stripPreviewText(message.mes) || 'New Conversation message';
     toastr.info(preview, title, {
         ...SAFE_TOAST_OPTIONS,
         timeOut: 6000,
-        onclick: () => void openConversationFromNotification(avatar, { branchId, groupId, personaId }),
+        onclick: () => void openConversationFromNotification(avatar, { chatId, groupId, personaId }),
     });
 }
 
-export function notifyNewConversationMessage(avatar, message, shouldNotify, { branchId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
+export function notifyNewConversationMessage(avatar, message, shouldNotify, { chatId = '', groupId = null, personaId = getConversationPersonaId() } = {}) {
     updateConversationNotificationIndicators();
     if (!shouldNotify || !message || message.role === 'user' || message.role === 'system') {
         return;
@@ -335,5 +268,5 @@ export function notifyNewConversationMessage(avatar, message, shouldNotify, { br
         console.warn('Conversation Mode: notification sound failed', error);
     }
 
-    showConversationToast(avatar, message, { branchId, groupId, personaId });
+    showConversationToast(avatar, message, { chatId, groupId, personaId });
 }

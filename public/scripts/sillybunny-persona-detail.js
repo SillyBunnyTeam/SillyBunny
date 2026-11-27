@@ -1,4 +1,5 @@
-import { characters, default_avatar, default_user_avatar, getThumbnailUrl, getThumbnailUrlForViewport } from '../script.js';
+import { characters, default_avatar, default_user_avatar, getMobileThumbnailUrl, getThumbnailUrlForViewport } from '../script.js';
+import { createLazyImage } from './sillybunny-editor/lazy-image.js';
 import { groups, getGroupAvatar } from './group-chats.js';
 import { t, translate } from './i18n.js';
 import { getCurrentUserHandle } from './user.js';
@@ -491,11 +492,8 @@ export function mountPersonaDetail({ host, avatarId, mode = 'edit', requestClose
                 let avatar;
                 if (connection.type === 'group') avatar = getGroupAvatar(groups.find(group => String(group.id) === String(connection.id)))[0];
                 else {
-                    avatar = element('img', 'sb-persona-connection-avatar');
-                    avatar.src = characters.some(character => character.avatar === connection.id) ? getThumbnailUrl('avatar', connection.id) : default_avatar;
-                    avatar.alt = '';
-                    avatar.loading = 'lazy';
-                    avatar.decoding = 'async';
+                    const known = characters.some(character => character.avatar === connection.id);
+                    avatar = createLazyImage(known ? getMobileThumbnailUrl('avatar', connection.id) : default_avatar, 'sb-persona-connection-avatar');
                 }
                 const remove = iconButton(t`Remove`, 'xmark', 'sb-persona-connection-remove');
                 remove.addEventListener('click', event => {

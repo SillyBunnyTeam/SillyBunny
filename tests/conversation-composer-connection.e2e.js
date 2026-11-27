@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { resetConversations, seedConversation, uniquePersona } from './helpers/conversation-seed.js';
 import { fetchJsonOrSkip } from './helpers/route-fetch.js';
 import { applyWelcomeSettings } from './helpers/welcome-dialog.js';
 import { waitForAppReady } from './helpers/app-ready.js';
@@ -9,6 +10,7 @@ async function openConversation(page, baseURL) {
     const origin = new URL(baseURL).origin;
     expect(['127.0.0.1', 'localhost', '[::1]']).toContain(new URL(baseURL).hostname);
     let settingsVersion = Date.now();
+    const persona = uniquePersona();
     const readOnlyEndpoints = new Set([
         '/api/characters/all', '/api/characters/chats', '/api/groups/all', '/api/backgrounds/all',
         '/api/avatars/get', '/api/stats/get', '/api/secrets/read', '/api/users/me',
@@ -30,6 +32,8 @@ async function openConversation(page, baseURL) {
             const settings = JSON.parse(data.settings);
             settings.firstRun = false;
             applyWelcomeSettings(settings);
+            // This page sees only its own conversations, because the server's user is shared with the specs that run beside this one.
+            settings.user_avatar = persona;
             settings.power_user.auto_connect = false;
             data.request_compression = { ...data.request_compression, enabled: false };
             data.settings = JSON.stringify(settings);
@@ -38,7 +42,8 @@ async function openConversation(page, baseURL) {
         if (url.pathname === '/api/settings/save') {
             return route.fulfill({ json: { version: ++settingsVersion } });
         }
-        if (readOnlyEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/')) {
+        // The conversations are on the server of the test, which the spec seeds through the routes.
+        if (readOnlyEndpoints.has(url.pathname) || url.pathname.startsWith('/api/tokenizers/') || url.pathname.startsWith('/api/sillybunny-conversation/')) {
             return route.continue();
         }
         if (url.pathname.startsWith('/api/backends/')) {
@@ -52,20 +57,26 @@ async function openConversation(page, baseURL) {
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await waitForAppReady(page, { timeout: 60000 });
-    await page.evaluate(async () => {
+    const avatar = await page.evaluate(() => {
         document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-        const { setOnlineStatus } = await import('/script.js');
-        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        const { stopConversationAutoWorker } = await import('/scripts/sillybunny-conversation/auto-engine.js');
-        const context = window.SillyTavern.getContext();
-        const character = context.characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
+        const character = window.SillyTavern.getContext().characters.find(entry => /Seraphina/.test(entry?.name ?? ''));
         if (!character?.avatar) {
             throw new Error('No bundled Conversation character found.');
         }
-        setOnlineStatus('no_connection');
-        openConversationWorkspaceForAvatar(character.avatar, { showToast: false });
-        stopConversationAutoWorker();
+        return character.avatar;
     });
+    await resetConversations(page);
+    await seedConversation(page, { avatar });
+    await page.evaluate(async (avatar) => {
+        const { setOnlineStatus } = await import('/script.js');
+        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
+        const { stopConversationAutoWorker } = await import('/scripts/sillybunny-conversation/auto-engine.js');
+        const { ensureConversationChatLoaded } = await import('/scripts/sillybunny-conversation/conversation-store.js');
+        setOnlineStatus('no_connection');
+        await openConversationWorkspaceForAvatar(avatar, { showToast: false });
+        await ensureConversationChatLoaded(avatar);
+        stopConversationAutoWorker();
+    }, avatar);
     await expect(page.locator('#sheld')).toHaveAttribute('data-sb-conversation-mode', 'on');
 }
 

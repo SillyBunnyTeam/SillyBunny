@@ -265,7 +265,6 @@ router.post('/create', (request, response) => {
         member_models: (request.body.member_models && typeof request.body.member_models === 'object' && !Array.isArray(request.body.member_models))
             ? request.body.member_models
             : {},
-        conversation_settings: request.body.conversation_settings ?? {},
     };
     const pathToFile = path.join(request.user.directories.groups, sanitize(`${id}.json`));
     const fileData = JSON.stringify(groupMetadata, null, 4);

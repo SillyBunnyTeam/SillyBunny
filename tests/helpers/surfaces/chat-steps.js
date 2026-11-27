@@ -485,7 +485,7 @@ export async function scrollToOlderMessagesControl(page) {
     await settle(page);
 }
 
-/** Enters the message deletion mode through the Options menu: the composer gives way to Delete and Cancel, and each message gets a checkbox. */
+/** Enters the message deletion mode through the Options menu: the composer gives way to the selection bar, the header offers Cancel and Select All, and each message gets a check. */
 export async function openDeleteMode(page) {
     await openLegacyToggle(page, '#options_button', '#options');
     await page.locator('#option_delete_mes').click();

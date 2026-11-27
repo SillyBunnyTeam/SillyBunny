@@ -1,17 +1,12 @@
 import fs from 'node:fs';
 import { promises as fsPromises } from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { isBunRuntime } from './runtime.js';
-
-const require = createRequire(import.meta.url);
+import { SqliteCache, getCacheDirectory, getFileKey, getFileStamp, hasNulCharacter } from './sqlite-cache.js';
 
 // Raise the version when the stored data for an unchanged card file changes, for example after a parser fix.
 // An index file with another version is deleted and built again.
 const SCHEMA_VERSION = 1;
-const SQLITE_CORRUPT = 11;
-const SQLITE_NOTADB = 26;
 
 const SCHEMA = `CREATE TABLE characters (
     directory TEXT NOT NULL,
@@ -30,54 +25,11 @@ const STATEMENTS = {
     listAll: 'SELECT directory, file_name FROM characters',
 };
 
-/**
- * @param {string} filePath Database file path
- * @returns {any} bun:sqlite or node:sqlite database
- */
-function openDatabase(filePath) {
-    if (isBunRuntime()) {
-        const { Database } = require('bun:sqlite');
-        return new Database(filePath);
-    }
-
-    // Node.js 26 renamed DatabaseSync to Database and deprecated the old name.
-    const { Database, DatabaseSync } = require('node:sqlite');
-    return new (Database ?? DatabaseSync)(filePath);
-}
-
-/**
- * @param {any} database bun:sqlite or node:sqlite database
- * @param {string} sql SQL statements to run
- */
-function runSql(database, sql) {
-    // bun:sqlite marks exec as a deprecated alias of run, and node:sqlite has no run.
-    if (isBunRuntime()) {
-        database.run(sql);
-    } else {
-        database.exec(sql);
-    }
-}
-
-/**
- * @param {any} error Error from the SQLite driver
- * @returns {boolean}
- */
-function isCorruptionError(error) {
-    // node:sqlite puts the SQLite result code in errcode, and bun:sqlite puts it in errno.
-    const resultCode = error?.code === 'ERR_SQLITE_ERROR' ? error.errcode : error?.name === 'SQLiteError' ? error.errno : 0;
-    // An extended result code keeps the primary result code in its low byte.
-    const primaryCode = resultCode & 0xff;
-    return primaryCode === SQLITE_CORRUPT || primaryCode === SQLITE_NOTADB;
-}
-
-/**
- * @param {string} filePath Card file path
- * @returns {[string, string]} Directory and file name of the card
- */
-function getEntryKey(filePath) {
-    const resolvedPath = path.resolve(filePath);
-    return [path.dirname(resolvedPath), path.basename(resolvedPath)];
-}
+const MESSAGES = {
+    nodeTooOld: 'The character cache needs Node.js 22.13 or newer, so cards are read from their files.',
+    failed: 'Character index error. Cards are read from their files until the server restarts:',
+    closeFailed: 'Could not close the character index:',
+};
 
 /**
  * @param {string} directory Characters directory
@@ -97,28 +49,28 @@ function listCardFiles(directory) {
  * modification time as when the card was parsed, and the database file can be deleted at any time.
  */
 export class CharacterIndex {
-    /** @type {boolean} */
-    #enabled;
-
-    /** @type {any} */
-    #database = null;
-
-    /** @type {Record<string, any>|null} */
-    #statements = null;
+    #cache;
 
     /**
      * @param {object} options Index options
      * @param {boolean} options.enabled Keep parsed cards on disk
      */
     constructor({ enabled }) {
-        this.#enabled = enabled;
+        this.#cache = new SqliteCache({
+            fileName: 'characters.sqlite',
+            enabled,
+            schemaVersion: SCHEMA_VERSION,
+            schema: SCHEMA,
+            statements: STATEMENTS,
+            messages: MESSAGES,
+        });
     }
 
     /**
      * @returns {string}
      */
     get filePath() {
-        return path.join(globalThis.DATA_ROOT, '_cache', 'characters.sqlite');
+        return this.#cache.filePath;
     }
 
     /**
@@ -127,17 +79,7 @@ export class CharacterIndex {
      * @returns {string|undefined} Card data, or undefined if the index is off or has no entry for this size and modification time
      */
     get(filePath, fileStat) {
-        const statements = this.#getStatements();
-        if (!statements) {
-            return undefined;
-        }
-
-        try {
-            return statements.get.get(...getEntryKey(filePath), fileStat.size, fileStat.mtimeMs)?.data;
-        } catch (error) {
-            this.#handleError(error);
-            return undefined;
-        }
+        return this.#cache.use(statements => statements.get.get(...getFileKey(filePath), ...getFileStamp(fileStat))?.data);
     }
 
     /**
@@ -148,36 +90,22 @@ export class CharacterIndex {
      */
     set(filePath, fileStat, data) {
         // Node.js 22 returns a stored TEXT value only up to its first NUL character, so the index would return a cut-off card.
-        if (data.includes('\0')) {
+        if (hasNulCharacter(data)) {
             return;
         }
 
-        const statements = this.#getStatements();
-        if (!statements) {
-            return;
-        }
-
-        try {
-            statements.set.run(...getEntryKey(filePath), fileStat.size, fileStat.mtimeMs, data);
-        } catch (error) {
-            this.#handleError(error);
-        }
+        this.#cache.use(statements => {
+            statements.set.run(...getFileKey(filePath), ...getFileStamp(fileStat), data);
+        });
     }
 
     /**
      * @param {string} filePath Card file path
      */
     delete(filePath) {
-        const statements = this.#getStatements();
-        if (!statements) {
-            return;
-        }
-
-        try {
-            statements.delete.run(...getEntryKey(filePath));
-        } catch (error) {
-            this.#handleError(error);
-        }
+        this.#cache.use(statements => {
+            statements.delete.run(...getFileKey(filePath));
+        });
     }
 
     /**
@@ -185,12 +113,7 @@ export class CharacterIndex {
      * @param {string[]} fileNames Names of the card files in the directory
      */
     pruneDirectory(directory, fileNames) {
-        const statements = this.#getStatements();
-        if (!statements) {
-            return;
-        }
-
-        try {
+        this.#cache.use(statements => {
             const resolvedDirectory = path.resolve(directory);
             const existingFiles = new Set(fileNames);
             for (const { file_name: fileName } of statements.listDirectory.all(resolvedDirectory)) {
@@ -198,9 +121,7 @@ export class CharacterIndex {
                     statements.delete.run(resolvedDirectory, fileName);
                 }
             }
-        } catch (error) {
-            this.#handleError(error);
-        }
+        });
     }
 
     /**
@@ -211,17 +132,12 @@ export class CharacterIndex {
      */
     async prune(directoriesList) {
         try {
-            await fsPromises.rm(path.join(globalThis.DATA_ROOT, '_cache', 'characters'), { recursive: true, force: true });
+            await fsPromises.rm(path.join(getCacheDirectory(), 'characters'), { recursive: true, force: true });
         } catch (error) {
             console.warn('Could not delete the old character disk cache:', error);
         }
 
-        const statements = this.#getStatements();
-        if (!statements) {
-            return;
-        }
-
-        try {
+        this.#cache.use((statements, run) => {
             const cardFiles = new Map(directoriesList.map(directories => {
                 const directory = path.resolve(directories.characters);
                 return [directory, listCardFiles(directory)];
@@ -231,121 +147,14 @@ export class CharacterIndex {
                     statements.delete.run(directory, fileName);
                 }
             }
-            runSql(this.#database, 'PRAGMA incremental_vacuum');
-        } catch (error) {
-            this.#handleError(error);
-        }
+            run('PRAGMA incremental_vacuum');
+        });
     }
 
     /**
      * While the index is on, the next call that uses it opens the database file again.
      */
     close() {
-        try {
-            for (const statement of Object.values(this.#statements ?? {})) {
-                // bun:sqlite keeps the database file open until every statement is finalized.
-                statement.finalize?.();
-            }
-            this.#database?.close();
-        } catch (error) {
-            console.warn('Could not close the character index:', error);
-        } finally {
-            this.#statements = null;
-            this.#database = null;
-        }
-    }
-
-    /**
-     * Opens the database file if it is closed.
-     * @returns {Record<string, any>|null} Prepared statements, or null if the index is off
-     */
-    #getStatements() {
-        if (!this.#statements && this.#enabled) {
-            try {
-                this.#open();
-            } catch (error) {
-                this.#handleError(error);
-            }
-        }
-
-        return this.#statements;
-    }
-
-    #open() {
-        try {
-            this.#connect();
-            if (this.#readUserVersion() === SCHEMA_VERSION) {
-                this.#prepareStatements();
-                return;
-            }
-        } catch (error) {
-            if (!isCorruptionError(error)) {
-                throw error;
-            }
-        }
-
-        // The file is new, damaged, or has another schema version, so the index starts again empty.
-        this.close();
-        this.#deleteFiles();
-        this.#connect();
-        runSql(this.#database, SCHEMA);
-        runSql(this.#database, `PRAGMA user_version = ${SCHEMA_VERSION}`);
-        this.#prepareStatements();
-    }
-
-    #connect() {
-        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-        this.#database = openDatabase(this.filePath);
-        // WAL with synchronous=NORMAL does not flush the file on every write. A power loss can drop the newest
-        // entries, but cannot corrupt the database. auto_vacuum works only if it is set before the table is created.
-        runSql(this.#database, 'PRAGMA busy_timeout = 1000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL');
-    }
-
-    /**
-     * @returns {number} Schema version of the open database file
-     */
-    #readUserVersion() {
-        const statement = this.#database.prepare('PRAGMA user_version');
-        try {
-            return statement.get()?.user_version;
-        } finally {
-            statement.finalize?.();
-        }
-    }
-
-    #prepareStatements() {
-        // Assigned before the loop, so the statements that are already prepared are finalized if a later one fails.
-        this.#statements = {};
-        for (const [name, sql] of Object.entries(STATEMENTS)) {
-            this.#statements[name] = this.#database.prepare(sql);
-        }
-    }
-
-    #deleteFiles() {
-        for (const suffix of ['', '-wal', '-shm']) {
-            fs.rmSync(`${this.filePath}${suffix}`, { force: true });
-        }
-    }
-
-    /**
-     * Turns the index off until the server restarts, so a broken database file cannot fail card reads.
-     * @param {any} error Error from the SQLite driver or the file system
-     */
-    #handleError(error) {
-        // Node.js older than 22.13 throws this code when openDatabase() loads node:sqlite.
-        if (error?.code === 'ERR_UNKNOWN_BUILTIN_MODULE') {
-            console.warn('The character cache needs Node.js 22.13 or newer, so cards are read from their files.');
-        } else {
-            console.warn('Character index error. Cards are read from their files until the server restarts:', error);
-        }
-        this.close();
-        this.#enabled = false;
-        if (isCorruptionError(error)) {
-            try {
-                this.#deleteFiles();
-            } catch {
-                // A damaged file is replaced when the server starts again.
-            }
-        }
+        this.#cache.close();
     }
 }

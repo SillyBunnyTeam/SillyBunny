@@ -425,7 +425,6 @@ const MOBILE_DOCUMENT_PAN_HORIZONTAL_SCROLL_SELECTOR = [
     // MOBILE_DOCUMENT_PAN_CONTROL_SELECTOR and the pan guard blocks it unless the rail is
     // allowlisted here.
     '.sb-topbar-group-left',
-    '.sb-conversation-channel-tabs',
     '.sb-character-create-bar',
     '#HotSwapWrapper .hotswap',
     '#right-nav-panel .rm_tag_controls',

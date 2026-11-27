@@ -1243,6 +1243,148 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     min-block-size: 40px;
 }
 
+/* A batch of rows is one wrapper element in the list, and its rows lay out as the list's own children. */
+.sb-picker__page,
+.sb-picker__page > ul {
+    display: contents;
+}
+
+/* A paged list keeps its rows and hides the ones that are not shown with a class: the `hidden` attribute restyles the page. */
+.sb-picker__option.is-hidden,
+.sb-picker__empty.is-hidden,
+.sb-picker__check.is-hidden,
+.sb-picker__filters.is-hidden,
+.sb-picker__filter-count.is-hidden,
+.sb-picker__filter-clear.is-hidden {
+    display: none;
+}
+
+/* A picker that is paged by `pageSize` ends in a Show More row. It is an option, so that the arrow keys reach it. */
+.sb-picker__more {
+    justify-content: center;
+    font-size: var(--sb-type-title);
+    font-weight: 700;
+}
+
+/* A picker with a filter puts the filter button after its search field. */
+.sb-picker__search-row {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: 6px;
+    margin-block-end: 6px;
+}
+
+.sb-picker__search-row > .sb-picker__search {
+    flex: 1 1 auto;
+    inline-size: auto;
+    min-inline-size: 0;
+    margin-block-end: 0;
+}
+
+.sb-picker__filter-toggle {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 40px;
+    block-size: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sb-radius-pill);
+    background: transparent;
+    color: var(--sb-muted-fg);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.sb-picker__filter-toggle.is-active,
+.sb-picker__filter-toggle[aria-expanded='true'] {
+    background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
+    color: var(--sb-accent);
+}
+
+.sb-picker__filter-toggle:focus-visible,
+.sb-picker__chip:focus-visible,
+.sb-picker__filter-clear:focus-visible {
+    outline: none;
+    box-shadow: var(--sb-focus-ring-inset);
+}
+
+.sb-picker__filter-count {
+    position: absolute;
+    inset-block-start: 2px;
+    inset-inline-end: 2px;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-inline-size: 16px;
+    block-size: 16px;
+    padding-inline: 3px;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-accent);
+    color: var(--sb-on-solid-accent, var(--SmartThemeBodyColor));
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+/* The tag chips flow like words in a line and the panel scrolls past about four lines of them (AdwWrapBox). */
+.sb-picker__filters {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-block-size: 8.5rem;
+    margin-block-end: 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.sb-picker__chip,
+.sb-picker__filter-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-block-size: var(--sb-density-floor);
+    box-sizing: border-box;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-raised-bg);
+    color: inherit;
+    font: inherit;
+    font-size: var(--sb-type-caption);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background-color var(--sb-transition-fast), color var(--sb-transition-fast);
+}
+
+.sb-picker__chip[aria-pressed='true'] {
+    background: color-mix(in srgb, var(--sb-accent) 16%, transparent);
+    color: var(--sb-accent);
+}
+
+.sb-picker__filter-clear {
+    background: transparent;
+    color: var(--sb-muted-fg);
+}
+
+.sb-picker__chip-dot {
+    flex: 0 0 8px;
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: var(--sb-radius-pill);
+}
+
+/* A picker built into a page has no popover around it, so its list takes the page's width and height. */
+.sb-picker--inline .sb-picker__list {
+    max-block-size: min(60dvh, 28rem);
+}
+
 .sb-picker-sheet .sb-picker__search {
     min-block-size: 44px;
     margin-block: 2px 8px;
@@ -1391,6 +1533,13 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
     display: none;
 }
 
+/* Select to End is the touch route to a range, where a pointer has Shift-click. */
+@media (pointer: fine) {
+    .sb-selection-action[data-action-id='select-to-end'] {
+        display: none;
+    }
+}
+
 @media (max-width: 450px), (max-height: 360px) {
     .sb-selection-action-bar--icon-only-narrow {
         flex-wrap: nowrap;
@@ -1500,6 +1649,12 @@ body.reduced-motion :is(.sb-chip-entry, .sb-chip__remove, .sb-list-pagination__p
 }
 
 @media (hover: hover) {
+    .sb-picker__filter-toggle:hover,
+    .sb-picker__chip:hover,
+    .sb-picker__filter-clear:hover {
+        background: var(--sb-flat-hover-bg);
+    }
+
     .sb-picker__option:hover,
     [data-selection-mode='true'] button.menu_button.sb-selection-action:not(.disabled):not(.is-disabled):not([disabled]):not([aria-disabled='true']):hover {
         background: var(--sb-flat-hover-bg);

@@ -49,6 +49,8 @@ import {
 let companionUiInitialized = false;
 let companionMarkdownConverter = null;
 const companionMessageRuns = new Set();
+/** How long MESSAGE_DELETED has to stay quiet before the cards render again. */
+const MESSAGE_DELETED_QUIET_MS = 50;
 
 function normalizeChatroomField(value = '') {
     return String(value ?? '').replaceAll('|', '/').replaceAll(/\r?\n/g, ' ').trim();
@@ -964,10 +966,16 @@ export function initCompanionCardUi() {
     }
 
     if (event_types.MESSAGE_DELETED) {
-        // The payload is the deleted index, but every later message shifts down — re-render all.
+        // The payload is the deleted index, but every later message shifts down, so everything renders again. Deleting many
+        // messages sends one event for each, and a render is the cost of a message or more, so the render waits until the
+        // events stop and then reads the chat as it is.
+        let deletedTimer = 0;
         eventSource.on(event_types.MESSAGE_DELETED, () => {
-            renderAllCompanionResults();
-            updateCompanionButtonVisibility();
+            clearTimeout(deletedTimer);
+            deletedTimer = setTimeout(() => {
+                renderAllCompanionResults();
+                updateCompanionButtonVisibility();
+            }, MESSAGE_DELETED_QUIET_MS);
         });
     }
 

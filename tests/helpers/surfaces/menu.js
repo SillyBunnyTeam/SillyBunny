@@ -9,7 +9,8 @@
 import {
     ARCHIVE_MENU_BUTTON, chooseItem, closeComposerSheets, openAuditLorebook, openAuditPersona, closeAndWait, MENU_ROOT, openAgentEditor, openAgentList, openArchiveList, openArchiveSelection, openAuditCharacterEditor, openAuditChat,
     openAuditConversation, openAuditGroupEditor, openCharacterList, openChatHistory, openDataBank, openExtensionsManager, openFrom, openManagerFromList,
-    openLegacyToggle, openPromptDetail, openPromptEditor, openPromptProperties, PICKER_ROOT, POPOVER_ROOT, settleFade, settleOverlay, showConversationPage,
+    openLegacyToggle, openPromptDetail, openPromptEditor, openPromptProperties, PICKER_ROOT, POPOVER_ROOT, showAuditConversationFolders, settleFade, settleOverlay, showConversationPage,
+    AUDIT_FOLDERS,
 } from './menu-steps.js';
 import { FIXTURES } from './fixture-data.js';
 import { characterSearch, openSearch } from './list-steps.js';
@@ -32,8 +33,6 @@ const menuItemWith = text => `.sb-action-menu [role^="menuitem"]:has-text("${tex
 const HOME_MENU_BUTTON = '#chat > .welcomePanel .sbHomeMenuButton';
 const TAG_MANAGER = '#tag_view_list';
 const FOLDER_MANAGER = '.sb-dialog-host[open]:has(> .sb-folder-manager)';
-/** The matrix sizes up to 768px wide: the Conversation workspace shows one page at a time, and the prompt editor folds all its header actions into a menu. */
-const NARROW_VIEWPORTS = ['768x1024', '390x844', '360x640', '360x294', '320x568'];
 const ACTION_MENU = `${SCRIPTS}/sillybunny-action-menu.js`;
 const READY = { [MENU_ROOT]: '.sb-action-menu [role^="menuitem"]', [PICKER_ROOT]: '.sb-picker__option' };
 const PICKER = `${SCRIPTS}/sillybunny-editor/picker.js`;
@@ -93,24 +92,76 @@ export const surfaces = [
         primaryFlow: true,
     }),
     ...[
-        ['branch', 'Branches menu', 'open-branch-menu', 'chat'],
         ['overflow', 'Conversation menu', 'open-conversation-menu', 'chat'],
-        // The desktop composer has an attach button of its own; the menu replaces it where the workspace is paged.
-        ['composer', 'Conversation composer menu (Add to message)', 'open-composer-menu', 'chat', NARROW_VIEWPORTS],
-        ['status', 'Conversation status and persona menu', 'open-persona-menu', 'pals'],
-        ['new', 'New conversation menu', 'open-new-menu', 'pals'],
-    ].map(([id, title, action, workspacePage, viewports]) => menu({
+        ['composer', 'Conversation composer menu (Add to message)', 'open-composer-menu', 'chat'],
+        ['status', 'Conversation status and persona menu', 'open-persona-menu', 'list'],
+        ['new', 'New conversation menu', 'open-new-menu', 'list'],
+        ['main', 'Conversation list main menu', 'open-main-menu', 'list'],
+    ].map(([id, title, action, workspacePage]) => menu({
         id: `conversation.${id}`,
         title,
         needs: ['character'],
-        sources: [`${SCRIPTS}/sillybunny-conversation/chrome.js`, ACTION_MENU],
-        ...(viewports && { viewports }),
+        sources: [`${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, ACTION_MENU],
         async open(page) {
             await openAuditConversation(page);
             await showConversationPage(page, workspacePage);
             await openFrom(page, `[data-sb-conversation-action="${action}"]`);
         },
     })),
+    menu({
+        id: 'conversation.row',
+        title: 'Conversation row menu (secondary click)',
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-controls.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await page.locator('#sb_conversation_list_items .sb-conversation-list-item').filter({ visible: true }).first().click({ button: 'right' });
+            await settleOverlay(page, MENU_ROOT);
+        },
+    }),
+    menu({
+        id: 'conversation.folder',
+        title: 'Conversation folder heading menu (secondary click)',
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-folders.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-controls.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await showAuditConversationFolders(page);
+            await page.locator(`#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[0].id}"] .sb-conversation-list-heading-button`).click({ button: 'right' });
+            await settleOverlay(page, MENU_ROOT);
+        },
+    }),
+    menu({
+        id: 'conversation.move-to-folder',
+        title: 'Conversation Move to Folder menu (from the row menu)',
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/conversation-menus.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-folders.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await showAuditConversationFolders(page);
+            await page.locator('#sb_conversation_list_items .sb-conversation-list-item').filter({ visible: true }).first().click({ button: 'right' });
+            await settleOverlay(page, MENU_ROOT);
+            await chooseItem(page, 'Move to Folder…');
+            await page.locator('.sb-action-menu [role="menuitemradio"]').first().waitFor({ state: 'visible' });
+        },
+    }),
+    menu({
+        id: 'conversation.new-folder',
+        title: 'Conversation New Folder popover (from the New menu)',
+        root: POPOVER_ROOT,
+        ready: POPOVER_INPUT,
+        needs: ['character'],
+        sources: [`${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/conversation-list-folders.js`, `${SCRIPTS}/sillybunny-editor/folder-popovers.js`, ACTION_MENU],
+        async open(page) {
+            await openAuditConversation(page);
+            await showConversationPage(page, 'list');
+            await openFrom(page, '[data-sb-conversation-action="open-new-menu"]');
+            await chooseItem(page, 'New Folder…', POPOVER_ROOT);
+        },
+    }),
     menu({
         id: 'character-list.actions',
         title: 'Character list menu (More)',

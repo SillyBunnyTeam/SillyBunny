@@ -55,6 +55,17 @@ const ALLOWED_NON_GET_PATHS = new Set([
     '/api/tokenizers/openai/count',
     '/api/ping',
     '/api/backends/chat-completions/status',
+    // Conversation storage. Its reads hold no chat data of the temporary chat. Its writes are the state and the messages of the
+    // conversation of the control chat, which its reaction writes some seconds after it was asked for; the model requests that
+    // the reaction test counts are what shows that no reaction is made for the temporary chat.
+    '/api/sillybunny-conversation/list',
+    '/api/sillybunny-conversation/get',
+    '/api/sillybunny-conversation/chat/get',
+    '/api/sillybunny-conversation/characters/get',
+    // The folders of the list, read when the workspace opens; a read, though it is a POST.
+    '/api/sillybunny-conversation/folders/get',
+    '/api/sillybunny-conversation/update',
+    '/api/sillybunny-conversation/chat/save',
     // The model, which the spec stubs.
     '/api/backends/chat-completions/generate',
     // Settings: the active character in them is asserted separately.
@@ -881,11 +892,16 @@ for (const { label, size } of matrixViewports(VIEWPORTS, [DESKTOP], viewport => 
             /** Turns on "React to current roleplay" for a character and makes the reaction roll always succeed. */
             async function enableReactions(page, name) {
                 await page.evaluate(async (characterName) => {
-                    const { saveSettings, getSettings } = await import('/scripts/sillybunny-conversation/settings-store.js');
+                    const { ensureDirectConversation, getConversationRecord } = await import('/scripts/sillybunny-conversation/context.js');
+                    const { conversationData } = await import('/scripts/sillybunny-conversation/conversation-data-browser.js');
                     const context = window.SillyTavern.getContext();
                     const avatar = context.characters.find(character => character.name === characterName).avatar;
                     const options = { groupId: '', personaId: String(context.userAvatar ?? '') };
-                    saveSettings(avatar, { ...getSettings(avatar, options), enabled: true, roleplay_reactions: true }, options);
+                    // The settings belong to the conversation, so the conversation is made first.
+                    await ensureDirectConversation(avatar, { personaId: options.personaId });
+                    conversationData.patchConversation(getConversationRecord(avatar, options).id, { settings: { roleplay_reactions: true } });
+                    // The change goes to the server after a short delay; it is written now, so that it is not counted as a write of the chat that the test starts next.
+                    await conversationData.flush();
                     Math.random = () => 0;
                 }, name);
             }

@@ -394,6 +394,37 @@ for (const width of [1440, 390]) {
             await expect.poll(() => page.evaluate(async () => (await import('/scripts/tags.js')).tags.some(tag => tag.name === 'QA External'))).toBe(true);
         });
 
+        test('a colour drag that is released outside the window, and a text drag in a field of the picker, leave the picker and the manager open', async ({ page }) => {
+            await prepare(page, width);
+            await openFromList(page);
+            await row(page, fixtureTag).locator('.sb-tag-manager__row-menu').click();
+            await page.locator('#sb-action-menu:visible [role="menuitem"]').filter({ hasText: 'Background Color' }).first().click();
+            const picker = page.locator('.sb-color-picker-menu:visible');
+            await expect(picker).toBeVisible();
+            const managerWindow = page.locator('.sb-dialog-host:has(> #tag_view_list)');
+            const plane = await picker.locator('.sb-color-picker-plane').boundingBox();
+            const hex = picker.getByRole('textbox', { name: 'Hex', exact: true });
+            const field = await hex.boundingBox();
+
+            await page.mouse.move(plane.x + plane.width / 2, plane.y + plane.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(plane.x + plane.width / 2 + 8, plane.y + plane.height / 2 + 8, { steps: 3 });
+            await page.mouse.move(4, 4, { steps: 8 });
+            await page.mouse.up();
+            await expect(picker).toBeVisible();
+            await expect(managerWindow).toBeVisible();
+
+            await hex.fill('#22cc88');
+            await page.mouse.move(field.x + 6, field.y + field.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(field.x + field.width - 2, field.y + field.height / 2, { steps: 4 });
+            await page.mouse.move(4, 4, { steps: 8 });
+            await page.mouse.up();
+            await expect(picker).toBeVisible();
+            await expect(managerWindow).toBeVisible();
+            await expect(hex).toBeFocused();
+        });
+
         test('Most Used reorder after tag-add preserves the focused rename draft and selection without committing it', async ({ page }) => {
             await prepare(page, width);
             await page.evaluate(async () => {

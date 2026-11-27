@@ -7,6 +7,8 @@
  * src/generation-commit.js; keep it free of browser and Node APIs.
  */
 
+import { getConversationChatKey, normalizeConversationPlan } from './conversation-commit-plan.js';
+
 export const GENERATION_COMMIT_HEADER = 'x-generation-commit';
 export const GENERATION_COMMIT_PLAN_VERSION = 1;
 export const GENERATION_COMMIT_KINDS = Object.freeze(['append', 'swipe', 'continue']);
@@ -48,11 +50,14 @@ export function getMessageIdentity(message) {
 }
 
 /**
- * @param {{ avatar?: string, group?: string }} chat Chat owner
- * @param {string} file Chat file name without extension
+ * @param {{ avatar?: string, group?: string, conversation?: string }} chat Chat owner
+ * @param {string} file Chat file name without extension, or the chat id of a conversation
  * @returns {string} Stable key for matching generations to an open chat
  */
 export function getCommitChatKey(chat, file) {
+    if (chat?.conversation) {
+        return getConversationChatKey(chat.conversation, file);
+    }
     return chat?.group ? `group:${chat.group}:${file}` : `character:${chat?.avatar ?? ''}:${file}`;
 }
 
@@ -72,6 +77,9 @@ function optionalText(value) {
 export function normalizeCommitPlan(plan) {
     if (!plan || typeof plan !== 'object' || plan.v !== GENERATION_COMMIT_PLAN_VERSION) {
         return null;
+    }
+    if (plan.chat?.conversation !== undefined) {
+        return normalizeConversationPlan(plan);
     }
     const kind = GENERATION_COMMIT_KINDS.includes(plan.kind) ? plan.kind : null;
     const avatar = optionalText(plan.chat?.avatar);
@@ -153,9 +161,9 @@ export function decodeCommitPlan(value) {
 /**
  * @typedef {object} GenerationCommitPlan
  * @property {number} v Plan version
- * @property {{ avatar?: string, group?: string }} chat Character avatar file or group id
- * @property {string} file Chat file name without extension
- * @property {'append'|'swipe'|'continue'} kind How the reply lands in the chat
+ * @property {{ avatar?: string, group?: string, conversation?: string }} chat Character avatar file, group id or conversation id
+ * @property {string} file Chat file name without extension; the chat id for a conversation
+ * @property {'append'|'swipe'|'continue'|'reply'} kind How the reply lands in the chat; `reply` is the conversation kind
  * @property {number} index Message index the reply is written to
  * @property {string|null} anchor append: identity of the message before `index`
  * @property {string|null} replaces append: identity of a regenerated message that may still occupy `index`
@@ -167,4 +175,19 @@ export function decodeCommitPlan(value) {
  * @property {string} page Id of the page load that started the generation
  * @property {string[]} round Group chats: avatars of the members still to speak after this reply in its round
  * @property {{ name: string, force_avatar: string|null, original_avatar: string|null, extra: { api: string, model: string, reasoning_effort: string|null, gen_id: number|null } }} message Reply fields known up front
+ * @property {ConversationReplyFields} [reply] Conversation plans only
+ */
+
+/**
+ * @typedef {object} ConversationReplyFields
+ * @property {string} token One per logical reply (16 to 32 hex); a reply that carries it is in the chat already
+ * @property {string} speaker Avatar file of the member who speaks
+ * @property {string} anchor Avatar file the page used as the anchor of the conversation, which decides each bubble's role
+ * @property {'reply'|'auto'|'auto_chat'|'reminder'} origin What asked for the reply
+ * @property {'profile'|'raw'} route Which request route made it, and so which text clean-up applies
+ * @property {{ id: string, rev: string }[]} triggers The messages the reply answers, with the 8-hex hash of each revision (at most 24)
+ * @property {{ id: string, rev: string }|null} target Explicit reply target
+ * @property {boolean} needs_user The chat must hold a user message
+ * @property {number} round_started Start of the group round, ms since the epoch, the same for every member of it
+ * @property {string} [reminder] The id of the reminder that the reply delivers; only for the origin `reminder`
  */

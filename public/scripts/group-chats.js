@@ -4131,7 +4131,6 @@ async function createGroup(receipt = captureGroupEditorSave()) {
         fav: Boolean(draft.fav),
         chat_id: chatName,
         chats: chats,
-        conversation_settings: {},
     };
 
     const tagList = $('#groupTagList').clone();

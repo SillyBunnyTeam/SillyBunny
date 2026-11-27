@@ -72,6 +72,8 @@ const PANEL_ANCHOR_OPTIONS = {
 
 let panelInitialized = false;
 let panelOpen = false;
+/** How long MESSAGE_DELETED has to stay quiet before the panel renders again. */
+const MESSAGE_DELETED_QUIET_MS = 50;
 let panelOrigin = null;
 
 export const captureCompanionPanelOrigin = () => panelOrigin;
@@ -1365,13 +1367,22 @@ export function initCompanionPanel() {
         updateCompanionPanelHandleVisibility();
     });
 
-    const refreshEvents = [event_types.CHAT_CHANGED, event_types.MESSAGE_DELETED, event_types.MESSAGE_SWIPED].filter(Boolean);
-    for (const eventName of refreshEvents) {
-        eventSource.on(eventName, () => {
-            if (panelOpen) {
-                renderPanel();
-            }
-            updateCompanionPanelHandleVisibility();
+    const refreshPanel = () => {
+        if (panelOpen) {
+            renderPanel();
+        }
+        updateCompanionPanelHandleVisibility();
+    };
+    for (const eventName of [event_types.CHAT_CHANGED, event_types.MESSAGE_SWIPED].filter(Boolean)) {
+        eventSource.on(eventName, refreshPanel);
+    }
+    if (event_types.MESSAGE_DELETED) {
+        // Deleting many messages sends one event for each, and rendering the panel costs as much as a message or more, so the
+        // panel renders when the events stop and then reads the chat as it is.
+        let deletedTimer = 0;
+        eventSource.on(event_types.MESSAGE_DELETED, () => {
+            clearTimeout(deletedTimer);
+            deletedTimer = setTimeout(refreshPanel, MESSAGE_DELETED_QUIET_MS);
         });
     }
 

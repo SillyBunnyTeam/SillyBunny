@@ -74,6 +74,21 @@ describe('bindListFocus', () => {
         expect(rows[1].querySelector('.menu').hasAttribute('tabindex')).toBe(false);
     });
 
+    test('destroy gives every control its own tabindex back, so a list that outlives the binding keeps its Tab order', () => {
+        const { container, rows } = buildList(3);
+        rows[2].querySelector('.edit').setAttribute('tabindex', '0');
+        handle = bindListFocus(container, { rowSelector: '.row' });
+        expect(rows[2].querySelector('.edit').getAttribute('tabindex')).toBe('-1');
+        expect(rows[1].querySelector('.menu').getAttribute('tabindex')).toBe('-1');
+
+        handle.destroy();
+        handle = null;
+
+        expect(rows[2].querySelector('.edit').getAttribute('tabindex')).toBe('0');
+        expect(rows[1].querySelector('.menu').hasAttribute('tabindex')).toBe(false);
+        expect(rows[1].querySelector('.edit').hasAttribute('tabindex')).toBe(false);
+    });
+
     test('arrow keys, Home and End move focus between rows, and Alt with an arrow is left alone', () => {
         const { container, rows } = buildList(5);
         handle = bindListFocus(container, { rowSelector: '.row' });

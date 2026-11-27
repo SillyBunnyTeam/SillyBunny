@@ -57,7 +57,7 @@ function createEpochAwareAddAudioJob(context, audioJobQueue) {
 async function importConversationTts() {
     jest.resetModules();
     await jest.unstable_mockModule('../public/script.js', () => ({ name1: 'User' }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store-utils.js', () => ({
+    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store-utils.js', () => ({
         getConversationAttachmentSummary: jest.fn(() => '[Attachment]'),
     }));
     return import('../public/scripts/sillybunny-conversation/tts.js');
@@ -76,7 +76,7 @@ describe('TTS Conversation integration', () => {
 
         const narrateTtsMessage = jest.fn(async () => true);
         installCapabilityRegistry([['tts', { narrateTtsMessage }]]);
-        const message = { role: 'partner', name: 'Mona', mes: 'Hello', extra: { partner_avatar: 'mona.png' } };
+        const message = { role: 'member', name: 'Mona', mes: 'Hello', extra: { member_avatar: 'mona.png' } };
 
         await expect(conversationTts.narrateConversationMessage(message)).resolves.toBe(true);
         expect(narrateTtsMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -117,45 +117,45 @@ describe('TTS Conversation integration', () => {
 
     test('auto narration only runs for the exact visible persona, group, and branch', async () => {
         jest.resetModules();
-        const branches = new Map();
+        const chats = new Map();
         const narrateConversationMessage = jest.fn(async () => true);
         const scheduleTimelineRender = jest.fn();
-        const isConversationActiveThread = jest.fn((avatar, groupId, { branchId, personaId }) => (
+        const isConversationActive = jest.fn((avatar, groupId, { chatId, personaId }) => (
             avatar === 'speaker.png'
             && groupId === 'group-a'
-            && branchId === 'branch-a'
+            && chatId === 'branch-a'
             && personaId === 'persona-a'
         ));
-        const getActiveConversationBranch = jest.fn((_avatar, options = {}) => {
-            const id = options.branchId || 'main';
-            const key = `${options.personaId}|${options.groupId}|${id}`;
-            if (!branches.has(key)) {
-                branches.set(key, { id, messages: [], preview: '', updatedAt: 0 });
+        // The conversation is named by its persona and group, and each chat holds the messages that were written to it.
+        const getConversationAddress = jest.fn((_avatar, { chatId = '', groupId = '', personaId = '' } = {}) => ({ conversationId: `${personaId}|${groupId}`, chatId: chatId || 'main' }));
+        const commitChat = jest.fn((address, edit) => {
+            const key = `${address.conversationId}|${address.chatId}`;
+            if (!chats.has(key)) {
+                chats.set(key, { messages: [] });
             }
-            return branches.get(key);
+            edit(chats.get(key));
         });
 
         await jest.unstable_mockModule('../public/scripts/RossAscends-mods.js', () => ({
             getMessageTimeStamp: jest.fn(() => 'now'),
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
-            DEFAULT_BRANCH_ID: 'main',
-            MAX_THREAD_MESSAGES: 100,
             SAFE_TOAST_OPTIONS: {},
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
-            getActiveConversationBranch,
+            getActiveConversationChat: jest.fn(() => null),
+            getConversationAddress,
             getConversationGroupIdForAvatar: jest.fn(() => 'group-a'),
             getConversationPersonaId: jest.fn(() => 'persona-a'),
-            getConversationStore: jest.fn(() => ({ reminders: [] })),
-            getConversationThreadStore: jest.fn(() => ({ activeBranchId: 'branch-a' })),
             getCurrentCharAvatar: jest.fn(() => 'speaker.png'),
             getCurrentCharName: jest.fn(() => 'Speaker'),
             parsePositiveInt: jest.fn(value => Number(value) || 0),
-            persistConversationStore: jest.fn(),
+        }));
+        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+            conversationData: { commitChat, chat: jest.fn(() => null) },
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
-            isConversationActiveThread,
+            isConversationActive,
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
             scheduleTimelineRender,
@@ -169,7 +169,7 @@ describe('TTS Conversation integration', () => {
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
             stripPreviewText: jest.fn(value => String(value || '').trim()),
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/thread-store-utils.js', () => ({
+        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store-utils.js', () => ({
             getConversationAttachmentLabels: jest.fn(() => []),
             getConversationAttachmentSummary: jest.fn(() => ''),
             getConversationFileAttachments: jest.fn(() => []),
@@ -179,35 +179,38 @@ describe('TTS Conversation integration', () => {
             getConversationPromptMediaAttachments: jest.fn(() => []),
             hasConversationMessageContent: jest.fn(() => true),
             normalizeConversationStoredMessage: jest.fn(message => message),
-            resolveConversationReminderBranchId: jest.fn(() => 'branch-a'),
-            safeParseThread: jest.fn(messages => messages),
+            resolveConversationReminderChatId: jest.fn(() => 'branch-a'),
+            safeParseMessages: jest.fn(messages => messages),
         }));
         await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/tts.js', () => ({
             narrateConversationMessage,
         }));
 
-        const { appendConversationThreadMessage } = await import('../public/scripts/sillybunny-conversation/thread-store.js');
-        appendConversationThreadMessage('speaker.png', { mes: 'other persona', role: 'character' }, {
-            branchId: 'branch-a',
+        const { appendConversationChatMessage } = await import('../public/scripts/sillybunny-conversation/conversation-store.js');
+        appendConversationChatMessage('speaker.png', { mes: 'other persona', role: 'character' }, {
+            chatId: 'branch-a',
             groupId: 'group-a',
             personaId: 'persona-b',
         });
-        appendConversationThreadMessage('speaker.png', { mes: 'other group', role: 'character' }, {
-            branchId: 'branch-a',
+        appendConversationChatMessage('speaker.png', { mes: 'other group', role: 'character' }, {
+            chatId: 'branch-a',
             groupId: 'group-b',
             personaId: 'persona-a',
         });
-        appendConversationThreadMessage('speaker.png', { mes: 'other branch', role: 'character' }, {
-            branchId: 'branch-b',
+        appendConversationChatMessage('speaker.png', { mes: 'other branch', role: 'character' }, {
+            chatId: 'branch-b',
             groupId: 'group-a',
             personaId: 'persona-a',
         });
 
-        const visibleMessage = appendConversationThreadMessage('speaker.png', { mes: 'visible', role: 'character' }, {
-            branchId: 'branch-a',
+        const visibleMessage = appendConversationChatMessage('speaker.png', { mes: 'visible', role: 'character' }, {
+            chatId: 'branch-a',
             groupId: 'group-a',
             personaId: 'persona-a',
         });
+        // Every message is written to the chat it names; only the visible one is narrated.
+        expect([...chats.keys()].sort()).toEqual(['persona-a|group-a|branch-a', 'persona-a|group-a|branch-b', 'persona-a|group-b|branch-a', 'persona-b|group-a|branch-a']);
+        expect(chats.get('persona-a|group-a|branch-a').messages).toEqual([visibleMessage]);
         expect(narrateConversationMessage).toHaveBeenCalledTimes(1);
         expect(narrateConversationMessage).toHaveBeenCalledWith(visibleMessage, { isStillVisible: expect.any(Function) });
         expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);
@@ -215,7 +218,7 @@ describe('TTS Conversation integration', () => {
         // The revalidation callback tracks live thread identity, not a stale value.
         const { isStillVisible } = narrateConversationMessage.mock.calls[0][1];
         expect(isStillVisible()).toBe(true);
-        isConversationActiveThread.mockReturnValue(false);
+        isConversationActive.mockReturnValue(false);
         expect(isStillVisible()).toBe(false);
     });
 

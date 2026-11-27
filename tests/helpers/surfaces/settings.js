@@ -158,46 +158,6 @@ function characterShellPane({ id, title, tab, host, trigger, root, back, ready, 
     };
 }
 
-/**
- * Opens the Conversation workspace for the audit character and shows its settings. From `foundation/conversation-mode.e2e.js`:
- * a desktop window has a settings button in the header, and a phone has pages, where the settings sit in the Conversation menu.
- */
-async function openConversationSettings(page) {
-    await page.evaluate(async ({ avatar, messages }) => {
-        const context = window.SillyTavern.getContext();
-        if (!context.characters.length) {
-            await context.getCharacters();
-        }
-        const index = context.characters.findIndex(character => character.avatar === avatar);
-        if (index < 0) {
-            throw new Error(`The audit character ${avatar} is not on the server.`);
-        }
-        await context.selectCharacterById(index, { switchMenu: false });
-        document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
-        const { saveConversationThread } = await import('/scripts/sillybunny-conversation/thread-store.js');
-        const day = Date.UTC(2026, 0, 1, 12, 0, 0);
-        saveConversationThread(avatar, messages.map((text, number) => ({
-            id: `audit-${number}`, role: number % 2 === 0 ? 'character' : 'user', name: number % 2 === 0 ? 'Audit Character' : 'Audit User',
-            mes: text, send_date: new Date(day + number * 60_000).toISOString(), created_at: day + number * 60_000, extra: {},
-        })));
-        const { openConversationWorkspaceForAvatar } = await import('/scripts/sillybunny-conversation.js');
-        if (!openConversationWorkspaceForAvatar(avatar, { showToast: false, enable: true })) {
-            throw new Error(`Could not open the Conversation workspace for ${avatar}.`);
-        }
-    }, { avatar: FIXTURES.character.avatar, messages: FIXTURES.chat.messages });
-    await page.locator('#sheld[data-sb-conversation-mode="on"]').waitFor({ state: 'visible' });
-    await page.locator('#sb_conversation_timeline .sb-conversation-message').first().waitFor({ state: 'visible' });
-    const layout = await page.locator('#sheld').getAttribute('data-sb-conversation-layout');
-    if (layout === 'pages') {
-        await page.locator('[data-sb-conversation-action="open-conversation-menu"]').click();
-        await page.locator('.sb-action-menu-item', { hasText: 'Conversation settings' }).click();
-    } else {
-        await page.locator('[data-sb-conversation-action="open-settings"]').click();
-    }
-    await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'visible' });
-    await settle(page);
-}
-
 /** @type {import('./index.js').Surface[]} */
 export const surfaces = [
     shellPage({
@@ -373,23 +333,6 @@ export const surfaces = [
         },
         needs: [],
         sources: [`${SCRIPTS}/sillybunny-character-import.js`, 'public/css/sillybunny-character-import.css'],
-        primaryFlow: true,
-    },
-    {
-        id: 'settings.conversation.panel',
-        family: 'settings',
-        owner: 'A',
-        title: 'Conversation settings panel',
-        root: '#sb_conversation_settings_drawer',
-        // The edge of a switch changes by a few pixels between two screenshots of the same page, so that the capture never settles.
-        masks: ['#sb_conversation_settings_drawer input.sb-switch'],
-        open: openConversationSettings,
-        async close(page) {
-            await page.locator('[data-sb-conversation-action="close-settings"]').first().click();
-            await page.locator('#sb_conversation_settings_drawer').waitFor({ state: 'hidden' });
-        },
-        needs: ['character'],
-        sources: [`${SCRIPTS}/sillybunny-conversation/settings-panel.js`, `${SCRIPTS}/sillybunny-conversation/timeline-render.js`],
         primaryFlow: true,
     },
 ];

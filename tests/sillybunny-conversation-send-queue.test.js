@@ -5,9 +5,9 @@ import {
     createConversationMessageRevisionEntries,
     createConversationQueueReplyTarget,
     createForcedConversationQueueItem,
-    drainSameThreadItems,
+    drainSameConversationItems,
     getLastConversationQueueUserMessage,
-    isSameConversationQueueThread,
+    isSameQueueConversation,
     mergeConversationQueueItems,
     requeueConversationQueueItem,
     resolveConversationQueueReplyTargetSpeaker,
@@ -17,10 +17,10 @@ import {
 function makeItem(text, overrides = {}) {
     return {
         avatar: 'charA.png',
-        branchId: 'main',
+        chatId: 'main',
         groupId: '',
         personaId: 'persona-a.png',
-        threadKey: 'persona:persona-a.png:charA.png',
+        conversationKey: 'persona:persona-a.png:charA.png',
         text,
         attachmentContext: '',
         createdAt: Date.now(),
@@ -32,10 +32,10 @@ describe('sillybunny conversation send-queue utils', () => {
     test('builds Force Response items with complete captured identity and the latest user trigger', () => {
         const item = createForcedConversationQueueItem({
             avatar: 'charA.png',
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             groupId: 'group-a',
             personaId: 'persona-a.png',
-            threadKey: 'persona:persona-a.png:group:group-a:charA.png',
+            conversationKey: 'persona:persona-a.png:group:group-a:charA.png',
         }, [
             { id: 'user-1', role: 'user' },
             { id: 'character-1', role: 'character' },
@@ -44,12 +44,12 @@ describe('sillybunny conversation send-queue utils', () => {
 
         expect(item).toMatchObject({
             avatar: 'charA.png',
-            branchId: 'branch-a',
+            chatId: 'branch-a',
             force: true,
             groupId: 'group-a',
             messageIds: ['user-2'],
             personaId: 'persona-a.png',
-            threadKey: 'persona:persona-a.png:group:group-a:charA.png',
+            conversationKey: 'persona:persona-a.png:group:group-a:charA.png',
         });
     });
 
@@ -95,6 +95,9 @@ describe('sillybunny conversation send-queue utils', () => {
         message.extra.conversation_reactions = { heart: 1 };
         expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toEqual([message]);
 
+        message.extra.conversation_reactions = [{ emoji: '❤️', by: 'user', at: 1 }, { emoji: '😂', by: 'charA.png', at: 2 }];
+        expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toEqual([message]);
+
         message.extra.files[0].url = '/files/revised.txt';
         expect(resolveConversationQueueTriggerMessages(queueItem, [message])).toBeNull();
         message.extra.files[0].url = '/files/notes.txt';
@@ -103,34 +106,34 @@ describe('sillybunny conversation send-queue utils', () => {
     });
 
     test('resolves the speaker targeted by explicit reply metadata', () => {
-        const partnerMessage = {
+        const memberMessage = {
             id: 'partner-message',
-            role: 'partner',
+            role: 'member',
             mes: 'Want to go?',
-            extra: { partner_avatar: 'partner.png' },
+            extra: { member_avatar: 'partner.png' },
         };
         const userMessage = {
             id: 'captured-user',
             role: 'user',
             mes: 'Yes',
-            extra: { conversation_reply_to: { messageId: partnerMessage.id } },
+            extra: { conversation_reply_to: { messageId: memberMessage.id } },
         };
         const makeReplyItem = () => makeItem('Yes', {
             messageIds: [userMessage.id],
             messageRevisions: createConversationMessageRevisionEntries([userMessage]),
-            replyTarget: createConversationQueueReplyTarget([userMessage], [partnerMessage, userMessage]),
+            replyTarget: createConversationQueueReplyTarget([userMessage], [memberMessage, userMessage]),
         });
 
-        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [partnerMessage, userMessage], 'host.png')).toBe('partner.png');
+        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [memberMessage, userMessage], 'host.png')).toBe('partner.png');
 
         // A target edited after capture no longer matches its captured revision.
         const staleItem = makeReplyItem();
-        partnerMessage.mes = 'Want to go? (edited)';
-        expect(resolveConversationQueueReplyTargetSpeaker(staleItem, [partnerMessage, userMessage], 'host.png')).toBe('');
+        memberMessage.mes = 'Want to go? (edited)';
+        expect(resolveConversationQueueReplyTargetSpeaker(staleItem, [memberMessage, userMessage], 'host.png')).toBe('');
 
         // A host-character target resolves to the thread avatar.
-        partnerMessage.role = 'character';
-        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [partnerMessage, userMessage], 'host.png')).toBe('host.png');
+        memberMessage.role = 'character';
+        expect(resolveConversationQueueReplyTargetSpeaker(makeReplyItem(), [memberMessage, userMessage], 'host.png')).toBe('host.png');
     });
 
     test('requeues a blocked item once without duplicating it', () => {
@@ -143,40 +146,40 @@ describe('sillybunny conversation send-queue utils', () => {
         expect(queue.filter(candidate => candidate === item)).toHaveLength(1);
     });
 
-    describe('isSameConversationQueueThread', () => {
+    describe('isSameQueueConversation', () => {
         test('matches same avatar and group', () => {
             const a = makeItem('hi');
             const b = makeItem('yo');
-            expect(isSameConversationQueueThread(a, b)).toBe(true);
+            expect(isSameQueueConversation(a, b)).toBe(true);
         });
 
         test('differs on avatar', () => {
-            expect(isSameConversationQueueThread(makeItem('a'), makeItem('b', { avatar: 'charB.png' }))).toBe(false);
+            expect(isSameQueueConversation(makeItem('a'), makeItem('b', { avatar: 'charB.png' }))).toBe(false);
         });
 
         test('differs on groupId', () => {
-            expect(isSameConversationQueueThread(makeItem('a', { groupId: 'g1' }), makeItem('b', { groupId: 'g2' }))).toBe(false);
+            expect(isSameQueueConversation(makeItem('a', { groupId: 'g1' }), makeItem('b', { groupId: 'g2' }))).toBe(false);
         });
 
         test('separates messages across persona changes', () => {
-            expect(isSameConversationQueueThread(
+            expect(isSameQueueConversation(
                 makeItem('a'),
-                makeItem('b', { personaId: 'persona-b.png', threadKey: 'persona:persona-b.png:charA.png' }),
+                makeItem('b', { personaId: 'persona-b.png', conversationKey: 'persona:persona-b.png:charA.png' }),
             )).toBe(false);
         });
 
         test('separates messages across branch changes', () => {
-            expect(isSameConversationQueueThread(makeItem('a'), makeItem('b', { branchId: 'branch-b' }))).toBe(false);
+            expect(isSameQueueConversation(makeItem('a'), makeItem('b', { chatId: 'branch-b' }))).toBe(false);
         });
 
         test('differs when either is forced', () => {
-            expect(isSameConversationQueueThread(makeItem('a', { force: true }), makeItem('b'))).toBe(false);
-            expect(isSameConversationQueueThread(makeItem('a'), makeItem('b', { force: true }))).toBe(false);
+            expect(isSameQueueConversation(makeItem('a', { force: true }), makeItem('b'))).toBe(false);
+            expect(isSameQueueConversation(makeItem('a'), makeItem('b', { force: true }))).toBe(false);
         });
 
         test('handles null inputs', () => {
-            expect(isSameConversationQueueThread(null, makeItem('a'))).toBe(false);
-            expect(isSameConversationQueueThread(makeItem('a'), null)).toBe(false);
+            expect(isSameQueueConversation(null, makeItem('a'))).toBe(false);
+            expect(isSameQueueConversation(makeItem('a'), null)).toBe(false);
         });
     });
 
@@ -220,17 +223,17 @@ describe('sillybunny conversation send-queue utils', () => {
         });
     });
 
-    describe('drainSameThreadItems', () => {
+    describe('drainSameConversationItems', () => {
         test('shifts consecutive same-thread items off the queue front', () => {
             const queue = [makeItem('b'), makeItem('c')];
-            const items = drainSameThreadItems(makeItem('a'), queue);
+            const items = drainSameConversationItems(makeItem('a'), queue);
             expect(items.map(i => i.text)).toEqual(['a', 'b', 'c']);
             expect(queue).toHaveLength(0);
         });
 
         test('stops at a different-thread item, leaving it in the queue', () => {
             const queue = [makeItem('b'), makeItem('c', { avatar: 'charB.png' }), makeItem('d')];
-            const items = drainSameThreadItems(makeItem('a'), queue);
+            const items = drainSameConversationItems(makeItem('a'), queue);
             expect(items.map(i => i.text)).toEqual(['a', 'b']);
             expect(queue.map(i => i.text)).toEqual(['c', 'd']);
         });
@@ -287,8 +290,8 @@ describe('sillybunny conversation send-queue utils', () => {
         test('does not coalesce queued sends after a persona or branch change', async () => {
             const timeoutRef = resolve => { setTimeout(resolve, 0); return 0; };
             const queue = [
-                makeItem('other persona', { personaId: 'persona-b.png', threadKey: 'persona:persona-b.png:charA.png' }),
-                makeItem('other branch', { branchId: 'branch-b' }),
+                makeItem('other persona', { personaId: 'persona-b.png', conversationKey: 'persona:persona-b.png:charA.png' }),
+                makeItem('other branch', { chatId: 'branch-b' }),
             ];
             const result = await coalesceConversationQueueItems(makeItem('first'), queue, { timeoutRef });
             expect(result.text).toBe('first');

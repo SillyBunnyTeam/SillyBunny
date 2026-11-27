@@ -90,6 +90,8 @@ import { init as settingsInit } from './endpoints/settings.js';
 import { ServerStartup, setupPrivateEndpoints } from './server-startup.js';
 // SillyBunny: characters.js exports the SQLite character index in place of upstream's diskCache.
 import { characterIndex } from './endpoints/characters.js';
+// SillyBunny: the conversation list index keeps a database file open, as the character index does.
+import { conversationIndex } from './conversation-index.js';
 import { migrateFlatSecrets } from './endpoints/secrets.js';
 import { migrateGroupChatsMetadataFormat } from './endpoints/groups.js';
 
@@ -508,6 +510,8 @@ async function preSetupTasks() {
         }
         // SillyBunny: close the index database file, where upstream stopped the disk cache sync timer.
         characterIndex.close();
+        // SillyBunny: close the conversation index database file the same way.
+        conversationIndex.close();
         setWindowTitle(consoleTitle);
         process.exit(exitCode);
     };

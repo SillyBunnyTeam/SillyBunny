@@ -3,12 +3,11 @@ import { describe, expect, jest, test } from '@jest/globals';
 
 const handlers = new Map();
 const startConversationAutoWorker = jest.fn();
-const triggerRoleplayDM = jest.fn();
+const triggerRoleplayAside = jest.fn();
 const roleplayChat = [];
-const personaChangeOrder = [];
-const handleChatChanged = jest.fn(() => personaChangeOrder.push('handle'));
-const loadCurrentPanelSettings = jest.fn(() => personaChangeOrder.push('load'));
-const selectConversationThread = jest.fn();
+const dispatchedEvents = [];
+const selectConversation = jest.fn();
+const updateModeToggleUnread = jest.fn();
 const scheduleInterfaceRefresh = jest.fn();
 const windowHandlers = new Map();
 let hasUsage = false;
@@ -24,10 +23,12 @@ const conversationState = {
 
 globalThis.window = {
     addEventListener: (event, handler) => windowHandlers.set(event, handler),
+    dispatchEvent: event => dispatchedEvents.push(event),
 };
 globalThis.CustomEvent = class CustomEvent {
-    constructor(detail) {
-        this.detail = detail;
+    constructor(type, init) {
+        this.type = type;
+        this.detail = init?.detail ?? type;
     }
 };
 
@@ -48,50 +49,55 @@ await jest.unstable_mockModule('../public/scripts/events.js', () => ({
     },
 }));
 await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({ selected_group: null }));
+await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ extension_settings: {} }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+    conversationData: { onRemoval: jest.fn(), subscribe: jest.fn(), whenReady: () => Promise.resolve() },
+    installConversationDataHooks: jest.fn(),
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/legacy-import.js', () => ({ importLegacyLocalStorage: jest.fn(async () => 'none') }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-finalizer-browser.js', () => ({ installReplyFinalizer: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/round-resume-browser.js', () => ({ installRoundResume: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-events-browser.js', () => ({ installReplyEvents: jest.fn() }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/auto-engine.js', () => ({
     captureGroupAsideRequest: jest.fn(),
-    captureRoleplayDMRequest: options => ({ ...options, branchId: 'branch-a', roleplayContext: 'captured roleplay' }),
+    captureRoleplayAsideRequest: options => ({ ...options, chatId: 'branch-a', roleplayContext: 'captured roleplay' }),
     checkGroupChatMention: jest.fn(),
-    handleChatChanged,
     startConversationAutoWorker: () => {
         conversationState.autoWorkerStarted = true;
         startConversationAutoWorker();
     },
     stopConversationAutoWorker: jest.fn(),
-    triggerGroupAsideDM: jest.fn(),
-    triggerRoleplayDM,
+    triggerGroupAside: jest.fn(),
+    triggerRoleplayAside,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({
     disableConversationModeForCurrentCharacter: jest.fn(),
     getDefaultConversationAvatar: () => '',
-    selectConversationThread,
+    selectConversation,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
     getConversationGroupById: () => null,
     getConversationPersonaId: () => 'persona-b.png',
     getRoleplayCurrentCharacter: () => ({ avatar: 'roleplay.png', name: 'Roleplay' }),
     getRoleplayGroupById: () => null,
-    migrateConversationLocalStorage: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/interface.js', () => ({ loadCurrentPanelSettings }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
-    sanitizeConversationUnreadCounts: jest.fn(),
+    getActiveConversationKey: () => '',
     updateConversationNotificationIndicators: jest.fn(),
+    updateModeToggleUnread,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/pals-rail.js', () => ({
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-list.js', () => ({
     getCharacterForGroupChatMessage: () => null,
     getCurrentGroupConversationMembers: () => [],
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleInterfaceRefresh }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-panel.js', () => ({
-    closeConversationSettings: () => personaChangeOrder.push('close'),
-}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({ scheduleConversationListRender: jest.fn(), scheduleInterfaceRefresh }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
     getSettings: avatar => ({ roleplay_reactions: avatar === 'roleplay.png' }),
     hasAnyConversationModeUsage: () => hasUsage,
 }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
     conversationState,
+    sendQueue: [],
     setExternalConversationGenerationActive: (active) => {
         conversationState.externalGenerationActive = active;
         conversationState.generationActive = active;
@@ -106,70 +112,104 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/timers
 
 const { init } = await import('../public/scripts/sillybunny-conversation/init.js');
 
+// The workspace and the runtime load with dynamic imports, so a request for them reaches their functions a few ticks later.
+const settleLazyLoad = () => new Promise(resolve => setTimeout(resolve, 0));
+
 describe('conversation persona runtime', () => {
-    test('starts autonomous runtime and clears context-bound reply UI after persona change', () => {
+    test('starts autonomous runtime and clears context-bound reply UI after persona change', async () => {
         init();
         expect(startConversationAutoWorker).not.toHaveBeenCalled();
 
         hasUsage = true;
         conversationState.conversationWorkspaceOpen = true;
-        personaChangeOrder.length = 0;
+        dispatchedEvents.length = 0;
+        scheduleInterfaceRefresh.mockClear();
         handlers.get('persona-changed')();
 
+        expect(conversationState.conversationReplyTarget).toBeNull();
+        expect(scheduleInterfaceRefresh).toHaveBeenCalledTimes(1);
+        await settleLazyLoad();
         expect(startConversationAutoWorker).toHaveBeenCalledTimes(1);
         expect(conversationState.autoWorkerStarted).toBe(true);
-        expect(conversationState.conversationReplyTarget).toBeNull();
-        expect(personaChangeOrder).toEqual(['close', 'handle', 'load']);
     });
 
-    test('targets the originating roleplay character instead of Conversation selection', () => {
+    test('asks the details window to close when the persona changes, because its conversation belongs to the old persona', () => {
+        init();
+        dispatchedEvents.length = 0;
+
+        handlers.get('persona-changed')();
+
+        expect(dispatchedEvents.map(event => event.type)).toContain('sb:conversation-details-close');
+    });
+
+    test('targets the originating roleplay character instead of Conversation selection', async () => {
         init();
         hasUsage = true;
         conversationState.conversationWorkspaceOpen = true;
         conversationState.conversationSelectedAvatar = 'conversation.png';
         roleplayChat[0] = { id: 0, role: 'character', mes: 'roleplay reply' };
-        triggerRoleplayDM.mockClear();
+        triggerRoleplayAside.mockClear();
         const random = jest.spyOn(Math, 'random').mockReturnValue(0);
 
         handlers.get('character-message-rendered')(0);
+        await settleLazyLoad();
 
-        expect(triggerRoleplayDM).toHaveBeenCalledWith(expect.objectContaining({
+        expect(triggerRoleplayAside).toHaveBeenCalledWith(expect.objectContaining({
             avatar: 'roleplay.png',
             personaId: 'persona-b.png',
         }));
         random.mockRestore();
     });
 
-    test('passes captured persona identity through workspace-open events', () => {
+    test('passes captured persona identity through workspace-open events', async () => {
         init();
-        selectConversationThread.mockClear();
+        selectConversation.mockClear();
 
         windowHandlers.get('sb:open-conversation-workspace')(new globalThis.CustomEvent({
             avatar: 'char.png',
-            branchId: 'branch-b',
+            chatId: 'branch-b',
             groupId: 'group-b',
             personaId: 'persona-c.png',
             showToast: false,
         }));
+        await settleLazyLoad();
 
-        expect(selectConversationThread).toHaveBeenCalledWith('char.png', {
-            branchId: 'branch-b',
+        expect(selectConversation).toHaveBeenCalledWith('char.png', {
+            chatId: 'branch-b',
             groupId: 'group-b',
             personaId: 'persona-c.png',
             showToast: false,
         });
     });
 
-    test('follows the newly selected roleplay character while Conversation is open', () => {
+    test('works out the badge of the chat mode button again when the workspace opens or closes, because it shows only while the workspace is closed', () => {
         init();
-        selectConversationThread.mockClear();
+        updateModeToggleUnread.mockClear();
+
+        windowHandlers.get('sb:conversation-workspace-state-changed')();
+
+        expect(updateModeToggleUnread).toHaveBeenCalledTimes(1);
+    });
+
+    test('watches for the pointer, the focus and the touch that reach the mode toggle once the page is ready', () => {
+        init();
+
+        for (const type of ['pointerover', 'focusin', 'touchstart']) {
+            expect(windowHandlers.has(type)).toBe(true);
+        }
+    });
+
+    test('follows the newly selected roleplay character while Conversation is open', async () => {
+        init();
+        selectConversation.mockClear();
         conversationState.conversationWorkspaceOpen = true;
 
         windowHandlers.get('sb:roleplay-character-selected')(new globalThis.CustomEvent({
             avatar: 'new-character.png',
         }));
+        await settleLazyLoad();
 
-        expect(selectConversationThread).toHaveBeenCalledWith('new-character.png', {
+        expect(selectConversation).toHaveBeenCalledWith('new-character.png', {
             showToast: false,
         });
     });
@@ -184,6 +224,12 @@ describe('conversation persona runtime', () => {
 
         conversationState.conversationWorkspaceOpen = true;
         handlers.get('online-status-changed')('Connected');
-        expect(scheduleInterfaceRefresh).toHaveBeenCalledWith({ syncControls: false });
+        expect(scheduleInterfaceRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    test('does not stop the auto-worker on beforeunload because a cancelled leave prompt keeps the page alive', () => {
+        init();
+
+        expect(windowHandlers.has('beforeunload')).toBe(false);
     });
 });

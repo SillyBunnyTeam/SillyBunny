@@ -1,6 +1,5 @@
 import { setUserAvatar } from '../personas.js';
 import { getConversationPersonaId } from './context.js';
-import { closeConversationSettings } from './settings-panel.js';
 
 export async function switchConversationPersona(personaId) {
     const targetPersonaId = getConversationPersonaId(personaId);
@@ -8,7 +7,6 @@ export async function switchConversationPersona(personaId) {
         return false;
     }
 
-    closeConversationSettings();
     if (targetPersonaId !== getConversationPersonaId()) {
         await setUserAvatar(targetPersonaId, { toastPersonaNameChange: false });
     }

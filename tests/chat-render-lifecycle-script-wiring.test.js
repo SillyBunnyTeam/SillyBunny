@@ -666,6 +666,7 @@ describe('chat render lifecycle script wiring', () => {
         expect(deleteLastMessageSource).toContain('chatElement.find(`.mes[mesid="${deletedMessageId}"]`)');
         expect(deleteLastMessageSource).toContain('unobserveChatMessageResize(messageElement);');
         expect(getSource(findExportedFunction('deleteMessage'))).toContain('unobserveChatMessageResize(messageElement);');
+        expect(getSource(findExportedFunction('removeRenderedMessagesFrom'))).toContain('unobserveChatMessageResize(messageElements);');
         expect(scriptSource).toContain('$(window).on(\'beforeunload\', () => {');
         expect(scriptSource).toContain('disposeChatMessageResizeObserver();');
 

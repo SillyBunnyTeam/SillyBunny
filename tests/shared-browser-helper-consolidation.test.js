@@ -44,13 +44,13 @@ describe('shared browser helper consolidation', () => {
     test('named regex consumers import the shared escape helper', () => {
         const chatLabelSource = readRepoFile('public/scripts/chat-label.js');
         const summarizeSource = readRepoFile('public/scripts/extensions/in-chat-agents/pathfinder/tools/summarize.js');
-        const partnersSource = readRepoFile('public/scripts/sillybunny-conversation/partners-utils.js');
+        const membersSource = readRepoFile('public/scripts/sillybunny-conversation/members-utils.js');
         const tabsSource = readRepoFile('public/scripts/sillybunny-tabs.js');
         const trackerSource = readRepoFile('public/scripts/extensions/in-chat-agents/tracker-state.js');
 
         expect(chatLabelSource).toContain('import { escapeRegex } from \'./util/escape-regex.js\';');
         expect(summarizeSource).toContain('import { escapeRegex } from \'../../../../util/escape-regex.js\';');
-        expect(partnersSource).toContain('import { escapeRegex } from \'../util/escape-regex.js\';');
+        expect(membersSource).toContain('import { escapeRegex } from \'../util/escape-regex.js\';');
         expect(tabsSource).toContain('import { escapeRegex } from \'./util/escape-regex.js\';');
         expect(trackerSource).toContain('import { escapeRegex } from \'../../util/escape-regex.js\';');
 
@@ -58,7 +58,7 @@ describe('shared browser helper consolidation', () => {
         expect(summarizeSource).not.toContain('function escapeRegExp(');
         expect(tabsSource).not.toContain('function escapeRegExp(');
         expect(trackerSource).not.toContain('function escapeRegex(');
-        expect(partnersSource).toContain('return escapeRegex(String(value || \'\'));\n');
+        expect(membersSource).toContain('return escapeRegex(String(value || \'\'));\n');
         expect(escapeRegex('a+b?')).toBe('a\\+b\\?');
     });
 });

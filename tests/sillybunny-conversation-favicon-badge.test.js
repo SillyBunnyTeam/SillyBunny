@@ -11,28 +11,33 @@ const conversationState = {
 };
 
 await jest.unstable_mockModule('../public/scripts/power-user.js', () => ({ playMessageSound: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/chrome.js', () => ({ selectConversationThread: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({ CHROME_IDS: { palsToggle: 'pals-toggle' }, SAFE_TOAST_OPTIONS: {} }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/lazy-parts.js', () => ({ selectConversation: jest.fn() }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
+    CHROME_IDS: { listToggle: 'list-toggle' },
+    CONVERSATION_UNREAD_CHANGED_EVENT: 'sb:conversation-unread-changed',
+    CONVERSATION_UNREAD_DATASET: { text: 'sbConversationUnread', name: 'sbConversationUnreadName' },
+    SAFE_TOAST_OPTIONS: {},
+}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+    getCharacterForAvatar: () => null,
     clearLegacyConversationUnreadStorage: () => 0,
-    getActiveConversationBranch: () => ({}),
+    getActiveConversationChat: () => ({}),
     getConversationGroupById: () => null,
     getConversationGroupIdForAvatar: () => '',
     getConversationPersonaId: () => '',
     getConversationStore: () => ({ characters: {} }),
-    getConversationThreadKey: () => '',
-    getConversationThreadStore: () => ({ branches: {} }),
+    getConversationKey: () => '',
+    getConversationRecord: () => ({ chats: [] }),
     getCurrentCharAvatar: () => '',
-    isConversationThreadKeyForPersona: () => true,
-    parseConversationThreadKey: () => ({}),
+    isConversationKeyForPersona: () => true,
+    parseConversationKey: () => ({}),
     parsePositiveInt: (value, fallback) => fallback,
     persistConversationStore: jest.fn(),
     shouldSurfaceConversationNotification: () => false,
 }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar: () => null }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({ getSettings: () => ({}), isConversationModeEnabled: () => true }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({ conversationState }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({ stripPreviewText: value => String(value || '') }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/preview-utils.js', () => ({ stripPreviewText: value => String(value || '') }));
 
 const { getFaviconLink, updateConversationFaviconBadge } = await import('../public/scripts/sillybunny-conversation/notifications.js');
 

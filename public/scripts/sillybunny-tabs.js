@@ -46,6 +46,8 @@ import {
 import { createPresetApiSyncLifecycle } from './preset-api-sync-lifecycle/index.js';
 import { fetchWithCsrfRetry } from './csrf-token-refresh.js';
 import {
+    CONVERSATION_UNREAD_CHANGED_EVENT,
+    CONVERSATION_UNREAD_DATASET,
     PERSONA_APPENDICES_DEFAULT_SCOPE_KEY,
     PERSONA_APPENDICES_SELECTIONS_KEY,
 } from './sillybunny-conversation/constants.js';
@@ -767,26 +769,26 @@ const SB_SHORTCUT_LABELS = Object.freeze({
 });
 const SB_PANEL_STYLESHEETS = Object.freeze({
     'left:editor': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-prompt-editor.css?v=20261122j', id: 'deferred-prompt-editor-css' },
     ],
     // SillyBunny: Presets builds the Edit Prompts button row, which the editor shell sheet styles. NovelAI's Logit Bias entries are entity rows, which the entity list sheet styles.
     'left:prompting': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
     ],
     'characters:world-info': [
         { href: 'css/world-info.css?v=20261120a', id: 'deferred-world-info-css' },
         // SillyBunny: the rebuilt World Info shell stays deferred like the Prompt Editor.
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-world-info-editor.css?v=20261122g', id: 'deferred-world-info-editor-css' },
     ],
     'characters:persona': [
         // SillyBunny: persona editor assets stay deferred like World Info
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-persona-editor.css?v=20261122g', id: 'deferred-persona-editor-css' },
@@ -805,7 +807,7 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
         { href: 'css/sillybunny-character-list.css?v=20261122g', id: 'deferred-character-list-css' },
     ],
     'characters:import': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/sillybunny-character-import.css?v=20261118zg', id: 'deferred-character-import-css' },
     ],
@@ -814,17 +816,17 @@ const SB_PANEL_STYLESHEETS = Object.freeze({
     ],
     // SillyBunny: the Extensions list builds button, entry and activatable rows, which the editor shell sheet styles. The Regex page lists its scripts as entity rows.
     'right:extensions': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
         { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' },
         { href: 'css/extensions-panel.css?v=20261120b', id: 'deferred-extensions-panel-css' },
     ],
     // SillyBunny: Data & Security builds button, property and text-area rows, which the deferred editor shell sheet styles.
     'right:data-security': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
     ],
     // SillyBunny: Appearance builds entry, text-area and button rows, which the same sheet styles.
     'right:appearance': [
-        { href: 'css/sillybunny-editor-shell.css?v=20261118zzu', id: 'deferred-editor-shell-css' },
+        { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
     ],
 });
 const SB_ACCOUNT_STORAGE_READY_MARKER = '__migrated';
@@ -14143,9 +14145,43 @@ function syncModeToggleButton() {
     if (label) {
         label.textContent = mode.label;
     }
-    const title = `Chat Mode: ${mode.label} (Ctrl+M)`;
+    // SillyBunny: the unread count of Conversation Mode, which the page publishes while the workspace is closed
+    // (`updateModeToggleUnread()` in `sillybunny-conversation/notifications.js`). The name carries the count, because the badge is drawn only.
+    const unread = getModeUnread();
+    const title = `Chat Mode: ${mode.label} (Ctrl+M)${unread ? `, ${unread.name}` : ''}`;
     modeToggleBtn.title = title;
     modeToggleBtn.setAttribute('aria-label', title);
+    modeToggleBtn.querySelector(':scope > .sb-mode-badge')?.remove();
+    if (unread) {
+        const badge = createElement('small', { className: 'sb-mode-badge', attrs: { 'aria-hidden': 'true' } });
+        badge.textContent = unread.text;
+        modeToggleBtn.append(badge);
+    }
+}
+
+/** The badge that Conversation Mode publishes for the chat mode control, or null while none shows. */
+function getModeUnread() {
+    const { dataset } = document.documentElement;
+    const text = dataset[CONVERSATION_UNREAD_DATASET.text];
+    return text ? { text, name: dataset[CONVERSATION_UNREAD_DATASET.name] || text } : null;
+}
+
+/** Puts the badge on the item of the chat mode menu for Conversation, or takes it off. The item is named by its content, so the badge names itself. */
+function syncModeMenuUnread(item) {
+    const unread = getModeUnread();
+    item.querySelector(':scope > .sb-mode-badge')?.remove();
+    if (!unread || item.dataset.sbMode !== 'conversation') {
+        return;
+    }
+
+    const badge = createElement('small', { className: 'sb-mode-badge', attrs: { role: 'img', 'aria-label': unread.name } });
+    badge.textContent = unread.text;
+    item.append(badge);
+}
+
+function syncModeUnread() {
+    syncModeToggleButton();
+    document.querySelectorAll('#sb-mode-menu .sb-mode-menu-item').forEach(syncModeMenuUnread);
 }
 
 function setModeMenuOpenState(isOpen) {
@@ -14204,6 +14240,8 @@ function openModeDropdown() {
             },
         });
         item.innerHTML = `<i class="fa-solid ${mode.icon} sb-mode-menu-icon" aria-hidden="true"></i><span class="sb-mode-menu-label">${mode.label}</span><span class="sb-mode-menu-desc">${mode.description}</span><i class="fa-solid fa-check sb-mode-menu-check" aria-hidden="true"></i>`;
+        item.dataset.sbMode = mode.id;
+        syncModeMenuUnread(item);
         item.addEventListener('click', () => {
             closeModeDropdown({ restoreFocus: true });
             enterChatMode(mode.id);
@@ -14270,6 +14308,7 @@ function initModeToggle() {
     }
     document.documentElement.dataset.sbModeToggleBound = 'true';
     window.addEventListener('sb:conversation-workspace-state-changed', syncModeToggleButton);
+    window.addEventListener(CONVERSATION_UNREAD_CHANGED_EVENT, syncModeUnread);
     document.addEventListener(HOME_STATE_CHANGED_EVENT, syncModeToggleButton);
     document.addEventListener(CHAT_MODE_CHANGED_EVENT, syncModeToggleButton);
     syncModeToggleButton();

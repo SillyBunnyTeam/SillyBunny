@@ -12,7 +12,6 @@ describe('sillybunny conversation schedule utils', () => {
             \`\`\`json
             {
                 "talkativeness": 200,
-                "inactivityThresholdMinutes": 5,
                 "days": {
                     "Mon": [
                         { "time": "09:00-12:00", "activity": "studying" },
@@ -25,10 +24,8 @@ describe('sillybunny conversation schedule utils', () => {
             \`\`\`
         `);
 
-        expect(schedule).toEqual(expect.objectContaining({
-            talkativeness: 100,
-            inactivityThresholdMinutes: 120,
-        }));
+        // The talkativeness of a character is the value of its card, so a generated schedule carries none.
+        expect(Object.keys(schedule).sort()).toEqual(['days', 'generatedAt']);
         expect(schedule.days[1]).toEqual([{ time: '09:00-12:00', activity: 'studying', status: 'dnd' }]);
         expect(schedule.days[3]).toEqual([{ time: '18:00-19:00', activity: 'free', status: 'online' }]);
     });

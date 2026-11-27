@@ -14,7 +14,7 @@
  *   rail open, disconnected and connected, and with the bottom chat bar hidden. The composer with the Quick Reply bar is its own entry.
  * - The bottom chat bar, which is a row of controls on a desktop window and a chip with an actions sheet on a phone.
  * - The group chat: the speaker controls and the transcript with several speakers, with the speaker bar hidden.
- * - Conversation mode: the timeline with its message toolbar, editor, search, branches and settings column, and the composer.
+ * - Conversation mode: the timeline with its message toolbar, editor, search and chats, the details window, and the composer.
  *
  * Message timestamps, token counts and generation timers differ between runs, so each entry masks them.
  *
@@ -30,10 +30,10 @@ import {
     setExpandMessageActions, startGeneration, stopGeneration,
 } from './chat-steps.js';
 import {
-    THREAD_INDEX, addConversationBranches, branchMessage, closeConversationSettingsPane, conversationMessage, conversationMessageId, editConversationMessageById, openConversation,
-    openConversationPicker, openConversationSettings, setConversationConnection, showConversationPage,
+    DETAILS_WINDOW, MESSAGE_INDEX, addConversationChats, chatMessage, closeConversationDetails, conversationMessage, conversationMessageId, editConversationMessageById,
+    openConversation, openConversationDetailsAt, openConversationPicker, setConversationConnection, showConversationPage,
 } from './chat-conversation-steps.js';
-import { openLegacyToggle, PICKER_ROOT } from './menu-steps.js';
+import { AUDIT_FOLDERS, openLegacyToggle, PICKER_ROOT, showAuditConversationFolders } from './menu-steps.js';
 import { settle } from './steps.js';
 import { viewportById, viewportsFor } from '../surface-matrix.js';
 import { TOAST_SELECTOR } from '../toasts.js';
@@ -166,7 +166,7 @@ function transcriptStates(style) {
             {
                 id: 'delete-mode',
                 open: openDeleteMode,
-                ready: ['#dialogue_del_mes_ok', '#dialogue_del_mes_cancel', `${message(REST)} .del_checkbox`],
+                ready: ['#dialogue_del_mes_ok', '#dialogue_del_mes_cancel', `${message(REST)} .sb-selection-check`],
             },
             {
                 id: 'narrator-message',
@@ -255,13 +255,13 @@ const CONVERSATION_SENDABLE = '#sb_conversation_send:enabled';
 const CONVERSATION_TEXT = '#sb_conversation_input:not(:placeholder-shown)';
 
 /** The toolbar of the message of the thread that has a reaction, while the pointer is over it. */
-const HOVERED_TOOLBAR = `${conversationMessage(THREAD_INDEX.reacted)}:hover .sb-conversation-message-actions`;
+const HOVERED_TOOLBAR = `${conversationMessage(MESSAGE_INDEX.reacted)}:hover .sb-conversation-message-actions`;
 
 /** The round avatars of the header, the Pals rail and the rail footer are cut from a downscaled picture, and the status dots on them are small circles: their edge pixels differ by a few levels between runs. */
 const CONVERSATION_AVATAR_MASKS = ['.sb-conversation-participant-avatar', '.sb-conversation-status-dot', '#sb_conversation_rail_footer .sb-conversation-persona-button'];
 
 const CONVERSATION_MASKS = [
-    '.sb-conversation-message-time', '.sb-conversation-day-divider', '.sb-conversation-message-receipt', '.sb-conversation-header-status', '.sb-conversation-pal-preview', ...CONVERSATION_AVATAR_MASKS,
+    '.sb-conversation-message-time', '.sb-conversation-day-divider', '.sb-conversation-message-receipt', '.sb-conversation-header-status', '.sb-conversation-list-item-preview', ...CONVERSATION_AVATAR_MASKS,
 ];
 
 const CONVERSATION_SOURCES = [
@@ -515,8 +515,8 @@ export const surfaces = [
         root: SHELL,
         // The timeline rests on its last message, so the first one may be out of view.
         ready: ctx => [
-            '#sb_conversation_header', conversationMessage(THREAD_INDEX.last), '#sb_conversation_form',
-            ...(isPaged(ctx) ? [] : ['#sb_conversation_pals_rail .sb-conversation-pal']),
+            '#sb_conversation_header', conversationMessage(MESSAGE_INDEX.last), '#sb_conversation_form',
+            ...(isPaged(ctx) ? [] : ['#sb_conversation_list .sb-conversation-list-item']),
         ],
         open: openConversation,
         states: [
@@ -525,7 +525,7 @@ export const surfaces = [
                 id: 'hover-message-toolbar',
                 where: 'hover',
                 async open(page) {
-                    await page.locator(conversationMessage(THREAD_INDEX.reacted)).hover();
+                    await page.locator(conversationMessage(MESSAGE_INDEX.reacted)).hover();
                     await settle(page);
                 },
                 ready: [`${HOVERED_TOOLBAR} .sb-conversation-message-menu`],
@@ -535,7 +535,7 @@ export const surfaces = [
                 where: 'hover',
                 async open(page) {
                     await setExpandMessageActions(page, true);
-                    await page.locator(conversationMessage(THREAD_INDEX.reacted)).hover();
+                    await page.locator(conversationMessage(MESSAGE_INDEX.reacted)).hover();
                     await settle(page);
                 },
                 ready: [`${HOVERED_TOOLBAR} .sb-conversation-message-action[data-sb-conversation-action="delete-message"]`],
@@ -543,7 +543,7 @@ export const surfaces = [
             {
                 id: 'inline-editor',
                 async open(page) {
-                    await editConversationMessageById(page, THREAD_INDEX.ownLong);
+                    await editConversationMessageById(page, MESSAGE_INDEX.ownLong);
                 },
                 ready: ['.sb-conversation-message.is-editing .sb-conversation-message-edit-textarea', '.sb-conversation-message.is-editing .sb-conversation-message-edit-save'],
             },
@@ -554,16 +554,28 @@ export const surfaces = [
                     await page.locator('#sb_conversation_tools .sb-conversation-search-entry').waitFor({ state: 'visible' });
                     await settle(page);
                 },
-                ready: ['#sb_conversation_tools .sb-conversation-search-entry', '#sb_conversation_tools .sb-conversation-channel-tab'],
+                ready: ['#sb_conversation_tools .sb-conversation-search-entry'],
             },
             {
                 // A wide window shows the rail beside the chat at rest; only the mobile layout (`(max-width: 768px)`) has it as a page.
                 id: 'conversations-page',
                 where: 'paged',
                 async open(page) {
-                    await showConversationPage(page, 'pals');
+                    await showConversationPage(page, 'list');
                 },
-                ready: ['#sb_conversation_pals_rail .sb-conversation-pal', '#sb_conversation_pals_search'],
+                ready: ['#sb_conversation_list .sb-conversation-list-item', '#sb_conversation_list_search'],
+            },
+            {
+                // The headings of the folders are buttons of the list: one open with its rows, one closed (a badge shows there when its rows are unread).
+                id: 'list-with-folders',
+                async open(page) {
+                    await showConversationPage(page, 'list');
+                    await showAuditConversationFolders(page);
+                },
+                ready: [
+                    `#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[0].id}"] .sb-conversation-list-heading-button[aria-expanded="true"]`,
+                    `#sb_conversation_list_items [data-section="folder:${AUDIT_FOLDERS[1].id}"] .sb-conversation-list-heading-button[aria-expanded="false"]`,
+                ],
             },
             {
                 id: 'persona-picker',
@@ -575,29 +587,66 @@ export const surfaces = [
             {
                 id: 'new-conversation-picker',
                 async open(page) {
-                    await openConversationPicker(page, { toggle: 'toggleAddDmPicker', root: PICKER_ROOT });
+                    await openConversationPicker(page, { toggle: 'toggleStartDirectConversationPicker', root: PICKER_ROOT });
                 },
                 ready: [PICKER_ROOT, '.sb-picker__option'],
             },
             {
-                id: 'settings-open',
+                id: 'chats',
                 async open(page) {
-                    await closeConversationSettingsPane(page);
-                    await openConversationSettings(page);
+                    await addConversationChats(page);
                 },
-                ready: ['#sb_conversation_settings_drawer', '#sb_conversation_settings_drawer .sb-conversation-settings-header'],
-            },
-            {
-                id: 'branches',
-                async open(page) {
-                    await addConversationBranches(page);
-                },
-                ready: [branchMessage(0, 0)],
+                ready: [chatMessage(0, 0)],
             },
         ],
         masks: CONVERSATION_MASKS,
         needs: ['character'],
         sources: CONVERSATION_SOURCES,
+    },
+    {
+        id: 'chat.conversation.details',
+        family: 'chat',
+        owner: 'A',
+        overlay: true,
+        title: 'Conversation mode: the details window of a direct conversation, and Preferences (a modal window at the Dialog tier; a bottom sheet on a phone)',
+        root: DETAILS_WINDOW,
+        ready: [`${DETAILS_WINDOW} .sb-details-page--general`, `${DETAILS_WINDOW} .sb-details-hero__name`],
+        async open(page) {
+            await openConversation(page);
+            await openConversationDetailsAt(page, 'general');
+        },
+        close: closeConversationDetails,
+        states: [
+            ...['chats', 'media', 'files', 'pinned', 'behaviour', 'advanced'].map(id => ({
+                id,
+                async open(page) {
+                    await openConversationDetailsAt(page, id);
+                },
+                ready: [`${DETAILS_WINDOW} .sb-details-frame--${id} .sb-details-page`],
+            })),
+            {
+                id: 'profile',
+                async open(page) {
+                    await openConversationDetailsAt(page, 'profile');
+                },
+                ready: [`${DETAILS_WINDOW} .sb-details-frame--profile .sb-details-hero__name`],
+            },
+            {
+                id: 'preferences',
+                async open(page) {
+                    await openConversationDetailsAt(page, 'preferences');
+                },
+                ready: [`${DETAILS_WINDOW} .sb-details-page--settings`],
+            },
+        ],
+        // The rows of the Chats page and the reminders print dates and times that depend on the day of the run.
+        masks: [`${DETAILS_WINDOW} .ds-entity-row__subtitle`, `${DETAILS_WINDOW} .sb-details-hero__subtitle`, `${DETAILS_WINDOW} .sb-details-avatar`],
+        needs: ['character'],
+        sources: [
+            `${SCRIPTS}/sillybunny-conversation/details/window.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/general.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/chats.js`,
+            `${SCRIPTS}/sillybunny-conversation/details/pages/behaviour.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/advanced.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/profile.js`,
+            `${SCRIPTS}/sillybunny-conversation/details/pages/preferences.js`, `${CSS}/sillybunny-conversation-details.css`,
+        ],
     },
     {
         id: 'chat.conversation.composer',
@@ -646,15 +695,31 @@ export const surfaces = [
                     await page.evaluate(async (id) => {
                         const timeline = await import('/scripts/sillybunny-conversation/timeline-render.js');
                         timeline.replyToConversationMessage(id);
-                    }, conversationMessageId(THREAD_INDEX.reacted));
+                    }, conversationMessageId(MESSAGE_INDEX.reacted));
                     await page.locator('#sb_conversation_reply_preview:not([hidden])').waitFor({ state: 'visible' });
                     await settle(page);
                 },
                 ready: ['#sb_conversation_reply_preview:not([hidden])', CONVERSATION_SENDABLE],
             },
+            {
+                // The chooser is a popover or a sheet outside the composer. The shortcut opens it at every width: from the Emoji button, or from the "+" button where the Emoji button is folded away.
+                id: 'emoji-chooser',
+                root: '.sb-action-popover:has(.sb-emoji-chooser), .sb-action-sheet:has(.sb-emoji-chooser)',
+                async open(page) {
+                    await page.locator('#sb_conversation_input').focus();
+                    await page.keyboard.press('Control+Period');
+                    await page.locator('.sb-emoji-chooser .sb-emoji-cell').first().waitFor({ state: 'visible' });
+                    await page.waitForFunction(() => document.fonts.check('20px "SB Emoji"', '😀'));
+                    await settle(page);
+                },
+                ready: ['.sb-emoji-chooser .sb-emoji-search-entry', '.sb-emoji-chooser .sb-emoji-categories'],
+            },
         ],
         masks: CONVERSATION_MASKS,
         needs: ['character'],
-        sources: [`${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/attachments.js`, `${CSS}/sillybunny-conversation.css`],
+        sources: [
+            `${SCRIPTS}/sillybunny-conversation/timeline-render.js`, `${SCRIPTS}/sillybunny-conversation/chrome.js`, `${SCRIPTS}/sillybunny-conversation/attachments.js`, `${CSS}/sillybunny-conversation.css`,
+            `${SCRIPTS}/sillybunny-conversation/emoji/emoji-chooser.js`, `${SCRIPTS}/sillybunny-conversation/emoji/emoji-chooser-view.js`, `${CSS}/sillybunny-emoji-chooser.css`,
+        ],
     },
 ].map(withViewports);

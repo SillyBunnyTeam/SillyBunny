@@ -21,8 +21,6 @@ async function bootHome(page) {
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     test.describe(`${viewport.width}px`, () => {
         test.use({ viewport, serviceWorkers: 'block', contextOptions: { reducedMotion: 'reduce' } });
-        // A phone centres the avatar, a desktop keeps it beside the split view.
-        const expectedAvatarLeft = viewport.width < 620 ? `${viewport.width / 2}px` : '12px';
 
         // The narrowed :has() rules name these places by direct relation, so each must stay a direct child.
         test('the places the narrowed :has() rules rely on stay where the rules look for them', async ({ page }) => {
@@ -72,27 +70,27 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
             await expect(page.locator('#completion_prompt_manager_popup')).toHaveCSS('display', 'none');
         });
 
-        test('Conversation zoomed avatars sit where the Conversation rule puts them', async ({ page }) => {
+        test('a zoomed avatar sits where roleplay puts it, whether or not the Conversation workspace is on', async ({ page }) => {
             await bootHome(page);
             await page.evaluate(() => window.SillyBunnyAssets.loadStylesheetAsync('css/sillybunny-conversation.css', { id: 'qa-conversation-css' }));
             await page.evaluate(() => {
                 const avatar = document.createElement('div');
-                avatar.className = 'zoomed_avatar sb-conversation-zoomed-avatar';
+                avatar.className = 'zoomed_avatar draggable';
                 avatar.id = 'qaZoomed';
-                avatar.style.position = 'fixed';
                 avatar.style.display = 'flex';
                 document.body.append(avatar);
             });
             const avatar = page.locator('#qaZoomed');
-            const before = await avatar.evaluate(element => getComputedStyle(element).top);
+            const place = () => avatar.evaluate((element) => {
+                const { left, top, right, bottom } = getComputedStyle(element);
+                return { left, top, right, bottom };
+            });
+            const roleplay = await place();
 
             await page.evaluate(() => document.getElementById('sheld').setAttribute('data-sb-conversation-mode', 'on'));
 
-            await expect.poll(() => avatar.evaluate(element => getComputedStyle(element).top)).not.toBe(before);
-            await expect(avatar).toHaveCSS('left', expectedAvatarLeft);
-
-            await page.evaluate(() => document.getElementById('sheld').removeAttribute('data-sb-conversation-mode'));
-            await expect.poll(() => avatar.evaluate(element => getComputedStyle(element).top)).toBe(before);
+            await expect(avatar).toHaveCSS('left', roleplay.left);
+            expect(await place(), 'no Conversation rule moves the window').toEqual(roleplay);
         });
 
         test('floating portraits hide while the settings page is open and come back when it closes', async ({ page }) => {
