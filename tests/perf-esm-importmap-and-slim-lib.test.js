@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -8,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import zlib from 'node:zlib';
 
-import { afterAll, afterEach, beforeAll, describe, expect, test } from '@jest/globals';
+import express from 'express';
+import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import fullHljs from 'highlight.js';
 import fullMoment from 'moment';
 
@@ -36,7 +38,7 @@ import {
     rewriteFrontendHtml,
     writeFrontendInputsStamp,
 } from '../src/frontend-assets.js';
-import { shouldServeFrontendAssets } from '../src/middleware/frontend-assets.js';
+import { getFrontendAssetMiddleware, shouldServeFrontendAssets } from '../src/middleware/frontend-assets.js';
 import { setConfigFilePath } from '../src/util.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -258,6 +260,7 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         fs.mkdirSync(distDir, { recursive: true });
         fs.writeFileSync(path.join(distDir, 'asset-manifest.json'), JSON.stringify(customManifest), 'utf8');
         for (const [relativePath, content] of Object.entries(files)) {
+            fs.mkdirSync(path.dirname(path.join(distDir, relativePath)), { recursive: true });
             fs.writeFileSync(path.join(distDir, relativePath), content, 'utf8');
         }
         return distDir;
@@ -357,7 +360,6 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         const specialDist = createDistFixture({
             ...manifest,
             assets: {
-                ...manifest.assets,
                 'style.css': { hash: specialHash, output: specialOutput, bytes: specialContent.length },
             },
         }, { [specialOutput]: specialContent });
@@ -1015,6 +1017,113 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
             expect(strings.css).toContain('.plain { color: red; }');
         } finally {
             fs.rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+    });
+
+    /**
+     * Creates a dist directory whose two hashed files match the hash in their names and whose manifest is fresh for this checkout.
+     * @returns {{ distDir: string, scriptOutput: string, scriptContent: string, styleOutput: string, styleContent: string }}
+     */
+    function createVerifiableDist() {
+        const sha12 = content => crypto.createHash('sha256').update(content).digest('hex').slice(0, 12);
+        const scriptContent = 'export const answer = 42;\n';
+        const styleContent = 'body{color:red}';
+        const scriptOutput = `scripts/answer-${sha12(scriptContent)}.js`;
+        const styleOutput = `style-${sha12(styleContent)}.css`;
+        const distDir = createDistFixture({
+            version: FRONTEND_MANIFEST_VERSION,
+            inputsHash: manifest.inputsHash,
+            importMap: { imports: { '/scripts/answer.js': `${FRONTEND_ASSET_PREFIX}${scriptOutput}` } },
+            assets: {
+                'scripts/answer.js': { hash: sha12(scriptContent), output: scriptOutput, bytes: scriptContent.length },
+                'style.css': { hash: sha12(styleContent), output: styleOutput, bytes: styleContent.length },
+            },
+        }, { [scriptOutput]: scriptContent, [styleOutput]: styleContent });
+        return { distDir, scriptOutput, scriptContent, styleOutput, styleContent };
+    }
+
+    test('(o) a build with a file that does not match the hash in its name is not trusted, and serving falls back to raw public/', () => {
+        setSbDev(undefined);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const { distDir, scriptOutput, scriptContent, styleOutput, styleContent } = createVerifiableDist();
+            const sampleHtml = '<head><link rel="stylesheet" href="style.css"></head>';
+
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+            expect(shouldServeFrontendAssets({ distRoot: distDir })).toBe(true);
+            expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: distDir })).toContain(styleOutput);
+
+            // Same name, other bytes (and another length, so that a size check alone would also notice).
+            fs.writeFileSync(path.join(distDir, scriptOutput), `${scriptContent}export const extra = 1;\n`, 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+            expect(shouldServeFrontendAssets({ distRoot: distDir })).toBe(false);
+            expect(rewriteFrontendHtml(sampleHtml, { enabled: true, distRoot: distDir })).toBe(sampleHtml);
+            expect(warn).toHaveBeenCalledWith(expect.stringContaining(scriptOutput));
+
+            // Same length, other bytes.
+            fs.writeFileSync(path.join(distDir, scriptOutput), scriptContent.replace('42', '43'), 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+
+            // The original bytes restore trust.
+            fs.writeFileSync(path.join(distDir, scriptOutput), scriptContent, 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+
+            // A file that the manifest lists but that is missing (a partial copy of the build) is not trusted either.
+            fs.rmSync(path.join(distDir, styleOutput));
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+            fs.writeFileSync(path.join(distDir, styleOutput), styleContent, 'utf8');
+            clearFrontendManifestCache();
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    test('(p) the immutable route refuses a hashed file that does not match its name and distrusts the build', async () => {
+        setSbDev(undefined);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const { distDir, scriptOutput, scriptContent } = createVerifiableDist();
+        const app = express();
+        app.use(FRONTEND_ASSET_PREFIX, getFrontendAssetMiddleware({ distRoot: distDir }).immutableAssets);
+        const server = http.createServer(app);
+        await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+        const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+        try {
+            expect(loadFrontendManifest({ distRoot: distDir })).not.toBeNull();
+
+            const intact = await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}${scriptOutput}`);
+            expect(intact.status).toBe(200);
+            expect(intact.headers.get('cache-control')).toMatch(/\bimmutable\b/);
+            expect(await intact.text()).toBe(scriptContent);
+
+            // Damage the file after the manifest was trusted: the request must not receive an immutable copy.
+            fs.writeFileSync(path.join(distDir, scriptOutput), `${scriptContent}throw new Error('forged');\n`, 'utf8');
+            const damaged = await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}${scriptOutput}`);
+            expect(damaged.status).toBe(404);
+            expect(damaged.headers.get('cache-control') ?? '').not.toMatch(/immutable/);
+            expect(await damaged.text()).not.toContain('forged');
+
+            // The next page request must get the plain page, so the manifest is distrusted without a restart.
+            expect(loadFrontendManifest({ distRoot: distDir })).toBeNull();
+            expect(shouldServeFrontendAssets({ distRoot: distDir })).toBe(false);
+
+            // Missing and malformed hashed names still end in 404 and never reach public/.
+            expect((await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}scripts/answer-000000000000.js`)).status).toBe(404);
+            expect((await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}..%2f..%2fpackage-abcdef123456.json`)).status).toBe(404);
+            expect((await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}%00-abcdef123456.js`)).status).toBe(404);
+
+            // Unhashed lookups keep their fallback to public/ and stay revalidating.
+            const unhashed = await fetch(`${baseUrl}${FRONTEND_ASSET_PREFIX}scripts/utils.js`);
+            expect(unhashed.status).toBe(200);
+            expect(unhashed.headers.get('cache-control')).toBe('no-cache');
+        } finally {
+            await new Promise(resolve => server.close(resolve));
+            warn.mockRestore();
         }
     });
 

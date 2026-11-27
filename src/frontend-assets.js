@@ -16,6 +16,7 @@ export const HASHED_FRONTEND_ASSET_RE = /-[a-f0-9]{8,}\.[a-z0-9]+$/i;
 export const FRONTEND_RAW_QUERY_PARAM = 'sbRawFrontend';
 
 const REWRITTEN_HTML_CACHE_MAX_ENTRIES = 16;
+const HASH_IN_FILENAME_RE = /-([a-f0-9]{8,})\.[a-z0-9]+$/i;
 
 const IGNORED_PATH_SEGMENTS = new Set([
     '.git',
@@ -127,6 +128,8 @@ const REWRITABLE_LINK_EXTENSIONS = new Set([
 
 /** @type {Map<string, object|null>} */
 const manifestCache = new Map();
+/** @type {Map<string, string>} Absolute file path to the `size:mtimeMs` of a copy whose content matched the hash in its name. */
+const verifiedAssetCache = new Map();
 let inputsHashCache = null;
 let inputsStatStampCache = null;
 let warnedMismatchHash = null;
@@ -420,6 +423,7 @@ export function getFrontendImmutableMaxAge() {
 
 export function clearFrontendManifestCache() {
     manifestCache.clear();
+    verifiedAssetCache.clear();
     inputsHashCache = null;
     inputsStatStampCache = null;
     warnedMismatchHash = null;
@@ -490,6 +494,97 @@ export function isManifestFresh(manifest, {
     return true;
 }
 
+/**
+ * Returns true when the file's SHA-256 content hash starts with the hash that its name carries (`name-<hash>.ext`).
+ * Hashed files are served as immutable for a year, so a file whose bytes differ from its name (a partial copy, a
+ * file from another build, or a damaged disk) must not be served. A verified file is remembered by size and
+ * modification time, so each file is hashed once until it changes.
+ * @param {string} filePath Absolute path of a hashed asset
+ * @returns {boolean}
+ */
+export function isHashedAssetIntact(filePath) {
+    const nameMatch = HASH_IN_FILENAME_RE.exec(path.basename(filePath));
+    if (!nameMatch) {
+        return false;
+    }
+
+    let stat;
+    try {
+        stat = fs.statSync(filePath);
+    } catch {
+        return false;
+    }
+
+    if (!stat.isFile()) {
+        return false;
+    }
+
+    const statKey = `${stat.size}:${stat.mtimeMs}`;
+    if (verifiedAssetCache.get(filePath) === statKey) {
+        return true;
+    }
+
+    const expectedHash = nameMatch[1].toLowerCase();
+    try {
+        const actualHash = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex').slice(0, expectedHash.length);
+        if (actualHash === expectedHash) {
+            verifiedAssetCache.set(filePath, statKey);
+            return true;
+        }
+    } catch {
+        // An unreadable file is treated like a damaged one.
+    }
+
+    verifiedAssetCache.delete(filePath);
+    return false;
+}
+
+/**
+ * Lists the hashed assets of a manifest whose file is missing or does not match the hash in its name.
+ * Only manifests of the current version are checked: older ones have no inputsHash and are not served with an import map.
+ * @param {object} manifest Parsed asset manifest
+ * @param {string} distRoot Directory that holds the built files
+ * @returns {string[]} Output paths that failed
+ */
+export function findCorruptFrontendAssets(manifest, distRoot = FRONTEND_DIST_ROOT) {
+    if (Number(manifest?.version ?? 1) < FRONTEND_MANIFEST_VERSION || !manifest.assets || typeof manifest.assets !== 'object') {
+        return [];
+    }
+
+    const corrupt = [];
+    for (const entry of Object.values(manifest.assets)) {
+        const output = typeof entry?.output === 'string' ? entry.output : '';
+        if (!HASH_IN_FILENAME_RE.test(path.posix.basename(output))) {
+            // Not served as immutable, so it carries no integrity claim.
+            continue;
+        }
+
+        if (!isHashedAssetIntact(path.join(distRoot, ...output.split('/')))) {
+            corrupt.push(output);
+        }
+    }
+
+    return corrupt;
+}
+
+/**
+ * Makes loadFrontendManifest() answer null for these paths until the cache is cleared, so GET / and the asset routes
+ * fall back to raw public/ after a served file turned out to be damaged.
+ * @param {object} [options]
+ * @param {string} [options.distRoot=FRONTEND_DIST_ROOT]
+ * @param {string} [options.repoRoot=serverDirectory]
+ * @param {string} [options.publicRoot]
+ */
+export function distrustFrontendManifest({
+    distRoot = FRONTEND_DIST_ROOT,
+    repoRoot = serverDirectory,
+    publicRoot = path.join(repoRoot, 'public'),
+} = {}) {
+    manifestCache.set([distRoot, repoRoot, publicRoot].join('\0'), null);
+    rewrittenHtmlCache.clear();
+    fileHtmlCache.clear();
+}
+
 function readFreshFrontendManifest({ distRoot, repoRoot, publicRoot }) {
     const manifestPath = getFrontendManifestPath(distRoot);
     if (!fs.existsSync(manifestPath)) {
@@ -498,7 +593,17 @@ function readFreshFrontendManifest({ distRoot, repoRoot, publicRoot }) {
 
     try {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        return isManifestFresh(manifest, { distRoot, repoRoot, publicRoot }) ? manifest : null;
+        if (!isManifestFresh(manifest, { distRoot, repoRoot, publicRoot })) {
+            return null;
+        }
+
+        const corruptAssets = findCorruptFrontendAssets(manifest, distRoot);
+        if (corruptAssets.length > 0) {
+            console.warn(`Frontend build has ${corruptAssets.length} file(s) that do not match the hash in their name (first: ${corruptAssets[0]}); falling back to raw public/ assets.`);
+            return null;
+        }
+
+        return manifest;
     } catch (error) {
         console.warn('Failed to read frontend asset manifest.', error);
         return null;
