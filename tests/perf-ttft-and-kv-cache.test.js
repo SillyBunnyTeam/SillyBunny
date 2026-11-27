@@ -1308,11 +1308,11 @@ describe('Track A: Server TTFT, Vertex OAuth2 cache, OpenRouter SWR, KV cache al
         }
     });
 
-    test('outbound keep-alive is configured in server-main.js while preserving SSRF checks', () => {
+    test('outbound keep-alive follows cliArgs.enableKeepAlive in server-main.js on every runtime', () => {
         const serverMainSource = readRepoFile('src/server-main.js');
-        expect(serverMainSource).toContain('const outboundKeepAlive = !isBunRuntime()');
-        expect(serverMainSource).toContain('http.globalAgent = new http.Agent({ keepAlive: outboundKeepAlive');
-        expect(serverMainSource).toContain('https.globalAgent = new https.Agent({ keepAlive: outboundKeepAlive');
-        expect(serverMainSource).toContain('enableKeepAlive: outboundKeepAlive');
+        expect(serverMainSource).toContain('http.globalAgent = new http.Agent({ ...getKeepAliveAgentOptions(cliArgs.enableKeepAlive)');
+        expect(serverMainSource).toContain('https.globalAgent = new https.Agent({ ...getKeepAliveAgentOptions(cliArgs.enableKeepAlive)');
+        expect(serverMainSource).toContain('enableKeepAlive: cliArgs.enableKeepAlive');
+        expect(serverMainSource).not.toContain('process.argv');
     });
 });

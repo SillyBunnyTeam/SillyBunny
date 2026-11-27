@@ -133,6 +133,32 @@ describe('private request filter', () => {
     });
 });
 
+describe('pooled sockets of the filter agent', () => {
+    function initKeepAliveAgent(enableKeepAlive) {
+        initPrivateRequestFilter({
+            listen: false,
+            enabled: true,
+            privateAddressWhitelist: [],
+            logBlocked: false,
+            logAllowed: false,
+            allowUnresolvedHosts: false,
+            enableKeepAlive,
+        });
+        return http.globalAgent;
+    }
+
+    test('keeps sockets alive only when asked to', () => {
+        expect(initKeepAliveAgent(true).keepAlive).toBe(true);
+        expect(initKeepAliveAgent(false).keepAlive).toBe(false);
+    });
+
+    test('a free socket is closed by this process before a server that waits 5 s would close it', () => {
+        const { timeout } = initKeepAliveAgent(true).options;
+        expect(timeout).toBeGreaterThan(0);
+        expect(timeout).toBeLessThan(5000);
+    });
+});
+
 describe('addresses that reach this host or a private host in another form', () => {
     test.each([
         ['0.0.0.0'],

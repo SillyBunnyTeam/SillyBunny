@@ -20,6 +20,7 @@ import helmet from 'helmet';
 // local library imports
 import './fetch-patch.js';
 import { APP_NAME, isBunRuntime } from './runtime.js';
+import { getKeepAliveAgentOptions } from './outbound-keep-alive.js';
 import { serverDirectory } from './server-directory.js';
 import { getServerBootId } from './server-boot-marker.js';
 import { getInstallType, INSTALL_TYPE } from './install-type.js';
@@ -112,13 +113,9 @@ if (!cliArgs.enableIPv6 && !cliArgs.enableIPv4) {
 }
 
 // Set keep-alive preference for all HTTP/HTTPS requests.
-// SillyBunny: default outbound keep-alive on under Node so sequential LLM requests reuse TLS sockets
-// while preserving PrivateRequestAgent and ProxyAgent SSRF filtering.
-const outboundKeepAlive = !isBunRuntime()
-    ? !process.argv.some(arg => /^--(?:no-enableKeepAlive|enableKeepAlive=(?:false|0))$/i.test(arg))
-    : cliArgs.enableKeepAlive;
-http.globalAgent = new http.Agent({ keepAlive: outboundKeepAlive, keepAliveMsecs: 15000, maxSockets: 64 });
-https.globalAgent = new https.Agent({ keepAlive: outboundKeepAlive, keepAliveMsecs: 15000, maxSockets: 64 });
+// SillyBunny: pooled sockets idle for a limited time, so that this process closes a free socket before the server does.
+http.globalAgent = new http.Agent({ ...getKeepAliveAgentOptions(cliArgs.enableKeepAlive), keepAliveMsecs: 15000, maxSockets: 64 });
+https.globalAgent = new https.Agent({ ...getKeepAliveAgentOptions(cliArgs.enableKeepAlive), keepAliveMsecs: 15000, maxSockets: 64 });
 
 // SillyBunny: send a rejected promise from an async handler to the error handlers, because Express 4 ignores it and leaves the request unanswered.
 forwardAsyncRouteErrors();
@@ -584,7 +581,7 @@ async function preSetupTasks() {
         logBlocked: !!getConfigValue('privateAddressWhitelist.log.blockedRequests', true, 'boolean'),
         logAllowed: !!getConfigValue('privateAddressWhitelist.log.allowedRequests', false, 'boolean'),
         allowUnresolvedHosts: !!getConfigValue('privateAddressWhitelist.allowUnresolvedHosts', false, 'boolean'),
-        enableKeepAlive: outboundKeepAlive,
+        enableKeepAlive: cliArgs.enableKeepAlive,
         requestProxyEnabled: !!cliArgs.requestProxyEnabled,
     };
     initPrivateRequestFilter(requestFilterOptions);
@@ -594,7 +591,7 @@ async function preSetupTasks() {
         enabled: cliArgs.requestProxyEnabled,
         url: cliArgs.requestProxyUrl,
         bypass: cliArgs.requestProxyBypass,
-        enableKeepAlive: outboundKeepAlive,
+        enableKeepAlive: cliArgs.enableKeepAlive,
         privateRequestFilterEnabled: requestFilterOptions.enabled,
     });
 
