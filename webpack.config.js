@@ -12,13 +12,9 @@ const color = chalk;
 const moduleRequire = createRequire(import.meta.url);
 
 const BUN_LIB_BUNDLE_SIGNATURE = 'bun-no-minify-v1';
-const PUBLIC_LIB_CONFIG_SIGNATURE = 'chevrotain-esm-alias-moment-locales-v2';
+const PUBLIC_LIB_CONFIG_SIGNATURE = 'chevrotain-esm-alias-minimizer-v3';
 const WEBPACK_CACHE_KEEP_COUNT = 3;
 const PUBLIC_LIB_FILENAME = 'lib.js';
-const FALLBACK_UI_MOMENT_LOCALES = [
-    'ar-sa', 'ar', 'zh-cn', 'zh-tw', 'zh', 'nl', 'de', 'fr',
-    'is', 'it', 'ja', 'ko', 'pt', 'ru', 'es', 'uk', 'vi', 'th',
-];
 
 function readJsonVersion(filePath, fallback) {
     try {
@@ -243,32 +239,6 @@ export function buildPublicLibMinimizer({
     ];
 }
 
-// SillyBunny: public/scripts/utils.js and reasoning.js pass getCurrentLocale() to moment.locale(), so retain UI locales from lang.json and strip the rest.
-function getSupportedMomentLocalePattern() {
-    const codes = new Set(['en-gb', 'en-au', 'en-ca', 'pt-br']);
-    try {
-        const langListPath = path.join(serverDirectory, 'public', 'locales', 'lang.json');
-        const langs = JSON.parse(fs.readFileSync(langListPath, 'utf8'));
-        if (Array.isArray(langs)) {
-            for (const entry of langs) {
-                const code = typeof entry?.lang === 'string' ? entry.lang.trim().toLowerCase() : '';
-                if (!code) {
-                    continue;
-                }
-                codes.add(code);
-                codes.add(code.split('-')[0]);
-            }
-        }
-    } catch {
-        for (const fallback of FALLBACK_UI_MOMENT_LOCALES) {
-            codes.add(fallback);
-        }
-    }
-
-    const escaped = [...codes].map(code => code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    return new RegExp(`^\\./(${escaped.join('|')})(\\.js)?$`);
-}
-
 function hashFileIfPresent(hasher, filePath) {
     if (!fs.existsSync(filePath)) {
         hasher.update(`${filePath}:missing`);
@@ -283,7 +253,6 @@ function getPublicLibInputsSignature() {
     const hasher = crypto.createHash('sha256');
 
     hashFileIfPresent(hasher, path.join(serverDirectory, 'public', 'lib.js'));
-    hashFileIfPresent(hasher, path.join(serverDirectory, 'public', 'locales', 'lang.json'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'package.json'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'package-lock.json'));
     hashFileIfPresent(hasher, path.join(serverDirectory, 'bun.lock'));
@@ -477,16 +446,6 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
             },
         },
         module: {},
-        plugins: [
-            {
-                apply(compiler) {
-                    new compiler.webpack.ContextReplacementPlugin(
-                        /moment(?:[/\\]dist)?[/\\]locale$/,
-                        getSupportedMomentLocalePattern(),
-                    ).apply(compiler);
-                },
-            },
-        ],
         stats: {
             preset: 'minimal',
             assets: false,

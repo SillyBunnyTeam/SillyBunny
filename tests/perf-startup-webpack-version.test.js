@@ -258,11 +258,13 @@ describe('lazy webpack configuration and middleware', () => {
         })).toEqual(['...']);
     });
 
-    test('strips unused moment locales while keeping supported UI locales from lang.json', async () => {
+    test('bundles every moment locale, including locales outside the UI language list', async () => {
         const { default: webpack } = await import('webpack');
         const entryFile = path.join(tempDir, 'moment-entry.js');
         const outDir = path.join(tempDir, 'moment-out');
         fs.writeFileSync(entryFile, 'import moment from \'moment\';\nexport { moment };\n', 'utf8');
+        fs.mkdirSync(outDir, { recursive: true });
+        fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
 
         const baseConfig = getPublicLibConfig({ outputPath: outDir });
         const compiler = webpack({
@@ -290,9 +292,19 @@ describe('lazy webpack configuration and middleware', () => {
             });
         });
 
-        const bundle = fs.readFileSync(path.join(outDir, 'lib.js'), 'utf8');
-        expect(bundle).toContain('月曜日');
-        expect(bundle).not.toContain('wa’leS');
+        // getCurrentLocale() passes the raw browser language to moment, so a locale that the UI has no translation for must still format.
+        const script = [
+            `const { moment } = await import(${JSON.stringify(pathToFileURL(path.join(outDir, 'lib.js')).href)});`,
+            'const format = (code) => moment("2026-03-05T10:00:00Z").utc().locale(code).format("LL");',
+            'console.log(JSON.stringify({ pl: format("pl"), tr: format("tr"), ja: format("ja"), global: moment.locale("pl") }));',
+        ].join('\n');
+        const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).trim();
+        expect(JSON.parse(raw.split(/\r?\n/).pop())).toEqual({
+            pl: '5 marca 2026',
+            tr: '5 Mart 2026',
+            ja: '2026年3月5日',
+            global: 'pl',
+        });
     }, 20_000);
 
     test('webpack-serve fast-paths non-lib.js requests and reuses precompiled lib.js without compiling', async () => {
