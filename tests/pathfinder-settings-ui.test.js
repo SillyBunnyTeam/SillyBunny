@@ -664,4 +664,15 @@ describe('Pathfinder summary drafts and generation', () => {
         expect(createSummaryMemoryEntry).not.toHaveBeenCalled();
         expect(summaryListeners.size).toBe(reason === 'disable' ? 0 : 1);
     });
+
+    test.each(['hidden', 'sb-subpage-store'])('refreshPathfinderSettings skips DOM updates while hosted inside a %s ancestor', async marker => {
+        const panel = await ui.openPathfinderSettings(store.getAgentById('agent-a'));
+        panel.isConnected = true;
+        panel.closest = selector => (selector.includes(marker) ? {} : null);
+        const findSpy = jest.spyOn(panel, 'find');
+
+        ui.refreshPathfinderSettings();
+
+        expect(findSpy).not.toHaveBeenCalled();
+    });
 });

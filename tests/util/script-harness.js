@@ -1056,6 +1056,7 @@ export async function importScriptModule(options = {}) {
         'scripts/mobile-send-button.js': {
             bindIOSFastTapSendButton: jest.fn(),
             isIOSWebKitPlatform: jest.fn(() => false),
+            isLegacyIOSWebKitPlatform: jest.fn(() => false),
         },
         'scripts/sillybunny-delete-confirm.js': {
             DELETE_CHOICE: { CANCEL: 0, CONFIRM: 1 },

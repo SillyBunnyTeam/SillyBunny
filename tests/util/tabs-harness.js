@@ -196,6 +196,8 @@ function ensureJQuery() {
             $.fn[plugin] = jest.fn(function () { return this; });
         }
     }
+    $.fn.slideUp = function slideUpSync() { return this.hide(); };
+    $.fn.slideDown = function slideDownSync() { return this.show(); };
     globalThis.$ = $;
     globalThis.jQuery = $;
     if (typeof globalThis.window !== 'undefined') {
@@ -516,6 +518,7 @@ export async function importTabsModule(options = {}) {
             }),
             refreshCsrfToken: jest.fn(async () => ''),
             saveSettingsDebounced: jest.fn(),
+            setMenuType: jest.fn(),
             get this_chid() { return state.this_chid; },
         },
         'scripts/events.js': { eventSource, event_types },
@@ -531,9 +534,14 @@ export async function importTabsModule(options = {}) {
             isAdmin: jest.fn(() => false),
             syncUserControls: jest.fn(),
         },
+        'lib.js': {
+            DOMPurify: { sanitize: v => String(v ?? '') },
+            Fuse: class { search() { return []; } },
+        },
         'scripts/utils.js': {
             flashHighlight: jest.fn(),
             escapeHtml: s => String(s ?? ''),
+            clamp: (v, min, max) => Math.min(Math.max(v, min), max),
             debounce: fn => {
                 const wrapped = (...args) => fn(...args);
                 wrapped.cancel = () => {};
@@ -553,6 +561,11 @@ export async function importTabsModule(options = {}) {
         },
         'scripts/csrf-token-refresh.js': { fetchWithCsrfRetry: jest.fn(async () => ({ ok: true, json: async () => ({}) })) },
         'scripts/sillybunny-install-notice.js': { initInstallNotice: jest.fn() },
+        'scripts/mobile-send-button.js': {
+            bindIOSFastTapSendButton: jest.fn(),
+            isIOSWebKitPlatform: jest.fn(() => false),
+            isLegacyIOSWebKitPlatform: jest.fn(() => false),
+        },
         'scripts/sillybunny-mobile-bottom-bar.js': {
             initializeMobileBottomBar: jest.fn(),
             syncMobileBottomBar: jest.fn(),
@@ -565,7 +578,37 @@ export async function importTabsModule(options = {}) {
             }),
         },
         'scripts/sillybunny-message-actions.js': { initializeMessageActions: jest.fn() },
-        'scripts/sillybunny-toast-motion.js': { initializeToastMotion: jest.fn() },
+        'scripts/sillybunny-toast-motion.js': {
+            TOAST_SHOW_METHOD: 'sbToastIn',
+            TOAST_HIDE_METHOD: 'sbToastOut',
+            TOAST_LEAVING_CLASS: 'sb-toast-leaving',
+            TOAST_HOLD_METHOD: 'sbToastHold',
+            TOAST_REPLACE_DURATION: 500,
+            TOAST_MAX_WAITING: 6,
+            getToastQueue: jest.fn(() => []),
+            getNotificationQueue: jest.fn(() => []),
+            resetToastQueue: jest.fn(),
+            setToastPosition: jest.fn(),
+            setNotificationPosition: jest.fn(),
+            getNotificationPosition: jest.fn(() => 'toast-top-center'),
+            placeToastContainers: jest.fn(),
+            initializeToastMotion: jest.fn(),
+        },
+        'scripts/sillybunny-character-list-state.js': {
+            registerCharacterListSortAccessors: jest.fn(),
+            registerCharacterListStateRenderer: jest.fn(),
+            switchCharacterListView: jest.fn(async () => {}),
+            getCharacterListView: jest.fn(() => 'characters'),
+            getListSort: jest.fn(() => 'name'),
+            setListSort: jest.fn(),
+            getListSortOptions: jest.fn(() => []),
+            getListPageSize: jest.fn(() => 25),
+            setListPageSize: jest.fn(),
+            getListPage: jest.fn(() => 1),
+            setListPage: jest.fn(),
+            recordListPage: jest.fn(),
+            resetListPage: jest.fn(),
+        },
         'scripts/sillybunny-extension-actions.js': {},
         'scripts/sillybunny-home/greeting-art-boot.js': {},
         'scripts/sillybunny-color-picker.js': { initializeColorPickers: jest.fn() },
@@ -639,6 +682,17 @@ export async function importTabsModule(options = {}) {
             createConnectionsPanel: jest.fn(() => ({
                 column: document.createElement('div'),
                 sync: jest.fn(),
+                onActivate: jest.fn(),
+            })),
+        },
+        'scripts/sillybunny-character-list.js': {
+            loadCharacterListStyles: jest.fn(async () => {}),
+            mountCharacterList: jest.fn(() => ({
+                ready: Promise.resolve(),
+                setEntityView: jest.fn(),
+                onReveal: jest.fn(),
+                refresh: jest.fn(),
+                revealActiveEntity: jest.fn(async () => {}),
             })),
         },
         'scripts/sillybunny-prompt-editor.js': { initializePromptEditor: jest.fn() },
