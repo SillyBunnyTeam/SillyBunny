@@ -75,7 +75,7 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
         'scripts/sillybunny-tabs.js', 'scripts/mobile-shell-lifecycle/index.js', 'scripts/mobile-send-button.js',
         'scripts/sillybunny-editor/breakpoints.js',
     ].map(file => fs.readFile(new URL(file, publicRoot), 'utf8')));
-    const bindings = tabs.match(/ {4}window\.addEventListener\('resize', queueMobileViewportStateSync,[\s\S]*?(?= {4}\/\/ Reinitialize Select2 widgets)/)?.[0];
+    const bindings = tabs.match(/ {4}window\.addEventListener\('resize', queueMobileViewportStateSync,[\s\S]*?(?= {4}initializeMobileShellUi\(\);)/)?.[0];
     if (!bindings) throw new Error('Missing production viewport/focus bindings');
     await page.addScriptTag({ content: [
         extractDeclaration(breakpoints, 'LAYOUT_MOBILE_QUERY'),
