@@ -65,11 +65,9 @@ describe('Slice 1E: chat recovery line-streaming validation without record reten
 
     test('chat save/delete routes keep identical-content fast path and simple listing metadata', () => {
         const chatsSource = readRepoFile('src/endpoints/chats.js');
-        const charactersSource = readRepoFile('src/endpoints/characters.js');
         const scriptSource = readRepoFile('public/script.js');
 
         expect(chatsSource).toContain('if (typeof left === \'string\' && typeof right === \'string\' && left.length > 0 && left === right)');
-        expect(charactersSource).toContain('return { file_name: file, file_id: path.parse(file).name, last_mes: lastMes };');
         expect(scriptSource).toContain('body: JSON.stringify({ avatar_url: character.avatar, file_name: fileName, simple: true })');
         expect(scriptSource).toContain('body: JSON.stringify({ avatar_url: character.avatar, simple: true })');
         expect(scriptSource).toContain('unobserveChatMessageResize(firstDeleted);');

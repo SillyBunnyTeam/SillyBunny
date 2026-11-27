@@ -483,6 +483,7 @@ This is the largest class by a wide margin.
   - `POST /api/characters/edit` answers 400 when `avatar_url` is missing, empty or not a string. It formats the body inside a `try` block that answers 400 when `charaFormatData()` throws or returns a primitive.
   - `POST /api/characters/delete` answers 400 when `delete_chats` is an object. It logs a thumbnail that `invalidateThumbnail()` cannot remove and still answers 200, because the card is already deleted.
   - `POST /api/characters/import` answers 500 when `recoverFileWriteSync()` throws for the card that `preserved_name` names, for example on a damaged write-recovery record.
+  - `POST /api/characters/chats` with `simple: true` skips the full parse but returns the same `last_mes` as the full listing: the `send_date` of the last message (`readChatLastMessageDate()` in `src/chat-last-message-date.js` reads only the end of the file). Clients take the first chat of a list sorted by it as the latest chat (`resolveCharacterChatNameForLoad()`, `deleteCharacterChatByName()`), and the modification time of a restored or copied file is not the date of its last message (`tests/characters-chats-simple-listing.test.js`).
 - **Tests:** `tests/character-route-inputs.test.js`. Its harness option `requestTimeoutMs` makes a request that a route never answers fail at a deadline, and Jest fails the running test with the unhandled rejection. `tests/hostile-file-names-characters.test.js` requires 400 from `/api/characters/edit` for an empty `avatar_url`.
 - **Fixes:** `5e6923c81` (request fields), `62068ea31` (file steps).
 

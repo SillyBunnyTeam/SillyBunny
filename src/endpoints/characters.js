@@ -23,6 +23,8 @@ import { getChatInfo } from './chats.js';
 import { ByafParser } from '../byaf.js';
 import { CharXParser, persistCharXAssets } from '../charx.js';
 import { getSuspiciousEmptyCharacterDefinitionFields } from '../character-save-guard.js';
+// SillyBunny: the simple chat listing reads the date of the last message from the end of each file.
+import { readChatLastMessageDate } from '../chat-last-message-date.js';
 // SillyBunny: a deleted or renamed card changes the conversations that name it.
 import { deleteConversationsOfCharacter, renameCharacterInConversations } from '../conversation-cleanup.js';
 import { CharacterIndex } from '../character-index.js';
@@ -1900,16 +1902,17 @@ router.post('/chats', validateAvatarUrlMiddleware, async function (request, resp
         }
 
         if (request.body.simple) {
-            // SillyBunny: include mtime and recoverable target so chat lookup and delete skip parsing every chat file.
-            const simpleFiles = jsonFiles.map(file => {
+            // SillyBunny: list the chats without parsing every file. Clients take the newest chat by `last_mes`, so it holds the date of the last message, as in the full listing below. The recoverable target is kept as well.
+            const simpleFiles = [];
+            for (const file of jsonFiles) {
                 let lastMes = 0;
                 try {
-                    lastMes = fs.statSync(path.join(chatsDirectory, file)).mtimeMs;
+                    lastMes = await readChatLastMessageDate(path.join(chatsDirectory, file));
                 } catch {
                     lastMes = 0;
                 }
-                return { file_name: file, file_id: path.parse(file).name, last_mes: lastMes };
-            });
+                simpleFiles.push({ file_name: file, file_id: path.parse(file).name, last_mes: lastMes });
+            }
             if (recoveryTarget && !simpleFiles.some(file => file.file_name === requestedFileName)) {
                 const requestedChat = readChatJsonlStrict(recoveryTarget.activePath, { collectRecords: false });
                 const hasRecoverableSnapshot = isChatBackupEnabled && isChatRecoverable(recoveryTarget);
