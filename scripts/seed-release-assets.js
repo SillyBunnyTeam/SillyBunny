@@ -43,16 +43,24 @@ export const RELEASE_ASSET_TARGETS = Object.freeze([
 let prebuiltLibHelpersPromise = null;
 let frontendAssetHelpersPromise = null;
 
+// The helper modules ship with the prebuilt-lib and frontend-asset builds. A checkout without them is
+// validated by its HEAD stamp alone, so a module that is absent or incomplete counts as no helper.
+function usablePrebuiltLibHelpers(mod) {
+    return mod
+        && typeof mod.computePublicLibInputsHash === 'function'
+        && typeof mod.readPrebuiltPublicLibManifest === 'function'
+        ? mod
+        : null;
+}
+
+function usableFrontendAssetHelpers(mod) {
+    return mod && typeof mod.computeFrontendInputsHash === 'function' ? mod : null;
+}
+
 async function loadPrebuiltLibHelpers() {
     if (!prebuiltLibHelpersPromise) {
         prebuiltLibHelpersPromise = import('../src/prebuilt-lib.js')
-            .then((mod) => (
-                mod
-                && typeof mod.computePublicLibInputsHash === 'function'
-                && typeof mod.readPrebuiltPublicLibManifest === 'function'
-                    ? mod
-                    : null
-            ))
+            .then(usablePrebuiltLibHelpers)
             .catch(() => null);
     }
     return prebuiltLibHelpersPromise;
@@ -61,14 +69,26 @@ async function loadPrebuiltLibHelpers() {
 async function loadFrontendAssetHelpers() {
     if (!frontendAssetHelpersPromise) {
         frontendAssetHelpersPromise = import('../src/frontend-assets.js')
-            .then((mod) => (
-                mod && typeof mod.computeFrontendInputsHash === 'function'
-                    ? mod
-                    : null
-            ))
+            .then(usableFrontendAssetHelpers)
             .catch(() => null);
     }
     return frontendAssetHelpersPromise;
+}
+
+/**
+ * Returns the helper module that validates the output of one target: the one passed in `helpers`
+ * (`null` means "absent"), or else the module next to this script when it exists.
+ * @param {{ key: string }} target
+ * @param {{ prebuiltLib?: object | null, frontendAssets?: object | null }} [helpers]
+ */
+async function resolveTargetHelper(target, helpers = {}) {
+    if (target.key === 'prebuiltLib') {
+        return helpers.prebuiltLib !== undefined ? usablePrebuiltLibHelpers(helpers.prebuiltLib) : loadPrebuiltLibHelpers();
+    }
+    if (target.key === 'frontendAssets') {
+        return helpers.frontendAssets !== undefined ? usableFrontendAssetHelpers(helpers.frontendAssets) : loadFrontendAssetHelpers();
+    }
+    return null;
 }
 
 function isTruthy(value) {
@@ -161,9 +181,10 @@ function validateArchiveEntryPath(rawPath, expectedPrefix) {
  * @param {object} options
  * @param {string} options.expectedPrefix Archive prefix such as `dist/frontend` or `dist/lib`
  * @param {string} options.destDir Target destination directory (replaced atomically)
+ * @param {(stagingDir: string) => void} [options.validate] Runs on the extracted files before they replace `destDir`; a throw leaves `destDir` untouched
  * @returns {{ fileCount: number, totalBytes: number }}
  */
-export function extractSafeTarGz(gzBuffer, { expectedPrefix, destDir }) {
+export function extractSafeTarGz(gzBuffer, { expectedPrefix, destDir, validate = undefined }) {
     const tarBuffer = zlib.gunzipSync(gzBuffer, { maxOutputLength: MAX_EXTRACTED_TAR_BYTES });
     const extractedFiles = [];
     let offset = 0;
@@ -243,6 +264,8 @@ export function extractSafeTarGz(gzBuffer, { expectedPrefix, destDir }) {
             fs.writeFileSync(resolvedTarget, file.data);
         }
 
+        validate?.(tempDir);
+
         const hadExisting = fs.existsSync(destDir);
         if (hadExisting) {
             fs.renameSync(destDir, backupDir);
@@ -313,6 +336,8 @@ function isRegularFile(filePath) {
     }
 }
 
+class ReleaseAssetMismatchError extends Error {}
+
 class HttpStatusError extends Error {
     constructor(status, url) {
         super(`HTTP ${status} fetching ${url}`);
@@ -350,57 +375,69 @@ function hasMatchingHeadStamp(repoDir, currentHeadSha) {
     }
 }
 
-async function isTargetAlreadyFresh(target, repoDir, { currentHeadSha = '' } = {}) {
-    const destDir = path.join(repoDir, target.destRelative);
-    const manifestPath = path.join(destDir, target.manifestFile);
+/**
+ * Tells whether the files of one target in `outputDir` can be used for the checkout in `repoDir`.
+ * With the helper module for the target, the manifest's `inputsHash` must equal the hash of this
+ * checkout's build inputs. Without it, the manifest must parse and the HEAD stamp must match.
+ * @param {{ key: string, manifestFile: string }} target
+ * @param {string} repoDir
+ * @param {{ outputDir: string, currentHeadSha?: string, helper?: object | null }} options
+ * @returns {boolean}
+ */
+function targetOutputIsUsable(target, repoDir, { outputDir, currentHeadSha = '', helper = null }) {
+    const manifestPath = path.join(outputDir, target.manifestFile);
     if (!isRegularFile(manifestPath)) {
         return false;
     }
 
-    if (target.key === 'prebuiltLib') {
-        const prebuiltLib = await loadPrebuiltLibHelpers();
-        if (prebuiltLib) {
-            const manifest = prebuiltLib.readPrebuiltPublicLibManifest(destDir);
-            if (!manifest) {
+    try {
+        if (target.key === 'prebuiltLib') {
+            if (helper) {
+                const manifest = helper.readPrebuiltPublicLibManifest(outputDir);
+                if (!manifest) {
+                    return false;
+                }
+                return manifest.inputsHash === helper.computePublicLibInputsHash({ rootDir: repoDir });
+            }
+
+            if (!isRegularFile(path.join(outputDir, PREBUILT_LIB_FILENAME)) || !hasMatchingHeadStamp(repoDir, currentHeadSha)) {
                 return false;
             }
-            return manifest.inputsHash === prebuiltLib.computePublicLibInputsHash({ rootDir: repoDir });
-        }
-
-        if (!isRegularFile(path.join(destDir, PREBUILT_LIB_FILENAME)) || !hasMatchingHeadStamp(repoDir, currentHeadSha)) {
-            return false;
-        }
-        try {
             const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
             return Boolean(manifest && typeof manifest === 'object' && !Array.isArray(manifest));
-        } catch {
-            return false;
         }
-    }
 
-    if (target.key === 'frontendAssets') {
-        try {
+        if (target.key === 'frontendAssets') {
             const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
             if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
                 return false;
             }
-            const frontendAssets = await loadFrontendAssetHelpers();
-            if (frontendAssets) {
+            if (helper) {
                 if (typeof manifest.inputsHash !== 'string') {
                     return false;
                 }
-                return manifest.inputsHash === frontendAssets.computeFrontendInputsHash({
+                return manifest.inputsHash === helper.computeFrontendInputsHash({
                     repoRoot: repoDir,
                     publicRoot: path.join(repoDir, 'public'),
                 });
             }
             return hasMatchingHeadStamp(repoDir, currentHeadSha);
-        } catch {
-            return false;
         }
+    } catch {
+        return false;
     }
 
     return false;
+}
+
+async function isTargetAlreadyFresh(target, repoDir, { currentHeadSha = '', helpers = undefined } = {}) {
+    const destDir = path.join(repoDir, target.destRelative);
+    if (!isRegularFile(path.join(destDir, target.manifestFile))) {
+        return false;
+    }
+
+    const helper = await resolveTargetHelper(target, helpers);
+    return targetOutputIsUsable(target, repoDir, { outputDir: destDir, currentHeadSha, helper });
 }
 
 async function fetchBufferWithLimit(url, { timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = MAX_DOWNLOAD_BYTES, fetchImpl = globalThis.fetch } = {}) {
@@ -450,6 +487,7 @@ async function fetchBufferWithLimit(url, { timeoutMs = DEFAULT_TIMEOUT_MS, maxBy
  * @param {string} [options.baseUrl]
  * @param {number} [options.timeoutMs=DEFAULT_TIMEOUT_MS] Limit for each request
  * @param {number} [options.deadlineMs] Limit for all requests together; defaults to a few seconds when `optional` and to none otherwise
+ * @param {{ prebuiltLib?: object | null, frontendAssets?: object | null }} [options.helpers] Replaces the helper modules in `src/`; `null` stands for a module that is absent
  * @param {NodeJS.ProcessEnv} [options.env=process.env]
  * @param {typeof globalThis.fetch} [options.fetchImpl]
  * @param {(msg: string) => void} [options.stdout]
@@ -463,6 +501,7 @@ export async function seedReleaseAssets({
     baseUrl = '',
     timeoutMs = DEFAULT_TIMEOUT_MS,
     deadlineMs = optional ? OPTIONAL_SEED_DEADLINE_MS : 0,
+    helpers = undefined,
     env = process.env,
     fetchImpl = globalThis.fetch,
     stdout = msg => console.log(msg),
@@ -493,7 +532,7 @@ export async function seedReleaseAssets({
 
     const missingTargets = [];
     for (const target of RELEASE_ASSET_TARGETS) {
-        if (!await isTargetAlreadyFresh(target, repoDir, { currentHeadSha })) {
+        if (!await isTargetAlreadyFresh(target, repoDir, { currentHeadSha, helpers })) {
             missingTargets.push(target);
         }
     }
@@ -516,6 +555,10 @@ export async function seedReleaseAssets({
 
     const seeded = [];
     const skipped = [];
+    let mismatched = false;
+    const describeFailure = reason => (optional
+        ? `Skipping release asset seed (${resolvedTag}): ${reason}`
+        : `Failed to seed release assets (${resolvedTag}): ${reason}`);
 
     const startedAt = Date.now();
     const requestLimits = () => {
@@ -556,28 +599,36 @@ export async function seedReleaseAssets({
             }
 
             const destDir = path.join(repoDir, target.destRelative);
-            extractSafeTarGz(gzBuffer, {
-                expectedPrefix: target.expectedPrefix,
-                destDir,
-            });
-
-            if (target.key === 'frontendAssets') {
-                const frontendAssets = await loadFrontendAssetHelpers();
-                if (frontendAssets && typeof frontendAssets.writeFrontendInputsStamp === 'function') {
-                    const manifestPath = path.join(destDir, target.manifestFile);
-                    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-                    const expectedHash = frontendAssets.computeFrontendInputsHash({
-                        repoRoot: repoDir,
-                        publicRoot: path.join(repoDir, 'public'),
-                    });
-                    if (manifest?.inputsHash === expectedHash) {
-                        frontendAssets.writeFrontendInputsStamp(expectedHash, {
-                            distRoot: destDir,
-                            repoRoot: repoDir,
-                            publicRoot: path.join(repoDir, 'public'),
-                        });
-                    }
+            const helper = await resolveTargetHelper(target, helpers);
+            try {
+                extractSafeTarGz(gzBuffer, {
+                    expectedPrefix: target.expectedPrefix,
+                    destDir,
+                    // Nothing replaces dist/ before the files are known to fit this checkout.
+                    validate: (stagingDir) => {
+                        if (!targetOutputIsUsable(target, repoDir, { outputDir: stagingDir, helper })) {
+                            throw new ReleaseAssetMismatchError(`${target.tarballName} does not match this checkout and was not installed.`);
+                        }
+                    },
+                });
+            } catch (error) {
+                if (!(error instanceof ReleaseAssetMismatchError)) {
+                    throw error;
                 }
+                skipped.push(`${target.key}:mismatch`);
+                mismatched = true;
+                stderr(describeFailure(error.message));
+                continue;
+            }
+
+            if (target.key === 'frontendAssets' && helper && typeof helper.writeFrontendInputsStamp === 'function') {
+                // The manifest passed validation, so its inputsHash is the hash of this checkout's inputs.
+                const manifest = JSON.parse(fs.readFileSync(path.join(destDir, target.manifestFile), 'utf8'));
+                helper.writeFrontendInputsStamp(manifest.inputsHash, {
+                    distRoot: destDir,
+                    repoRoot: repoDir,
+                    publicRoot: path.join(repoDir, 'public'),
+                });
             }
 
             seeded.push(target.key);
@@ -588,27 +639,24 @@ export async function seedReleaseAssets({
         let allFresh = true;
         for (const target of RELEASE_ASSET_TARGETS) {
             const checkHeadSha = seededSet.has(target.key) ? '' : currentHeadSha;
-            if (!await isTargetAlreadyFresh(target, repoDir, { currentHeadSha: checkHeadSha })) {
+            if (!await isTargetAlreadyFresh(target, repoDir, { currentHeadSha: checkHeadSha, helpers })) {
                 allFresh = false;
                 break;
             }
         }
+        const stillMissing = missingTargets.filter(target => !seededSet.has(target.key));
         if (allFresh) {
             writeReleaseAssetsStamp();
-        } else if (optional && skipped.length > 0) {
-            // SHA256SUMS was readable and has no line for a tarball that is still missing, so this release does not publish it.
+        } else if (optional && stillMissing.length > 0 && stillMissing.every(target => skipped.includes(`${target.key}:missing-checksum`))) {
+            // SHA256SUMS was readable and has no line for any tarball that is still missing, so this release does not publish them.
             writeNoAssetsStamp(repoDir, resolvedTag);
         }
 
-        return { ok: true, seeded, skipped };
+        return { ok: optional || !mismatched, seeded, skipped };
     } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        if (optional) {
-            stderr(`Skipping release asset seed (${resolvedTag}): ${reason}`);
-            return { ok: true, seeded, skipped: [...skipped, 'error'] };
-        }
-        stderr(`Failed to seed release assets (${resolvedTag}): ${reason}`);
-        return { ok: false, seeded, skipped: [...skipped, 'error'] };
+        stderr(describeFailure(reason));
+        return { ok: optional, seeded, skipped: [...skipped, 'error'] };
     }
 }
 

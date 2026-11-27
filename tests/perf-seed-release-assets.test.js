@@ -17,6 +17,10 @@ import {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+// src/prebuilt-lib.js and src/frontend-assets.js only exist once the prebuilt-lib and frontend-asset builds are
+// merged, and a seeder that finds them validates what it unpacks. Tests pin the world they test with these.
+const NO_HELPER_MODULES = Object.freeze({ prebuiltLib: null, frontendAssets: null });
+
 function sha256Hex(data) {
     return crypto.createHash('sha256').update(data).digest('hex');
 }
@@ -287,6 +291,7 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
             repoDir: fixtureRepo,
             tag: 'v2.0.0',
             baseUrl,
+            helpers: NO_HELPER_MODULES,
             env: makeGitEnv(),
             stdout: () => {},
             stderr: () => {},
@@ -302,6 +307,7 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
             repoDir: fixtureRepo,
             tag: 'v2.0.0',
             baseUrl,
+            helpers: NO_HELPER_MODULES,
             env: makeGitEnv(),
             stdout: () => {},
             stderr: () => {},
@@ -321,6 +327,7 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
             repoDir: fixtureRepo,
             tag: 'v2.0.1',
             baseUrl,
+            helpers: NO_HELPER_MODULES,
             env: makeGitEnv(),
             stdout: () => {},
             stderr: () => {},
@@ -564,8 +571,257 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
         });
     });
 
+    describe('when the helper modules are present, the seeder validates what it unpacks', () => {
+        const hashOfPackageJson = (rootDir, prefix) => sha256Hex(`${prefix}${fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')}`);
+
+        // Same contract as src/prebuilt-lib.js and src/frontend-assets.js; the inputs hash depends on the checkout's package.json.
+        function makeHelperModules() {
+            const stampCalls = [];
+            const modules = {
+                prebuiltLib: {
+                    computePublicLibInputsHash: ({ rootDir }) => hashOfPackageJson(rootDir, 'lib:'),
+                    readPrebuiltPublicLibManifest: (dir) => {
+                        try {
+                            const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'lib.manifest.json'), 'utf8'));
+                            return typeof manifest.inputsHash === 'string' ? manifest : null;
+                        } catch {
+                            return null;
+                        }
+                    },
+                },
+                frontendAssets: {
+                    computeFrontendInputsHash: ({ repoRoot }) => hashOfPackageJson(repoRoot, 'frontend:'),
+                    writeFrontendInputsStamp: (hash, options) => {
+                        stampCalls.push({ hash, ...options });
+                        return true;
+                    },
+                },
+            };
+            return { modules, stampCalls };
+        }
+
+        function makeTarballs({ libHash, frontendHash, marker = 'v1' }) {
+            const libTar = makeUstarArchive([
+                { name: 'dist/lib/lib.js', content: `export const marker = '${marker}';\n` },
+                { name: 'dist/lib/lib.manifest.json', content: JSON.stringify({ schemaVersion: 1, cacheVersion: 'c', inputsHash: libHash }) },
+            ]);
+            const frontendTar = makeUstarArchive([
+                { name: 'dist/frontend/asset-manifest.json', content: JSON.stringify({ schemaVersion: 2, inputsHash: frontendHash }) },
+                { name: 'dist/frontend/app-0123456789ab.js', content: `export const marker = '${marker}';\n` },
+            ]);
+            const sums = `${sha256Hex(libTar)}  sillybunny-prebuilt-lib.tar.gz\n${sha256Hex(frontendTar)}  sillybunny-frontend-assets.tar.gz\n`;
+            return { libTar, frontendTar, sums };
+        }
+
+        function serveTarballs(tarballs, requestedUrls) {
+            return listen((req, res) => {
+                requestedUrls.push(req.url);
+                const body = {
+                    SHA256SUMS: tarballs.sums,
+                    'sillybunny-prebuilt-lib.tar.gz': tarballs.libTar,
+                    'sillybunny-frontend-assets.tar.gz': tarballs.frontendTar,
+                }[req.url.split('/').pop()];
+                res.writeHead(body === undefined ? 404 : 200);
+                res.end(body);
+            });
+        }
+
+        function seedWith(repo, baseUrl, modules, extra = {}) {
+            const stderrLines = [];
+            const promise = seedReleaseAssets({
+                repoDir: repo,
+                tag: 'v2.6.0',
+                baseUrl,
+                optional: true,
+                helpers: modules,
+                env: makeGitEnv(),
+                stdout: () => {},
+                stderr: message => stderrLines.push(message),
+                ...extra,
+            });
+            return promise.then(result => ({ result, stderrLines }));
+        }
+
+        test('tarballs that fit the checkout are installed and stamped, and the next run asks for nothing', async () => {
+            const repo = createReleaseRepo('helpers-valid', '2.6.0');
+            const { modules, stampCalls } = makeHelperModules();
+            const libHash = modules.prebuiltLib.computePublicLibInputsHash({ rootDir: repo });
+            const frontendHash = modules.frontendAssets.computeFrontendInputsHash({ repoRoot: repo });
+            const requestedUrls = [];
+            const baseUrl = await serveTarballs(makeTarballs({ libHash, frontendHash }), requestedUrls);
+
+            const first = await seedWith(repo, baseUrl, modules);
+            expect(first.result).toEqual({ ok: true, seeded: ['prebuiltLib', 'frontendAssets'], skipped: [] });
+            expect(first.stderrLines).toEqual([]);
+            expect(fs.readFileSync(path.join(repo, 'dist', 'lib', 'lib.js'), 'utf8')).toContain('marker = \'v1\'');
+            expect(fs.existsSync(path.join(repo, 'dist', 'frontend', 'app-0123456789ab.js'))).toBe(true);
+            expect(fs.readFileSync(path.join(repo, 'dist', '.release-assets-head'), 'utf8').trim()).toBe(git(repo, 'rev-parse', 'HEAD'));
+            expect(stampCalls).toEqual([{
+                hash: frontendHash,
+                distRoot: path.join(repo, 'dist', 'frontend'),
+                repoRoot: repo,
+                publicRoot: path.join(repo, 'public'),
+            }]);
+
+            const requestsAfterFirstRun = requestedUrls.length;
+            const second = await seedWith(repo, baseUrl, modules);
+            expect(second.result).toEqual({ ok: true, seeded: [], skipped: ['already-fresh'] });
+            expect(requestedUrls).toHaveLength(requestsAfterFirstRun);
+
+            // The checkout's build inputs change: the installed files are stale and this release's tarballs no longer fit.
+            fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ name: 'sillybunny', version: '2.6.0', edited: true }));
+            const third = await seedWith(repo, baseUrl, modules);
+            expect(third.result).toEqual({ ok: true, seeded: [], skipped: ['prebuiltLib:mismatch', 'frontendAssets:mismatch'] });
+            expect(third.stderrLines).toHaveLength(2);
+            expect(fs.readFileSync(path.join(repo, 'dist', 'lib', 'lib.js'), 'utf8')).toContain('marker = \'v1\'');
+            expect(stampCalls).toHaveLength(1);
+        });
+
+        test('tarballs that do not fit the checkout are not installed, not stamped, and reported', async () => {
+            const repo = createReleaseRepo('helpers-mismatch', '2.6.0');
+            const { modules, stampCalls } = makeHelperModules();
+            const requestedUrls = [];
+            const baseUrl = await serveTarballs(makeTarballs({ libHash: 'f'.repeat(64), frontendHash: 'e'.repeat(64) }), requestedUrls);
+
+            const optionalRun = await seedWith(repo, baseUrl, modules);
+            expect(optionalRun.result).toEqual({ ok: true, seeded: [], skipped: ['prebuiltLib:mismatch', 'frontendAssets:mismatch'] });
+            expect(optionalRun.stderrLines).toHaveLength(2);
+            expect(optionalRun.stderrLines[0]).toContain('sillybunny-prebuilt-lib.tar.gz does not match this checkout');
+            expect(optionalRun.stderrLines[1]).toContain('sillybunny-frontend-assets.tar.gz does not match this checkout');
+            expect(fs.existsSync(path.join(repo, 'dist', 'lib'))).toBe(false);
+            expect(fs.existsSync(path.join(repo, 'dist', 'frontend'))).toBe(false);
+            expect(fs.existsSync(path.join(repo, 'dist', '.release-assets-head'))).toBe(false);
+            // A mismatch says something about this checkout, not about the release, so it is not remembered as "no assets".
+            expect(fs.existsSync(path.join(repo, 'dist', '.release-assets-none'))).toBe(false);
+            expect(stampCalls).toEqual([]);
+            expect(fs.readdirSync(path.join(repo, 'dist')).filter(name => name.endsWith('.tmp'))).toEqual([]);
+
+            const explicitRun = await seedWith(repo, baseUrl, modules, { optional: false });
+            expect(explicitRun.result.ok).toBe(false);
+            expect(explicitRun.stderrLines[0]).toContain('Failed to seed release assets (v2.6.0)');
+        });
+
+        test('a tarball that fits is installed even when the other one does not', async () => {
+            const repo = createReleaseRepo('helpers-partial', '2.6.0');
+            const { modules, stampCalls } = makeHelperModules();
+            const libHash = modules.prebuiltLib.computePublicLibInputsHash({ rootDir: repo });
+            const baseUrl = await serveTarballs(makeTarballs({ libHash, frontendHash: 'e'.repeat(64) }), []);
+
+            const { result, stderrLines } = await seedWith(repo, baseUrl, modules);
+            expect(result).toEqual({ ok: true, seeded: ['prebuiltLib'], skipped: ['frontendAssets:mismatch'] });
+            expect(stderrLines).toHaveLength(1);
+            expect(fs.existsSync(path.join(repo, 'dist', 'lib', 'lib.js'))).toBe(true);
+            expect(fs.existsSync(path.join(repo, 'dist', 'frontend'))).toBe(false);
+            expect(fs.existsSync(path.join(repo, 'dist', '.release-assets-head'))).toBe(false);
+            expect(stampCalls).toEqual([]);
+        });
+
+        test('a helper module that lacks its functions counts as absent', async () => {
+            const repo = createReleaseRepo('helpers-incomplete', '2.6.0');
+            const baseUrl = await serveTarballs(makeTarballs({ libHash: 'f'.repeat(64), frontendHash: 'e'.repeat(64) }), []);
+
+            const { result } = await seedWith(repo, baseUrl, { prebuiltLib: {}, frontendAssets: { computeFrontendInputsHash: 'nope' } });
+            expect(result).toEqual({ ok: true, seeded: ['prebuiltLib', 'frontendAssets'], skipped: [] });
+            expect(fs.readFileSync(path.join(repo, 'dist', '.release-assets-head'), 'utf8').trim()).toBe(git(repo, 'rev-parse', 'HEAD'));
+        });
+
+        const realHelpersPresent = fs.existsSync(path.join(repoRoot, 'src', 'prebuilt-lib.js'))
+            && fs.readFileSync(path.join(repoRoot, 'src', 'frontend-assets.js'), 'utf8').includes('export function computeFrontendInputsHash');
+        const describeWithRealHelpers = realHelpersPresent ? describe : describe.skip;
+
+        describeWithRealHelpers('with the real helper modules next to the script', () => test('matching tarballs are accepted and the others refused', async () => {
+            const prebuiltLib = await import('../src/prebuilt-lib.js');
+            const frontendAssets = await import('../src/frontend-assets.js');
+            const repo = createReleaseRepo('helpers-real', '2.6.0');
+            const libJs = Buffer.from('export const bundled = true;\n');
+            const buildTarballs = (libHash, frontendHash) => {
+                const libTar = makeUstarArchive([
+                    { name: 'dist/lib/lib.js', content: libJs },
+                    {
+                        name: 'dist/lib/lib.manifest.json',
+                        content: JSON.stringify({
+                            schemaVersion: 1,
+                            cacheVersion: 'real',
+                            inputsHash: libHash,
+                            file: 'lib.js',
+                            sha256: sha256Hex(libJs),
+                            bundleBytes: libJs.length,
+                            webpackVersion: '5.0.0',
+                            builtWithNode: true,
+                        }),
+                    },
+                ]);
+                const frontendTar = makeUstarArchive([
+                    { name: 'dist/frontend/asset-manifest.json', content: JSON.stringify({ schemaVersion: 2, inputsHash: frontendHash }) },
+                ]);
+                return {
+                    libTar,
+                    frontendTar,
+                    sums: `${sha256Hex(libTar)}  sillybunny-prebuilt-lib.tar.gz\n${sha256Hex(frontendTar)}  sillybunny-frontend-assets.tar.gz\n`,
+                };
+            };
+
+            const libHash = prebuiltLib.computePublicLibInputsHash({ rootDir: repo });
+            const frontendHash = frontendAssets.computeFrontendInputsHash({ repoRoot: repo, publicRoot: path.join(repo, 'public') });
+            const requestedUrls = [];
+            const matching = buildTarballs(libHash, frontendHash);
+            const baseUrl = await serveTarballs(matching, requestedUrls);
+
+            // No `helpers` option: the seeder loads the modules that sit next to it.
+            const first = await seedWith(repo, baseUrl, undefined);
+            expect(first.stderrLines).toEqual([]);
+            expect(first.result).toEqual({ ok: true, seeded: ['prebuiltLib', 'frontendAssets'], skipped: [] });
+            expect(fs.readFileSync(path.join(repo, 'dist', '.release-assets-head'), 'utf8').trim()).toBe(git(repo, 'rev-parse', 'HEAD'));
+            const inputsStamp = JSON.parse(fs.readFileSync(path.join(repo, 'dist', 'frontend', frontendAssets.FRONTEND_INPUTS_STAMP_FILE), 'utf8'));
+            expect(inputsStamp.inputsHash).toBe(frontendHash);
+
+            const requestsAfterFirstRun = requestedUrls.length;
+            expect((await seedWith(repo, baseUrl, undefined)).result.skipped).toEqual(['already-fresh']);
+            expect(requestedUrls).toHaveLength(requestsAfterFirstRun);
+
+            await new Promise(resolve => server.close(resolve));
+            server = null;
+            const otherRepo = createReleaseRepo('helpers-real-mismatch', '2.6.1');
+            const mismatching = buildTarballs('f'.repeat(64), 'e'.repeat(64));
+            const mismatchUrl = await listen((req, res) => {
+                const name = req.url.split('/').pop();
+                const body = { SHA256SUMS: mismatching.sums, 'sillybunny-prebuilt-lib.tar.gz': mismatching.libTar, 'sillybunny-frontend-assets.tar.gz': mismatching.frontendTar }[name];
+                res.writeHead(body === undefined ? 404 : 200);
+                res.end(body);
+            });
+            const refused = await seedWith(otherRepo, mismatchUrl, undefined, { tag: 'v2.6.1' });
+            expect(refused.result.seeded).toEqual([]);
+            expect(refused.stderrLines).toHaveLength(2);
+            expect(fs.existsSync(path.join(otherRepo, 'dist', 'lib'))).toBe(false);
+            expect(fs.existsSync(path.join(otherRepo, 'dist', '.release-assets-head'))).toBe(false);
+        }));
+    });
+
     describe('updaters on a release checkout whose release has no tarballs', () => {
-        function createReleaseClone(name, version) {
+        // Modules with the contract of src/prebuilt-lib.js and src/frontend-assets.js, placed where the seeder imports them from.
+        const FAKE_PREBUILT_LIB_MODULE = `import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+export function computePublicLibInputsHash({ rootDir }) {
+    return crypto.createHash('sha256').update('lib:' + fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).digest('hex');
+}
+export function readPrebuiltPublicLibManifest(dir) {
+    try { return JSON.parse(fs.readFileSync(path.join(dir, 'lib.manifest.json'), 'utf8')); } catch { return null; }
+}
+`;
+        const FAKE_FRONTEND_ASSETS_MODULE = `import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+export function computeFrontendInputsHash({ repoRoot }) {
+    return crypto.createHash('sha256').update('frontend:' + fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')).digest('hex');
+}
+export function writeFrontendInputsStamp(hash, { distRoot }) {
+    fs.writeFileSync(path.join(distRoot, '.inputs-stamp.json'), JSON.stringify({ inputsHash: hash }));
+    return true;
+}
+`;
+
+        function createReleaseClone(name, version, { withHelperModules = false } = {}) {
             const workParent = path.join(tempDir, name);
             const remoteDir = path.join(workParent, 'remote.git');
             const upstreamDir = path.join(workParent, 'upstream');
@@ -580,6 +836,11 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
             }
             fs.writeFileSync(path.join(upstreamDir, 'package.json'), JSON.stringify({ name: 'sillybunny', type: 'module', version }));
             fs.writeFileSync(path.join(upstreamDir, '.gitignore'), '/dist\n');
+            if (withHelperModules) {
+                fs.mkdirSync(path.join(upstreamDir, 'src'), { recursive: true });
+                fs.writeFileSync(path.join(upstreamDir, 'src', 'prebuilt-lib.js'), FAKE_PREBUILT_LIB_MODULE);
+                fs.writeFileSync(path.join(upstreamDir, 'src', 'frontend-assets.js'), FAKE_FRONTEND_ASSETS_MODULE);
+            }
             git(upstreamDir, 'add', '-A');
             git(upstreamDir, 'commit', '--quiet', '-m', `v${version}`);
             git(upstreamDir, 'remote', 'add', 'origin', remoteDir);
@@ -639,6 +900,60 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
             }
             expect(fs.existsSync(marker)).toBe(false);
             expect(requestedUrls).toEqual(['/v2.4.0/SHA256SUMS']);
+        });
+
+        describe.each([['js'], ['sh']])('self-update.%s with helper modules in src/', (kind) => {
+            const hashOf = (cloneDir, prefix) => sha256Hex(`${prefix}${fs.readFileSync(path.join(cloneDir, 'package.json'), 'utf8')}`);
+            const tarballsFor = (libHash, frontendHash) => {
+                const libTar = makeUstarArchive([
+                    { name: 'dist/lib/lib.js', content: 'export const bundled = true;\n' },
+                    { name: 'dist/lib/lib.manifest.json', content: JSON.stringify({ inputsHash: libHash }) },
+                ]);
+                const frontendTar = makeUstarArchive([
+                    { name: 'dist/frontend/asset-manifest.json', content: JSON.stringify({ inputsHash: frontendHash }) },
+                ]);
+                return { libTar, frontendTar };
+            };
+            const serve = ({ libTar, frontendTar }) => listen((req, res) => {
+                const body = {
+                    SHA256SUMS: `${sha256Hex(libTar)}  sillybunny-prebuilt-lib.tar.gz\n${sha256Hex(frontendTar)}  sillybunny-frontend-assets.tar.gz\n`,
+                    'sillybunny-prebuilt-lib.tar.gz': libTar,
+                    'sillybunny-frontend-assets.tar.gz': frontendTar,
+                }[req.url.split('/').pop()];
+                res.writeHead(body === undefined ? 404 : 200);
+                res.end(body);
+            });
+
+            test('installs and stamps tarballs that fit the checkout', async () => {
+                const cloneDir = createReleaseClone(`release-clone-helpers-ok-${kind}`, '2.6.0', { withHelperModules: true });
+                const baseUrl = await serve(tarballsFor(hashOf(cloneDir, 'lib:'), hashOf(cloneDir, 'frontend:')));
+
+                const result = await runUpdater(kind, cloneDir, baseUrl);
+                expect(result.status).toBe(0);
+                expect(result.stderr).toBe('');
+                expect(result.stdout).toContain('Seeded release asset sillybunny-prebuilt-lib.tar.gz (v2.6.0).');
+                expect(result.stdout).toContain('Seeded release asset sillybunny-frontend-assets.tar.gz (v2.6.0).');
+                expect(fs.existsSync(path.join(cloneDir, 'dist', 'lib', 'lib.js'))).toBe(true);
+                expect(JSON.parse(fs.readFileSync(path.join(cloneDir, 'dist', 'frontend', '.inputs-stamp.json'), 'utf8')).inputsHash).toBe(hashOf(cloneDir, 'frontend:'));
+                expect(fs.readFileSync(path.join(cloneDir, 'dist', '.release-assets-head'), 'utf8').trim()).toBe(git(cloneDir, 'rev-parse', 'HEAD'));
+            });
+
+            test('does not install tarballs that fail validation, says so, and lets the launch go on', async () => {
+                const cloneDir = createReleaseClone(`release-clone-helpers-bad-${kind}`, '2.6.0', { withHelperModules: true });
+                const baseUrl = await serve(tarballsFor('f'.repeat(64), 'e'.repeat(64)));
+
+                const result = await runUpdater(kind, cloneDir, baseUrl);
+                expect(result.status).toBe(0);
+                expect(result.stdout).toContain('SillyBunny is already up to date.');
+                expect(result.stdout).not.toContain('Seeded release asset');
+                expect(result.stderr.trim().split('\n')).toEqual([
+                    'Skipping release asset seed (v2.6.0): sillybunny-prebuilt-lib.tar.gz does not match this checkout and was not installed.',
+                    'Skipping release asset seed (v2.6.0): sillybunny-frontend-assets.tar.gz does not match this checkout and was not installed.',
+                ]);
+                expect(fs.existsSync(path.join(cloneDir, 'dist', 'lib'))).toBe(false);
+                expect(fs.existsSync(path.join(cloneDir, 'dist', 'frontend'))).toBe(false);
+                expect(fs.existsSync(path.join(cloneDir, 'dist', '.release-assets-head'))).toBe(false);
+            });
         });
 
         test('both updaters stop waiting for a server that never answers within the seed deadline', async () => {
