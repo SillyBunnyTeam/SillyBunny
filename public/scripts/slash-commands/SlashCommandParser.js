@@ -39,37 +39,6 @@ const TRAILING_WHITESPACE_RE = /\s\s+$/y;
 const NAMED_ARG_RE = /\w+=/y;
 const WHITESPACE_CHAR_RE = /\s/;
 
-// SillyBunny: propagate per-execution abortController onto cached closure copies and nested closures.
-function assignAbortControllerRecursive(closure, abortController, visited = new Set()) {
-    if (!(closure instanceof SlashCommandClosure) || visited.has(closure)) {
-        return;
-    }
-    visited.add(closure);
-    closure.abortController = abortController;
-    for (const arg of closure.argumentList ?? []) {
-        if (arg?.value instanceof SlashCommandClosure) {
-            assignAbortControllerRecursive(arg.value, abortController, visited);
-        }
-    }
-    for (const executor of closure.executorList ?? []) {
-        for (const arg of executor?.namedArgumentList ?? []) {
-            if (arg?.value instanceof SlashCommandClosure) {
-                assignAbortControllerRecursive(arg.value, abortController, visited);
-            }
-        }
-        for (const arg of executor?.unnamedArgumentList ?? []) {
-            if (arg?.value instanceof SlashCommandClosure) {
-                assignAbortControllerRecursive(arg.value, abortController, visited);
-            }
-        }
-    }
-}
-
-// SillyBunny: serialize effective parser flags + macro-engine mode for cached closure validation.
-function getParserFlagsCacheKey(flags, experimentalMacroEngine) {
-    return `${experimentalMacroEngine ? '1' : '0'}:${flags[PARSER_FLAG.STRICT_ESCAPING] ? '1' : '0'}:${flags[PARSER_FLAG.REPLACE_GETVAR] ? '1' : '0'}`;
-}
-
 function getBooleanEnumList(mode = 'trueFalse') {
     switch (mode) {
         case 'onOff':
@@ -138,29 +107,9 @@ async function getMacroAutoCompleteHelpers() {
 
 export class SlashCommandParser {
     /** @type {Object.<string, SlashCommand>} */ static commands = {};
-    // SillyBunny: track command registry changes, cached sticky regexes, language registration, and primed closures.
-    static commandRegistryVersion = 0;
+    // SillyBunny: cached sticky regexes and the one-time language registration.
     static #languageRegistered = false;
     static #stickyRegexCache = new Map();
-    static #primedClosure = null;
-
-    /**
-     * SillyBunny: prime a one-shot pre-parsed closure copy for the next matching parse() call.
-     * @param {string} text
-     * @param {SlashCommandClosure} closure
-     * @param {string} [flagsKey='']
-     * @param {number} [registryVersion=SlashCommandParser.commandRegistryVersion]
-     */
-    static primeCachedClosure(text, closure, flagsKey = '', registryVersion = SlashCommandParser.commandRegistryVersion) {
-        this.#primedClosure = { text, closure, flagsKey, registryVersion };
-    }
-
-    /**
-     * SillyBunny: clear any unconsumed primed closure handoff.
-     */
-    static clearPrimedClosure() {
-        this.#primedClosure = null;
-    }
 
     /**
      * SillyBunny: compile and cache a sticky (y) RegExp for zero-slice symbol matching.
@@ -176,21 +125,6 @@ export class SlashCommandParser {
             this.#stickyRegexCache.set(key, sticky);
         }
         return sticky;
-    }
-
-    /**
-     * SillyBunny: build the effective parser flags key for cache lookups.
-     * @param {Object.<PARSER_FLAG, boolean>|null} [flags=null]
-     * @returns {string}
-     */
-    static getEffectiveFlagsCacheKey(flags = null) {
-        const parserSettings = getParserSettings();
-        const configuredFlags = parserSettings.flags ?? {};
-        const resolvedFlags = {};
-        for (const key of Object.keys(PARSER_FLAG)) {
-            resolvedFlags[PARSER_FLAG[key]] = flags?.[PARSER_FLAG[key]] ?? configuredFlags[PARSER_FLAG[key]] ?? false;
-        }
-        return getParserFlagsCacheKey(resolvedFlags, Boolean(parserSettings.experimentalMacroEngine));
     }
 
     /**
@@ -289,8 +223,6 @@ export class SlashCommandParser {
                 this.commands[alias] = command;
             });
         }
-        // SillyBunny: bump registry version so cached closures invalidate when commands change.
-        this.commandRegistryVersion++;
     }
 
 
@@ -947,26 +879,6 @@ export class SlashCommandParser {
         this.macroBraceDepth = 0;
         this.macroBraceScannedIndex = 0;
         this.parserContext = uuidv4();
-        // SillyBunny: reuse a primed cached closure copy (e.g. from QuickReplySet) when text/flags/registry match.
-        const primed = SlashCommandParser.#primedClosure;
-        if (primed) {
-            SlashCommandParser.#primedClosure = null;
-            const flagsKey = getParserFlagsCacheKey(this.flags, Boolean(parserSettings.experimentalMacroEngine));
-            if (
-                verifyCommandNames
-                && !debugController
-                && primed.text === text
-                && (!primed.flagsKey || primed.flagsKey === flagsKey)
-                && primed.registryVersion === SlashCommandParser.commandRegistryVersion
-            ) {
-                const closure = primed.closure.getCopy();
-                closure.providedArgumentList = [...closure.providedArgumentList];
-                closure.parserContext = this.parserContext;
-                closure.debugController = null;
-                assignAbortControllerRecursive(closure, abortController);
-                return closure;
-            }
-        }
         const closure = this.parseClosure(true);
         return closure;
     }

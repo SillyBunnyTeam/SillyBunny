@@ -9,46 +9,6 @@ import { getQuickReplySetNameKey, getUniqueQuickReplySetsByName } from './quick-
 
 export class QuickReplySet {
     /**@type {QuickReplySet[]}*/ static list = [];
-    // SillyBunny: bounded LRU cache of parsed STScript closures for repeated Quick Reply executions.
-    static CLOSURE_CACHE_MAX_SIZE = 128;
-    /**@type {Map<string, import('../../../slash-commands/SlashCommandClosure.js').SlashCommandClosure>}*/
-    static #closureCache = new Map();
-
-    /**
-     * SillyBunny: return a fresh copy of a cached parsed closure for a Quick Reply script.
-     * @param {string} scriptText
-     * @param {import('../../../slash-commands/SlashCommandParser.js').ParserFlags|null} [parserFlags=null]
-     * @returns {import('../../../slash-commands/SlashCommandClosure.js').SlashCommandClosure}
-     */
-    static getCachedClosure(scriptText, parserFlags = null) {
-        const flagsKey = SlashCommandParser.getEffectiveFlagsCacheKey(parserFlags);
-        const cacheKey = `${SlashCommandParser.commandRegistryVersion}\u0000${flagsKey}\u0000${scriptText}`;
-        let cached = this.#closureCache.get(cacheKey);
-        if (cached) {
-            this.#closureCache.delete(cacheKey);
-            this.#closureCache.set(cacheKey, cached);
-        } else {
-            const parser = new SlashCommandParser();
-            cached = parser.parse(scriptText, true, parserFlags);
-            if (this.#closureCache.size >= this.CLOSURE_CACHE_MAX_SIZE) {
-                const oldestKey = this.#closureCache.keys().next().value;
-                if (oldestKey !== undefined) {
-                    this.#closureCache.delete(oldestKey);
-                }
-            }
-            this.#closureCache.set(cacheKey, cached);
-        }
-        const copy = cached.getCopy();
-        copy.providedArgumentList = [...copy.providedArgumentList];
-        return copy;
-    }
-
-    /**
-     * SillyBunny: clear cached Quick Reply closures (used by tests or command reloads).
-     */
-    static clearClosureCache() {
-        this.#closureCache.clear();
-    }
 
     /**
      * @param {Partial<QuickReplySet>} props
@@ -204,45 +164,27 @@ export class QuickReplySet {
         }
 
         if (input[0] == '/' && !this.disableSend) {
-            // SillyBunny: reuse a cached parsed closure copy across repeat QR clicks/auto-execs.
-            const parserFlags = execOptions?.parserFlags ?? null;
-            const flagsKey = SlashCommandParser.getEffectiveFlagsCacheKey(parserFlags);
-            const registryVersion = SlashCommandParser.commandRegistryVersion;
-            let cachedClosure = null;
-            try {
-                cachedClosure = QuickReplySet.getCachedClosure(input, parserFlags);
-            } catch {
-                // Let executeSlashCommands* report parser errors via its normal error handler.
+            let result;
+            if (options.isAutoExecute || options.isRun) {
+                result = await executeSlashCommandsWithOptions(input, Object.assign(execOptions, {
+                    handleParserErrors: true,
+                    scope: options.scope,
+                    source: `${this.name}.${qr.label}`,
+                }));
+            } else if (options.isEditor) {
+                result = await executeSlashCommandsWithOptions(input, Object.assign(execOptions, {
+                    handleParserErrors: false,
+                    scope: options.scope,
+                    abortController: qr.abortController,
+                    source: `${this.name}.${qr.label}`,
+                    onProgress: (done, total) => qr.updateEditorProgress(done, total),
+                }));
+            } else {
+                result = await executeSlashCommandsOnChatInput(input, Object.assign(execOptions, {
+                    scope: options.scope,
+                    source: `${this.name}.${qr.label}`,
+                }));
             }
-            if (cachedClosure) {
-                SlashCommandParser.primeCachedClosure(input, cachedClosure, flagsKey, registryVersion);
-            }
-            let resultPromise;
-            try {
-                if (options.isAutoExecute || options.isRun) {
-                    resultPromise = executeSlashCommandsWithOptions(input, Object.assign(execOptions, {
-                        handleParserErrors: true,
-                        scope: options.scope,
-                        source: `${this.name}.${qr.label}`,
-                    }));
-                } else if (options.isEditor) {
-                    resultPromise = executeSlashCommandsWithOptions(input, Object.assign(execOptions, {
-                        handleParserErrors: false,
-                        scope: options.scope,
-                        abortController: qr.abortController,
-                        source: `${this.name}.${qr.label}`,
-                        onProgress: (done, total) => qr.updateEditorProgress(done, total),
-                    }));
-                } else {
-                    resultPromise = executeSlashCommandsOnChatInput(input, Object.assign(execOptions, {
-                        scope: options.scope,
-                        source: `${this.name}.${qr.label}`,
-                    }));
-                }
-            } finally {
-                SlashCommandParser.clearPrimedClosure();
-            }
-            const result = await resultPromise;
             return typeof result === 'object' ? result?.pipe : '';
         }
 

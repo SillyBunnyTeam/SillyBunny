@@ -323,8 +323,12 @@ const {
     buildConversationReceiptMap,
 } = await import('../public/scripts/sillybunny-conversation/timeline-render.js');
 
+const { executeSlashCommandsWithOptions } = await import('../public/scripts/slash-commands.js');
 const { SlashCommand } = await import('../public/scripts/slash-commands/SlashCommand.js');
+const { SlashCommandAbortController } = await import('../public/scripts/slash-commands/SlashCommandAbortController.js');
+const { ARGUMENT_TYPE, SlashCommandArgument } = await import('../public/scripts/slash-commands/SlashCommandArgument.js');
 const { PARSER_FLAG, SlashCommandParser } = await import('../public/scripts/slash-commands/SlashCommandParser.js');
+const { SlashCommandScope } = await import('../public/scripts/slash-commands/SlashCommandScope.js');
 const { QuickReplySet } = await import('../public/scripts/extensions/quick-reply/src/QuickReplySet.js');
 
 const {
@@ -371,8 +375,6 @@ afterEach(() => {
     mockGroups.length = 0;
     mockPowerUser.stscript.autocomplete.state = 1;
     mockPowerUser.stscript.autocomplete.showInAllMacroFields = false;
-    QuickReplySet.clearClosureCache();
-    SlashCommandParser.clearPrimedClosure();
     global.document = originalGlobals.document;
     global.window = originalGlobals.window;
     global.HTMLElement = originalGlobals.HTMLElement;
@@ -650,7 +652,7 @@ describe('Workstream 2: Conversation Mode O(N) receipts, delegated hover & cross
     });
 });
 
-describe('Workstream 3: O(N) STScript parser benchmark, QuickReplySet closure LRU, and MacroAutoComplete firewall', () => {
+describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolation, and MacroAutoComplete firewall', () => {
     test('parses 2,000 piped STScript commands with embedded macro pipes in <50 ms', () => {
         if (!SlashCommandParser.commands.echo) {
             SlashCommandParser.addCommandObjectUnsafe(SlashCommand.fromProps({
@@ -737,35 +739,137 @@ describe('Workstream 3: O(N) STScript parser benchmark, QuickReplySet closure LR
         }
     });
 
-    test('QuickReplySet caches parsed closures in a bounded LRU and hands off via primeCachedClosure', () => {
-        if (!SlashCommandParser.commands.echo) {
-            SlashCommandParser.addCommandObjectUnsafe(SlashCommand.fromProps({
-                name: 'echo',
-                callback: (_args, value) => String(value ?? ''),
-            }));
+    test('overlapping Quick Reply runs of the same script keep their own closures, scopes and abort controllers', async () => {
+        const nextTick = () => new Promise(resolve => setTimeout(resolve, 0));
+        const textArgument = () => [SlashCommandArgument.fromProps({
+            description: 'text',
+            typeList: [ARGUMENT_TYPE.STRING, ARGUMENT_TYPE.CLOSURE],
+        })];
+        const log = [];
+        const gates = [];
+        const commandNames = ['qrtestsetv', 'qrtestrec', 'qrtestdefer', 'qrtestwait'];
+        const addCommand = props => SlashCommandParser.addCommandObjectUnsafe(SlashCommand.fromProps({ callback: async () => '', ...props }));
+        addCommand({
+            name: 'qrtestsetv',
+            unnamedArgumentList: textArgument(),
+            callback: async (args, value) => {
+                args._scope.letVariable(args.key, value);
+                return '';
+            },
+        });
+        addCommand({
+            name: 'qrtestrec',
+            unnamedArgumentList: textArgument(),
+            callback: async (_args, value) => {
+                log.push(String(value));
+                return String(value);
+            },
+        });
+        addCommand({
+            name: 'qrtestdefer',
+            unnamedArgumentList: textArgument(),
+            callback: async (_args, closure) => {
+                await new Promise(resolve => gates.push(resolve));
+                return (await closure.execute())?.pipe ?? '';
+            },
+        });
+        addCommand({
+            name: 'qrtestwait',
+            unnamedArgumentList: textArgument(),
+            callback: async () => {
+                await new Promise(resolve => gates.push(resolve));
+                return '';
+            },
+        });
+
+        // Same shape as executeSlashCommandsWithOptions: every run parses its own closure tree.
+        const parser = new SlashCommandParser();
+        executeSlashCommandsWithOptions.mockImplementation(async (text, options = {}) => {
+            const closure = parser.parse(text, true, options.parserFlags ?? null, options.abortController ?? new SlashCommandAbortController());
+            closure.scope.parent = options.scope;
+            closure.source = options.source;
+            return closure.execute();
+        });
+        global.document = { querySelector: () => ({ value: '', focus: () => {} }) };
+
+        const quickReplySet = new QuickReplySet({ name: 'Overlap' });
+        const runQuickReply = (message, who, abortController = null) => {
+            const scope = new SlashCommandScope();
+            scope.setMacro('arg::who', who);
+            const qr = { message, label: 'Run', abortController, updateEditorProgress: () => {} };
+            const executionOptions = abortController ? { abortController } : {};
+            return quickReplySet.executeWithOptions(qr, { isRun: true, scope, executionOptions });
+        };
+
+        try {
+            // Run B starts while run A waits inside its deferred closure: each body must read its own scope.
+            const variableScript = '/qrtestsetv key=who {{arg::who}} | /qrtestdefer {: /qrtestrec {{var::who}} :}';
+            const runA = runQuickReply(variableScript, 'A');
+            await nextTick();
+            const runB = runQuickReply(variableScript, 'B');
+            await nextTick();
+            expect(gates).toHaveLength(2);
+            gates.splice(0).forEach(open => open());
+            await Promise.all([runA, runB]);
+            expect(log).toEqual(['A', 'B']);
+
+            // Aborting run A must not reach run B's closure, and run A's body must not run.
+            log.length = 0;
+            const abortScript = '/qrtestwait go | /qrtestdefer {: /qrtestrec ran-{{arg::who}} :}';
+            const abortA = new SlashCommandAbortController();
+            const abortB = new SlashCommandAbortController();
+            const abortedRun = runQuickReply(abortScript, 'A', abortA);
+            await nextTick();
+            const otherRun = runQuickReply(abortScript, 'B', abortB);
+            await nextTick();
+            gates.splice(0).forEach(open => open());
+            await nextTick();
+            abortA.abort('stop A');
+            gates.splice(0).forEach(open => open());
+            await Promise.allSettled([abortedRun, otherRun]);
+            expect(log).toEqual(['ran-B']);
+        } finally {
+            gates.splice(0).forEach(open => open());
+            executeSlashCommandsWithOptions.mockImplementation(async () => ({ pipe: '' }));
+            for (const name of commandNames) {
+                delete SlashCommandParser.commands[name];
+            }
         }
+    });
 
-        const parseSpy = jest.spyOn(SlashCommandParser.prototype, 'parseClosure');
-        const copy1 = QuickReplySet.getCachedClosure('/echo cached | /echo script');
-        const copy2 = QuickReplySet.getCachedClosure('/echo cached | /echo script');
+    test('a command removed from the registry is unknown to the next Quick Reply run of the same script', async () => {
+        const calls = [];
+        SlashCommandParser.addCommandObjectUnsafe(SlashCommand.fromProps({
+            name: 'qrtestgone',
+            callback: async (_args, value) => {
+                calls.push(String(value));
+                return '';
+            },
+            unnamedArgumentList: [SlashCommandArgument.fromProps({ description: 'text', typeList: [ARGUMENT_TYPE.STRING] })],
+        }));
+        const parser = new SlashCommandParser();
+        executeSlashCommandsWithOptions.mockImplementation(async (text, options = {}) => {
+            const closure = parser.parse(text, true, options.parserFlags ?? null, new SlashCommandAbortController());
+            closure.scope.parent = options.scope;
+            return closure.execute();
+        });
+        global.document = { querySelector: () => ({ value: '', focus: () => {} }) };
+        const quickReplySet = new QuickReplySet({ name: 'Removal' });
+        const runScript = () => quickReplySet.executeWithOptions(
+            { message: '/qrtestgone x', label: 'Run', updateEditorProgress: () => {} },
+            { isRun: true, scope: new SlashCommandScope() },
+        );
 
-        expect(parseSpy).toHaveBeenCalledTimes(1);
-        expect(copy2).not.toBe(copy1);
-        expect(copy2.executorList).toHaveLength(2);
-
-        // Primed handoff lets SlashCommandParser.parse() return a fresh copy without reparsing.
-        const flagsKey = SlashCommandParser.getEffectiveFlagsCacheKey(null);
-        SlashCommandParser.primeCachedClosure('/echo cached | /echo script', copy2, flagsKey, SlashCommandParser.commandRegistryVersion);
-        const handedOff = new SlashCommandParser().parse('/echo cached | /echo script');
-        expect(parseSpy).toHaveBeenCalledTimes(1);
-        expect(handedOff).not.toBe(copy2);
-        expect(handedOff.executorList).toHaveLength(2);
-
-        // Registry version bump invalidates cache cleanly.
-        SlashCommandParser.commandRegistryVersion++;
-        QuickReplySet.getCachedClosure('/echo cached | /echo script');
-        expect(parseSpy).toHaveBeenCalledTimes(2);
-        parseSpy.mockRestore();
+        try {
+            await runScript();
+            expect(calls).toEqual(['x']);
+            delete SlashCommandParser.commands.qrtestgone;
+            await expect(runScript()).rejects.toThrow(/Unknown command/);
+            expect(calls).toEqual(['x']);
+        } finally {
+            executeSlashCommandsWithOptions.mockImplementation(async () => ({ pipe: '' }));
+            delete SlashCommandParser.commands.qrtestgone;
+        }
     });
 
     test('MacroAutoComplete gates MacroParser calls on shouldShowNormally && text.includes("{{") and firewalls #chat prose', () => {
