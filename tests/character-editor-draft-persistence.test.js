@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import { createEditorDraftStore } from '/scripts/sillybunny-editor/drafts.js';
-import { createEditorSession } from '/scripts/sillybunny-editor/session.js';
+import { createEditorSession, DIRTY_DEBOUNCE_MS, DRAFT_INTERVAL_MS } from '/scripts/sillybunny-editor/session.js';
 
 function createDelayedSave() {
     let snapshot = { name: 'Saved' };
@@ -231,39 +231,72 @@ describe('editor session dirty tracking and draft backup', () => {
         session.close();
     });
 
-    test('periodic draft writes snapshot to storage', async () => {
+    test('an edit arms one draft timer that writes the snapshot after the interval and re-arms on the next edit', () => {
         let state = { name: 'A' };
         const storage = new Map();
-        const timers = [];
-        let fakeNow = 0;
+        let now = 0;
+        let nextId = 0;
+        const queue = new Map();
+        const timers = {
+            setTimeout: (fn, ms) => { queue.set(++nextId, { at: now + ms, fn, ms }); return nextId; },
+            clearTimeout: id => { queue.delete(id); },
+            setInterval: () => { throw new Error('the session must not poll'); },
+            clearInterval: () => {},
+        };
+        const advance = ms => {
+            const target = now + ms;
+            for (;;) {
+                const due = [...queue].filter(([, timer]) => timer.at <= target).sort((a, b) => a[1].at - b[1].at)[0];
+                if (!due) break;
+                queue.delete(due[0]);
+                now = due[1].at;
+                due[1].fn();
+            }
+            now = target;
+        };
+        const draftTimers = () => [...queue.values()].filter(timer => timer.ms === DRAFT_INTERVAL_MS);
         const session = createEditorSession({
             captureSnapshot: () => ({ ...state }),
-            restoreSnapshot: (snap) => { state = { ...snap }; },
+            restoreSnapshot: snap => { state = { ...snap }; },
             persist: () => Promise.resolve(),
             drafts: {
                 read: () => null,
-                write: (id, snap) => storage.set(id, { v: 1, ts: fakeNow, snapshot: snap }),
-                remove: (id) => storage.delete(id),
+                write: (id, snap) => storage.set(id, { v: 1, ts: now, snapshot: snap }),
+                remove: id => storage.delete(id),
             },
-            timers: {
-                setTimeout: (...args) => ({ args }),
-                clearTimeout: () => {},
-                setInterval: (fn, ms) => {
-                    const id = timers.length;
-                    timers.push({ fn, ms });
-                    return id;
-                },
-                clearInterval: () => {},
-            },
+            timers,
         });
 
         session.open({ mode: 'edit', entityId: 'test' });
+        expect(queue.size).toBe(0);
+        advance(60000);
+        expect(storage.has('test')).toBe(false);
+
+        const editedAt = now;
         state.name = 'B';
-        fakeNow = 1000;
-        timers[0].fn();
-        const draft = storage.get('test');
-        expect(draft.snapshot.name).toBe('B');
-        expect(draft.ts).toBe(1000);
+        session.changed();
+        expect(draftTimers()).toHaveLength(1);
+        advance(DRAFT_INTERVAL_MS - 1);
+        expect(storage.has('test')).toBe(false);
+        advance(1);
+        expect(storage.get('test').snapshot.name).toBe('B');
+        expect(storage.get('test').ts).toBe(editedAt + DRAFT_INTERVAL_MS);
+        expect(draftTimers()).toHaveLength(0);
+
+        // The next edit arms the timer again, so the backup keeps following the typing.
+        state.name = 'C';
+        session.changed();
+        expect(draftTimers()).toHaveLength(1);
+        advance(DRAFT_INTERVAL_MS);
+        expect(storage.get('test').snapshot.name).toBe('C');
+
+        // Editing back to the saved value stops the timer and leaves nothing to write.
+        state.name = 'A';
+        session.changed({ immediate: true });
+        expect(queue.size).toBe(0);
+        advance(DRAFT_INTERVAL_MS * 3);
+        expect(storage.get('test').snapshot.name).toBe('C');
+        expect(DIRTY_DEBOUNCE_MS).toBeLessThan(DRAFT_INTERVAL_MS);
     });
 
     test('an offered recovery action reads a subsequently patched favorite without cleaning other edits', () => {
