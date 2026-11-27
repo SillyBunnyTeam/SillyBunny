@@ -5977,6 +5977,27 @@ function bindChatbarEvents() {
         eventSource.on(eventName, refresh);
     }
 
+    // A message changes the preview, the message count and the file size that an open Recent Chats list shows. The cache
+    // marks itself stale on the same events and does not fetch on its own, so an open list asks for the new one here. The
+    // refresh is debounced, so a burst of messages makes one request.
+    const refreshOpenSidebar = () => {
+        if (isChatSidebarOpen()) {
+            scheduleChatbarRefresh(0, { refreshStale: true });
+        }
+    };
+    const messageEvents = [
+        eventTypes.MESSAGE_RECEIVED,
+        eventTypes.MESSAGE_UPDATED,
+        eventTypes.MESSAGE_EDITED,
+        eventTypes.MESSAGE_DELETED,
+        eventTypes.MESSAGE_SWIPED,
+        eventTypes.MESSAGE_SWIPE_DELETED,
+    ].filter(Boolean);
+
+    for (const eventName of new Set(messageEvents)) {
+        eventSource.on(eventName, refreshOpenSidebar);
+    }
+
     chatbarState.boundEventSource = eventSource;
     scheduleChatbarRefresh(0);
 }

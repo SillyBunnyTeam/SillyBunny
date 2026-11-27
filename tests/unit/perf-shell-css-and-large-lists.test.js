@@ -498,6 +498,141 @@ describe('PR 7 chat-list fetch dedupe, invalidation & 0-chat no-poll', () => {
     });
 });
 
+describe('open Recent Chats sidebar and the chat-list cache', () => {
+    const messageEventNames = ['message_received', 'message_updated', 'message_edited', 'message_deleted', 'message_swiped', 'message_swipe_deleted'];
+
+    function createHarness() {
+        const listeners = new Map();
+        const eventSource = {
+            on(name, fn) {
+                if (!listeners.has(name)) listeners.set(name, []);
+                listeners.get(name).push(fn);
+            },
+            emit(name) {
+                for (const fn of listeners.get(name) ?? []) fn();
+            },
+        };
+        const eventTypes = {
+            APP_READY: 'app_ready',
+            CHAT_CHANGED: 'chat_changed',
+            CHAT_LOADED: 'chat_loaded',
+            CHAT_CREATED: 'chat_created',
+            CHAT_RENAMED: 'chat_renamed',
+            GROUP_CHAT_CREATED: 'group_chat_created',
+            CHAT_DELETED: 'chat_deleted',
+            GROUP_CHAT_DELETED: 'group_chat_deleted',
+            MESSAGE_SENT: 'message_sent',
+            MESSAGE_RECEIVED: 'message_received',
+            MESSAGE_UPDATED: 'message_updated',
+            MESSAGE_EDITED: 'message_edited',
+            MESSAGE_DELETED: 'message_deleted',
+            MESSAGE_SWIPED: 'message_swiped',
+            MESSAGE_SWIPE_DELETED: 'message_swipe_deleted',
+        };
+
+        const fakeWindow = {
+            addEventListener() {},
+            clearTimeout() {},
+        };
+        const chatbarState = { sidebarOpen: false, boundEventSource: null, bindingRetryTimer: 0 };
+        const chatContext = {
+            context: {},
+            chatId: 'chat-1',
+            group: null,
+            character: { avatar: 'alice.png', name: 'Alice' },
+            hasChat: true,
+            canBrowseChats: true,
+        };
+        let serverFiles = [{ file_name: 'chat-1', mes: 'first' }];
+        const mockFetch = jest.fn(async () => ({ ok: true, json: async () => serverFiles }));
+        const scheduleChatbarRefresh = jest.fn();
+
+        const harness = new Function(
+            'window',
+            'fetch',
+            'getChatbarState',
+            'getSillyTavernContext',
+            'getChatUiContext',
+            'getAuthorizedRequestHeadersOrNull',
+            'normalizeChatInfo',
+            'sortChatFiles',
+            'bindChatbarWindowEvents',
+            'initChatSearchObserver',
+            'scheduleChatbarRefresh',
+            'scheduleChatbarBindingRetry',
+            [
+                tabsSource.match(/const SB_CHAT_FILES_FOCUS_STALE_MS[\s\S]*?const sbChatFilesCache = \{[\s\S]*?\};/)[0],
+                extractFunctionSource(tabsSource, 'fetchCharacterChatFiles'),
+                extractFunctionSource(tabsSource, 'getChatFilesCacheKey'),
+                extractFunctionSource(tabsSource, 'invalidateChatFilesCache'),
+                extractFunctionSource(tabsSource, 'markChatFilesCacheStale'),
+                extractFunctionSource(tabsSource, 'loadChatFilesForContext'),
+                extractFunctionSource(tabsSource, 'getChatFilesForContext'),
+                extractFunctionSource(tabsSource, 'bindChatFilesCacheInvalidation'),
+                extractFunctionSource(tabsSource, 'isChatSidebarOpen'),
+                extractFunctionSource(tabsSource, 'bindChatbarEvents'),
+                'return { getChatFilesForContext, bindChatbarEvents };',
+            ].join('\n'),
+        )(
+            fakeWindow,
+            mockFetch,
+            () => chatbarState,
+            () => ({ eventSource, eventTypes }),
+            () => chatContext,
+            async () => ({ 'Content-Type': 'application/json' }),
+            item => ({ fileName: item.file_name, preview: item.mes }),
+            list => list,
+            () => {},
+            () => {},
+            scheduleChatbarRefresh,
+            () => {},
+        );
+
+        return {
+            harness,
+            eventSource,
+            chatbarState,
+            chatContext,
+            mockFetch,
+            scheduleChatbarRefresh,
+            setServerFiles: files => { serverFiles = files; },
+        };
+    }
+
+    test('a reply refreshes the list an open sidebar shows, and a closed sidebar fetches nothing', async () => {
+        const { harness, eventSource, chatbarState, chatContext, mockFetch, scheduleChatbarRefresh, setServerFiles } = createHarness();
+        harness.bindChatbarEvents();
+        scheduleChatbarRefresh.mockClear();
+
+        // Closed: the list is not rendered, so a reply schedules nothing.
+        for (const name of messageEventNames) eventSource.emit(name);
+        expect(scheduleChatbarRefresh).not.toHaveBeenCalled();
+
+        // Open, with a cached list that a reply then makes stale.
+        chatbarState.sidebarOpen = true;
+        expect((await harness.getChatFilesForContext(chatContext))[0].preview).toBe('first');
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        setServerFiles([{ file_name: 'chat-1', mes: 'a reply' }]);
+        eventSource.emit('message_received');
+        expect(scheduleChatbarRefresh).toHaveBeenCalledTimes(1);
+        const [delay, options] = scheduleChatbarRefresh.mock.calls[0];
+        expect(delay).toBe(0);
+        expect(options).toEqual({ refreshStale: true });
+
+        // The refresh that was scheduled reads the new list; a read that does not ask for it keeps the cached one.
+        expect((await harness.getChatFilesForContext(chatContext))[0].preview).toBe('first');
+        expect((await harness.getChatFilesForContext(chatContext, options))[0].preview).toBe('a reply');
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+
+        // Each of the other message events that changed the list before asks for a refresh too.
+        scheduleChatbarRefresh.mockClear();
+        for (const name of messageEventNames.slice(1)) eventSource.emit(name);
+        expect(scheduleChatbarRefresh).toHaveBeenCalledTimes(messageEventNames.length - 1);
+        for (const call of scheduleChatbarRefresh.mock.calls) expect(call).toEqual([0, { refreshStale: true }]);
+    });
+});
+
 describe('PR 7 drawer persistence guard, narrowed shell search & settings scroll preservation', () => {
     test('bindInlineDrawerPersistence skips localStorage reads when already bound', () => {
         class FakeElement {}
