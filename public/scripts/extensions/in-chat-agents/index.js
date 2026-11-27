@@ -144,6 +144,10 @@ let templates = [];
 let templateRegexBundles = {};
 let templatesLoaded = false;
 let templatesLoadPromise = null;
+// A failed load leaves `templatesLoaded` false, and the agent list re-renders after the load and asks for the templates again on each render.
+// After a failed load the render-driven path waits for this time before it loads again; a user action that calls loadTemplates() is not held back.
+const TEMPLATES_RENDER_RETRY_DELAY_MS = 30_000;
+let templatesRenderRetryAt = 0;
 let autoSeededTemplateIds = new Set();
 let bundledAgentsReconciled = false;
 let bundledAgentsReconcilePromise = null;
@@ -171,10 +175,13 @@ function ensureTemplatesLoaded() {
 }
 
 function warmTemplatesForAgentsUi() {
-    if (templatesLoaded && bundledAgentsReconciled) {
+    if ((templatesLoaded && bundledAgentsReconciled) || Date.now() < templatesRenderRetryAt) {
         return Promise.resolve();
     }
     return ensureTemplatesLoaded().then(() => {
+        if (!templatesLoaded) {
+            templatesRenderRetryAt = Date.now() + TEMPLATES_RENDER_RETRY_DELAY_MS;
+        }
         renderAgentList();
     });
 }
@@ -2231,7 +2238,8 @@ async function loadTemplates() {
                     : [];
                 loadBuiltinGroups(builtinGroups);
             }
-            if (templateResponse.ok && regexBundleResponse.ok && groupResponse.ok) {
+            // groups.json is optional: without it the templates still work and only the bundled groups are missing.
+            if (templateResponse.ok && regexBundleResponse.ok) {
                 templatesLoaded = true;
             }
         } catch (e) {

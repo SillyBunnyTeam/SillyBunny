@@ -832,6 +832,115 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         });
     });
 
+    describe('in-chat-agents template loading when a template file fails', () => {
+        const readSlices = () => [
+            extractSliceBetween(inChatAgentsSource, 'let templates = [];', 'let autoSeededTemplateIds'),
+            extractSliceBetween(inChatAgentsSource, 'let bundledAgentsReconciled = false;', 'let consumedInitialSettingsSnapshot'),
+            extractSliceBetween(inChatAgentsSource, 'function ensureTemplatesLoaded() {', 'let pathfinderExtensionsMountPromise'),
+            extractSliceBetween(inChatAgentsSource, 'function getAgentListEntries() {', 'function currentAgentListEntry('),
+            extractSliceBetween(inChatAgentsSource, 'async function loadTemplates() {', '/**\n * Creates a custom group from the user\'s current agents.'),
+            extractSliceBetween(inChatAgentsSource, 'async function reconcileBundledAgentsOnce() {', '(async function () {\n    const bulkEditHtml'),
+        ].join('\n');
+
+        /**
+         * @param {Record<string, boolean>} fileOk Whether each template file answers ok.
+         */
+        const createTemplateSandbox = (fileOk) => {
+            const slices = readSlices();
+            const state = { now: 1_000_000, fetchedFiles: [], renders: 0 };
+            const respond = (filename) => {
+                const ok = fileOk[filename];
+                return { ok, json: async () => (filename === 'index.json' ? [{ id: 'tpl-a' }] : filename === 'regex-bundles.json' ? {} : []) };
+            };
+            const callNames = new Set(Array.from(slices.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g), match => match[1]));
+            const sandbox = {
+                console: { warn: jest.fn(), log: jest.fn(), error: jest.fn() },
+                toastr: { success: jest.fn() },
+                Promise,
+                Date: { now: () => state.now },
+                String,
+                Array,
+                Set,
+                REMOVED_BUNDLED_TEMPLATE_IDS: new Set(),
+                REMOVED_BUNDLED_GROUP_IDS: new Set(),
+                fetch: jest.fn(async (url) => {
+                    const filename = String(url).split('/').pop().split('?')[0];
+                    state.fetchedFiles.push(filename);
+                    return respond(filename);
+                }),
+                getTemplateAssetUrl: (filename) => `/templates/${filename}?v=dev`,
+                mergeTemplateDefaults: (template) => template,
+                isAgentsSurfaceOpen: () => true,
+                isPathfinderSubmoduleEnabled: () => false,
+                getAgents: () => [],
+                listAgentEntries: () => [],
+                // The agent list re-reads its entries each time it renders.
+                renderAgentList: () => {
+                    state.renders += 1;
+                    if (state.renders < 200) sandbox.getAgentListEntries();
+                },
+                refreshBundledAgentsFromLatestTemplates: async () => ({ updatedCount: 0, removedCount: 0 }),
+            };
+            for (const name of callNames) {
+                sandbox[name] ??= jest.fn(async () => 0);
+            }
+            const context = vm.createContext(sandbox);
+            vm.runInContext(slices, context);
+            // The slices declare `let` bindings, which are not properties of the sandbox.
+            const read = (expression) => vm.runInContext(expression, context);
+            return { sandbox, state, read };
+        };
+        const settle = async () => {
+            for (let i = 0; i < 40; i++) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+        };
+
+        test('a missing groups.json leaves the templates usable and stops the render-driven reload', async () => {
+            const { sandbox, state, read } = createTemplateSandbox({ 'index.json': true, 'regex-bundles.json': true, 'groups.json': false });
+            sandbox.getAgentListEntries();
+            await settle();
+
+            expect(state.fetchedFiles.filter(file => file === 'index.json')).toHaveLength(1);
+            expect(read('templates.length')).toBe(1);
+            expect(read('templatesLoaded')).toBe(true);
+            sandbox.getAgentListEntries();
+            await settle();
+            expect(state.fetchedFiles.filter(file => file === 'index.json')).toHaveLength(1);
+        });
+
+        test('a failing index.json is tried once per render burst and again only after the retry delay', async () => {
+            const fileOk = { 'index.json': false, 'regex-bundles.json': true, 'groups.json': true };
+            const { sandbox, state, read } = createTemplateSandbox(fileOk);
+            sandbox.getAgentListEntries();
+            await settle();
+
+            const attempts = () => state.fetchedFiles.filter(file => file === 'index.json').length;
+            expect(attempts()).toBe(1);
+            expect(state.renders).toBeLessThan(10);
+
+            // Further renders before the delay passes do not load again.
+            sandbox.getAgentListEntries();
+            await settle();
+            expect(attempts()).toBe(1);
+
+            // A user action that needs the templates loads them at once, whatever the delay.
+            await sandbox.loadTemplates();
+            expect(attempts()).toBe(2);
+
+            // After the delay a render tries again, and a success ends the retries.
+            state.now += 60_000;
+            fileOk['index.json'] = true;
+            sandbox.getAgentListEntries();
+            await settle();
+            expect(attempts()).toBe(3);
+            expect(read('templatesLoaded')).toBe(true);
+            sandbox.getAgentListEntries();
+            await settle();
+            expect(attempts()).toBe(3);
+        });
+    });
+
     test('extensions getManifests uses inline manifests without HTTP fetches and falls back per-extension when absent', async () => {
         const discoverSlice = extractSliceBetween(
             extensionsSource,
