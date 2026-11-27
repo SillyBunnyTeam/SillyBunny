@@ -257,6 +257,7 @@ export async function loadTtsModule(options = {}) {
             return hash;
         },
         onlyUnique: (value, index, array) => array.indexOf(value) === index,
+        splitRecursive: text => [String(text ?? '')],
         regexFromString: input => {
             try {
                 const match = String(input).match(/^\/(.*)\/([a-z]*)$/);

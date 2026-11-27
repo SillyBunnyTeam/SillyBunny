@@ -296,6 +296,7 @@ export async function importScriptModule(options = {}) {
         moment: Object.assign(jest.fn(() => {
             const inst = {
                 format: () => '2026-01-01',
+                toISOString: () => '2026-01-01T00:00:00.000Z',
                 valueOf: () => 0,
                 isValid: () => true,
                 unix: () => 0,
