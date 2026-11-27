@@ -49,24 +49,135 @@ export const DISABLED_CONTROL_CLASS = 'disabled';
 let combinedInteractableSelector = null;
 /** @type {Set<string> | null} */
 let descendantAffectingClasses = null;
+let anyClassAffectsDescendants = false;
+
+/**
+ * Reads the class name that starts at `start`, with CSS escapes resolved.
+ * @param {string} text
+ * @param {number} start
+ * @returns {{ name: string, end: number }}
+ */
+function readClassName(text, start) {
+    let name = '';
+    let index = start;
+    while (index < text.length) {
+        const char = text[index];
+        if (char === '\\') {
+            const hex = /^[0-9a-fA-F]{1,6}\s?/.exec(text.slice(index + 1, index + 8));
+            if (hex) {
+                const codePoint = parseInt(hex[0], 16);
+                const invalid = codePoint === 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff);
+                name += invalid ? '�' : String.fromCodePoint(codePoint);
+                index += 1 + hex[0].length;
+            } else if (index + 1 < text.length) {
+                name += text[index + 1];
+                index += 2;
+            } else {
+                break;
+            }
+        } else if (/[A-Za-z0-9_\-\u0080-￿]/.test(char)) {
+            name += char;
+            index++;
+        } else {
+            break;
+        }
+    }
+    return { name, end: index };
+}
+
+/**
+ * Collects the classes whose change on an element can change whether one of its descendants matches the selector list: the classes of every
+ * compound selector before the last combinator, and every class inside the argument of a pseudo-class such as :not(), :is(), :where() or :has().
+ * The argument can name other elements than the one that the compound selector matches, so its classes count wherever they stand.
+ * @param {string} selectorList Selector list, as `querySelectorAll()` takes it
+ * @param {Set<string>} classes Receives the class names
+ * @returns {boolean} False when the text could not be read, so that the caller must treat every class as relevant
+ */
+function collectDescendantAffectingClasses(selectorList, classes) {
+    /** @type {{ name: string, compound: number, nested: boolean }[]} */
+    let found = [];
+    let compound = 0;
+    let hasContent = false;
+    let boundaryPending = false;
+    let parenDepth = 0;
+    let inBracket = false;
+    let quote = '';
+
+    const endSelector = () => {
+        for (const entry of found) {
+            if (entry.nested || entry.compound < compound) {
+                classes.add(entry.name);
+            }
+        }
+        found = [];
+        compound = 0;
+        hasContent = false;
+        boundaryPending = false;
+    };
+
+    for (let index = 0; index < selectorList.length; index++) {
+        const char = selectorList[index];
+        if (quote) {
+            if (char === '\\') index++;
+            else if (char === quote) quote = '';
+            continue;
+        }
+        if (inBracket) {
+            if (char === '\\') index++;
+            else if (char === '"' || char === '\'') quote = char;
+            else if (char === ']') inBracket = false;
+            continue;
+        }
+        if (parenDepth === 0) {
+            if (char === ',') {
+                endSelector();
+                continue;
+            }
+            if (/[\s>+~]/.test(char)) {
+                boundaryPending = hasContent;
+                continue;
+            }
+            if (boundaryPending) {
+                compound++;
+                boundaryPending = false;
+            }
+            hasContent = true;
+        }
+        if (char === '\\') {
+            index++;
+        } else if (char === '"' || char === '\'') {
+            quote = char;
+        } else if (char === '[') {
+            inBracket = true;
+        } else if (char === '(') {
+            parenDepth++;
+        } else if (char === ')') {
+            parenDepth--;
+            if (parenDepth < 0) return false;
+        } else if (char === '.') {
+            const { name, end } = readClassName(selectorList, index + 1);
+            if (!name) return false;
+            found.push({ name, compound, nested: parenDepth > 0 });
+            index = end - 1;
+        }
+    }
+    if (quote || inBracket || parenDepth !== 0) {
+        return false;
+    }
+    endSelector();
+    return true;
+}
 
 function rebuildSelectorCaches() {
     combinedInteractableSelector = interactableSelectors.join(', ');
     const classes = new Set([DISABLED_CONTROL_CLASS, NOT_FOCUSABLE_CONTROL_CLASS]);
+    let readable = true;
     for (const selectorList of interactableSelectors) {
-        for (const selector of selectorList.split(',')) {
-            const parts = selector.trim().split(/[\s>+~]+/);
-            if (parts.length < 2) {
-                continue;
-            }
-            for (let index = 0; index < parts.length - 1; index++) {
-                for (const match of parts[index].matchAll(/\.([A-Za-z0-9_-]+)/g)) {
-                    classes.add(match[1]);
-                }
-            }
-        }
+        readable = collectDescendantAffectingClasses(selectorList, classes) && readable;
     }
     descendantAffectingClasses = classes;
+    // A selector that cannot be read may depend on any class. A rescan that was not needed costs a query; a skipped one leaves a control without a tab stop.
+    anyClassAffectsDescendants = !readable;
 }
 
 function getCombinedInteractableSelector() {
@@ -79,6 +190,9 @@ function getCombinedInteractableSelector() {
 function classChangeAffectsDescendants(oldValue, element) {
     if (descendantAffectingClasses === null) {
         rebuildSelectorCaches();
+    }
+    if (anyClassAffectsDescendants) {
+        return true;
     }
     const previous = new Set(String(oldValue ?? '').split(/\s+/).filter(Boolean));
     for (const name of descendantAffectingClasses) {
