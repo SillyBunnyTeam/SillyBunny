@@ -351,3 +351,79 @@
     object-fit: contain;
     border-radius: var(--sb-radius-card);
 }
+
+/* ---------- Selection mode (Chats, Media, Files, Pinned) ---------- */
+/* The bar sits under the page's body, which scrolls; it keeps its own height. */
+.sb-details-selection-bar { flex: none; }
+
+/* The pill that starts a new chat belongs to browsing, so selection mode leaves it out. */
+.sb-dialog__page[data-selection-mode='true'] .sb-details-page-action { display: none; }
+
+/* A row keeps its menu button in selection mode, but a press anywhere on the row chooses it, so the button is dimmed. */
+.sb-dialog__page[data-selection-mode='true'] .sb-details-collection-row .ds-entity-row__suffix { opacity: var(--sb-disabled-opacity); }
+
+/* Show More ends a list of rows or a grid of cells, as it ends the boxed lists. */
+.sb-details-shared > .sb-list-show-more { margin-block-start: 12px; }
+
+.sb-details-media-item { position: relative; }
+
+/* A long press on a cell starts selection, so the browser's own press menu for a picture must not open over it. */
+.sb-details-media-cell {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* The check that shows over a picture while the pointer is on it, and the check of selection mode, share a corner. */
+.sb-details-media-item > .sb-selection-check,
+.sb-details-media-check {
+    position: absolute;
+    inset-block-start: 6px;
+    inset-inline-start: 6px;
+    z-index: 2;
+}
+
+/* A picture is any colour, so an unchosen check is drawn on the overlay fill instead of the 15% outline that rows use. */
+.sb-details-media-item > .sb-selection-check:not(:checked) {
+    border-color: var(--sb-osd-ink);
+    background: var(--sb-osd-bg);
+}
+
+.sb-details-media-check {
+    display: none;
+    place-items: center;
+    box-sizing: border-box;
+    inline-size: 28px;
+    block-size: 28px;
+    padding: 0;
+    border: 2px solid var(--sb-osd-ink);
+    border-radius: var(--sb-radius-pill);
+    background: var(--sb-osd-bg);
+    color: var(--sb-osd-ink);
+    font-size: 0.8em;
+    cursor: pointer;
+}
+
+/* It is a pointer's route. The keyboard has the Select button of the header, so keyboard focus does not show it. */
+@media (hover: hover) {
+    .sb-details-media-item:hover > .sb-details-media-check { display: grid; }
+}
+
+.sb-details-media-check:focus-visible {
+    outline: 2px solid var(--sb-focus-ring-color);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
+.sb-dialog__page[data-selection-mode='true'] .sb-details-media-check { display: none; }
+
+/* A chosen picture gets a ring in the accent. It is a layer over the picture, because a border of the cell would sit under it. */
+.sb-details-media-item.is-selection-selected::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border: 3px solid var(--sb-accent);
+    border-radius: var(--sb-radius-control);
+    pointer-events: none;
+}

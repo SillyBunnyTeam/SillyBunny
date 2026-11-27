@@ -286,6 +286,24 @@ describe('selection mode', () => {
             expect(selectAll.classList.contains('menu_button')).toBe(true);
             expect(selectAll.className).not.toMatch(/sb-editor-action--primary/);
         });
+
+        test('Ctrl+A works from Cancel inside a slotted header', () => {
+            const slots = makeSlots();
+            const root = document.createElement('section');
+            const list = document.createElement('div');
+            list.tabIndex = 0;
+            list.append(createRow('a'), createRow('b'));
+            const actionBar = document.createElement('div');
+            root.append(slots.header, list, actionBar);
+            document.body.append(root);
+            const selection = createSelectionMode({ root, list, actionBar, headerSlots: slots });
+            cleanups.push(() => selection.destroy());
+
+            selection.enter();
+            const event = keydown(slots.headerStart.querySelector('.sb-selection-cancel'), 'a', { ctrlKey: true });
+            expect(event.defaultPrevented).toBe(true);
+            expect(selection.selectedKeys).toEqual(['a', 'b']);
+        });
     });
 
     test('the standalone header is marked as the shared selection header host, and a slotted header is not', () => {

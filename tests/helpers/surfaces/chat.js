@@ -624,6 +624,18 @@ export const surfaces = [
                 },
                 ready: [`${DETAILS_WINDOW} .sb-details-frame--${id} .sb-details-page`],
             })),
+            // Selection mode on the window's own header, with one item chosen, on the pages whose audit thread has items to choose.
+            ...['chats', 'media', 'pinned'].map(id => ({
+                id: `${id}-selecting`,
+                async open(page) {
+                    await openConversationDetailsAt(page, id);
+                    const frame = page.locator(`${DETAILS_WINDOW} .sb-details-frame--${id}`);
+                    await frame.getByRole('button', { name: 'Select', exact: true }).click();
+                    await frame.locator('[data-sb-list-key]').first().click();
+                    await settle(page, { root: DETAILS_WINDOW });
+                },
+                ready: [`${DETAILS_WINDOW} .sb-details-frame--${id} .sb-dialog__header.is-selection-mode`, `${DETAILS_WINDOW} .sb-details-frame--${id} .sb-selection-action-bar button:not([disabled])`],
+            })),
             {
                 id: 'profile',
                 async open(page) {
@@ -646,6 +658,7 @@ export const surfaces = [
             `${SCRIPTS}/sillybunny-conversation/details/window.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/general.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/chats.js`,
             `${SCRIPTS}/sillybunny-conversation/details/pages/behaviour.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/advanced.js`, `${SCRIPTS}/sillybunny-conversation/details/pages/profile.js`,
             `${SCRIPTS}/sillybunny-conversation/details/pages/preferences.js`, `${CSS}/sillybunny-conversation-details.css`,
+            `${SCRIPTS}/sillybunny-conversation/details/pages/shared.js`, `${SCRIPTS}/sillybunny-conversation/details/bulk-selection.js`, `${SCRIPTS}/sillybunny-conversation/details/bulk-actions.js`,
         ],
     },
     {

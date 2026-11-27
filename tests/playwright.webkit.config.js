@@ -7,11 +7,13 @@ import baseConfig from './playwright.config.js';
 // `conversation-list` is here for the drag of a row by pointer events, the one Tab stop of the list and its menu keys;
 // `conversation-folders` for the drop of a row on a folder, the Alt keys across the sections and the menu of a heading.
 // `conversation-emoji-chooser` is here for the roving grid, the bottom sheet, the long press and the colour font, which differ per engine.
+// `conversation-details-bulk` is here for selection mode on the window's header, the long press and Shift-click of a grid, the Escape key and the sheet of a phone, which the engines handle differently.
 // `colour-picker-dismissal` is here because the engines dispatch the click that ends a drag differently, and a dialog or sheet that closes on a click of its scrim would close on a drag that began inside it.
 export const DIALOG_SPECS = [
     'conversation-emoji-chooser',
     'colour-picker-dismissal',
     'conversation-list',
+    'conversation-details-bulk',
     'conversation-folders',
     'sillybunny-dialog-frame',
     'sillybunny-dialog-tiers',
