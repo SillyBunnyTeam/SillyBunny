@@ -66,6 +66,29 @@ jobs:
       - name: Run ESLint on tests
         run: npm run lint --prefix tests
 
+  server-typecheck:
+    name: ✅ Check Server Types
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+            ref: ${{ github.event.pull_request.head.sha }}
+            repository: ${{ github.event.pull_request.head.repo.full_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install root dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run server typecheck ratchet
+        run: npm run check:server-types
+
   run-tests:
     name: ✅ Run Unit Tests on PR
     runs-on: ubuntu-latest

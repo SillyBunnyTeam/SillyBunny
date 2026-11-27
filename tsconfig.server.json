@@ -1,0 +1,30 @@
+{
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ES2023",
+        "moduleResolution": "Bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "strictNullChecks": true,
+        "strictFunctionTypes": true,
+        "strictBindCallApply": true,
+        "allowUmdGlobalAccess": true,
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true
+    },
+    "include": [
+        "index.d.ts",
+        "server.js",
+        "plugins.js",
+        "recover.js",
+        "src/**/*.js",
+        "src/**/*.mjs",
+        "src/**/*.d.ts"
+    ],
+    "exclude": [
+        "**/node_modules/**",
+        "src/tokenizers/**"
+    ]
+}
