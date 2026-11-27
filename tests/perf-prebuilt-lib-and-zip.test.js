@@ -979,11 +979,11 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
         expect(unzipped['secrets.json']).toBeUndefined();
     });
 
-    async function backupToBuffer(handle) {
+    async function backupToBuffer(handle, options = undefined) {
         const chunks = [];
         const output = new PassThrough();
         output.on('data', chunk => chunks.push(chunk));
-        await createBackupArchive(handle, output);
+        await createBackupArchive(handle, output, options);
         return Buffer.concat(chunks);
     }
 
