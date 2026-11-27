@@ -1558,7 +1558,7 @@ describe('PR6 hot APIs media & extension optimizations', () => {
             expect(openSpy).toHaveBeenCalledTimes(2);
         });
 
-        test('sets private Cache-Control: max-age=86400 only with ?t=, private no-cache for unversioned non-Firefox, and preserves Firefox no-store without ?t=', async () => {
+        test('sets private Cache-Control: max-age=86400 only with ?t= outside Firefox, private no-cache for unversioned non-Firefox, and keeps Firefox no-store with and without ?t=', async () => {
             const file = 'cached.png';
             fs.writeFileSync(path.join(directories.characters, file), STATIC_PNG);
             fs.writeFileSync(path.join(directories.thumbnailsAvatar, file), STATIC_PNG);
@@ -1587,8 +1587,7 @@ describe('PR6 hot APIs media & extension optimizations', () => {
                 headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0' },
             });
             expect(firefoxWithBust.status).toBe(200);
-            expect(firefoxWithBust.headers.get('cache-control')).toBe(THUMBNAIL_CACHE_CONTROL);
-            expect(firefoxWithBust.headers.get('cache-control')).not.toContain('public');
+            expect(firefoxWithBust.headers.get('cache-control')).toBe('must-understand, no-store');
         });
 
         test('deduplicates concurrent thumbnail generation and reads original PNG only once', async () => {

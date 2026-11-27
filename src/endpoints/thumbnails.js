@@ -579,12 +579,11 @@ publicRouter.get('/', async function (request, response) {
         if (cachedStat) {
             invalidateFirefoxCache(pathToCachedFile, request, response);
             // SillyBunny: thumbnails belong to authenticated users, so never emit `public`.
-            // Cache-busted (?t=) requests are cached privately for 24h; unversioned non-Firefox requests
-            // revalidate via ETag/304 (`private, no-cache`), while unversioned Firefox keeps no-store.
-            if (request.query.t !== undefined) {
-                response.setHeader('Cache-Control', THUMBNAIL_CACHE_CONTROL);
-            } else if (!response.getHeader('Cache-Control')) {
-                response.setHeader('Cache-Control', THUMBNAIL_REVALIDATE_CACHE_CONTROL);
+            // Firefox keeps the no-store that invalidateFirefoxCache set, also for a cache-busted (?t=) URL, because
+            // a caller can reuse one `t` value after the picture changed. Other browsers cache a ?t= request
+            // privately for 24h and revalidate an unversioned one via ETag/304 (`private, no-cache`).
+            if (!response.getHeader('Cache-Control')) {
+                response.setHeader('Cache-Control', request.query.t !== undefined ? THUMBNAIL_CACHE_CONTROL : THUMBNAIL_REVALIDATE_CACHE_CONTROL);
             }
             response.locals.thumbnailStat = cachedStat;
             await setCachedThumbnailContentType(response, pathToCachedFile);
