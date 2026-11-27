@@ -19,7 +19,20 @@ export const CHAT_INFO_CACHE_MAX_BYTES = process.env.SILLYBUNNY_ANDROID_APP === 
 
 export const CHAT_INFO_CACHE_MAX_ENTRIES = 2000;
 export const BACKUP_DEDUPE_CACHE_MAX_ENTRIES = 512;
-export const COARSE_TIMESTAMP_MODULO_NS = 1_000_000_000n;
+/**
+ * Timestamps that are all multiples of this value come from a volume that stores coarse timestamps:
+ * whole seconds, the 2 second modification time of FAT, and the 10 ms units of FAT creation times and exFAT.
+ * A filesystem that keeps nanoseconds produces such a value by chance only about once in 10^7 stamps.
+ */
+export const COARSE_TIMESTAMP_MODULO_NS = 10_000_000n;
+
+/**
+ * A filesystem stamps a write with a clock that advances once per tick, so two writes within one tick
+ * leave the same (mtime, ctime). A cached tuple therefore proves "unchanged" only when the cache validated
+ * the file at least this long after the file's newest timestamp. Any later write then falls into a later tick.
+ * The margin must stay above the coarsest tick of a supported platform (Linux 4 to 10 ms, Windows about 16 ms).
+ */
+export const STAT_TIMESTAMP_RACY_MARGIN_NS = 100_000_000n;
 
 const WINDOWS_RETRY_DELAYS_MS = [50, 125, 250];
 const HARDLINK_FALLBACK_ERROR_CODES = new Set([
@@ -73,7 +86,8 @@ export function extractStatTuple(stats) {
 }
 
 /**
- * Returns true only when all 5 stat fields are non-zero and filesystem timestamp granularity is finer than 1 second.
+ * Returns true only when all 5 stat fields are non-zero and the timestamps do not look like those of a coarse volume
+ * (see `COARSE_TIMESTAMP_MODULO_NS`).
  * @param {{ dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }|null|undefined} tuple
  * @returns {boolean}
  */
@@ -88,6 +102,90 @@ export function isReliableStatTuple(tuple) {
         return false;
     }
     return true;
+}
+
+/**
+ * Wall-clock time in nanoseconds, comparable with file timestamps of a local filesystem.
+ * @returns {bigint}
+ */
+export function currentTimeNs() {
+    return BigInt(Date.now()) * 1_000_000n;
+}
+
+/**
+ * Attaches the instant at which a stat tuple was validated against the file's content.
+ * Take `validatedAtNs` before the content was read, or right after the stat of a file this process wrote.
+ * @template {object} T
+ * @param {T|null|undefined} tuple
+ * @param {bigint} [validatedAtNs]
+ * @returns {(T & { validatedAtNs: bigint })|null}
+ */
+export function withValidationTime(tuple, validatedAtNs = currentTimeNs()) {
+    return tuple ? { ...tuple, validatedAtNs } : null;
+}
+
+function toTimestampNs(value) {
+    return typeof value === 'bigint' ? value : BigInt(Math.round(Number(value) * 1_000_000));
+}
+
+/**
+ * Returns true when a write that happened after the tuple was validated could still leave the same
+ * (mtime, ctime) as `tuple`, so that an equal stat tuple does not prove that the content is unchanged.
+ * A tuple without a validation time, or with timestamps ahead of it, is racy.
+ * @param {{ mtimeNs: bigint|number, ctimeNs: bigint|number, validatedAtNs?: bigint }|null|undefined} tuple
+ * @returns {boolean}
+ */
+export function isStatTupleRacy(tuple) {
+    if (!tuple || typeof tuple.validatedAtNs !== 'bigint') {
+        return true;
+    }
+    const mtimeNs = toTimestampNs(tuple.mtimeNs);
+    const ctimeNs = toTimestampNs(tuple.ctimeNs);
+    const newestNs = mtimeNs > ctimeNs ? mtimeNs : ctimeNs;
+    return tuple.validatedAtNs - newestNs < STAT_TIMESTAMP_RACY_MARGIN_NS;
+}
+
+/**
+ * Reads a regular file and checks that its bytes still hash to `expectedSha256`. Used to confirm a racy cache
+ * hit (see `isStatTupleRacy`), where an equal stat tuple cannot rule out a write that kept the tuple.
+ * The validation time is taken before the read starts, because a write that lands during the read can
+ * leave the content this function hashed behind the timestamps it reports.
+ * @param {string} filePath
+ * @param {string|null|undefined} expectedSha256
+ * @param {{ dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }|null} [expectedTuple] When given, the file must also still carry this stat tuple
+ * @returns {{ tuple: { dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }, validatedAtNs: bigint }|null} The stat tuple of the file and the time of its validation, or null when the content is not the expected one or could not be read stably
+ */
+export function confirmFileContentSync(filePath, expectedSha256, expectedTuple = null) {
+    if (!expectedSha256) {
+        return null;
+    }
+    const validatedAtNs = currentTimeNs();
+    let descriptor;
+    try {
+        descriptor = fs.openSync(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+        const initialStats = fs.fstatSync(descriptor, { bigint: true });
+        if (!initialStats.isFile()) {
+            return null;
+        }
+        const data = fs.readFileSync(descriptor);
+        const tuple = extractStatTuple(fs.fstatSync(descriptor, { bigint: true }));
+        if (!statTuplesEqual(extractStatTuple(initialStats), tuple)
+            || (expectedTuple && !statTuplesEqual(tuple, expectedTuple))
+            || computeSha256(data) !== expectedSha256) {
+            return null;
+        }
+        return { tuple, validatedAtNs };
+    } catch {
+        return null;
+    } finally {
+        if (descriptor !== undefined) {
+            try {
+                fs.closeSync(descriptor);
+            } catch {
+                // The content check already has its result.
+            }
+        }
+    }
 }
 
 /**
@@ -144,8 +242,9 @@ export function extractChatInfoStatTuple(stats) {
         || typeof stats.ctimeMs !== 'number' || !Number.isFinite(stats.ctimeMs) || stats.ctimeMs === 0) {
         return null;
     }
-    const isCoarseMtime = Number.isInteger(stats.mtimeMs) && stats.mtimeMs % 1000 === 0;
-    const isCoarseCtime = Number.isInteger(stats.ctimeMs) && stats.ctimeMs % 1000 === 0;
+    const coarseModuloMs = Number(COARSE_TIMESTAMP_MODULO_NS / 1_000_000n);
+    const isCoarseMtime = Number.isInteger(stats.mtimeMs) && stats.mtimeMs % coarseModuloMs === 0;
+    const isCoarseCtime = Number.isInteger(stats.ctimeMs) && stats.ctimeMs % coarseModuloMs === 0;
     if (isCoarseMtime && isCoarseCtime) {
         return null;
     }
@@ -278,7 +377,9 @@ export class ChatStateCache {
 
     /**
      * Retrieves a cached entry only if `stats` describes a regular file whose 5-field stat tuple
-     * is reliable and matches the cached entry exactly.
+     * is reliable and matches the cached entry exactly. An entry validated within the racy-timestamp
+     * margin of its file's newest timestamp is served only after its bytes are read and hashed again;
+     * the entry is dropped when they differ.
      * @param {string} filePath
      * @param {import('node:fs').BigIntStats} stats
      * @returns {any|null}
@@ -298,11 +399,20 @@ export class ChatStateCache {
         if (!statTuplesEqual(tuple, entry)) {
             return null;
         }
+        if (isStatTupleRacy(entry)) {
+            const confirmed = confirmFileContentSync(filePath, entry.sha256, tuple);
+            if (!confirmed) {
+                this.invalidate(filePath);
+                return null;
+            }
+            entry.validatedAtNs = confirmed.validatedAtNs;
+        }
         return entry;
     }
 
     /**
      * Stores or replaces an entry for `filePath`, evicting LRU entries to remain within `maxBytes`.
+     * `entryData.validatedAtNs` is the time at which the entry's content was read or written (see `withValidationTime`).
      * @param {string} filePath
      * @param {object} entryData
      * @returns {any|null}
@@ -325,6 +435,7 @@ export class ChatStateCache {
         }
         const entry = {
             ...entryData,
+            validatedAtNs: typeof entryData.validatedAtNs === 'bigint' ? entryData.validatedAtNs : currentTimeNs(),
             key,
             estimatedBytes,
         };
@@ -438,13 +549,16 @@ export class ChatInfoCache {
     }
 
     /**
+     * Caches a summary only when the file's timestamps leave no racy window: a summary has no content hash to
+     * confirm a later hit with, so a file changed within the margin before `validatedAtNs` is not cached.
      * @param {string} filePath
-     * @param {import('node:fs').Stats} stats
+     * @param {import('node:fs').Stats} stats Stat taken before the file was scanned
      * @param {object} infoEntry
+     * @param {bigint} [validatedAtNs] Time taken before `stats` was read
      */
-    set(filePath, stats, infoEntry) {
+    set(filePath, stats, infoEntry, validatedAtNs = currentTimeNs()) {
         const tuple = extractChatInfoStatTuple(stats);
-        if (!tuple || this.maxEntries <= 0 || this.maxBytes <= 0) {
+        if (!tuple || isStatTupleRacy({ ...tuple, validatedAtNs }) || this.maxEntries <= 0 || this.maxBytes <= 0) {
             return;
         }
         const key = getCanonicalChatCacheKey(filePath);
@@ -627,7 +741,8 @@ function resizeFileSync(fileDescriptor, size) {
 
 function safeLstatTuple(filePath) {
     try {
-        return extractStatTuple(fs.lstatSync(filePath, { bigint: true }));
+        const tuple = extractStatTuple(fs.lstatSync(filePath, { bigint: true }));
+        return withValidationTime(tuple);
     } catch {
         return null;
     }
@@ -893,7 +1008,7 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
                 throw Object.assign(new Error(`Refused to finish writing a replaced or hard-linked file: ${filePath}`), { code: 'ESTALE' });
             }
 
-            return extractStatTuple(finalDescriptorStats);
+            return withValidationTime(extractStatTuple(finalDescriptorStats));
         } catch (error) {
             operationFailed = true;
             if (targetMutated && ['EMLINK', 'ESTALE'].includes(error?.code)) {
@@ -934,11 +1049,12 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
  *
  * @param {string} sourceLatestPath Path to `.latest.jsonl`
  * @param {string} destinationBackupPath Path to pre-write backup file
- * @param {{ dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }} expectedSourceTuple
+ * @param {{ dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint, validatedAtNs?: bigint }} expectedSourceTuple
  * @param {number|null} newestExistingMtimeMs Mtime (ms) of the newest existing pre-write backup for this prefix, if any
+ * @param {string|null} [expectedSourceSha256] SHA-256 of the source bytes. A source whose tuple is racy is linked only after its bytes are read and match this hash.
  * @returns {{ linked: true, tuple: object|null, bumpedMtime: boolean } | { linked: false }}
  */
-export function tryHardLinkPreWriteBackupSync(sourceLatestPath, destinationBackupPath, expectedSourceTuple, newestExistingMtimeMs = null) {
+export function tryHardLinkPreWriteBackupSync(sourceLatestPath, destinationBackupPath, expectedSourceTuple, newestExistingMtimeMs = null, expectedSourceSha256 = null) {
     if (!sourceLatestPath || !expectedSourceTuple || !isReliableStatTuple(expectedSourceTuple)) {
         return { linked: false };
     }
@@ -953,6 +1069,11 @@ export function tryHardLinkPreWriteBackupSync(sourceLatestPath, destinationBacku
         return { linked: false };
     }
     if (!statTuplesEqual(extractStatTuple(sourceStats), expectedSourceTuple)) {
+        return { linked: false };
+    }
+    // The backup must hold the pre-image of the chat. A source that an external write could have changed
+    // without changing its tuple is copied from memory by the caller instead of linked.
+    if (isStatTupleRacy(expectedSourceTuple) && !confirmFileContentSync(sourceLatestPath, expectedSourceSha256, expectedSourceTuple)) {
         return { linked: false };
     }
 

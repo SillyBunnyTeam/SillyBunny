@@ -15,12 +15,17 @@ process.env.SILLYTAVERN_BACKUPS_CHAT_THROTTLEINTERVAL = '0';
 
 const {
     ChatStateCache,
+    STAT_TIMESTAMP_RACY_MARGIN_NS,
     backupDedupeCache,
     chatInfoCache,
     chatStateCache,
     computeNormalizedBackupHash,
+    computeSha256,
+    extractStatTuple,
     getCanonicalChatCacheKey,
+    getLatestBackupFileInfo,
     isReliableStatTuple,
+    isStatTupleRacy,
     writeDurableAtomicFileSync,
 } = await import('../src/chat-io-fastpath.js');
 
@@ -265,6 +270,16 @@ function legacyNormalizeBackupComparison(data) {
     }
 }
 
+/**
+ * Waits until every file timestamp written so far is older than the cache's racy-timestamp margin,
+ * so the next cache hit is settled and needs no content check.
+ * @returns {Promise<void>}
+ */
+function settleStatTimestamps() {
+    const settleMs = Number(STAT_TIMESTAMP_RACY_MARGIN_NS / 1_000_000n) + 50;
+    return new Promise(resolve => setTimeout(resolve, settleMs));
+}
+
 function makeLargeChat(messageCount, integrity = 'bench-slug-0') {
     const rows = [
         {
@@ -496,7 +511,9 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
             deferBackup: false,
         });
 
-        // Second save: warm cache hit + latestEqualsActive === true
+        // Second save: settled warm cache hit + latestEqualsActive === true
+        await settleStatTimestamps();
+        expect(loadActiveChatWithRecovery(recoveryTarget).status).toBe('ok');
         const nextPayload = structuredClone(initial);
         nextPayload[0].chat_metadata.integrity = firstSave.integrity;
         nextPayload.push({
@@ -683,16 +700,27 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         expect(prewrites).toHaveLength(3);
     });
 
-    test('writeLatestChatSnapshotTrusted skips redundant read-back and detects zero-limit pruning', () => {
+    test('writeLatestChatSnapshotTrusted skips redundant read-back once its cached tuple is settled and detects zero-limit pruning', async () => {
         const payload = makeLargeChat(5, 'trusted-slug').map(JSON.stringify).join('\n');
         const stored = writeLatestChatSnapshotTrusted(recoveryTarget, payload);
         expect(stored.stored).toBe(true);
         expect(stored.latestTuple).not.toBeNull();
 
+        // The tuple of a snapshot that was just written is racy, so the first repeat confirms it by content.
+        await settleStatTimestamps();
         const readFileSpy = jest.spyOn(fs, 'readFileSync');
-        const repeat = writeLatestChatSnapshotTrusted(recoveryTarget, payload, {
+        const confirmedRepeat = writeLatestChatSnapshotTrusted(recoveryTarget, payload, {
             dataSha: stored.latestSha,
             cachedLatestTuple: stored.latestTuple,
+            cachedLatestSha: stored.latestSha,
+        });
+        expect(confirmedRepeat.stored).toBe(true);
+        expect(readFileSpy).toHaveBeenCalledTimes(1);
+
+        readFileSpy.mockClear();
+        const repeat = writeLatestChatSnapshotTrusted(recoveryTarget, payload, {
+            dataSha: stored.latestSha,
+            cachedLatestTuple: confirmedRepeat.latestTuple,
             cachedLatestSha: stored.latestSha,
         });
         expect(repeat.stored).toBe(true);
@@ -948,6 +976,256 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         const keyAfterDelete = getCanonicalChatCacheKey(nestedFile);
 
         expect(keyAfterDelete).toBe(keyBeforeDelete);
+    });
+});
+
+describe('stat-tuple caches never serve content that an external write changed within the timestamp tick', () => {
+    const ORIGINAL_TEXT = 'CCCCCCCCCCCCCCCC';
+    const EXTERNAL_TEXT = 'EXTERNALEDIT1234';
+    let tempRoot;
+    let chatsDir;
+    let backupsDir;
+    let ownerDir;
+
+    beforeEach(() => {
+        chatStateCache.clear();
+        chatInfoCache.clear();
+        backupDedupeCache.clear();
+        clearChatRecoveryRuntimeCaches();
+        clearActiveDeferredChatPreWrites();
+
+        tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-fastpath-racy-'));
+        chatsDir = path.join(tempRoot, 'chats');
+        backupsDir = path.join(tempRoot, 'backups');
+        ownerDir = path.join(chatsDir, 'TestCard');
+        fs.mkdirSync(ownerDir, { recursive: true });
+        fs.mkdirSync(backupsDir, { recursive: true });
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    function makeTarget(fileName) {
+        return createCharacterChatTarget({
+            chatsDirectory: chatsDir,
+            backupDirectory: backupsDir,
+            owner: 'TestCard',
+            filename: fileName,
+            maxRecoveryStates: 25,
+        });
+    }
+
+    function makeSmallChat(integrity = 'racy-slug') {
+        return [
+            { user_name: 'User', character_name: 'TestCard', chat_metadata: { integrity } },
+            { name: 'User', is_user: true, send_date: '2026-06-01T00:00:00.000Z', mes: 'AAAAAAAAAAAAAAAA', extra: {} },
+            { name: 'TestCard', is_user: false, send_date: '2026-06-01T00:00:01.000Z', mes: ORIGINAL_TEXT, extra: {} },
+        ];
+    }
+
+    function overwriteInPlace(filePath, from, to) {
+        const text = fs.readFileSync(filePath, 'utf8');
+        const index = text.indexOf(from);
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(to).toHaveLength(from.length);
+        const descriptor = fs.openSync(filePath, 'r+');
+        try {
+            fs.writeSync(descriptor, Buffer.from(to), 0, to.length, Buffer.byteLength(text.slice(0, index)));
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    }
+
+    function tamperInPlace(filePath) {
+        const bytes = fs.readFileSync(filePath);
+        const index = bytes.indexOf('mes');
+        expect(index).toBeGreaterThanOrEqual(0);
+        const descriptor = fs.openSync(filePath, 'r+');
+        try {
+            fs.writeSync(descriptor, Buffer.from('MES'), 0, 3, index);
+        } finally {
+            fs.closeSync(descriptor);
+        }
+    }
+
+    function statTupleOf(filePath) {
+        return extractStatTuple(fs.lstatSync(filePath, { bigint: true }));
+    }
+
+    test('treats FAT-like and exFAT-like timestamps as coarse and a tuple validated within the margin as racy', () => {
+        const base = { dev: 1n, ino: 2n, size: 10n };
+        // FAT: mtime on a 2 second boundary, ctime in 10 ms units
+        expect(isReliableStatTuple({ ...base, mtimeNs: 1_700_000_002_000_000_000n, ctimeNs: 1_700_000_000_370_000_000n })).toBe(false);
+        // exFAT: both timestamps in 10 ms units
+        expect(isReliableStatTuple({ ...base, mtimeNs: 1_700_000_000_120_000_000n, ctimeNs: 1_700_000_000_130_000_000n })).toBe(false);
+        expect(isReliableStatTuple({ ...base, mtimeNs: 1_700_000_000_123_456_789n, ctimeNs: 1_700_000_000_123_456_790n })).toBe(true);
+
+        const tuple = { ...base, mtimeNs: 5_000_000_123n, ctimeNs: 5_000_000_456n };
+        expect(isStatTupleRacy({ ...tuple, validatedAtNs: tuple.ctimeNs + 1_000_000n })).toBe(true);
+        expect(isStatTupleRacy({ ...tuple, validatedAtNs: tuple.ctimeNs - 1n })).toBe(true);
+        expect(isStatTupleRacy({ ...tuple, validatedAtNs: tuple.ctimeNs + STAT_TIMESTAMP_RACY_MARGIN_NS })).toBe(false);
+        expect(isStatTupleRacy(tuple)).toBe(true);
+    });
+
+    test('ChatStateCache confirms a hit within the margin by content and trusts a settled hit by its stat tuple', () => {
+        const file = path.join(ownerDir, 'racy-entry.jsonl');
+        const original = Buffer.from('{"chat_metadata":{}}\n{"mes":"AAAA"}');
+        fs.writeFileSync(file, Buffer.from('{"chat_metadata":{}}\n{"mes":"BBBB"}'));
+        const stats = fs.lstatSync(file, { bigint: true });
+        const tuple = extractStatTuple(stats);
+        // The entry holds the old bytes under the tuple of the new bytes, as after an external write
+        // that kept the file's size and landed in the same timestamp tick.
+        const entryFor = (validatedAtNs, sha256) => ({
+            ...tuple,
+            validatedAtNs,
+            sha256,
+            lines: ['{"chat_metadata":{}}', '{"mes":"AAAA"}'],
+            header: { chat_metadata: {} },
+            headerFixedUp: false,
+            isCanonical: true,
+            rawBuffer: null,
+        });
+        const cache = new ChatStateCache(1_000_000);
+
+        cache.set(file, entryFor(tuple.ctimeNs + 1_000_000n, computeSha256(original)));
+        expect(cache.getIfStatMatches(file, stats)).toBeNull();
+        expect(cache.get(file)).toBeNull();
+
+        // A settled entry is trusted by its tuple alone, so its (deliberately wrong) hash is never read.
+        cache.set(file, entryFor(tuple.ctimeNs + 10n * STAT_TIMESTAMP_RACY_MARGIN_NS, computeSha256(original)));
+        expect(cache.getIfStatMatches(file, stats)).not.toBeNull();
+
+        // A hit within the margin whose content is still current is served.
+        const current = fs.readFileSync(file);
+        cache.set(file, entryFor(tuple.ctimeNs + 1_000_000n, computeSha256(current)));
+        expect(cache.getIfStatMatches(file, stats)).not.toBeNull();
+    });
+
+    test('serves an external same-size in-place edit that follows a save within one timestamp tick', async () => {
+        let staleLoads = 0;
+        let staleSaves = 0;
+        for (let trial = 0; trial < 100; trial++) {
+            const fileName = `tick-${trial}.jsonl`;
+            const file = path.join(ownerDir, fileName);
+            const target = makeTarget(fileName);
+            const first = await trySaveChat(makeSmallChat(), file, true, 'user1', 'TestCard', backupsDir, { recoveryTarget: target, deferBackup: true });
+            const edited = makeSmallChat(first.integrity);
+            const second = await trySaveChat(edited, file, false, 'user1', 'TestCard', backupsDir, { recoveryTarget: target, deferBackup: true });
+            expect(second.integrity).toBeDefined();
+            expect(loadActiveChatWithRecovery(target).status).toBe('ok');
+
+            overwriteInPlace(file, ORIGINAL_TEXT, EXTERNAL_TEXT);
+            const served = loadActiveChatWithRecovery(target);
+            if (!JSON.stringify(served.records).includes(EXTERNAL_TEXT)) {
+                staleLoads++;
+            }
+
+            // A client that still holds the old text must not be told that its save changes nothing.
+            const stalePayload = makeSmallChat(JSON.parse(fs.readFileSync(file, 'utf8').split('\n')[0]).chat_metadata.integrity);
+            await trySaveChat(stalePayload, file, false, 'user1', 'TestCard', backupsDir, { recoveryTarget: target, deferBackup: true }).catch(() => { });
+            if (fs.readFileSync(file, 'utf8').includes(EXTERNAL_TEXT)) {
+                staleSaves++;
+            }
+        }
+        expect(staleLoads).toBe(0);
+        expect(staleSaves).toBe(0);
+    });
+
+    test('getChatInfo reports an external same-size edit that follows a scan within one timestamp tick, and still reuses a settled scan', async () => {
+        let staleInfos = 0;
+        for (let trial = 0; trial < 100; trial++) {
+            const file = path.join(ownerDir, `info-${trial}.jsonl`);
+            fs.writeFileSync(file, makeSmallChat().map(JSON.stringify).join('\n'), 'utf8');
+            await getChatInfo(file);
+            overwriteInPlace(file, ORIGINAL_TEXT, EXTERNAL_TEXT);
+            const info = await getChatInfo(file);
+            if (info.mes !== EXTERNAL_TEXT) {
+                staleInfos++;
+            }
+        }
+        expect(staleInfos).toBe(0);
+
+        const settledFile = path.join(ownerDir, 'info-settled.jsonl');
+        fs.writeFileSync(settledFile, makeSmallChat().map(JSON.stringify).join('\n'), 'utf8');
+        await settleStatTimestamps();
+        await getChatInfo(settledFile);
+        const createReadStreamSpy = jest.spyOn(fs, 'createReadStream');
+        const cached = await getChatInfo(settledFile);
+        expect(cached.mes).toBe(ORIGINAL_TEXT);
+        expect(createReadStreamSpy).not.toHaveBeenCalled();
+    });
+
+    async function saveAndSettle(file, target, deferBackup) {
+        const first = await trySaveChat(makeSmallChat(), file, true, 'user1', 'TestCard', backupsDir, { recoveryTarget: target, deferBackup });
+        await settleStatTimestamps();
+        expect(loadActiveChatWithRecovery(target).status).toBe('ok');
+        await settleStatTimestamps();
+        expect(loadActiveChatWithRecovery(target).status).toBe('ok');
+        return first;
+    }
+
+    test('refreshes a .latest.jsonl that an external same-size write changed within the timestamp tick', async () => {
+        const file = path.join(ownerDir, 'latest-tamper.jsonl');
+        const target = makeTarget('latest-tamper.jsonl');
+        await saveAndSettle(file, target, true);
+        const { latestPath } = getChatRecoveryPaths(target);
+        const activeBytes = fs.readFileSync(file);
+        expect(fs.readFileSync(latestPath)).toEqual(activeBytes);
+
+        tamperInPlace(latestPath);
+        expect(fs.readFileSync(latestPath)).not.toEqual(activeBytes);
+        // The cache holds the tuple that the tampered file has now, as after a same-tick write.
+        const tamperedTuple = statTupleOf(latestPath);
+        chatStateCache.update(file, { latestTuple: { ...tamperedTuple, validatedAtNs: tamperedTuple.ctimeNs + 1_000_000n } });
+
+        expect(loadActiveChatWithRecovery(target).status).toBe('ok');
+        expect(fs.readFileSync(latestPath)).toEqual(activeBytes);
+    });
+
+    test('does not hard-link a .latest.jsonl that an external same-size write changed within the timestamp tick as the pre-write backup', async () => {
+        const file = path.join(ownerDir, 'link-tamper.jsonl');
+        const target = makeTarget('link-tamper.jsonl');
+        const first = await saveAndSettle(file, target, false);
+        const { latestPath } = getChatRecoveryPaths(target);
+        const preImage = fs.readFileSync(file);
+
+        tamperInPlace(latestPath);
+        const tamperedTuple = statTupleOf(latestPath);
+        chatStateCache.update(file, { latestTuple: { ...tamperedTuple, validatedAtNs: tamperedTuple.ctimeNs + 1_000_000n } });
+
+        const edited = makeSmallChat(first.integrity);
+        edited[2].mes = 'a longer reply that edits the chat';
+        await trySaveChat(edited, file, false, 'user1', 'TestCard', backupsDir, { recoveryTarget: target, deferBackup: false });
+
+        const prewriteFiles = fs.readdirSync(backupsDir).filter(name => name.startsWith('chat_pre_write_'));
+        expect(prewriteFiles).toHaveLength(1);
+        expect(fs.readFileSync(path.join(backupsDir, prewriteFiles[0]))).toEqual(preImage);
+    });
+
+    test('writes a regular backup when the newest one was changed externally within the timestamp tick', async () => {
+        const file = path.join(ownerDir, 'dedupe-tamper.jsonl');
+        const target = makeTarget('dedupe-tamper.jsonl');
+        const first = await saveAndSettle(file, target, false);
+        const prefix = 'chat_testcard_';
+        const newestBackup = getLatestBackupFileInfo(backupsDir, prefix);
+        expect(newestBackup).not.toBeNull();
+
+        tamperInPlace(newestBackup.filePath);
+        const tamperedTuple = statTupleOf(newestBackup.filePath);
+        const staleEntry = backupDedupeCache.get(backupsDir, prefix);
+        expect(staleEntry).not.toBeNull();
+        backupDedupeCache.set(backupsDir, prefix, {
+            ...staleEntry,
+            tuple: { ...tamperedTuple, validatedAtNs: tamperedTuple.ctimeNs + 1_000_000n },
+        });
+
+        // An unchanged save still takes a regular backup, which the stale entry would call a duplicate.
+        await trySaveChat(makeSmallChat(first.integrity), file, false, 'user1', 'TestCard', backupsDir, { recoveryTarget: target, deferBackup: false });
+
+        const refreshedBackup = getLatestBackupFileInfo(backupsDir, prefix);
+        expect(fs.readFileSync(refreshedBackup.filePath)).toEqual(fs.readFileSync(file));
     });
 });
 
@@ -1241,6 +1519,7 @@ describe('HTTP fast paths (/api/chats/get, /api/chats/search, /api/chats/recent)
 
         const chatB = makeLargeChat(200, 'slug-b');
         fs.writeFileSync(path.join(charDir, 'special-needle-file.jsonl'), chatB.map(JSON.stringify).join('\n'), 'utf8');
+        await settleStatTimestamps();
 
         // Multi-fragment split across distant messages
         const searchRes = await postJson('/api/chats/search', {

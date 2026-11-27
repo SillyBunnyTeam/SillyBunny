@@ -9,10 +9,14 @@ import {
     chatInfoCache,
     chatStateCache,
     computeSha256,
+    confirmFileContentSync,
+    currentTimeNs,
     extractStatTuple,
     getEntryRawBuffer,
     isReliableStatTuple,
+    isStatTupleRacy,
     statTuplesEqual,
+    withValidationTime,
     writeDurableAtomicFileSync,
 } from './chat-io-fastpath.js';
 import { fsyncDirectorySync, recoverFileWriteSync } from './util.js';
@@ -134,6 +138,8 @@ export function runChatRecoveryBestEffort(operation, warningMessage) {
 }
 
 function readRegularFile(filePath, { includeStats = false } = {}) {
+    // Taken before the read: a write that lands while the file is read can keep the timestamps the read ends with.
+    const validatedAtNs = currentTimeNs();
     let pathStats;
     try {
         pathStats = fs.lstatSync(filePath, includeStats ? { bigint: true } : undefined);
@@ -176,7 +182,7 @@ function readRegularFile(filePath, { includeStats = false } = {}) {
             return {
                 status: 'ok',
                 data,
-                statTuple: extractStatTuple(finalDescriptorStats),
+                statTuple: withValidationTime(extractStatTuple(finalDescriptorStats), validatedAtNs),
             };
         }
         return { status: 'ok', data };
@@ -623,13 +629,23 @@ function storeValidSnapshotInternal(target, dataBuffer, { dataSha = undefined, c
                 && isReliableStatTuple(knownMeta.tuple)
                 && statTuplesEqual(existingTuple, knownMeta.tuple),
             );
+            let validatedAtNs = currentTimeNs();
             if (metaMatchesDisk) {
                 alreadyCurrent = knownMeta.sha256 === sha;
+                if (alreadyCurrent && isStatTupleRacy(knownMeta.tuple)) {
+                    // The tuple cannot rule out an external write within the timestamp tick, and skipping
+                    // the write here would leave a snapshot that does not match the chat.
+                    const confirmed = confirmFileContentSync(latestPath, sha, existingTuple);
+                    alreadyCurrent = confirmed !== null;
+                    validatedAtNs = confirmed?.validatedAtNs ?? validatedAtNs;
+                } else if (alreadyCurrent) {
+                    validatedAtNs = knownMeta.tuple.validatedAtNs;
+                }
             } else if (existingStats.size === BigInt(dataBuffer.byteLength)) {
                 alreadyCurrent = isStoredSnapshotCurrent(latestPath, dataBuffer);
             }
             if (alreadyCurrent) {
-                latestTuple = existingTuple;
+                latestTuple = withValidationTime(existingTuple, validatedAtNs);
             }
         }
 
@@ -874,7 +890,19 @@ function isRecoverySnapshotUpToDateFast(target, cached) {
         if (latestStats.isSymbolicLink() || !latestStats.isFile()) {
             return false;
         }
-        return statTuplesEqual(extractStatTuple(latestStats), cached.latestTuple);
+        if (!statTuplesEqual(extractStatTuple(latestStats), cached.latestTuple)) {
+            return false;
+        }
+        if (!isStatTupleRacy(cached.latestTuple)) {
+            return true;
+        }
+        // An external write within the timestamp tick can leave the tuple unchanged, so read the snapshot.
+        const confirmed = confirmFileContentSync(latestPath, cached.latestSha, cached.latestTuple);
+        if (!confirmed) {
+            return false;
+        }
+        chatStateCache.update(target.activePath, { latestTuple: withValidationTime(cached.latestTuple, confirmed.validatedAtNs) });
+        return true;
     } catch {
         return false;
     }

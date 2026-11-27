@@ -21,16 +21,20 @@ import {
     chatStateCache,
     computeNormalizedBackupHash,
     computeSha256,
+    confirmFileContentSync,
+    currentTimeNs,
     extractStatTuple,
     getEntryRawBuffer,
     getEntryRawText,
     getLatestBackupFileInfo,
     isReliableStatTuple,
+    isStatTupleRacy,
     isValidUtf8Buffer,
     maybeInjectChatIoFault,
     pruneBackupsByPrefix,
     statTuplesEqual,
     tryHardLinkPreWriteBackupSync,
+    withValidationTime,
     writeChatFileInPlaceFast,
     writeNonDurableAtomicFileSync,
 } from '../chat-io-fastpath.js';
@@ -542,17 +546,21 @@ export function isChatSaveExtensionFast(incoming, existing, { ignoreDerivedMetad
 
 // SillyBunny: dedupe regular and pre-write backups via stat-validated normalized SHA-256 hashes.
 function checkDuplicateChatBackup(directory, prefix, incomingNormalizedHash) {
+    // Taken before the newest backup is listed and read, as `withValidationTime` requires.
+    const validatedAtNs = currentTimeNs();
     const latestInfo = getLatestBackupFileInfo(directory, prefix);
     if (!latestInfo) {
         return { isDuplicate: false, latestInfo: null };
     }
 
+    // A backup whose tuple is racy is read again, because skipping a backup that is not a duplicate loses history.
     const cached = backupDedupeCache.get(directory, prefix);
     if (cached
         && cached.filePath === latestInfo.filePath
         && latestInfo.tuple
         && isReliableStatTuple(latestInfo.tuple)
-        && statTuplesEqual(latestInfo.tuple, cached.tuple)) {
+        && statTuplesEqual(latestInfo.tuple, cached.tuple)
+        && !isStatTupleRacy(cached.tuple)) {
         return {
             isDuplicate: cached.size > 0n && cached.normalizedHash === incomingNormalizedHash,
             latestInfo,
@@ -568,7 +576,7 @@ function checkDuplicateChatBackup(directory, prefix, incomingNormalizedHash) {
     if (latestInfo.tuple && isReliableStatTuple(latestInfo.tuple)) {
         backupDedupeCache.set(directory, prefix, {
             filePath: latestInfo.filePath,
-            tuple: latestInfo.tuple,
+            tuple: withValidationTime(latestInfo.tuple, validatedAtNs),
             size: latestInfo.tuple.size,
             normalizedHash: latestNormalizedHash,
         });
@@ -722,6 +730,7 @@ function backupChatPreWrite(directory, name, dataOrGetter, handle = '', options 
                 backupFile,
                 hardLinkContext.latestTuple,
                 latestInfo ? latestInfo.mtimeMs : null,
+                hardLinkContext.latestSha ?? null,
             );
             if (linkResult.linked) {
                 linked = true;
@@ -733,7 +742,7 @@ function backupChatPreWrite(directory, name, dataOrGetter, handle = '', options 
         if (!linked) {
             tryWriteFileSync(backupFile, getData());
             try {
-                writtenTuple = extractStatTuple(fs.lstatSync(backupFile, { bigint: true }));
+                writtenTuple = withValidationTime(extractStatTuple(fs.lstatSync(backupFile, { bigint: true })));
             } catch {
                 writtenTuple = null;
             }
@@ -1296,6 +1305,7 @@ export function createFragmentSearchMatcher(fragments) {
 export async function getChatInfo(pathToFile, additionalData = {}, withMetadata = false, matcher = null, previewMessageLimit = 0) {
     try {
         const parsedPath = path.parse(pathToFile);
+        const validatedAtNs = currentTimeNs();
         // SillyBunny: bigint stat preserves full 64-bit NTFS inode IDs for ChatInfoCache validation.
         const stats = await fs.promises.stat(pathToFile, { bigint: true });
         const fileSize = Number(stats.size);
@@ -1440,7 +1450,7 @@ export async function getChatInfo(pathToFile, additionalData = {}, withMetadata 
                             chatMetadataJson: capturedChatMetadata !== null ? JSON.stringify(capturedChatMetadata) : null,
                             previewLimitCached: previewLimit,
                             previewMessagesJson: previewLimit > 0 ? JSON.stringify(previewMessages) : null,
-                        });
+                        }, validatedAtNs);
                     }
 
                     res(chatData);
@@ -1653,6 +1663,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
     let diskRawText = null;
     let diskValidated = false;
     let diskParsedHeader = null;
+    let snapshotStartedAtNs = null;
 
     try {
         if (recoverFileWriteSync(filePath)) {
@@ -1671,11 +1682,13 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                 expectedFileIdentity = { dev: pathStats.dev, ino: pathStats.ino };
                 expectedFileHash = cachedEntry.sha256;
                 currentSha256 = cachedEntry.sha256;
-                currentStatTuple = extractStatTuple(pathStats);
+                currentStatTuple = withValidationTime(extractStatTuple(pathStats), cachedEntry.validatedAtNs);
                 diskLines = cachedEntry.lines;
                 diskParsedHeader = cachedEntry.header;
                 diskValidated = true;
             } else {
+                // SillyBunny: taken before the read, because a write that lands during the read can keep the timestamps the read ends with.
+                snapshotStartedAtNs = currentTimeNs();
                 currentSnapshot = readChatFileSnapshot(filePath);
             }
         } else {
@@ -1737,7 +1750,9 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
             expectedFileIdentity = { dev: activeFileStats.dev, ino: activeFileStats.ino };
             expectedFileHash = currentSnapshot.hash;
             currentSha256 = currentSnapshot.hash;
-            currentStatTuple = descriptorMatchesPath ? extractStatTuple(currentSnapshot.descriptorStats) : null;
+            currentStatTuple = descriptorMatchesPath
+                ? withValidationTime(extractStatTuple(currentSnapshot.descriptorStats), snapshotStartedAtNs)
+                : null;
             diskRawText = currentSnapshot.data;
             diskSplit = diskRawText ? splitChatLinesForComparison(diskRawText) : { lines: [], hasBom: false, isCanonical: true };
             diskLines = diskSplit.lines;
@@ -1860,6 +1875,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                         ? {
                             latestPath: getChatRecoveryPaths(recoveryTarget).latestPath,
                             latestTuple: cachedEntry.latestTuple,
+                            latestSha: cachedEntry.latestSha,
                         }
                         : null;
                     const prewriteResult = backupChatPreWrite(backupDirectory, cardName, getCurrentRawText, handle, {
@@ -1968,12 +1984,20 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
         }
     }
 
+    // SillyBunny: a tuple that an external same-size write could have left unchanged (see `isStatTupleRacy`) proves
+    // nothing about the bytes on disk, so the checks below fall back to comparing content for it.
+    const settledStatTuple = (currentStatTuple && isReliableStatTuple(currentStatTuple) && !isStatTupleRacy(currentStatTuple))
+        ? currentStatTuple
+        : null;
+
     if (unchangedChatData !== null && (currentStatTuple || currentSnapshot)) {
         try {
-            if (currentStatTuple && isReliableStatTuple(currentStatTuple)) {
-                assertChatFileStatTupleCurrent(filePath, currentStatTuple);
+            if (settledStatTuple) {
+                assertChatFileStatTupleCurrent(filePath, settledStatTuple);
             } else if (currentSnapshot) {
                 assertChatFileSnapshotCurrent(filePath, currentSnapshot);
+            } else if (!confirmFileContentSync(filePath, currentSha256, currentStatTuple)) {
+                throw Object.assign(new Error(`Chat file changed after it was checked: ${filePath}`), { code: 'ESTALE' });
             }
         } catch (error) {
             chatStateCache.invalidate(filePath);
@@ -1992,7 +2016,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                 postWriteStatTuple = writeChatFileInPlaceFast(filePath, jsonlBuffer, {
                     expectedFileIdentity,
                     expectedFileHash,
-                    expectedStatTuple: currentStatTuple,
+                    expectedStatTuple: settledStatTuple,
                     getRollbackBuffer: () => {
                         if (currentSnapshot?.rawBuffer) {
                             return currentSnapshot.rawBuffer;
@@ -2016,7 +2040,7 @@ function trySaveChatLocked(chatData, filePath, skipIntegrityCheck = false, handl
                 try {
                     const postStats = fs.lstatSync(filePath, { bigint: true });
                     if (postStats.isFile() && !postStats.isSymbolicLink()) {
-                        postWriteStatTuple = extractStatTuple(postStats);
+                        postWriteStatTuple = withValidationTime(extractStatTuple(postStats));
                     }
                 } catch {
                     postWriteStatTuple = null;
