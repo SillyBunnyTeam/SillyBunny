@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { chromium, request as playwrightRequest } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
+import { chromium, firefox, webkit, request as playwrightRequest } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 import { fetchRestartCacheClearCookies } from './helpers/restart-cache-clear-seed.js';
 import {
@@ -10,10 +11,26 @@ import {
     getWorkerAccountHandle,
     getWorkerStorageStatePath,
     isAccountIsolationEnabled,
+    isFirstRunOver,
     waitUntilFirstRunIsOver,
 } from './e2e-servers.js';
 
+const LAUNCHERS = { chromium, firefox, webkit };
 const PRIMED_SUBDIRECTORIES = ['InChatAgents', 'InChatAgentGroups'];
+const currentFile = fileURLToPath(import.meta.url);
+const repositoryDirectory = path.resolve(path.dirname(currentFile), '..');
+
+/**
+ * Resolves the Playwright browser launcher for priming.
+ * @param {string} browserName
+ */
+export function resolvePrimeBrowser(browserName = 'chromium') {
+    const launcher = LAUNCHERS[browserName];
+    if (!launcher) {
+        throw new Error(`Unsupported prime browser "${browserName}". Expected one of: ${Object.keys(LAUNCHERS).join(', ')}.`);
+    }
+    return launcher;
+}
 
 /**
  * Merges two cookie lists, keeping the first occurrence of each cookie name.
@@ -78,18 +95,28 @@ function copyPrimedUserFiles(dataRoot, handle) {
 }
 
 /**
- * Boots the app once on each managed server to complete first-run setup, seeds one admin account per parallel
- * worker when account isolation is enabled, and writes each worker's storage state (session + restart-cache-clear
- * cookies, with empty localStorage).
- * @param {import('@playwright/test').FullConfig} [config]
+ * Boots the app once on each server to complete first-run setup using the requested browser engine, and when
+ * managing isolated test servers, seeds per-worker admin accounts and writes worker storage states.
+ * @param {{ url: string, dataRoot: string }[]} servers
+ * @param {string} [browserName]
+ * @param {{ workerCount?: number, isolateAccounts?: boolean, writeStorageState?: boolean }} [options]
  */
-export default async function primeServers(config) {
-    const servers = JSON.parse(process.env[SERVER_LIST_VARIABLE]);
-    const workerCount = Math.max(1, Number(config?.workers) || 1);
-    const isolateAccounts = isAccountIsolationEnabled(process.env, true);
-    const browser = await chromium.launch();
+export async function primeServerList(servers, browserName = 'chromium', options = {}) {
+    const {
+        workerCount = 1,
+        isolateAccounts = false,
+        writeStorageState = false,
+    } = options;
+    const targets = writeStorageState
+        ? servers
+        : servers.filter(({ dataRoot }) => !isFirstRunOver(dataRoot));
+    if (!targets.length) {
+        return;
+    }
+
+    const browser = await resolvePrimeBrowser(browserName).launch();
     try {
-        await Promise.all(servers.map(async (server, serverIndex) => {
+        await Promise.all(targets.map(async (server, serverIndex) => {
             const { url, dataRoot } = server;
             const cacheClearCookies = await fetchRestartCacheClearCookies(url);
             let adminSession = null;
@@ -98,20 +125,26 @@ export default async function primeServers(config) {
                     adminSession = await loginAccount(url, DEFAULT_USER_HANDLE);
                 }
 
-                const primeCookies = mergeCookies(adminSession?.cookies ?? [], cacheClearCookies);
-                const context = await browser.newContext({
-                    baseURL: url,
-                    storageState: { cookies: primeCookies, origins: [] },
-                });
-                try {
-                    // All servers do their first boot at the same time, which can take longer than the default 30 s.
-                    context.setDefaultTimeout(180_000);
-                    await testSetup.awaitST({ page: await context.newPage() });
-                    // The app saves the end of the first run after a delay. A page that closes before that save leaves
-                    // the first run open, and each later boot shows the first-run prompt.
-                    await waitUntilFirstRunIsOver(dataRoot);
-                } finally {
-                    await context.close();
+                if (!isFirstRunOver(dataRoot)) {
+                    const primeCookies = mergeCookies(adminSession?.cookies ?? [], cacheClearCookies);
+                    const context = await browser.newContext({
+                        baseURL: url,
+                        storageState: { cookies: primeCookies, origins: [] },
+                    });
+                    try {
+                        // All servers do their first boot at the same time, which can take longer than the default 30 s.
+                        context.setDefaultTimeout(180_000);
+                        await testSetup.awaitST({ page: await context.newPage() });
+                        // The app saves the end of the first run after a delay. A page that closes before that save leaves
+                        // the first run open, and each later boot shows the first-run prompt.
+                        await waitUntilFirstRunIsOver(dataRoot);
+                    } finally {
+                        await context.close();
+                    }
+                }
+
+                if (!writeStorageState) {
+                    return;
                 }
 
                 fs.mkdirSync(path.join(dataRoot, STORAGE_DIRECTORY), { recursive: true });
@@ -150,4 +183,51 @@ export default async function primeServers(config) {
     } finally {
         await browser.close();
     }
+}
+
+/**
+ * Playwright `globalSetup` entry point for managed test servers.
+ * @param {import('@playwright/test').FullConfig} [config]
+ */
+export default async function primeServers(config) {
+    const servers = JSON.parse(process.env[SERVER_LIST_VARIABLE]);
+    const browserName = config?.projects?.[0]?.use?.browserName || 'chromium';
+    const workerCount = Math.max(1, Number(config?.workers) || 1);
+    const isolateAccounts = isAccountIsolationEnabled(process.env, true);
+    await primeServerList(servers, browserName, {
+        workerCount,
+        isolateAccounts,
+        writeStorageState: true,
+    });
+}
+
+/**
+ * Parses CLI options for standalone priming in CI (`node tests/e2e-servers-prime.js --browser=webkit`).
+ * @param {string[]} argv
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function parsePrimeCliArgs(argv, env = process.env) {
+    let browserName = 'chromium';
+    let url = env.SILLYBUNNY_TEST_BASE_URL || env.ST_BASE_URL || env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:4444';
+    let dataRoot = path.join(repositoryDirectory, 'data');
+
+    for (const arg of argv) {
+        if (arg.startsWith('--browser=')) {
+            browserName = arg.slice('--browser='.length);
+        } else if (arg.startsWith('--url=')) {
+            url = arg.slice('--url='.length);
+        } else if (arg.startsWith('--data-root=')) {
+            dataRoot = path.resolve(arg.slice('--data-root='.length));
+        } else {
+            throw new Error(`Unknown argument "${arg}".`);
+        }
+    }
+
+    resolvePrimeBrowser(browserName);
+    return { browserName, url, dataRoot };
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === currentFile) {
+    const { browserName, url, dataRoot } = parsePrimeCliArgs(process.argv.slice(2));
+    await primeServerList([{ url, dataRoot }], browserName);
 }
