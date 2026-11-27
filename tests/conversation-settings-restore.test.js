@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, tes
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { assertSandboxedInstall, createInstallSandbox, snapshotTree } from './util/install-sandbox.js';
 import { populateUser, ROLEPLAY_GROUP_FILE } from './util/conversation-migration-harness.js';
@@ -24,7 +25,7 @@ global.DATA_ROOT = sandbox.dataRoot;
 const { getUserDirectories } = await import('../src/users.js');
 const { conversationIndex } = await import('../src/conversation-index.js');
 const { BACKUP_FOLDER_NAME, ensureMigrated, importLegacyThreads, runMigration } = await import('../src/conversation-migration.js');
-const { listConversations, readCharacterState, readConversation, readConversationFolders, updateCharacterState, updateConversationFolders } = await import('../src/conversation-store.js');
+const { createConversation, listConversations, readCharacterState, readConversation, readConversationFolders, updateCharacterState, updateConversationFolders } = await import('../src/conversation-store.js');
 
 let server;
 let baseUrl;
@@ -33,7 +34,7 @@ let settingsPath;
 let handleCounter = 0;
 
 beforeAll(async () => {
-    process.chdir(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'));
+    process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
     const { router } = await import('../src/endpoints/settings.js');
     const app = express();
     app.use(express.json({ limit: '10mb' }));
@@ -169,6 +170,25 @@ describe('a snapshot of settings.json from before the migration', () => {
         runMigration(user);
 
         expect(readCharacterState(user).characters['Cass.png']).toEqual({ statusOverride: 'dnd' });
+    });
+
+    test('a user who started with nothing to migrate and created conversations or character state is not locked out or duplicated when restoring an old snapshot', async () => {
+        const legacy = buildLegacySettingsFixture().settings;
+        useUser({ settings: { username: 'fresh', _version: 1 }, groups: { [ROLEPLAY_GROUP_FILE.id]: ROLEPLAY_GROUP_FILE } });
+        expect(ensureMigrated(user)).toEqual({ state: 'nothing_to_migrate' });
+        const created = createConversation(user, { kind: 'direct', personaId: PERSONA, characters: ['Nova.png'] }).conversation;
+        updateCharacterState(user, 'Nova.png', { statusOverride: 'dnd' });
+        const foldersBefore = conversationFolders();
+
+        fs.rmSync(settingsPath, { force: true });
+        fs.writeFileSync(settingsPath, JSON.stringify(legacy));
+
+        expect(ensureMigrated(user)).toEqual({ state: 'migrated' });
+        expect(conversationFolders()).toEqual(foldersBefore);
+        expect(listConversations(user).conversations.map(item => item.id)).toEqual([created.id]);
+        expect(readCharacterState(user).characters).toEqual({ 'Nova.png': { statusOverride: 'dnd' } });
+        expect(readSettings().extension_settings.sillybunny_conversation.version).toBe(2);
+        expect(fs.existsSync(path.join(user.directories.conversations, 'migration-done.json'))).toBe(true);
     });
 });
 

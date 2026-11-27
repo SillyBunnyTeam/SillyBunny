@@ -105,6 +105,7 @@ describe('POST /chat/create with records', () => {
     });
 
     test.each([
+        ['records that are null', { records: null }],
         ['records that are a string', { records: 'text' }],
         ['records with a row that is not an object', { records: [line('a', 'x'), 5] }],
         ['records that start with a header', { records: [header(), line('a', 'x')] }],

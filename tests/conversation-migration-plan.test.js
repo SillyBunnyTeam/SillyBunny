@@ -8,6 +8,7 @@ import { LEGACY_DEFAULT_SETTINGS } from '../src/conversation-legacy-defaults.js'
 import { isChatId, isConversationId } from '../src/conversation-paths.js';
 import { parseLegacyThreadKey } from '../src/conversation-legacy.js';
 import { planMigration, SKIP } from '../src/conversation-migration-plan.js';
+import { applyCharacterPatch, MAX_GROUP_MEMBERS, parseCreateInput } from '../src/conversation-schema.js';
 import {
     BASE,
     branch,
@@ -554,5 +555,61 @@ describe('planMigration edge cases', () => {
 
         expect(plan.conversations).toHaveLength(1);
         expect(plan.conversations[0].input.chats.map(chat => chat.name).toSorted()).toEqual(['One', 'Two']);
+    });
+
+    test('filters invalid per-conversation settings out of input.settings and reports the exact dropped count', () => {
+        const store = storeOf([
+            directEntry('Nova.png', [main(lines(2))], {
+                settings: {
+                    authors_note: 'valid\u0000nul',
+                    offline_message: 'x'.repeat(70_000),
+                    inactivity_threshold: Number.POSITIVE_INFINITY,
+                    lorebook_override: 'Kept Book',
+                },
+            }),
+        ]);
+
+        const plan = planOf(store);
+        const [{ input }] = plan.conversations;
+
+        expect(input.settings).toEqual({ lorebook_override: 'Kept Book' });
+        expect(plan.report.dropped.settings).toBe(3);
+        expect(() => parseCreateInput(input, { now: NOW })).not.toThrow();
+    });
+
+    test('normalizes invalid routine generatedAt timestamps so character state updates never fail validation', () => {
+        const days = { 1: [{ time: '09:00-17:00', activity: 'work', status: 'dnd' }] };
+        const store = storeOf([
+            directEntry('Nova.png', [main(lines(2))], { schedule: { days, generatedAt: 1700000000000.75 } }),
+            directEntry('Orion.png', [main(lines(2))], { schedule: { days, generatedAt: -50 }, settings: { schedule_generated_at: 1700000000123 } }),
+            directEntry('Lyra.png', [main(lines(2))], { schedule: { days, generatedAt: 9e15 }, settings: { schedule_generated_at: Number.NaN } }),
+            directEntry('Aria.png', [main(lines(2))], { schedule: { days, generatedAt: Number.POSITIVE_INFINITY }, settings: { schedule_generated_at: -1 } }),
+        ]);
+
+        const { characterState } = planOf(store);
+
+        expect(characterState['Nova.png'].routine.generatedAt).toBe(1700000000000);
+        expect(characterState['Orion.png'].routine.generatedAt).toBe(1700000000123);
+        expect(characterState['Lyra.png'].routine.generatedAt).toBe(0);
+        expect(characterState['Aria.png'].routine.generatedAt).toBe(0);
+        for (const state of Object.values(characterState)) {
+            expect(() => applyCharacterPatch({}, state)).not.toThrow();
+        }
+    });
+
+    test('caps usable group members at MAX_GROUP_MEMBERS and deduplicates them', () => {
+        const members = Array.from({ length: MAX_GROUP_MEMBERS + 8 }, (_, index) => `Member${index}.png`);
+        const record = groupRecord('g-huge', [members[0], ...members], { name: 'Huge Group' });
+        const store = storeOf(
+            [groupEntry('g-huge', members[0], [main(lines(2))])],
+            { groups: [record] },
+        );
+
+        const plan = planOf(store, { characterExists: () => true });
+        const [{ input }] = plan.conversations;
+
+        expect(input.characters).toHaveLength(MAX_GROUP_MEMBERS);
+        expect(new Set(input.characters).size).toBe(MAX_GROUP_MEMBERS);
+        expect(() => parseCreateInput(input, { now: NOW })).not.toThrow();
     });
 });

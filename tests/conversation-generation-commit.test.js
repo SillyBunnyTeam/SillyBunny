@@ -171,6 +171,11 @@ describe('applyConversationReply', () => {
     });
 
     describe('refuses', () => {
+        test('empty-reply: a reasoning-only or whitespace-only reply is refused without adding an empty pending message', () => {
+            expect(applied(chatRecords(), plan(), { text: '', reasoning: 'Only thinking.' })).toEqual({ reason: 'empty-reply' });
+            expect(applied(chatRecords(), plan(), { text: '   \n\t  ', reasoning: 'Only thinking.' })).toEqual({ reason: 'empty-reply' });
+        });
+
         test('reply-landed: a message already carries the token of the reply', () => {
             const records = chatRecords([...chatMessages(), message('m4', 'character', 'Saved by the page.', 4, { reply_token: TOKEN })]);
 

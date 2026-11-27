@@ -41,6 +41,7 @@ import {
     ConversationStoreError,
     createChat,
     createConversation,
+    deleteChat,
     findDirectConversation,
     listConversations,
     readCharacterState,
@@ -291,6 +292,14 @@ function carriesLegacyStore(legacy) {
     return hasLegacyContent(legacy) || (Number.isFinite(legacy.version) && legacy.version < MIGRATED_STORE_VERSION);
 }
 
+function removeInProgressMarker(user) {
+    try {
+        fs.rmSync(getMarkerPath(user), { force: true });
+    } catch (error) {
+        console.error('The conversation migration could not remove the marker of a run that was stopped:', error);
+    }
+}
+
 /**
  * For a user whose migration is over: removes the old object from `settings.json` when it is there again (a snapshot
  * restore, a reset to an older file, an account import), after it copied the object to a backup file. Plans and writes
@@ -299,11 +308,7 @@ function carriesLegacyStore(legacy) {
  * @returns {{ state: 'migrated', trimmed?: { backupFile: string, settingsVersion: number }, trimFailed?: true }}
  */
 function checkMigratedUser(user, now) {
-    try {
-        fs.rmSync(getMarkerPath(user), { force: true });
-    } catch (error) {
-        console.error('The conversation migration could not remove the marker of a run that was stopped:', error);
-    }
+    removeInProgressMarker(user);
 
     const settingsPath = getSettingsPath(user);
     let initialText;
@@ -353,7 +358,7 @@ function undoWrites(user, marker) {
         if (marker.charactersBefore === null) {
             fs.rmSync(getCharactersPath(user), { force: true });
         } else {
-            fs.writeFileSync(getCharactersPath(user), marker.charactersBefore);
+            tryWriteFileSync(getCharactersPath(user), marker.charactersBefore, 'utf8', { durable: true });
         }
         fs.rmSync(getMarkerPath(user), { force: true });
     } catch (error) {
@@ -564,11 +569,16 @@ export function runMigration(user, { now = Date.now() } = {}) {
         if (hasMigratedStore(user)) {
             tryWriteDoneMarker(user, { migratedAt: now, backupFile: '', localStorageImported: legacy.localStorageMigrated === true });
         }
-        fs.rmSync(getMarkerPath(user), { force: true });
+        removeInProgressMarker(user);
         return { state: 'migrated' };
     }
     if (leftover) {
         undoWrites(user, leftover);
+    }
+    if (!leftover && hasMigratedStore(user)) {
+        // A user who had nothing to migrate and then created conversations or character state already uses the new store.
+        tryWriteDoneMarker(user, { migratedAt: now, backupFile: '', localStorageImported: legacy.localStorageMigrated === true });
+        return checkMigratedUser(user, now);
     }
     if (!hasLegacyContent(legacy)) {
         return { state: 'nothing_to_migrate' };
@@ -577,22 +587,26 @@ export function runMigration(user, { now = Date.now() } = {}) {
     const plan = planMigration(legacy, readInputs(user, settings, now));
     const marker = writeMarker(user, plan.conversations.map(item => item.id));
 
+    let avatarsNotCopied;
+    let backupFile;
+    let settingsVersion;
     try {
-        const { avatarsNotCopied } = writePlan(user, plan);
+        ({ avatarsNotCopied } = writePlan(user, plan));
         const problems = verifyWrittenPlan(user, plan);
         if (problems.length > 0) {
             throw new MigrationError('verification_failed', `What was written does not match the source: ${[...new Set(problems)].join('; ')}.`);
         }
         // The pins are in settings.json outside the old object, and the migration re-keys them, so their old text goes into the backup too.
-        const backupFile = writeBackup(user, legacy, plan.pins.changed ? String(settings.accountStorage?.pinnedChats ?? '{}') : null, now);
-        const settingsVersion = writeTrimmedSettings(user, { settingsPath, initialText, settings, legacy, globalSettings: plan.globalSettings, pins: plan.pins });
-        tryWriteDoneMarker(user, { migratedAt: now, backupFile, localStorageImported: legacy.localStorageMigrated === true });
-        fs.rmSync(getMarkerPath(user), { force: true });
-        return { state: 'migrated', report: { ...plan.report, avatarsNotCopied, backupFile, settingsVersion } };
+        backupFile = writeBackup(user, legacy, plan.pins.changed ? String(settings.accountStorage?.pinnedChats ?? '{}') : null, now);
+        settingsVersion = writeTrimmedSettings(user, { settingsPath, initialText, settings, legacy, globalSettings: plan.globalSettings, pins: plan.pins });
     } catch (error) {
         undoWrites(user, marker);
         throw error;
     }
+    // `writeTrimmedSettings()` committed the migration, so post-commit marker updates must never undo the migrated store.
+    tryWriteDoneMarker(user, { migratedAt: now, backupFile, localStorageImported: legacy.localStorageMigrated === true });
+    removeInProgressMarker(user);
+    return { state: 'migrated', report: { ...plan.report, avatarsNotCopied, backupFile, settingsVersion } };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -732,7 +746,11 @@ export function importLegacyThreads(user, body, { now = Date.now() } = {}) {
     }
     const plan = planMigration({ version: 1, characters }, { ...readInputs(user, settings, now), pinnedChats: {} });
 
+    const charactersPath = getCharactersPath(user);
+    const charactersBefore = fs.existsSync(charactersPath) ? fs.readFileSync(charactersPath, 'utf8') : null;
     const made = [];
+    const appended = [];
+    let charactersChanged = false;
     try {
         for (const { id, input } of plan.conversations) {
             const existing = input.kind === 'direct' ? findDirectConversation(user, input.personaId, input.characters[0]) : null;
@@ -742,11 +760,13 @@ export function importLegacyThreads(user, body, { now = Date.now() } = {}) {
                 continue;
             }
             for (const chat of input.chats) {
-                createChat(user, existing.id, { ...chat, id: unusedChatId(readConversation(user, existing.id)) });
+                const { chat: created } = createChat(user, existing.id, { ...chat, id: unusedChatId(readConversation(user, existing.id)) });
+                appended.push({ conversationId: existing.id, chatId: created.id });
             }
         }
         for (const [avatar, state] of Object.entries(plan.characterState)) {
             if (!readCharacterState(user).characters[avatar]) {
+                charactersChanged = true;
                 updateCharacterState(user, avatar, state);
             }
         }
@@ -760,6 +780,24 @@ export function importLegacyThreads(user, body, { now = Date.now() } = {}) {
         tryWriteFileSync(settingsPath, JSON.stringify(next, null, 4));
     } catch (error) {
         made.forEach(id => removeConversationFolder(user, id));
+        for (const { conversationId, chatId } of appended) {
+            try {
+                deleteChat(user, conversationId, chatId);
+            } catch (cleanupError) {
+                console.error('The legacy thread import could not remove an appended chat:', cleanupError);
+            }
+        }
+        if (charactersChanged) {
+            try {
+                if (charactersBefore === null) {
+                    fs.rmSync(charactersPath, { force: true });
+                } else {
+                    tryWriteFileSync(charactersPath, charactersBefore, 'utf8', { durable: true });
+                }
+            } catch (cleanupError) {
+                console.error('The legacy thread import could not restore characters.json:', cleanupError);
+            }
+        }
         throw error;
     }
     // After the settings write, and without undoing the import if it fails: the flag in settings.json still guards it then.

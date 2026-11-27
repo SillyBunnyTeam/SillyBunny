@@ -1025,6 +1025,9 @@ function notifyChatWatchers(handle, chatKey) {
             watcher.scheduled = true;
             setImmediate(() => {
                 watcher.scheduled = false;
+                if (!chatWatchers.has(watcher)) {
+                    return;
+                }
                 watcher.push();
             });
         }
@@ -1059,7 +1062,12 @@ router.get('/events', (request, response) => {
         user: request.user,
         ...followed,
         page: typeof request.query.page === 'string' ? request.query.page : '',
-        push: () => response.write(`data: ${JSON.stringify({ pending: collectPending(watcher) })}\n\n`),
+        push: () => {
+            if (response.writableEnded || response.destroyed) {
+                return;
+            }
+            response.write(`data: ${JSON.stringify({ pending: collectPending(watcher) })}\n\n`);
+        },
         scheduled: false,
     };
     response.status(200).set({

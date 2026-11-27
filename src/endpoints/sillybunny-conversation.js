@@ -12,7 +12,7 @@
  * | `invalid_id`, `invalid_input` | 400 (`invalid_input` also carries a `message`) |
  * | `not_found` | 404 |
  * | `corrupt` | 422 |
- * | `exists`, `integrity`, `destructive` | 409 (`destructive` also carries a `reason`) |
+ * | `exists`, `integrity`, `destructive`, `settings_changed` | 409 (`destructive` carries a `reason`; `settings_changed` carries a `message`) |
  * | `conversion_failed` | 500, when removing a member could not convert the group; the group is as it was |
  * | `migration_failed` | 503, from every route but `/migration/status`, which says why |
  *
@@ -24,7 +24,7 @@ import path from 'node:path';
 
 import express from 'express';
 
-import { ensureMigrated, importLegacyThreads } from '../conversation-migration.js';
+import { ensureMigrated, importLegacyThreads, MigrationError } from '../conversation-migration.js';
 import {
     addMembers,
     ConversationStoreError,
@@ -99,6 +99,10 @@ function answerError(response, error) {
             body.reason = error.details.reason;
         }
         response.status(STATUS_BY_CODE[error.code] ?? 500).send(body);
+        return;
+    }
+    if (error instanceof MigrationError && error.code === 'settings_changed') {
+        response.status(409).send({ error: 'settings_changed', message: error.message });
         return;
     }
     console.error('Conversation route failed:', error);
@@ -241,7 +245,7 @@ router.post('/chat/create', route(async (user, body) => {
         return createChat(user, id, chat);
     }
     // A chat that starts with messages is the first save of that chat, so the answer carries the slug that its next save needs.
-    return createChatFromMessages(user, id, { ...chat, messages: records ?? [], chatMetadata });
+    return createChatFromMessages(user, id, { ...chat, messages: records === undefined ? [] : records, chatMetadata });
 }));
 
 router.post('/chat/get', route((user, body) => ({ chat: loadChat(user, body.id, body.chatId) })));
@@ -301,10 +305,10 @@ router.post('/extras/remove', route((user, body) => {
 
 router.post('/characters/get', route(user => readCharacterState(user)));
 
-router.post('/characters/update', route((user, body) => ({
-    avatar: body.avatar,
-    state: updateCharacterState(user, body.avatar, body.patch),
-})));
+router.post('/characters/update', route((user, body) => {
+    const state = updateCharacterState(user, body.avatar, body.patch);
+    return { avatar: String(body.avatar ?? '').trim(), state };
+}));
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Folders

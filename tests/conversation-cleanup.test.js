@@ -11,6 +11,7 @@ const {
     loadChat,
     readCharacterState,
     readConversation,
+    renameAvatarInConversation,
     updateCharacterState,
 } = await import('../src/conversation-store.js');
 const { deleteConversationsOfCharacter, deleteConversationsOfPersona, renameCharacterInConversations } = await import('../src/conversation-cleanup.js');
@@ -287,6 +288,35 @@ describe('renameCharacterInConversations', () => {
         await expect(renameCharacterInConversations(user, 5, NEW)).resolves.toMatchObject({ conversations: 0 });
         fs.rmSync(user.directories.conversations, { recursive: true, force: true });
         await expect(renameCharacterInConversations(user, OLD, NEW)).resolves.toMatchObject({ conversations: 0 });
+    });
+
+    test('deduplicates group members and extras and updates reminders when renaming onto an existing member', () => {
+        const trio = make('group', [OLD, 'Orion.png', 'Pip.png'], {
+            reminders: [{ id: 'r1', avatar: OLD, chatId: 'main', text: 'Ping', triggerAt: 5 }],
+        });
+        const directWithExtras = make('direct', ['Orion.png'], { extras: [OLD, 'Pip.png'] });
+
+        expect(renameAvatarInConversation(user, trio.id, OLD, 'Orion.png')).toBe(true);
+        expect(readConversation(user, trio.id).characters).toEqual(['Orion.png', 'Pip.png']);
+        expect(readConversation(user, trio.id).reminders[0].avatar).toBe('Orion.png');
+
+        expect(renameAvatarInConversation(user, directWithExtras.id, OLD, 'Orion.png')).toBe(true);
+        expect(readConversation(user, directWithExtras.id).extras).toEqual(['Pip.png']);
+    });
+
+    test('converts a two-member group into a direct conversation when renaming collapses its members to one', () => {
+        const duo = make('group', [OLD, 'Orion.png'], {
+            name: 'Duo',
+            reminders: [{ id: 'r1', avatar: OLD, chatId: 'main', text: 'Ping', triggerAt: 5 }],
+        });
+
+        expect(renameAvatarInConversation(user, duo.id, OLD, 'Orion.png')).toBe(true);
+
+        const [remainingId] = folderNames();
+        expect(remainingId).not.toBe(duo.id);
+        const converted = readConversation(user, remainingId);
+        expect(converted).toMatchObject({ kind: 'direct', characters: ['Orion.png'] });
+        expect(converted.reminders).toEqual([{ id: 'r1', avatar: 'Orion.png', chatId: 'main', text: 'Ping', triggerAt: 5 }]);
     });
 });
 

@@ -253,4 +253,20 @@ describe('POST /import-legacy', () => {
         // The import is marked done even when it wrote nothing, so the marker is the only file.
         expect(fs.readdirSync(user.directories.conversations)).toEqual(['migration-done.json']);
     });
+
+    test('answers 409 settings_changed when settings.json changes during the import', async () => {
+        useUser({ settings: settings() });
+        const originalReadFileSync = fs.readFileSync;
+        let reads = 0;
+        jest.spyOn(fs, 'readFileSync').mockImplementation((file, ...rest) => {
+            const data = originalReadFileSync(file, ...rest);
+            // ensureMigrated() reads settings.json first, then importLegacyThreads() reads it before and after writing.
+            return String(file) === settingsPath && ++reads === 3 ? `${data} ` : data;
+        });
+
+        const { status, json } = await post('/import-legacy', { personaId: PERSONA, characters: characters() });
+
+        expect(status).toBe(409);
+        expect(json).toMatchObject({ error: 'settings_changed', message: expect.any(String) });
+    });
 });

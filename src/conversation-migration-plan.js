@@ -60,6 +60,7 @@ export const SKIP = Object.freeze({
 });
 
 const DEFAULT_CHAT_ID = 'main';
+const MAX_TIMESTAMP = 8_640_000_000_000_000;
 const MAX_LEGACY_KEY_LENGTH = 1024;
 const MAX_READ_THROUGH_LENGTH = 256;
 const MAX_LEGACY_ID_LENGTH = 256;
@@ -85,6 +86,16 @@ function isObject(value) {
 
 function cleanText(value, maxLength) {
     return String(value ?? '').replaceAll('\0', '').trim().slice(0, maxLength);
+}
+
+/** Keeps a timestamp inside the store's safe integer range, matching `parseTimestamp()`. */
+function normalizeTimestamp(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+        return 0;
+    }
+    const whole = Math.trunc(number);
+    return Number.isSafeInteger(whole) && whole >= 0 && whole <= MAX_TIMESTAMP ? whole : 0;
 }
 
 function messagesOf(branch) {
@@ -213,7 +224,9 @@ function addSkip(skipped, reason, thread) {
 
 function usableMembers(group, inputs) {
     const disabled = new Set(group.disabled_members);
-    return group.members.filter(member => !disabled.has(member) && isSafeName(member) && inputs.characterExists(member));
+    return [...new Set(group.members)]
+        .filter(member => !disabled.has(member) && isSafeName(member) && inputs.characterExists(member))
+        .slice(0, MAX_GROUP_MEMBERS);
 }
 
 /**
@@ -634,7 +647,7 @@ function buildCharacterState(store, ctx) {
         if (!parsed.avatar || parsed.groupId || !isObject(schedule) || !isObject(schedule.days) || !isSafeName(parsed.avatar) || !ctx.inputs.characterExists(parsed.avatar)) {
             continue;
         }
-        const generatedAt = Number(schedule.generatedAt) || Number(thread.settings?.schedule_generated_at) || 0;
+        const generatedAt = normalizeTimestamp(schedule.generatedAt) || normalizeTimestamp(thread.settings?.schedule_generated_at);
         const current = routines.get(parsed.avatar);
         if (!current || generatedAt >= current.generatedAt) {
             routines.set(parsed.avatar, { generatedAt, days: schedule.days });
@@ -781,29 +794,34 @@ export function planMigration(rawStore, inputs) {
     const pins = rekeyPins(inputs.pinnedChats, ctx);
     const characterState = buildCharacterState(store, ctx);
 
-    const conversations = ctx.drafts.map(draft => ({
-        id: draft.id,
-        legacyKey: draft.legacyKey,
-        groupAvatarUrl: draft.groupAvatarUrl,
-        input: {
+    let settingsDropped = 0;
+    const conversations = ctx.drafts.map((draft) => {
+        // Filter through `readSettings()` so invalid legacy values are dropped before `createConversation()` validates them.
+        const settings = readSettings(draft.settings);
+        settingsDropped += Object.keys(draft.settings).length - Object.keys(settings).length;
+        return {
             id: draft.id,
-            kind: draft.kind,
-            personaId: draft.personaId,
-            characters: draft.characters,
-            extras: draft.extras,
-            name: draft.name,
-            favorite: false,
-            settings: draft.settings,
-            reminders: draft.reminders,
             legacyKey: draft.legacyKey,
-            createdAt: draft.createdAt,
-            updatedAt: draft.updatedAt,
-            activeChatId: draft.activeChatId,
-            chats: draft.chats,
-        },
-    }));
+            groupAvatarUrl: draft.groupAvatarUrl,
+            input: {
+                id: draft.id,
+                kind: draft.kind,
+                personaId: draft.personaId,
+                characters: draft.characters,
+                extras: draft.extras,
+                name: draft.name,
+                favorite: false,
+                settings,
+                reminders: draft.reminders,
+                legacyKey: draft.legacyKey,
+                createdAt: draft.createdAt,
+                updatedAt: draft.updatedAt,
+                activeChatId: draft.activeChatId,
+                chats: draft.chats,
+            },
+        };
+    });
 
-    const settingsDropped = conversations.reduce((sum, { input }) => sum + Object.keys(input.settings).length - Object.keys(readSettings(input.settings)).length, 0);
     const migratedChats = conversations.reduce((sum, { input }) => sum + input.chats.length, 0);
     return {
         conversations,

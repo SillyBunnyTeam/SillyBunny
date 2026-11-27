@@ -17,6 +17,8 @@ import {
     isUserRootInsideDataRoot,
 } from '../users.js';
 import { DEFAULT_USER } from '../constants.js';
+// SillyBunny: purge conversation index previews when an admin purges a user's data folder.
+import { conversationIndex } from '../conversation-index.js';
 
 export const router = express.Router();
 
@@ -258,6 +260,14 @@ router.post('/delete', requireAdminMiddleware, async (request, response) => {
             const directories = getUserDirectories(request.body.handle);
             console.info('Deleting data directories for', request.body.handle);
             await fsPromises.rm(directories.root, { recursive: true, force: true });
+            // SillyBunny: drop purged user's conversation message previews from _cache/conversations.sqlite.
+            try {
+                if (directories.conversations) {
+                    conversationIndex.retain(directories.conversations, []);
+                }
+            } catch (indexError) {
+                console.warn('Could not clear conversation index rows for purged user:', indexError);
+            }
         }
 
         return response.sendStatus(204);

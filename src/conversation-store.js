@@ -408,7 +408,7 @@ function mutateConversation(user, id, change) {
         const current = readConversation(user, id);
         const next = change(current);
         if (next !== current) {
-            writeJson(getConversationJsonPath(user.directories, id), next);
+            writeJson(guard(() => getConversationJsonPath(user.directories, id)), next);
         }
         return next;
     });
@@ -498,7 +498,12 @@ function removeAvatarFiles(directory, { except = '' } = {}) {
  */
 export function setConversationAvatar(user, id, data) {
     const type = Buffer.isBuffer(data) && data.length <= MAX_AVATAR_IMAGE_BYTES ? sniffImageType(data) : null;
-    const next = mutateConversation(user, id, (current) => {
+    const directory = conversationDirectory(user, id);
+    if (!directoryExists(directory)) {
+        throw notFound('The conversation');
+    }
+    return withConversationLock(user, id, () => {
+        const current = readConversation(user, id);
         if (current.kind !== 'group') {
             throw new ConversationStoreError('invalid_input', 'Only a group has an avatar of its own.');
         }
@@ -506,12 +511,13 @@ export function setConversationAvatar(user, id, data) {
             throw new ConversationStoreError('invalid_input', 'The avatar must be a PNG, JPEG, GIF or WebP image of at most 5 MiB.');
         }
         const fileName = `avatar.${type.extension}`;
-        tryWriteFileSync(path.join(conversationDirectory(user, id), fileName), data, undefined, { durable: true });
-        return { ...current, avatar: fileName, updatedAt: Math.max(Date.now(), current.updatedAt) };
+        tryWriteFileSync(path.join(directory, fileName), data, undefined, { durable: true });
+        const next = { ...current, avatar: fileName, updatedAt: Math.max(Date.now(), current.updatedAt) };
+        writeJson(guard(() => getConversationJsonPath(user.directories, id)), next);
+        // The old picture goes after the new one is listed, under the lock and best-effort so locked files cannot fail a committed upload.
+        runBestEffort(() => removeAvatarFiles(directory, { except: next.avatar }), `Could not remove the old avatar file of conversation ${id}.`);
+        return next;
     });
-    // The old picture goes after the new one is listed, so that a crash leaves an unused file and never a listed avatar without one.
-    removeAvatarFiles(conversationDirectory(user, id), { except: next.avatar });
-    return next;
 }
 
 /**
@@ -520,11 +526,19 @@ export function setConversationAvatar(user, id, data) {
  * @returns {Record<string, any>} The conversation with an empty `avatar`.
  */
 export function removeConversationAvatar(user, id) {
-    const next = mutateConversation(user, id, current => (
-        current.avatar ? { ...current, avatar: '', updatedAt: Math.max(Date.now(), current.updatedAt) } : current
-    ));
-    removeAvatarFiles(conversationDirectory(user, id));
-    return next;
+    const directory = conversationDirectory(user, id);
+    if (!directoryExists(directory)) {
+        throw notFound('The conversation');
+    }
+    return withConversationLock(user, id, () => {
+        const current = readConversation(user, id);
+        const next = current.avatar ? { ...current, avatar: '', updatedAt: Math.max(Date.now(), current.updatedAt) } : current;
+        if (next !== current) {
+            writeJson(guard(() => getConversationJsonPath(user.directories, id)), next);
+        }
+        runBestEffort(() => removeAvatarFiles(directory), `Could not remove the avatar file of conversation ${id}.`);
+        return next;
+    });
 }
 
 /**
@@ -843,7 +857,12 @@ export function renameChat(user, conversationId, chatId, name) {
  * @returns {Record<string, any>} The conversation after the change.
  */
 export function deleteChat(user, conversationId, chatId) {
-    return mutateConversation(user, conversationId, (current) => {
+    const directory = conversationDirectory(user, conversationId);
+    if (!directoryExists(directory)) {
+        throw notFound('The conversation');
+    }
+    return withConversationLock(user, conversationId, () => {
+        const current = readConversation(user, conversationId);
         requireListedChat(current, chatId);
         const remaining = current.chats.filter(chat => chat.id !== chatId);
         let activeChatId = current.activeChatId;
@@ -856,7 +875,7 @@ export function deleteChat(user, conversationId, chatId) {
             activeChatId = remaining.reduce((newest, chat) => (chat.createdAt >= newest.createdAt ? chat : newest)).id;
         }
         const next = { ...current, chats: remaining, activeChatId, updatedAt: Math.max(Date.now(), current.updatedAt) };
-        writeJson(getConversationJsonPath(user.directories, conversationId), next);
+        writeJson(guard(() => getConversationJsonPath(user.directories, conversationId)), next);
         removeChatFile(user, conversationId, chatId);
         return next;
     });
@@ -865,13 +884,16 @@ export function deleteChat(user, conversationId, chatId) {
 function removeChatFile(user, conversationId, chatId) {
     const filePath = guard(() => getChatFilePath(user.directories, conversationId, chatId));
     forgetChatRecoveryState(user, conversationId, chatId);
-    const release = acquireChatFileLock(filePath);
-    try {
-        fs.rmSync(filePath, { force: true });
-    } finally {
-        release();
-    }
-    conversationIndex.delete(filePath);
+    // The chat is already unlisted, so file removal is best-effort while index and recovery cleanup still run.
+    runBestEffort(() => {
+        const release = acquireChatFileLock(filePath);
+        try {
+            fs.rmSync(filePath, { force: true });
+        } finally {
+            release();
+        }
+    }, `Could not remove the file of deleted chat "${chatId}" of conversation ${conversationId}.`);
+    runBestEffort(() => conversationIndex.delete(filePath), `Could not drop the index row of deleted chat "${chatId}" of conversation ${conversationId}.`);
     clearChatRecoveryStateAfterDelete(user, conversationId, chatId);
 }
 
@@ -960,7 +982,17 @@ export function removeMember(user, id, avatar) {
     if (remaining.length === 1) {
         return convertGroupToDirect(user, id, remaining[0]);
     }
-    const conversation = mutateConversation(user, id, latest => guard(() => applyUpdatePatch(latest, { characters: latest.characters.filter(member => member !== name) }, { now: Date.now() })));
+    const conversation = mutateConversation(user, id, (latest) => {
+        const nextCharacters = latest.characters.filter(member => member !== name);
+        // Group reminders carry the group anchor avatar; reassign any targeting the removed member to the new anchor so they stay deliverable.
+        const reminders = nextCharacters.length > 0 && latest.reminders.some(reminder => reminder.avatar === name)
+            ? latest.reminders.map(reminder => (reminder.avatar === name ? { ...reminder, avatar: nextCharacters[0] } : reminder))
+            : undefined;
+        return guard(() => applyUpdatePatch(latest, {
+            characters: nextCharacters,
+            ...(reminders ? { reminders } : {}),
+        }, { now: Date.now() }));
+    });
     return { conversation, converted: false };
 }
 
@@ -1028,8 +1060,9 @@ function removeWrittenCopies(user, conversationId, chatIds) {
  * @param {Record<string, any>} group
  * @param {string[]} taken The chat ids that the direct conversation has, listed or not.
  * @param {object[]} existingReminders The reminders that the direct conversation has.
+ * @param {string} remaining The avatar of the surviving direct conversation character.
  */
-function planConvertedChats(group, taken, existingReminders) {
+function planConvertedChats(group, taken, existingReminders, remaining) {
     const used = new Set(taken);
     const ordered = group.chats.map((entry, index) => ({ entry, index })).sort((left, right) => left.entry.createdAt - right.entry.createdAt || left.index - right.index);
     const idMap = new Map(ordered.map(({ entry }) => [entry.id, chooseChatId(entry.id, entry.createdAt, used)]));
@@ -1048,9 +1081,14 @@ function planConvertedChats(group, taken, existingReminders) {
         },
     }));
     const knownReminders = new Set(existingReminders.map(reminder => reminder.id));
+    // Reassign migrated reminders to the surviving member so delivery never targets the removed character.
     const reminders = group.reminders
         .filter(reminder => !knownReminders.has(reminder.id))
-        .map(reminder => (reminder.chatId && idMap.has(reminder.chatId) ? { ...reminder, chatId: idMap.get(reminder.chatId) } : reminder));
+        .map(reminder => ({
+            ...reminder,
+            ...(reminder.chatId && idMap.has(reminder.chatId) ? { chatId: idMap.get(reminder.chatId) } : {}),
+            avatar: remaining,
+        }));
     return { chats, reminders, activeChatId: idMap.get(group.activeChatId) ?? chats[0].entry.id };
 }
 
@@ -1077,29 +1115,31 @@ function planConvertedChats(group, taken, existingReminders) {
 function convertGroupToDirect(user, groupId, remaining) {
     const groupDirectory = conversationDirectory(user, groupId);
     const release = acquireChatFileLock(groupDirectory);
+    let group;
+    let outcome;
     try {
-        const group = readConversation(user, groupId);
+        group = readConversation(user, groupId);
         if (group.kind !== 'group' || group.characters.length !== 2 || !group.characters.includes(remaining)) {
             throw new ConversationStoreError('invalid_input', 'The group has changed.');
         }
         const recordsBySource = new Map(group.chats.map(entry => [entry.id, readChatForConversion(user, groupId, entry.id)]));
         const target = findDirectConversation(user, group.personaId, remaining);
-        let outcome;
         try {
             outcome = target
-                ? appendCopiesAndRetire(user, group, groupDirectory, target, recordsBySource)
+                ? appendCopiesAndRetire(user, group, groupDirectory, target, remaining, recordsBySource)
                 : createDirectAndRetire(user, group, groupDirectory, remaining, recordsBySource);
         } catch (error) {
             console.error(`Converting the group ${groupId} failed; the group was left as it was.`, error);
             throw new ConversationStoreError('conversion_failed', CONVERSION_FAILED);
         }
         finishRetiredGroup(user, groupId, group.chats.map(entry => entry.id), groupDirectory, outcome.retiredPath);
-        // A direct conversation that the conversion made takes the group's folder, as it takes its favourite; one that existed keeps its own.
-        runBestEffort(() => rewriteFolderFile(user, file => withConvertedGroup(file, group.personaId, groupId, target ? '' : outcome.conversation.id)), `Could not move the folder of the converted group ${groupId}.`);
-        return { conversation: outcome.conversation, converted: true, removedId: groupId };
     } finally {
         release();
     }
+    // The folders lock is taken after the conversation's lock is released, matching deleteConversation().
+    // A direct conversation that the conversion made takes the group's folder, as it takes its favourite; one that existed keeps its own.
+    runBestEffort(() => rewriteFolderFile(user, file => withConvertedGroup(file, group.personaId, groupId, outcome.createdDirect ? outcome.conversation.id : '')), `Could not move the folder of the converted group ${groupId}.`);
+    return { conversation: outcome.conversation, converted: true, removedId: groupId };
 }
 
 /**
@@ -1140,33 +1180,33 @@ function attachRecords(plan, recordsBySource) {
     return plan.chats.map(({ sourceId, entry }) => ({ entry, records: recordsBySource.get(sourceId) }));
 }
 
-function appendCopiesAndRetire(user, group, groupDirectory, target, recordsBySource) {
+function appendCopiesAndRetire(user, group, groupDirectory, target, remaining, recordsBySource) {
     return withConversationLock(user, target.id, () => {
         const jsonPath = guard(() => getConversationJsonPath(user.directories, target.id));
         const previousText = fs.readFileSync(jsonPath, 'utf8');
         const current = readConversation(user, target.id);
         const earlierCopies = current.chats.filter(chat => chat.legacyId?.startsWith(`${group.id}/`));
-        const plan = planConvertedChats(group, [...current.chats.map(chat => chat.id), ...chatFileIds(user, target.id)], current.reminders);
+        const plan = planConvertedChats(group, [...current.chats.map(chat => chat.id), ...chatFileIds(user, target.id)], current.reminders, remaining);
         const copies = attachRecords(plan, recordsBySource);
+        const next = {
+            ...current,
+            chats: [...current.chats.filter(chat => !earlierCopies.includes(chat)), ...plan.chats.map(({ entry }) => entry)],
+            activeChatId: plan.activeChatId,
+            reminders: [...current.reminders, ...plan.reminders].slice(0, MAX_REMINDERS),
+            updatedAt: Math.max(Date.now(), current.updatedAt),
+        };
         const written = [];
         let listed = false;
+        let retiredPath;
         try {
             for (const copy of copies) {
                 writeNewChatFile(user, target.id, copy.entry, copy.records);
                 written.push(copy.entry.id);
             }
             verifyCopies(user, target.id, copies);
-            writeJson(jsonPath, {
-                ...current,
-                chats: [...current.chats.filter(chat => !earlierCopies.includes(chat)), ...plan.chats.map(({ entry }) => entry)],
-                activeChatId: plan.activeChatId,
-                reminders: [...current.reminders, ...plan.reminders].slice(0, MAX_REMINDERS),
-                updatedAt: Math.max(Date.now(), current.updatedAt),
-            });
+            writeJson(jsonPath, next);
             listed = true;
-            const retiredPath = retireGroup(groupDirectory);
-            runBestEffort(() => removeWrittenCopies(user, target.id, earlierCopies.map(chat => chat.id)), 'Could not remove the copies that an earlier conversion left.');
-            return { conversation: readConversation(user, target.id), retiredPath };
+            retiredPath = retireGroup(groupDirectory);
         } catch (error) {
             runBestEffort(() => {
                 if (listed) {
@@ -1176,13 +1216,16 @@ function appendCopiesAndRetire(user, group, groupDirectory, target, recordsBySou
             }, `Could not restore the conversation ${target.id} after a failed conversion.`);
             throw error;
         }
+        // `retireGroup()` committed the conversion, so cleanup of older copies runs outside the rollback catch.
+        runBestEffort(() => removeWrittenCopies(user, target.id, earlierCopies.map(chat => chat.id)), 'Could not remove the copies that an earlier conversion left.');
+        return { conversation: next, retiredPath, createdDirect: false };
     });
 }
 
 function createDirectAndRetire(user, group, groupDirectory, remaining, recordsBySource) {
-    const plan = planConvertedChats(group, [], []);
+    const plan = planConvertedChats(group, [], [], remaining);
     const copies = attachRecords(plan, recordsBySource);
-    const { conversation } = createConversation(user, {
+    const { conversation, created } = createConversation(user, {
         kind: 'direct',
         personaId: group.personaId,
         characters: [remaining],
@@ -1194,9 +1237,13 @@ function createDirectAndRetire(user, group, groupDirectory, remaining, recordsBy
         activeChatId: plan.activeChatId,
         chats: copies.map(({ entry, records }) => ({ ...entry, records })),
     });
+    if (!created) {
+        // A direct conversation appeared concurrently before createConversation(); append into it instead of deleting it on rollback.
+        return appendCopiesAndRetire(user, group, groupDirectory, conversation, remaining, recordsBySource);
+    }
     try {
         verifyCopies(user, conversation.id, copies);
-        return { conversation, retiredPath: retireGroup(groupDirectory) };
+        return { conversation, retiredPath: retireGroup(groupDirectory), createdDirect: true };
     } catch (error) {
         runBestEffort(() => {
             const directory = conversationDirectory(user, conversation.id);
@@ -1228,17 +1275,29 @@ export function renameAvatarInConversation(user, id, from, to) {
     const oldName = guard(() => parseCharacterAvatar(from));
     const newName = guard(() => parseCharacterAvatar(to));
     let changed = false;
+    let convertTo = '';
     mutateConversation(user, id, (current) => {
-        const swap = names => names.map(name => (name === oldName ? newName : name));
+        const swap = names => [...new Set(names.map(name => (name === oldName ? newName : name)))];
+        const characters = swap(current.characters);
+        if (current.kind === 'group' && characters.length === 1 && current.characters.length === 2) {
+            convertTo = characters[0];
+            return current;
+        }
+        const extras = swap(current.extras).filter(extra => current.kind !== 'direct' || extra !== characters[0]);
         const next = {
             ...current,
-            characters: swap(current.characters),
-            extras: swap(current.extras),
+            characters,
+            extras,
             reminders: current.reminders.map(reminder => (reminder.avatar === oldName ? { ...reminder, avatar: newName } : reminder)),
         };
         changed = JSON.stringify(next) !== JSON.stringify(current);
         return changed ? { ...next, updatedAt: Math.max(Date.now(), current.updatedAt) } : current;
     });
+    if (convertTo) {
+        // Collapsing a two-member group onto one avatar converts it so no invalid one-member group remains.
+        convertGroupToDirect(user, id, convertTo);
+        return true;
+    }
     return changed;
 }
 

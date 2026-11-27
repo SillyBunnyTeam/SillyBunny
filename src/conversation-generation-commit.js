@@ -125,6 +125,9 @@ function createPendingMessage(plan, reply, { id, finishedAt }) {
  * @returns {{ records: object[] } | { reason: string }}
  */
 export function applyConversationReply(records, plan, reply, context) {
+    if (!String(reply?.text ?? '').trim()) {
+        return { reason: 'empty-reply' };
+    }
     const refusal = findRefusal(records.slice(1), /** @type {NonNullable<GenerationCommitPlan['reply']>} */ (plan.reply));
     if (refusal) {
         return { reason: refusal };

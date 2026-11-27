@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, tes
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { assertSandboxedInstall, createInstallSandbox, snapshotTree } from './util/install-sandbox.js';
 import { GROUP_AVATAR_BYTES, populateUser, ROLEPLAY_GROUP_FILE } from './util/conversation-migration-harness.js';
@@ -231,7 +232,7 @@ describe('a settings save from a page that still holds the old object', () => {
     let root;
 
     beforeAll(async () => {
-        process.chdir(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'));
+        process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
         const { router } = await import('../src/endpoints/settings.js');
         const app = express();
         app.use(express.json({ limit: '10mb' }));
@@ -283,13 +284,62 @@ describe('when the migration fails', () => {
     test('a backup that cannot be written removes the folders it made, and leaves settings.json as it was', () => {
         const before = { settings: fs.readFileSync(settingsPath, 'utf8') };
         fs.writeFileSync(path.join(user.directories.backups, BACKUP_FOLDER_NAME), 'a file where the folder should be');
+
+        expect(() => runMigration(user)).toThrow();
+
+        expectNothingChanged(before);
+        expect(fs.existsSync(path.join(user.directories.conversations, 'characters.json'))).toBe(false);
+    });
+
+    test('restores characters.json atomically when undoing an interrupted run that recorded charactersBefore', () => {
+        const before = { settings: fs.readFileSync(settingsPath, 'utf8') };
+        fs.writeFileSync(path.join(user.directories.backups, BACKUP_FOLDER_NAME), 'a file where the folder should be');
         const previousCharacters = JSON.stringify({ version: 1, characters: { 'Cass.png': { statusOverride: 'dnd' } } });
-        fs.writeFileSync(path.join(user.directories.conversations, 'characters.json'), previousCharacters);
+        fs.writeFileSync(path.join(user.directories.conversations, 'characters.json'), JSON.stringify({ version: 1, characters: { 'Cass.png': { statusOverride: 'offline' } } }));
+        fs.writeFileSync(path.join(user.directories.conversations, MARKER_FILE_NAME), JSON.stringify({ conversationIds: [], charactersBefore: previousCharacters }));
 
         expect(() => runMigration(user)).toThrow();
 
         expectNothingChanged(before);
         expect(fs.readFileSync(path.join(user.directories.conversations, 'characters.json'), 'utf8')).toBe(previousCharacters);
+        expect(fs.readdirSync(user.directories.conversations).filter(name => name.endsWith('.tmp'))).toEqual([]);
+    });
+
+    test('does not undo a committed migration when removing the in-progress marker fails', () => {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const originalRmSync = fs.rmSync;
+        const markerPath = path.join(user.directories.conversations, MARKER_FILE_NAME);
+        jest.spyOn(fs, 'rmSync').mockImplementation((target, ...rest) => {
+            if (String(target) === markerPath) {
+                throw Object.assign(new Error('busy'), { code: 'EBUSY' });
+            }
+            return originalRmSync(target, ...rest);
+        });
+
+        const outcome = runMigration(user, { now: MIGRATION_TIME });
+
+        jest.restoreAllMocks();
+        expect(outcome.state).toBe('migrated');
+        expect(conversationFolders()).toHaveLength(outcome.report.migrated.conversations);
+        expect(readSettings().extension_settings.sillybunny_conversation.version).toBe(2);
+        expect(fs.existsSync(path.join(user.directories.conversations, DONE_MARKER_FILE_NAME))).toBe(true);
+    });
+
+    test('a marker left after a v2 settings write that cannot be removed still answers migrated', () => {
+        runMigration(user, { now: MIGRATION_TIME });
+        fs.rmSync(path.join(user.directories.conversations, DONE_MARKER_FILE_NAME));
+        const markerPath = path.join(user.directories.conversations, MARKER_FILE_NAME);
+        fs.writeFileSync(markerPath, JSON.stringify({ conversationIds: conversationFolders(), charactersBefore: null }));
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const originalRmSync = fs.rmSync;
+        jest.spyOn(fs, 'rmSync').mockImplementation((target, ...rest) => {
+            if (String(target) === markerPath) {
+                throw Object.assign(new Error('busy'), { code: 'EPERM' });
+            }
+            return originalRmSync(target, ...rest);
+        });
+
+        expect(runMigration(user)).toEqual({ state: 'migrated' });
     });
 
     test('a settings.json that changed during the run is reported, nothing is kept, and the file is not written', () => {
@@ -561,6 +611,53 @@ describe('importLegacyThreads', () => {
         jest.restoreAllMocks();
         expect(fs.readFileSync(created.settingsPath, 'utf8')).toBe(text);
         expect(listConversations(created.user).conversations).toEqual([]);
+    });
+
+    test('removes appended chats and restores characters.json when settings.json changes during the import', () => {
+        const created = createUser({ settings: importSettings(), userAvatars: personaFiles });
+        const { conversation } = createConversation(created.user, { kind: 'direct', personaId: PERSONA, characters: ['Nova.png'] });
+        const previousCharacters = JSON.stringify({ version: 1, characters: { 'Orion.png': { statusOverride: 'idle' } } });
+        const charactersPath = path.join(created.user.directories.conversations, 'characters.json');
+        fs.writeFileSync(charactersPath, previousCharacters);
+        const text = fs.readFileSync(created.settingsPath, 'utf8');
+        const characters = {
+            'Nova.png': thread('solo', [branch('main', 'Main', lines(2))], { settings: { enabled: true, availability: 'dnd' } }),
+            'Aria.png': thread('solo', [branch('main', 'Main', lines(2))], { settings: { enabled: true } }),
+        };
+        const original = fs.readFileSync;
+        let reads = 0;
+        jest.spyOn(fs, 'readFileSync').mockImplementation((file, ...rest) => {
+            const data = original(file, ...rest);
+            return String(file) === created.settingsPath && ++reads === 2 ? `${data} ` : data;
+        });
+
+        expect(() => importLegacyThreads(created.user, { personaId: PERSONA, characters })).toThrow(expect.objectContaining({ code: 'settings_changed' }));
+
+        jest.restoreAllMocks();
+        expect(fs.readFileSync(created.settingsPath, 'utf8')).toBe(text);
+        expect(listConversations(created.user).conversations.map(item => item.id)).toEqual([conversation.id]);
+        expect(readConversation(created.user, conversation.id).chats).toHaveLength(1);
+        expect(fs.readdirSync(path.join(created.user.directories.conversations, conversation.id, 'chats'))).toEqual(['main.jsonl']);
+        expect(fs.readFileSync(charactersPath, 'utf8')).toBe(previousCharacters);
+    });
+
+    test('removes newly created characters.json when settings.json changes during the import', () => {
+        const created = createUser({ settings: importSettings(), userAvatars: personaFiles });
+        const charactersPath = path.join(created.user.directories.conversations, 'characters.json');
+        const characters = {
+            'Nova.png': thread('solo', [branch('main', 'Main', lines(2))], { settings: { enabled: true, availability: 'dnd' } }),
+        };
+        const original = fs.readFileSync;
+        let reads = 0;
+        jest.spyOn(fs, 'readFileSync').mockImplementation((file, ...rest) => {
+            const data = original(file, ...rest);
+            return String(file) === created.settingsPath && ++reads === 2 ? `${data} ` : data;
+        });
+
+        expect(() => importLegacyThreads(created.user, { personaId: PERSONA, characters })).toThrow(expect.objectContaining({ code: 'settings_changed' }));
+
+        jest.restoreAllMocks();
+        expect(fs.existsSync(charactersPath)).toBe(false);
     });
 
     describe('and the marker of the conversations folder', () => {

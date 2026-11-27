@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createSandboxUser, header, IMAGES, line, PERSONA, PERSONA_TWO, readJson } from './util/conversation-store-sandbox.js';
 
@@ -21,6 +21,7 @@ const {
     updateCharacterState,
     updateConversation,
 } = await import('../src/conversation-store.js');
+const { getChatFileLockPath } = await import('../src/chat-file-lock.js');
 const { getChatRecoveryPaths, loadActiveChatWithRecovery } = await import('../src/chat-recovery.js');
 const { resolveConversationChatTarget } = await import('../src/conversation-paths.js');
 
@@ -33,6 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    jest.restoreAllMocks();
     sandbox.cleanup();
 });
 
@@ -666,6 +668,31 @@ describe('the avatar of a group', () => {
 
     test('is not_found for a conversation that does not exist', () => {
         expect(codeOf(() => setConversationAvatar(user, 'conv_9_abcdef', IMAGES.png))).toBe('not_found');
+    });
+
+    test('removes old avatar files under the conversation lock and does not fail if removing them throws EBUSY', () => {
+        setConversationAvatar(user, conversation.id, IMAGES.png);
+        const lockPath = getChatFileLockPath(path.join(user.directories.conversations, conversation.id));
+        const oldAvatarPath = path.join(user.directories.conversations, conversation.id, 'avatar.png');
+        const originalRmSync = fs.rmSync;
+        let lockHeldDuringRemove = false;
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(fs, 'rmSync').mockImplementation((target, ...rest) => {
+            if (String(target) === oldAvatarPath) {
+                lockHeldDuringRemove = fs.existsSync(lockPath);
+                throw Object.assign(new Error('busy'), { code: 'EBUSY' });
+            }
+            return originalRmSync(target, ...rest);
+        });
+
+        const updated = setConversationAvatar(user, conversation.id, IMAGES.jpeg);
+        expect(updated.avatar).toBe('avatar.jpg');
+        expect(readConversation(user, conversation.id).avatar).toBe('avatar.jpg');
+        expect(lockHeldDuringRemove).toBe(true);
+
+        const removed = removeConversationAvatar(user, conversation.id);
+        expect(removed.avatar).toBe('');
+        expect(readConversation(user, conversation.id).avatar).toBe('');
     });
 });
 

@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -312,6 +313,44 @@ describe('the event stream of the conversations of a user', () => {
             expect(pending).toEqual([expect.objectContaining({ chat: 'other', state: 'waiting' })]);
             expect(readChat('other')).toHaveLength(1);
             await owner.close();
+        });
+
+        test('does not push to a watcher that disconnects or whose response ends before setImmediate runs', async () => {
+            const connectSynthetic = (page) => {
+                const request = Object.assign(new EventEmitter(), {
+                    method: 'GET',
+                    url: `/events?owner=conversations&page=${page}`,
+                    query: { owner: 'conversations', page },
+                    user,
+                });
+                const response = Object.assign(new EventEmitter(), {
+                    writableEnded: false,
+                    destroyed: false,
+                    status: jest.fn(() => response),
+                    set: jest.fn(() => response),
+                    flushHeaders: jest.fn(),
+                    write: jest.fn(),
+                });
+                registry.router(request, response, () => {});
+                return { request, response };
+            };
+
+            const disconnected = connectSynthetic('page-gone');
+            const ended = connectSynthetic('page-ended');
+            expect(disconnected.response.write).toHaveBeenCalledTimes(1);
+            expect(ended.response.write).toHaveBeenCalledTimes(1);
+
+            // Schedule notifications for both watchers, then disconnect one and mark the other's stream ended before setImmediate runs.
+            startGeneration(plan(), 'a'.repeat(32));
+            disconnected.response.writableEnded = true;
+            disconnected.request.emit('close');
+            ended.response.writableEnded = true;
+
+            await new Promise(resolve => setImmediate(resolve));
+
+            expect(disconnected.response.write).toHaveBeenCalledTimes(1);
+            expect(ended.response.write).toHaveBeenCalledTimes(1);
+            ended.request.emit('close');
         });
     });
 

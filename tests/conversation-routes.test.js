@@ -481,6 +481,13 @@ describe('the state of characters', () => {
         expect(read.json).toEqual({ version: 1, characters: { 'Nova.png': { routine, statusOverride: 'dnd' } } });
     });
 
+    test('update returns the trimmed avatar name that was stored in characters.json', async () => {
+        const update = await post('/characters/update', { avatar: '  Nova.png  ', patch: { statusOverride: 'idle' } });
+
+        expect(update).toMatchObject({ status: 200, json: { avatar: 'Nova.png', state: { statusOverride: 'idle' } } });
+        expect((await post('/characters/get', {})).json.characters).toEqual({ 'Nova.png': { statusOverride: 'idle' } });
+    });
+
     test.each([
         ['an avatar that is a path', { avatar: '../Nova.png', patch: { statusOverride: 'dnd' } }],
         ['a status that does not exist', { avatar: 'Nova.png', patch: { statusOverride: 'asleep' } }],

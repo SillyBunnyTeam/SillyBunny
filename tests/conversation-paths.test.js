@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterEach, beforeEach, describe, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { setConfigFilePath } from '../src/util.js';
 
@@ -139,6 +139,7 @@ describe('paths under the conversations folder', () => {
     });
 
     afterEach(() => {
+        jest.restoreAllMocks();
         fs.rmSync(root, { recursive: true, force: true });
     });
 
@@ -190,6 +191,24 @@ describe('paths under the conversations folder', () => {
         expect(() => getChatFilePath(directories, ID, 'main')).toThrow(/outside the conversations folder/i);
     });
 
+    test('refuses a conversation.json that resolves outside the conversations folder', () => {
+        const outside = path.join(root, 'outside.json');
+        fs.writeFileSync(outside, '{}');
+        const conversationDir = path.join(directories.conversations, ID);
+        const jsonPath = path.join(conversationDir, 'conversation.json');
+        fs.mkdirSync(conversationDir, { recursive: true });
+        fs.writeFileSync(jsonPath, '{}');
+        const originalRealpath = fs.realpathSync;
+        jest.spyOn(fs, 'realpathSync').mockImplementation((target) => {
+            if (path.resolve(String(target)) === path.resolve(jsonPath)) {
+                return originalRealpath(outside);
+            }
+            return originalRealpath(target);
+        });
+
+        expect(() => getConversationJsonPath(directories, ID)).toThrow(/outside the conversations folder/i);
+    });
+
     test('a conversation folder that does not exist yet is allowed', () => {
         expect(getConversationDirectory(directories, 'conv_2_abcd')).toBe(path.join(directories.conversations, 'conv_2_abcd'));
     });
@@ -211,6 +230,7 @@ describe('resolveConversationChatTarget', () => {
     });
 
     afterEach(() => {
+        jest.restoreAllMocks();
         fs.rmSync(root, { recursive: true, force: true });
     });
 

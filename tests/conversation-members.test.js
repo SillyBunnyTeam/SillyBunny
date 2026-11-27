@@ -12,10 +12,13 @@ const {
     listConversations,
     loadChat,
     readConversation,
+    readConversationFolders,
     removeExtra,
     removeMember,
     saveChat,
+    updateConversationFolders,
 } = await import('../src/conversation-store.js');
+const { getChatFileLockPath } = await import('../src/chat-file-lock.js');
 const { conversationIndex } = await import('../src/conversation-index.js');
 
 const GROUP_ID = 'conv_1700000000000_group00001';
@@ -222,6 +225,26 @@ describe('removeMember', () => {
         expect(folderNames()).toEqual([GROUP_ID]);
     });
 
+    test('reassigns group reminders targeting a removed member to the new anchor when two or more members remain', () => {
+        makeGroup({
+            characters: ['Nova.png', 'Orion.png', 'Pip.png'],
+            reminders: [
+                { id: 'r1', avatar: 'Nova.png', chatId: 'trip', text: 'Pack', triggerAt: 10 },
+                { id: 'r2', avatar: 'Pip.png', chatId: 'main', text: 'Snacks', triggerAt: 20 },
+            ],
+        });
+
+        const result = removeMember(user, GROUP_ID, 'Nova.png');
+
+        expect(result.converted).toBe(false);
+        expect(result.conversation.characters).toEqual(['Orion.png', 'Pip.png']);
+        expect(result.conversation.reminders).toEqual([
+            { id: 'r1', avatar: 'Orion.png', chatId: 'trip', text: 'Pack', triggerAt: 10 },
+            { id: 'r2', avatar: 'Pip.png', chatId: 'main', text: 'Snacks', triggerAt: 20 },
+        ]);
+        expect(readConversation(user, GROUP_ID).reminders).toEqual(result.conversation.reminders);
+    });
+
     test.each([
         ['a character that is not a member', 'Quill.png', 'not_found'],
         ['a name that is a path', '../Nova.png', 'invalid_input'],
@@ -359,12 +382,55 @@ describe('removing the second-to-last member converts the group', () => {
         expect(readConversation(user, 'conv_1700000000002_other00001').chats).toHaveLength(1);
     });
 
-    test('lands on the other character when that one is removed', () => {
+    test('lands on the other character when that one is removed, and rewrites migrated reminder avatars to the surviving member', () => {
         makeGroup();
 
         const { conversation: direct } = removeMember(user, GROUP_ID, 'Nova.png');
 
         expect(direct.characters).toEqual(['Orion.png']);
+        expect(direct.reminders).toEqual([{ id: 'r1', avatar: 'Orion.png', chatId: 'trip', text: 'Pack', triggerAt: 10 }]);
+        expect(readConversation(user, direct.id).reminders).toEqual(direct.reminders);
+    });
+
+    test('rewrites migrated reminder avatars to the surviving member when appending into an existing direct conversation', () => {
+        makeDirect({ characters: ['Orion.png'], reminders: [{ id: 'r0', avatar: 'Orion.png', chatId: 'main', text: 'Old', triggerAt: 5 }] });
+        makeGroup();
+
+        const { conversation: direct } = removeMember(user, GROUP_ID, 'Nova.png');
+
+        expect(direct.id).toBe(DIRECT_ID);
+        expect(direct.reminders).toEqual([
+            { id: 'r0', avatar: 'Orion.png', chatId: 'main', text: 'Old', triggerAt: 5 },
+            { id: 'r1', avatar: 'Orion.png', chatId: 'trip', text: 'Pack', triggerAt: 10 },
+        ]);
+    });
+
+    test('rewrites folders.json only after releasing the group folder lock', () => {
+        const FOLDER = 'fld_1764000000000_a1b2c3d4e5f6';
+        makeGroup();
+        updateConversationFolders(user, PERSONA, [
+            { op: 'createFolder', id: FOLDER, name: 'Work' },
+            { op: 'setMembers', ids: [GROUP_ID], folderId: FOLDER },
+        ]);
+        const foldersJsonPath = path.join(user.directories.conversations, 'folders.json');
+        const groupLockPath = getChatFileLockPath(folder(GROUP_ID));
+        const foldersLockPath = getChatFileLockPath(foldersJsonPath);
+        const originalReadFileSync = fs.readFileSync;
+        let sawFoldersLock = false;
+        let groupLockHeldDuringFolderLock = false;
+        jest.spyOn(fs, 'readFileSync').mockImplementation((target, ...rest) => {
+            if (path.resolve(String(target)) === path.resolve(foldersJsonPath) && fs.existsSync(foldersLockPath)) {
+                sawFoldersLock = true;
+                groupLockHeldDuringFolderLock = fs.existsSync(groupLockPath);
+            }
+            return originalReadFileSync(target, ...rest);
+        });
+
+        const { conversation: direct } = removeMember(user, GROUP_ID, 'Orion.png');
+
+        expect(sawFoldersLock).toBe(true);
+        expect(groupLockHeldDuringFolderLock).toBe(false);
+        expect(readConversationFolders(user).personas[PERSONA].members).toEqual({ [direct.id]: FOLDER });
     });
 
     test('drops the index rows of the chats of the group', () => {
@@ -537,6 +603,54 @@ describe('removing the second-to-last member converts the group', () => {
             expect(again.id).toBe(direct.id);
             expect(again.chats.map(item => [item.id, item.legacyId])).toEqual([['main_2', `${stopped.id}/main`], ['trip_2', `${stopped.id}/trip`]]);
             expect(fs.readdirSync(path.join(folder(direct.id), 'chats')).sort()).toEqual(['main_2.jsonl', 'trip_2.jsonl']);
+        });
+
+        test('does not roll back an already committed append conversion if removing earlier copies fails afterwards', () => {
+            makeGroup();
+            const { conversation: direct } = removeMember(user, GROUP_ID, 'Orion.png');
+            const stopped = makeGroupAgainFrom(direct);
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            failOn('rmSync', target => String(target).endsWith(path.join('chats', 'main.jsonl')), 'EBUSY');
+
+            const result = removeMember(user, stopped.id, 'Orion.png');
+
+            jest.restoreAllMocks();
+            expect(result.converted).toBe(true);
+            expect(result.conversation.id).toBe(direct.id);
+            expect(result.conversation.chats.map(item => item.id)).toEqual(['main_2', 'trip_2']);
+            expect(readConversation(user, direct.id).chats.map(item => item.id)).toEqual(['main_2', 'trip_2']);
+            expect(loadChat(user, direct.id, 'main_2').slice(1)).toHaveLength(3);
+        });
+
+        test('delegates to appendCopiesAndRetire instead of deleting a direct conversation created concurrently before createConversation', () => {
+            const FOLDER = 'fld_1764000000000_a1b2c3d4e5f6';
+            makeGroup();
+            updateConversationFolders(user, PERSONA, [
+                { op: 'createFolder', id: FOLDER, name: 'Group Folder' },
+                { op: 'setMembers', ids: [GROUP_ID], folderId: FOLDER },
+            ]);
+            let createdConcurrently = null;
+            const originalReaddirSync = fs.readdirSync;
+            let scanned = 0;
+            jest.spyOn(fs, 'readdirSync').mockImplementation((dir, ...rest) => {
+                const entries = originalReaddirSync(dir, ...rest);
+                if (String(dir) === user.directories.conversations && ++scanned === 1) {
+                    // Simulate another request creating Nova's direct conversation right after the initial findDirectConversation() scan.
+                    createdConcurrently = makeDirect();
+                }
+                return entries;
+            });
+
+            const result = removeMember(user, GROUP_ID, 'Orion.png');
+
+            jest.restoreAllMocks();
+            expect(result.converted).toBe(true);
+            expect(createdConcurrently).not.toBeNull();
+            expect(result.conversation.id).toBe(createdConcurrently.id);
+            expect(readConversation(user, createdConcurrently.id).chats.map(item => item.id)).toEqual(['main', 'main_2', 'trip']);
+            expect(loadChat(user, createdConcurrently.id, 'main').slice(1).map(item => item.id)).toEqual(['d1']);
+            expect(loadChat(user, createdConcurrently.id, 'main_2').slice(1)).toHaveLength(3);
+            expect(readConversationFolders(user).personas[PERSONA].members).toEqual({});
         });
 
         function makeGroupAgainFrom(direct) {

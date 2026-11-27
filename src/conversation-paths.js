@@ -189,7 +189,10 @@ export function getConversationDirectory(directories, conversationId) {
  * @returns {string} `conversations/<conversationId>/conversation.json`
  */
 export function getConversationJsonPath(directories, conversationId) {
-    return path.join(getConversationDirectory(directories, conversationId), CONVERSATION_FILE_NAME);
+    const root = getConversationsRoot(directories);
+    const filePath = path.join(getConversationDirectory(directories, conversationId), CONVERSATION_FILE_NAME);
+    assertInsideConversationsFolder(root, filePath);
+    return filePath;
 }
 
 /**

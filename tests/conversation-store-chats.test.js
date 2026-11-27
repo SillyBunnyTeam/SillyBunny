@@ -11,11 +11,13 @@ const {
     createConversation,
     deleteChat,
     exportChat,
+    listConversations,
     loadChat,
     readConversation,
     saveChat,
     updateConversation,
 } = await import('../src/conversation-store.js');
+const { conversationIndex } = await import('../src/conversation-index.js');
 const { getBackupKey } = await import('../src/endpoints/chats.js');
 const { getChatRecoveryPaths, loadActiveChatWithRecovery } = await import('../src/chat-recovery.js');
 const { getConversationBackupName, resolveConversationChatTarget } = await import('../src/conversation-paths.js');
@@ -41,6 +43,7 @@ beforeEach(() => {
 afterEach(() => {
     jest.runOnlyPendingTimers();
     jest.useRealTimers();
+    jest.restoreAllMocks();
     sandbox.cleanup();
 });
 
@@ -401,6 +404,40 @@ describe('deleteChat', () => {
         fs.rmSync(chatFile('third'));
 
         expect(deleteChat(user, conversationId, 'third').chats.map(item => item.id)).toEqual(['main', 'second']);
+    });
+
+    test('writes conversation.json once and still drops index and recovery state when removing the chat file fails', async () => {
+        await saveChat(user, conversationId, 'second', chat(2, { prefix: 's' }));
+        listConversations(user);
+        const secondFile = chatFile('second');
+        const secondStat = fs.statSync(secondFile);
+        const { recoveryTarget } = resolveConversationChatTarget(user.directories, { conversationId, chatId: 'second' }, 25);
+        expect(conversationIndex.get(secondFile, secondStat, '')).toBeDefined();
+
+        const jsonPath = path.join(user.directories.conversations, conversationId, 'conversation.json');
+        const originalRenameSync = fs.renameSync;
+        let jsonWrites = 0;
+        jest.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+            if (String(to) === jsonPath) {
+                jsonWrites++;
+            }
+            return originalRenameSync(from, to);
+        });
+        const originalRmSync = fs.rmSync;
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(fs, 'rmSync').mockImplementation((target, ...rest) => {
+            if (String(target) === secondFile) {
+                throw Object.assign(new Error('busy'), { code: 'EBUSY' });
+            }
+            return originalRmSync(target, ...rest);
+        });
+
+        const updated = deleteChat(user, conversationId, 'second');
+
+        expect(jsonWrites).toBe(1);
+        expect(updated.chats.map(item => item.id)).toEqual(['main', 'third']);
+        expect(conversationIndex.get(secondFile, secondStat, '')).toBeUndefined();
+        expect(fs.existsSync(getChatRecoveryPaths(recoveryTarget).latestPath)).toBe(false);
     });
 });
 
