@@ -1,8 +1,8 @@
 import { getConfigValue } from '../util.js';
 import { getTrustedProxies, isIpInPatterns } from '../express-common.js';
+import { hasForwardingHeaders, isLoopbackAddress } from '../loopback-request.js';
 
 const REQUIRE_HTTPS = getConfigValue('requireHttps', false, 'boolean');
-const LOOPBACK_PATTERNS = ['127.0.0.0/8', '::1'];
 const FORWARDING_HEADERS = ['forwarded', 'x-forwarded-for', 'x-forwarded-proto', 'x-real-ip', 'cf-connecting-ip'];
 
 /**
@@ -15,8 +15,7 @@ const requireHttpsMiddleware = function (request, response, callback) {
     }
 
     // A proxy on this machine also connects from a loopback address, so a request with forwarding headers is not local.
-    const isLocalhost = isIpInPatterns(request.ip, LOOPBACK_PATTERNS)
-        && FORWARDING_HEADERS.every(header => request.headers[header] === undefined);
+    const isLocalhost = isLoopbackAddress(request.ip) && !hasForwardingHeaders(request, FORWARDING_HEADERS);
 
     if (isLocalhost) {
         return callback();

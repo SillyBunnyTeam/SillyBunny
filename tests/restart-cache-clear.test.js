@@ -13,6 +13,8 @@ const {
     RESTART_CACHE_CLEAR_BOOT_COOKIE,
 } = await import('../src/middleware/restartCacheClear.js');
 
+const { bumpRestartCacheGeneration } = await import('../src/server-boot-marker.js');
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pageScriptSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-restart-cache-clear.js'), 'utf8');
 
@@ -21,13 +23,14 @@ const pageScriptSource = readFileSync(path.join(repoRoot, 'public', 'scripts', '
  * runs the middleware, applies its Set-Cookie, then runs the page script.
  */
 class FakeBrowser {
-    constructor({ acceptsPageCookies = true } = {}) {
+    constructor({ acceptsPageCookies = true, registrations = 1 } = {}) {
         this.jar = new Map();
         this.acceptsPageCookies = acceptsPageCookies;
         this.cacheStorage = new Set(['sillybunny-cache-v1-static', 'sillybunny-cache-v1-shell']);
-        this.registrations = 1;
+        this.registrations = registrations;
         this.serviceWorkerPurges = 0;
         this.stoppedLoads = 0;
+        this.infoLogs = [];
     }
 
     get cookieHeader() {
@@ -36,9 +39,13 @@ class FakeBrowser {
 
     /**
      * Loads the index page and follows script-initiated reloads.
+     * @param {Function} middleware Cache-clear middleware
+     * @param {object} [options]
+     * @param {number} [options.maxLoads] Upper bound for reloads
+     * @param {{ profile: { handle: string } }} [options.user] Logged-in user of this browser
      * @returns {Promise<{ clearSiteDataLoads: number, loads: number }>}
      */
-    async open(middleware, { maxLoads = 10 } = {}) {
+    async open(middleware, { maxLoads = 10, user } = {}) {
         let loads = 0;
         let clearSiteDataLoads = 0;
         let reload = true;
@@ -50,7 +57,7 @@ class FakeBrowser {
                 setHeader: (name, value) => headers.set(name, value),
                 cookie: (name, value) => this.jar.set(name, value),
             };
-            middleware({ headers: { cookie: this.cookieHeader } }, response, () => {});
+            middleware({ headers: { cookie: this.cookieHeader }, user }, response, () => {});
             if (headers.get('Clear-Site-Data') === '"cache"') {
                 clearSiteDataLoads++;
             }
@@ -127,7 +134,10 @@ class FakeBrowser {
             navigator,
             location: window.location,
             MessageChannel,
-            console: { info: () => {}, warn: () => {} },
+            console: {
+                info: message => browser.infoLogs.push(String(message)),
+                warn: () => {},
+            },
             Promise,
         });
         vm.runInContext(pageScriptSource, context);
@@ -146,6 +156,10 @@ describe('restart cache clear', () => {
         expect(browser.serviceWorkerPurges).toBe(1);
         expect(browser.cacheStorage.size).toBe(0);
         expect(browser.registrations).toBe(0);
+        expect(browser.infoLogs).toEqual([
+            '[Cache] Restart cache clear pass 1 of 2 complete. Reloading.',
+            '[Cache] Restart cache clear pass 2 of 2 complete. Reloading.',
+        ]);
 
         const later = await browser.open(middleware);
         expect(later).toEqual({ clearSiteDataLoads: 0, loads: 1 });
@@ -162,13 +176,59 @@ describe('restart cache clear', () => {
         expect(browser.stoppedLoads).toBe(2);
     });
 
-    test('a new server boot clears twice again', async () => {
+    test('a new server boot clears twice again when a service worker controls the page', async () => {
         const browser = new FakeBrowser();
         await browser.open(createRestartCacheClearMiddleware({ enabled: true, bootId: 'boot-a' }));
+        browser.registrations = 1;
 
         const restarted = await browser.open(createRestartCacheClearMiddleware({ enabled: true, bootId: 'boot-b' }));
         expect(restarted).toEqual({ clearSiteDataLoads: 2, loads: 3 });
         expect(browser.jar.get(RESTART_CACHE_CLEAR_BOOT_COOKIE)).toBe('boot-b');
+    });
+
+    test('skips the second reload pass when no service worker controls the page', async () => {
+        const browser = new FakeBrowser({ registrations: 0 });
+        const result = await browser.open(createRestartCacheClearMiddleware({ enabled: true, bootId: 'boot-no-sw' }));
+
+        expect(result).toEqual({ clearSiteDataLoads: 1, loads: 2 });
+        expect(browser.stoppedLoads).toBe(1);
+        expect(browser.cacheStorage.size).toBe(0);
+        expect(browser.infoLogs).toEqual([
+            '[Cache] Restart cache clear pass 1 of 1 complete. Reloading.',
+        ]);
+    });
+
+    test('skips forced reloads across unchanged restarts in content mode', async () => {
+        const browser = new FakeBrowser({ registrations: 0 });
+        const firstStart = createRestartCacheClearMiddleware({ enabled: true, mode: 'content' });
+        await browser.open(firstStart);
+
+        const unchangedRestart = createRestartCacheClearMiddleware({ enabled: true, mode: 'content' });
+        const result = await browser.open(unchangedRestart);
+        expect(result).toEqual({ clearSiteDataLoads: 0, loads: 1 });
+    });
+
+    test('a change to one user\'s own extensions clears only that user\'s browsers', async () => {
+        const middleware = createRestartCacheClearMiddleware({ enabled: true, mode: 'content' });
+        const alice = { profile: { handle: 'alice' } };
+        const bob = { profile: { handle: 'bob' } };
+        const aliceBrowser = new FakeBrowser({ registrations: 0 });
+        const bobBrowser = new FakeBrowser({ registrations: 0 });
+        await aliceBrowser.open(middleware, { user: alice });
+        await bobBrowser.open(middleware, { user: bob });
+        expect(await aliceBrowser.open(middleware, { user: alice })).toEqual({ clearSiteDataLoads: 0, loads: 1 });
+        expect(await bobBrowser.open(middleware, { user: bob })).toEqual({ clearSiteDataLoads: 0, loads: 1 });
+
+        bumpRestartCacheGeneration('alice');
+
+        expect(await bobBrowser.open(middleware, { user: bob })).toEqual({ clearSiteDataLoads: 0, loads: 1 });
+        expect(await aliceBrowser.open(middleware, { user: alice })).toEqual({ clearSiteDataLoads: 1, loads: 2 });
+        expect(await aliceBrowser.open(middleware, { user: alice })).toEqual({ clearSiteDataLoads: 0, loads: 1 });
+
+        bumpRestartCacheGeneration();
+
+        expect(await bobBrowser.open(middleware, { user: bob })).toEqual({ clearSiteDataLoads: 1, loads: 2 });
+        expect(await aliceBrowser.open(middleware, { user: alice })).toEqual({ clearSiteDataLoads: 1, loads: 2 });
     });
 
     test('does nothing when disabled', async () => {

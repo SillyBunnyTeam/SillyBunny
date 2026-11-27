@@ -56,8 +56,9 @@ async function waitForResourceStability(page) {
 
 test.describe('frontend performance smoke', () => {
     // The byte budgets are for compressed transfers, which browsers ask for. A test run can ask for uncompressed
-    // responses to save server time, and then the same assets transfer more bytes.
-    test.use({ extraHTTPHeaders: { 'Accept-Encoding': 'gzip, deflate, br' } });
+    // responses to save server time, and then the same assets transfer more bytes. Include `Via` so direct loopback
+    // test servers still exercise dynamic compression under `performance.compression.loopbackBypass: auto`.
+    test.use({ extraHTTPHeaders: { 'Accept-Encoding': 'gzip, deflate, br', 'Via': '1.1 frontend-perf-e2e' } });
 
     test('mobile shell exposes core performance marks and bounded assets', async ({ page, browser, baseURL }) => {
         // Two starts (the first stores the daily notice stamp), each allowed 60s to load under a busy machine.

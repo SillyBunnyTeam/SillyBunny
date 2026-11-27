@@ -9,6 +9,69 @@ export const jsonParser = noopMiddleware;
 /** @deprecated Do not use. A global middleware is provided at the application level. */
 export const urlencodedParser = noopMiddleware;
 
+// SillyBunny: pre-compile CIDR whitelist matchers once per array snapshot instead of parsing on every request.
+/**
+ * @typedef {object} CompiledIpPatterns
+ * @property {string[]} snapshot
+ * @property {ReturnType<typeof ipMatching.getMatch>[]} matchers
+ * @property {boolean} allowsIpv4Loopback
+ * @property {boolean} allowsIpv6Loopback
+ */
+
+/** @type {WeakMap<string[], CompiledIpPatterns>} */
+const compiledPatternsCache = new WeakMap();
+
+function isSamePatternList(snapshot, patterns) {
+    if (snapshot.length !== patterns.length) {
+        return false;
+    }
+    for (let index = 0; index < snapshot.length; index++) {
+        if (snapshot[index] !== patterns[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Pre-compiles IP/CIDR whitelist patterns once per array snapshot and caches loopback booleans.
+ * @param {string[]} patterns Valid IP/CIDR pattern strings
+ * @returns {CompiledIpPatterns}
+ */
+export function compileIpPatterns(patterns) {
+    if (!Array.isArray(patterns) || patterns.length === 0) {
+        return {
+            snapshot: [],
+            matchers: [],
+            allowsIpv4Loopback: false,
+            allowsIpv6Loopback: false,
+        };
+    }
+
+    const cached = compiledPatternsCache.get(patterns);
+    if (cached && isSamePatternList(cached.snapshot, patterns)) {
+        return cached;
+    }
+
+    const matchers = [];
+    for (const pattern of patterns) {
+        try {
+            matchers.push(ipMatching.getMatch(pattern));
+        } catch {
+            // Invalid patterns are ignored so untrusted lookups never throw.
+        }
+    }
+
+    const compiled = {
+        snapshot: patterns.slice(),
+        matchers,
+        allowsIpv4Loopback: matchers.some(matcher => ipMatching.matches('127.0.0.1', matcher)),
+        allowsIpv6Loopback: matchers.some(matcher => ipMatching.matches('::1', matcher)),
+    };
+    compiledPatternsCache.set(patterns, compiled);
+    return compiled;
+}
+
 /**
  * Gets the IP address of the client from the request object.
  * @param {import('express').Request} req Request object
@@ -18,6 +81,13 @@ export function getIpFromRequest(req) {
     let clientIp = req.socket.remoteAddress;
     if (!clientIp) {
         return 'unknown';
+    }
+    // SillyBunny: fast-path loopback socket addresses before parsing with ipaddr.js.
+    if (clientIp === '127.0.0.1' || clientIp === '::ffff:127.0.0.1') {
+        return '127.0.0.1';
+    }
+    if (clientIp === '::1') {
+        return '::1';
     }
     let ip = ipaddr.parse(clientIp);
     // Check if the IP address is IPv4-mapped IPv6 address
@@ -54,6 +124,13 @@ function normalizeIpAddress(address) {
     if (typeof address !== 'string') {
         return null;
     }
+    // SillyBunny: fast-path canonical loopback strings before running ipaddr.js validation.
+    if (address === '127.0.0.1' || address === '::ffff:127.0.0.1') {
+        return '127.0.0.1';
+    }
+    if (address === '::1') {
+        return '::1';
+    }
     const text = address.trim();
     if (!ipaddr.IPv4.isValidFourPartDecimal(text) && !ipaddr.IPv6.isValid(text)) {
         return null;
@@ -69,8 +146,28 @@ function normalizeIpAddress(address) {
  * @returns {boolean} True if the address matches a pattern, false for a value that is not an IP address
  */
 export function isIpInPatterns(address, patterns) {
+    // SillyBunny: match against pre-compiled CIDR entries and O(1) loopback flags.
+    const compiled = compileIpPatterns(patterns);
+    if (compiled.matchers.length === 0) {
+        return false;
+    }
+    if (address === '127.0.0.1' || address === '::ffff:127.0.0.1') {
+        return compiled.allowsIpv4Loopback;
+    }
+    if (address === '::1') {
+        return compiled.allowsIpv6Loopback;
+    }
     const ip = normalizeIpAddress(address);
-    return ip !== null && patterns.some(pattern => ipMatching.matches(ip, ipMatching.getMatch(pattern)));
+    if (ip === null) {
+        return false;
+    }
+    if (ip === '127.0.0.1') {
+        return compiled.allowsIpv4Loopback;
+    }
+    if (ip === '::1') {
+        return compiled.allowsIpv6Loopback;
+    }
+    return compiled.matchers.some(matcher => ipMatching.matches(ip, matcher));
 }
 
 // SillyBunny: the server cannot tell which forwarded header its proxy set and which one a client sent through it, so every enabled header counts.
@@ -82,22 +179,31 @@ export function isIpInPatterns(address, patterns) {
  * @param {string[]} trustedProxies IP patterns of the hops whose X-Forwarded-For entries are believed
  * @returns {string[]} The addresses as the headers carry them, in the order X-Real-IP, CF-Connecting-IP, X-Forwarded-For
  */
-export function getForwardedIps(req, trustedProxies) {
-    const xRealIpEnabled = !!getConfigValue('forwardedHeaders.xRealIp', true, 'boolean');
-    const cfConnectingIpEnabled = !!getConfigValue('forwardedHeaders.cfConnectingIp', false, 'boolean');
-    const xForwardedForEnabled = !!getConfigValue('forwardedHeaders.xForwardedFor', true, 'boolean');
+export function getForwardedIps(req, trustedProxies, { readConfig = getConfigValue } = {}) {
+    const headers = req?.headers;
+    if (!headers) {
+        return [];
+    }
+    const rawRealIp = headers['x-real-ip'];
+    const rawCfConnectingIp = headers['cf-connecting-ip'];
+    const rawForwardedFor = headers['x-forwarded-for'];
+    // SillyBunny: short-circuit before reading config when no forwarded IP headers are present.
+    if (!rawRealIp && !rawCfConnectingIp && !rawForwardedFor) {
+        return [];
+    }
+
     const forwardedIps = [];
 
-    if (req.headers['x-real-ip'] && xRealIpEnabled) {
-        forwardedIps.push(req.headers['x-real-ip'].toString());
+    if (rawRealIp && readConfig('forwardedHeaders.xRealIp', true, 'boolean')) {
+        forwardedIps.push(rawRealIp.toString());
     }
 
-    if (req.headers['cf-connecting-ip'] && cfConnectingIpEnabled) {
-        forwardedIps.push(req.headers['cf-connecting-ip'].toString());
+    if (rawCfConnectingIp && readConfig('forwardedHeaders.cfConnectingIp', false, 'boolean')) {
+        forwardedIps.push(rawCfConnectingIp.toString());
     }
 
-    if (req.headers['x-forwarded-for'] && xForwardedForEnabled) {
-        const ipList = req.headers['x-forwarded-for'].toString().split(',').map(ip => ip.trim()).filter(ip => ip);
+    if (rawForwardedFor && readConfig('forwardedHeaders.xForwardedFor', true, 'boolean')) {
+        const ipList = rawForwardedFor.toString().split(',').map(ip => ip.trim()).filter(ip => ip);
         let clientIp = ipList.pop();
         while (ipList.length > 0 && isIpInPatterns(clientIp, trustedProxies)) {
             clientIp = ipList.pop();
@@ -111,13 +217,25 @@ export function getForwardedIps(req, trustedProxies) {
 }
 
 let trustedProxies = null;
+/** @type {string[] | null} */
+let trustedProxiesSource = null;
 
 /**
  * Gets the IP patterns of the hops whose forwarded headers are believed.
  * @returns {string[]} The valid whitelist entries
  */
 export function getTrustedProxies() {
-    trustedProxies ??= filterValidIpPatterns(getConfigValue('whitelist', []));
+    const rawWhitelist = getConfigValue('whitelist', []);
+    const configuredWhitelist = Array.isArray(rawWhitelist) ? rawWhitelist : [];
+    // SillyBunny: compare whitelist entries by value so env overrides or absent config defaults keep the compiled cache warm.
+    if (trustedProxies === null
+        || trustedProxiesSource === null
+        || !isSamePatternList(trustedProxiesSource, configuredWhitelist)
+    ) {
+        trustedProxiesSource = configuredWhitelist.slice();
+        trustedProxies = filterValidIpPatterns(trustedProxiesSource);
+        compileIpPatterns(trustedProxies);
+    }
     return trustedProxies;
 }
 

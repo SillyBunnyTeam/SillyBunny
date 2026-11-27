@@ -2,11 +2,32 @@ import path from 'node:path';
 import fs from 'node:fs';
 import process from 'node:process';
 import dns from 'node:dns';
-import Handlebars from 'handlebars';
 import isDocker from 'is-docker';
 
-import { filterValidIpPatterns, getForwardedIps, getIpFromRequest, isIpInPatterns } from '../express-common.js';
+import { compileIpPatterns, filterValidIpPatterns, getForwardedIps, getIpFromRequest, isIpInPatterns } from '../express-common.js';
 import { color, getConfigValue, safeReadFileSync } from '../util.js';
+
+// SillyBunny: escape untrusted IP/header details directly so the 403 page does not eagerly load Handlebars.
+const HTML_ESCAPE_MAP = Object.freeze({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    '\'': '&#x27;',
+    '`': '&#x60;',
+    '=': '&#x3D;',
+});
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"'`=]/g, ch => HTML_ESCAPE_MAP[ch]);
+}
+
+function renderForbiddenWebpage(template, ipDetails) {
+    if (!template) {
+        return '';
+    }
+    return template.replace(/\{\{\s*ipDetails\s*\}\}/g, () => escapeHtml(ipDetails));
+}
 
 const whitelistPath = path.join(process.cwd(), './whitelist.txt');
 const enableForwardedWhitelist = !!getConfigValue('enableForwardedWhitelist', false, 'boolean');
@@ -50,19 +71,30 @@ async function addDockerHostsToWhitelist() {
 }
 
 /**
+ * Checks if an IP address matches any entry in the whitelist.
+ * @param {string[]} whitelistEntries - The list of whitelisted IPs/CIDRs
+ * @param {string} ip - The IP address to check
+ * @returns {boolean} True if the IP matches any whitelist entry
+ */
+function isIPInWhitelist(whitelistEntries, ip) {
+    // SillyBunny: a value that is not an IP address is unlisted instead of an error.
+    return isIpInPatterns(ip, whitelistEntries);
+}
+
+/**
  * Returns a middleware function that checks if the client IP is in the whitelist.
  * @returns {Promise<import('express').RequestHandler>} Promise that resolves to the middleware function
  */
 export default async function getWhitelistMiddleware() {
-    const forbiddenWebpage = Handlebars.compile(
-        safeReadFileSync(path.join(globalThis.DATA_ROOT, '_errors', 'forbidden-by-whitelist.html')) ?? '',
-    );
+    const forbiddenTemplate = safeReadFileSync(path.join(globalThis.DATA_ROOT, '_errors', 'forbidden-by-whitelist.html')) ?? '';
 
     const noLogPaths = [
         '/favicon.ico',
     ];
 
     await addDockerHostsToWhitelist();
+    // SillyBunny: pre-compile whitelist CIDR patterns once at middleware creation.
+    compileIpPatterns(whitelist);
 
     return function (req, res, next) {
         const clientIp = getIpFromRequest(req);
@@ -72,18 +104,6 @@ export default async function getWhitelistMiddleware() {
         const forwardedIp = unlistedForwardedIp ?? forwardedIps[0];
         const userAgent = req.headers['user-agent'];
 
-        /**
-         * Checks if an IP address matches any entry in the whitelist.
-         * @param {string[]} whitelist - The list of whitelisted IPs/CIDRs
-         * @param {string} ip - The IP address to check
-         * @returns {boolean} True if the IP matches any whitelist entry
-         */
-        function isIPInWhitelist(whitelist, ip) {
-            // SillyBunny: a value that is not an IP address is unlisted instead of an error.
-            return isIpInPatterns(ip, whitelist);
-        }
-
-        //clientIp = req.connection.remoteAddress.split(':').pop();
         if (!isIPInWhitelist(whitelist, clientIp)
             || unlistedForwardedIp !== undefined
         ) {
@@ -100,7 +120,7 @@ export default async function getWhitelistMiddleware() {
                 );
             }
 
-            return res.status(403).send(forbiddenWebpage({ ipDetails }));
+            return res.status(403).send(renderForbiddenWebpage(forbiddenTemplate, ipDetails));
         }
         next();
     };

@@ -8,6 +8,7 @@ import sanitize from 'sanitize-filename';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 import { read as readCardMetadata, write as writeCardMetadata } from './character-card-parser.js';
+import { serverDirectory } from './server-directory.js';
 
 /**
  * Keeps the bundled cards, sprite sets and worlds up to date in a user's data folder without overwriting what the
@@ -195,6 +196,107 @@ export function fingerprintSpriteFile(file) {
 }
 
 export const MANIFEST_FILE_NAME = 'sillybunny-managed.json';
+export const RECONCILE_MARKER_FILE_NAME = '.sillybunny-reconcile-marker.json';
+const RECONCILE_MARKER_FORMAT = 1;
+
+/**
+ * The identity of a file for a cache: its kind, size, inode and both times, or why there is none. The inode and the
+ * change time are there because an atomic write puts a new inode in place, and a copy that keeps modification times
+ * (`cp -p`, `rsync -t`, a restored backup) cannot keep the change time.
+ * @param {string} target
+ * @returns {string}
+ */
+export function describePathSignature(target) {
+    try {
+        const stats = fs.lstatSync(target);
+        const kind = stats.isFile() ? 'file' : stats.isDirectory() ? 'directory' : 'other';
+        return `${kind}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.ino}`;
+    } catch (error) {
+        return error?.code === 'ENOENT' ? 'absent' : `error:${error?.code ?? 'unknown'}`;
+    }
+}
+
+/**
+ * Reads the current application version signature used to invalidate persisted boot markers across upgrades.
+ * @param {string} [rootDir]
+ * @returns {string}
+ */
+export function readAppVersionSignature(rootDir = serverDirectory) {
+    const pkgPath = path.join(rootDir, 'package.json');
+    try {
+        const parsed = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        return `${String(parsed?.version ?? 'unknown')}:${describePathSignature(pkgPath)}`;
+    } catch {
+        return describePathSignature(pkgPath);
+    }
+}
+
+/**
+ * Reads the persisted per-user reconciliation marker from `directories.root`, if valid.
+ * @param {string | undefined} userRoot
+ * @returns {{ format: number, appVersion?: string, managedAppVersion?: string, contentAppVersion?: string, managedSignature?: string, contentSignature?: string } | null}
+ */
+export function readReconcileMarker(userRoot) {
+    if (typeof userRoot !== 'string' || !userRoot) {
+        return null;
+    }
+    const markerPath = path.join(userRoot, RECONCILE_MARKER_FILE_NAME);
+    try {
+        if (!fs.existsSync(markerPath)) {
+            return null;
+        }
+        const parsed = JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+        if (!parsed || typeof parsed !== 'object' || parsed.format !== RECONCILE_MARKER_FORMAT) {
+            return null;
+        }
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Updates fields of the per-user reconciliation marker inside `directories.root` only when a field changed.
+ * @param {string | undefined} userRoot
+ * @param {{ appVersion: string, managedAppVersion?: string, contentAppVersion?: string, managedSignature?: string, contentSignature?: string }} patch
+ * @param {(target: string) => void} [setPermissions]
+ */
+export function writeReconcileMarker(userRoot, patch, setPermissions = () => {}) {
+    if (typeof userRoot !== 'string' || !userRoot || !fs.existsSync(userRoot)) {
+        return;
+    }
+    const existing = readReconcileMarker(userRoot);
+    const next = {
+        format: RECONCILE_MARKER_FORMAT,
+        appVersion: patch.appVersion,
+        ...(existing?.managedAppVersion !== undefined ? { managedAppVersion: existing.managedAppVersion } : {}),
+        ...(existing?.contentAppVersion !== undefined ? { contentAppVersion: existing.contentAppVersion } : {}),
+        ...(existing?.managedSignature !== undefined ? { managedSignature: existing.managedSignature } : {}),
+        ...(existing?.contentSignature !== undefined ? { contentSignature: existing.contentSignature } : {}),
+        ...(patch.managedAppVersion !== undefined ? { managedAppVersion: patch.managedAppVersion } : {}),
+        ...(patch.contentAppVersion !== undefined ? { contentAppVersion: patch.contentAppVersion } : {}),
+        ...(patch.managedSignature !== undefined ? { managedSignature: patch.managedSignature } : {}),
+        ...(patch.contentSignature !== undefined ? { contentSignature: patch.contentSignature } : {}),
+    };
+
+    if (existing
+        && existing.appVersion === next.appVersion
+        && existing.managedAppVersion === next.managedAppVersion
+        && existing.contentAppVersion === next.contentAppVersion
+        && existing.managedSignature === next.managedSignature
+        && existing.contentSignature === next.contentSignature
+    ) {
+        return;
+    }
+
+    try {
+        const markerPath = path.join(userRoot, RECONCILE_MARKER_FILE_NAME);
+        writeFileAtomicSync(markerPath, `${JSON.stringify(next)}\n`, 'utf8');
+        setPermissions(markerPath);
+    } catch (error) {
+        console.warn('Failed to persist managed content reconciliation marker', error);
+    }
+}
 
 const MANIFEST_FORMAT = 1;
 const ITEM_TYPES = Object.freeze({ CARD: 'character', SPRITES: 'sprites', WORLD: 'world' });
@@ -884,8 +986,10 @@ export function createManagedContent({
     function dropThumbnails(filename) {
         try {
             invalidateThumbnail?.(filename);
+            return true;
         } catch (error) {
             console.warn(`The cached thumbnails of managed content ${filename} could not be dropped`, error);
+            return false;
         }
     }
 
@@ -894,11 +998,13 @@ export function createManagedContent({
      * still shows its old picture. The same comparison as the thumbnail module makes when it generates one.
      * @param {ManagedItem[]} items
      * @param {Set<string>} written The cards that were just written, whose thumbnails are already dropped.
+     * @returns {boolean} True when every attempted thumbnail invalidation succeeded
      */
     function dropStaleThumbnails(items, written) {
         if (!invalidateThumbnail) {
-            return;
+            return true;
         }
+        let clean = true;
         for (const item of items) {
             if (item.type !== ITEM_TYPES.CARD || written.has(item.filename)) {
                 continue;
@@ -912,13 +1018,14 @@ export function createManagedContent({
                         return false;
                     }
                 });
-                if (stale) {
-                    dropThumbnails(item.filename);
+                if (stale && !dropThumbnails(item.filename)) {
+                    clean = false;
                 }
             } catch {
                 // A card that is not there or not a plain file has no thumbnail worth dropping.
             }
         }
+        return clean;
     }
 
     /**
@@ -973,19 +1080,76 @@ export function createManagedContent({
         return { item, worldNames: worldNamesOf(items) };
     }
 
-    /**
-     * The identity of a file for a cache: its kind, size, inode and both times, or why there is none. The inode and the
-     * change time are there because an atomic write puts a new inode in place, and a copy that keeps modification times
-     * (`cp -p`, `rsync -t`, a restored backup) cannot keep the change time.
-     */
     function describeFile(target) {
+        return describePathSignature(target);
+    }
+
+    function computeSignature({ includeContentLog = true, includeThumbnails = false } = {}) {
+        let items;
         try {
-            const stats = fs.lstatSync(target);
-            const kind = stats.isFile() ? 'file' : stats.isDirectory() ? 'directory' : 'other';
-            return `${kind}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}:${stats.ino}`;
-        } catch (error) {
-            return error?.code === 'ENOENT' ? 'absent' : `error:${error?.code ?? 'unknown'}`;
+            items = readItems();
+        } catch {
+            items = [];
         }
+        const describePath = (item, ...parts) => {
+            try {
+                return describeFile(userPath(item, ...parts));
+            } catch {
+                return 'unsafe';
+            }
+        };
+        const parts = [describeFile(path.join(bundledDirectory, MANIFEST_FILE_NAME))];
+        if (includeContentLog) {
+            parts.push(describeFile(path.join(directories.root, 'content.log')));
+        }
+        for (const item of items) {
+            if (item.type !== ITEM_TYPES.SPRITES) {
+                parts.push(describePath(item));
+                if (includeThumbnails && item.type === ITEM_TYPES.CARD && invalidateThumbnail) {
+                    if (directories.thumbnailsAvatar) {
+                        parts.push(describeFile(path.join(directories.thumbnailsAvatar, item.filename)));
+                    }
+                    if (directories.thumbnailsAvatarMobile) {
+                        parts.push(describeFile(path.join(directories.thumbnailsAvatarMobile, item.filename)));
+                    }
+                }
+                continue;
+            }
+            // The folder itself changes when a file nobody manages is added to it, so only its kind counts.
+            parts.push(describePath(item).split(':')[0]);
+            item.files.forEach(entry => parts.push(describePath(item, entry.name)));
+        }
+        return parts.join('|');
+    }
+
+    function runReconcile() {
+        const updated = [];
+        let clean = true;
+        let items;
+        try {
+            items = readItems();
+        } catch (error) {
+            console.warn(error.message);
+            return { updated, clean: false };
+        }
+        const worldNames = worldNamesOf(items);
+        for (const item of items) {
+            try {
+                if (!needsUpdate(item, worldNames)) {
+                    continue;
+                }
+                bringUp(item, item.type === ITEM_TYPES.WORLD ? createBackups() : null);
+                updated.push(item.filename);
+                console.info(`Managed content ${item.filename} updated to version ${item.version}`);
+            } catch (error) {
+                clean = false;
+                console.warn(`Failed to update managed content ${item.filename}`, error);
+            }
+        }
+        if (!dropStaleThumbnails(items, new Set(updated))) {
+            clean = false;
+        }
+        return { updated, clean };
     }
 
     return {
@@ -995,30 +1159,16 @@ export function createManagedContent({
          * @returns {string}
          */
         stateSignature() {
-            let items;
-            try {
-                items = readItems();
-            } catch {
-                items = [];
-            }
-            const describePath = (item, ...parts) => {
-                try {
-                    return describeFile(userPath(item, ...parts));
-                } catch {
-                    return 'unsafe';
-                }
-            };
-            const parts = [describeFile(path.join(bundledDirectory, MANIFEST_FILE_NAME)), describeFile(path.join(directories.root, 'content.log'))];
-            for (const item of items) {
-                if (item.type !== ITEM_TYPES.SPRITES) {
-                    parts.push(describePath(item));
-                    continue;
-                }
-                // The folder itself changes when a file nobody manages is added to it, so only its kind counts.
-                parts.push(describePath(item).split(':')[0]);
-                item.files.forEach(entry => parts.push(describePath(item, entry.name)));
-            }
-            return parts.join('|');
+            return computeSignature({ includeContentLog: true, includeThumbnails: false });
+        },
+
+        /**
+         * A text that changes whenever the files `reconcile` inspects or drops thumbnails for change, without reading
+         * user file contents or `content.log`.
+         * @returns {string}
+         */
+        reconcileSignature() {
+            return computeSignature({ includeContentLog: false, includeThumbnails: true });
         },
 
         /** @returns {ManagedStatus[]} */
@@ -1035,23 +1185,16 @@ export function createManagedContent({
          * @returns {string[]} The filenames that were updated.
          */
         reconcile() {
-            const updated = [];
-            const items = loadItems();
-            const worldNames = worldNamesOf(items);
-            for (const item of items) {
-                try {
-                    if (!needsUpdate(item, worldNames)) {
-                        continue;
-                    }
-                    bringUp(item, item.type === ITEM_TYPES.WORLD ? createBackups() : null);
-                    updated.push(item.filename);
-                    console.info(`Managed content ${item.filename} updated to version ${item.version}`);
-                } catch (error) {
-                    console.warn(`Failed to update managed content ${item.filename}`, error);
-                }
-            }
-            dropStaleThumbnails(items, new Set(updated));
-            return updated;
+            return runReconcile().updated;
+        },
+
+        /**
+         * Runs `reconcile` and reports whether every item completed without caught errors so boot markers
+         * are only persisted after a clean pass.
+         * @returns {{ updated: string[], clean: boolean }}
+         */
+        reconcileWithStatus() {
+            return runReconcile();
         },
 
         /**
@@ -1092,16 +1235,45 @@ export function createManagedContent({
 }
 
 /**
+ * Updates the managed content of one user that nobody edited, reporting whether the pass completed cleanly so
+ * callers avoid persisting markers after transient item failures.
+ * @param {Parameters<typeof createManagedContent>[0] & { appVersion?: string }} options
+ * @returns {{ updated: string[], clean: boolean }}
+ */
+export function reconcileManagedContentWithStatus(options) {
+    try {
+        const service = createManagedContent(options);
+        const userRoot = options?.directories?.root;
+        const appVersion = options?.appVersion ?? readAppVersionSignature();
+        const marker = readReconcileMarker(userRoot);
+        const beforeSignature = service.reconcileSignature();
+
+        if (marker && marker.managedAppVersion === appVersion && marker.managedSignature === beforeSignature) {
+            return { updated: [], clean: true };
+        }
+
+        const { updated, clean } = service.reconcileWithStatus();
+        if (clean) {
+            const afterSignature = service.reconcileSignature();
+            writeReconcileMarker(userRoot, {
+                appVersion,
+                managedAppVersion: appVersion,
+                managedSignature: afterSignature,
+            }, options?.setPermissions);
+        }
+        return { updated, clean };
+    } catch (error) {
+        console.warn('Failed to reconcile managed content', error);
+        return { updated: [], clean: false };
+    }
+}
+
+/**
  * Updates the managed content of one user that nobody edited. It runs in the seeding pass of every start, so a
  * failure is logged and never stops the start.
- * @param {Parameters<typeof createManagedContent>[0]} options
+ * @param {Parameters<typeof createManagedContent>[0] & { appVersion?: string }} options
  * @returns {string[]} The filenames that were updated.
  */
 export function reconcileManagedContent(options) {
-    try {
-        return createManagedContent(options).reconcile();
-    } catch (error) {
-        console.warn('Failed to reconcile managed content', error);
-        return [];
-    }
+    return reconcileManagedContentWithStatus(options).updated;
 }

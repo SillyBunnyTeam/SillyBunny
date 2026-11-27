@@ -1,10 +1,12 @@
-// SillyBunny: clears browser caches twice after every server start.
-// The server marks pending clears with the sillybunny_cache_boot cookie (see
-// src/middleware/restartCacheClear.js) and sends Clear-Site-Data: "cache" on
-// each index load until two passes are recorded. Each pass here also purges
-// Cache Storage and service workers, records progress, and reloads. The second
-// pass catches caches that a still-controlling service worker re-filled
-// during the first reload (iOS WebKit keeps it attached until unload).
+// SillyBunny: clears browser caches when the server's cache-clear value changes.
+// The server marks a pending clear with the sillybunny_cache_boot cookie (see
+// src/middleware/restartCacheClear.js). Its value changes when the served frontend
+// content or the user's extensions changed (mode: content), or on every server start
+// (mode: always), and the server sends Clear-Site-Data: "cache" on each index load
+// until the passes are recorded. Each pass here also purges Cache Storage and service
+// workers, records progress, and reloads. A page that a service worker controls needs
+// two passes, because that worker can re-fill the caches during the first reload (iOS
+// WebKit keeps it attached until unload). A page without a controlling worker needs one.
 (function () {
     'use strict';
 
@@ -94,9 +96,17 @@
         return;
     }
 
+    // Without a controlling service worker on the first pass nothing can re-populate
+    // Cache Storage during the reload navigation, so one pass suffices.
+    var hasController = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+    var isSinglePass = completed === 0 && !hasController;
+    var pass = completed + 1;
+    var nextCompleted = isSinglePass ? PASSES : pass;
+    var totalPasses = isSinglePass ? 1 : PASSES;
+
     // Record the pass before purging so a failing purge cannot loop, and
     // never reload when the browser refuses the progress cookie.
-    if (!writeProgress(bootId, completed + 1)) {
+    if (!writeProgress(bootId, nextCompleted)) {
         return;
     }
 
@@ -106,13 +116,12 @@
         window.stop();
     }
 
-    var pass = completed + 1;
     clearBrowserCaches()
         .catch(function (error) {
             console.warn('[Cache] Restart cache clear pass ' + pass + ' failed.', error);
         })
         .then(function () {
-            console.info('[Cache] Restart cache clear pass ' + pass + ' of ' + PASSES + ' complete. Reloading.');
+            console.info('[Cache] Restart cache clear pass ' + pass + ' of ' + totalPasses + ' complete. Reloading.');
             window.location.reload();
         });
 })();
