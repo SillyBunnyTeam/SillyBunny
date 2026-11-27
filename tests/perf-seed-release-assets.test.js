@@ -175,6 +175,7 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
         expect(copyAllIdx).toBeGreaterThan(bunInstallIdx);
         expect(dockerfile).toContain('node "./scripts/build-prebuilt-lib.js"');
         expect(dockerfile).toContain('bun "./docker/build-lib.js"');
+        expect(dockerfile).toContain('node "./scripts/build-frontend-assets.js"');
         expect(dockerfile).toContain('chown -R bun:bun dist');
 
         // docker-entrypoint.sh runs server-init.js directly.
@@ -183,50 +184,94 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
     });
 
     describe('the Dockerfile step that builds the prebuilt assets', () => {
-        // Runs the real RUN chain from the Dockerfile with stub node, bun and chown commands.
-        function runBuildStep({ failing = [] }) {
+        // Runs the real RUN text from the Dockerfile with /bin/sh -c, as the image build does, with stub node, bun and chown
+        // commands. A stub frontend build leaves output in dist/frontend before it exits, like a build that stops half way.
+        function runBuildStep({ failing = {}, withFrontendScript = true } = {}) {
             const dockerfile = fs.readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8');
             const block = dockerfile.split('\n\n').find(part => part.includes('build-lib.js'));
-            const chain = block.slice(block.indexOf('RUN ') + 'RUN '.length).replace(/\\\n/g, ' ');
+            const stepText = block.slice(block.indexOf('RUN ') + 'RUN '.length).replace(/\\\n/g, ' ');
 
             const appDir = fs.mkdtempSync(path.join(tempDir, 'docker-step-'));
             const binDir = path.join(appDir, 'stub-bin');
+            const callsLog = path.join(appDir, 'calls.log');
             fs.mkdirSync(binDir);
             fs.mkdirSync(path.join(appDir, 'scripts'));
             fs.mkdirSync(path.join(appDir, 'docker'));
-            for (const script of ['scripts/build-prebuilt-lib.js', 'scripts/build-frontend-assets.js', 'docker/build-lib.js']) {
+            const scripts = ['scripts/build-prebuilt-lib.js', 'docker/build-lib.js', ...(withFrontendScript ? ['scripts/build-frontend-assets.js'] : [])];
+            for (const script of scripts) {
                 fs.writeFileSync(path.join(appDir, script), '');
             }
-            const failCases = failing.map(name => `*${name}*) exit 3 ;;`).join('\n');
+            const failCases = Object.entries(failing).map(([name, code]) => `*${name}*) exit ${code} ;;`).join('\n');
             for (const command of ['node', 'bun']) {
                 fs.writeFileSync(
                     path.join(binDir, command),
-                    `#!/bin/sh\necho "${command} $*" >> "${appDir}/calls.log"\ncase "$*" in\n${failCases}\nesac\nexit 0\n`,
+                    [
+                        '#!/bin/sh',
+                        `echo "${command} $*" >> "${callsLog}"`,
+                        'case "$*" in *build-frontend-assets.js*) mkdir -p dist/frontend && echo partial > dist/frontend/app.js ;; esac',
+                        'case "$*" in',
+                        failCases,
+                        'esac',
+                        'exit 0',
+                        '',
+                    ].join('\n'),
                 );
                 fs.chmodSync(path.join(binDir, command), 0o755);
             }
-            fs.writeFileSync(path.join(binDir, 'chown'), '#!/bin/sh\nexit 0\n');
+            fs.writeFileSync(path.join(binDir, 'chown'), `#!/bin/sh\necho "chown $*" >> "${callsLog}"\nexit 0\n`);
             fs.chmodSync(path.join(binDir, 'chown'), 0o755);
 
-            const result = spawnSync('/bin/sh', ['-c', `set -e; ${chain}`], {
+            const result = spawnSync('/bin/sh', ['-c', stepText], {
                 cwd: appDir,
                 env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}` },
                 encoding: 'utf8',
             });
-            const calls = fs.existsSync(path.join(appDir, 'calls.log')) ? fs.readFileSync(path.join(appDir, 'calls.log'), 'utf8') : '';
-            return { status: result.status, calls };
+            return {
+                status: result.status,
+                outputLines: `${result.stdout}${result.stderr}`.split('\n').filter(Boolean),
+                calls: fs.existsSync(callsLog) ? fs.readFileSync(callsLog, 'utf8') : '',
+                distExists: fs.existsSync(path.join(appDir, 'dist')),
+                frontendExists: fs.existsSync(path.join(appDir, 'dist', 'frontend')),
+            };
         }
 
+        const HEADER_LINE = '*** Build prebuilt lib.js and dist/frontend assets ***';
+
         test('a failed build of the prebuilt library fails the image build', () => {
-            const { status, calls } = runBuildStep({ failing: ['build-prebuilt-lib.js', 'build-lib.js'] });
+            const { status, calls } = runBuildStep({ failing: { 'build-prebuilt-lib.js': 3, 'build-lib.js': 3 } });
             expect(status).not.toBe(0);
             expect(calls).toMatch(/build-(?:prebuilt-)?lib\.js/);
+            expect(calls).not.toContain('build-frontend-assets.js');
         });
 
-        test('the frontend asset build is not part of the image, so its failure cannot be hidden', () => {
-            const { status, calls } = runBuildStep({ failing: ['build-frontend-assets.js'] });
-            expect(status).toBe(0);
-            expect(calls).not.toContain('build-frontend-assets.js');
+        test('a frontend build that succeeds leaves dist/frontend and prints nothing of its own', () => {
+            const result = runBuildStep();
+            expect(result.status).toBe(0);
+            expect(result.outputLines).toEqual([HEADER_LINE]);
+            expect(result.calls).toContain('node ./scripts/build-frontend-assets.js');
+            expect(result.frontendExists).toBe(true);
+            expect(result.calls).toContain('chown -R bun:bun dist');
+        });
+
+        test('a frontend build that fails is removed, named once with its exit code, and the image build goes on', () => {
+            const result = runBuildStep({ failing: { 'build-frontend-assets.js': 3 } });
+            expect(result.status).toBe(0);
+            expect(result.frontendExists).toBe(false);
+            expect(result.distExists).toBe(true);
+            expect(result.outputLines).toHaveLength(2);
+            expect(result.outputLines[0]).toBe(HEADER_LINE);
+            expect(result.outputLines[1]).toContain('node ./scripts/build-frontend-assets.js');
+            expect(result.outputLines[1]).toContain('exit code 3');
+            expect(result.calls).toContain('chown -R bun:bun dist');
+        });
+
+        test('an image tree without the frontend build script builds as before', () => {
+            const result = runBuildStep({ withFrontendScript: false });
+            expect(result.status).toBe(0);
+            expect(result.outputLines).toEqual([HEADER_LINE]);
+            expect(result.calls).not.toContain('build-frontend-assets.js');
+            expect(result.distExists).toBe(true);
+            expect(result.frontendExists).toBe(false);
         });
     });
 

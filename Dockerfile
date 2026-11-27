@@ -34,11 +34,14 @@ RUN \
   chown -R bun:bun config data plugins public/scripts/extensions/third-party backups && \
   ln -s "./config/config.yaml" "config.yaml"
 
-# SillyBunny: pre-compile Node-minified public libraries (falling back to docker/build-lib.js).
-# No dist/frontend build here. Add one as its own step without `|| true`, so that a failed build fails the image build.
+# SillyBunny: pre-compile Node-minified public libraries (falling back to docker/build-lib.js) and hashed dist/frontend assets when available.
+# A failed frontend build does not fail the image: dist/frontend is removed so that the server serves public/, and one line names the exit code.
 RUN \
-  echo "*** Build prebuilt lib.js ***" && \
+  echo "*** Build prebuilt lib.js and dist/frontend assets ***" && \
   if [ -f "./scripts/build-prebuilt-lib.js" ]; then node "./scripts/build-prebuilt-lib.js"; else bun "./docker/build-lib.js"; fi && \
+  if [ -f "./scripts/build-frontend-assets.js" ]; then \
+    node "./scripts/build-frontend-assets.js" || { rc=$?; rm -rf dist/frontend; echo "*** Frontend asset build (node ./scripts/build-frontend-assets.js) failed with exit code ${rc}; dist/frontend was removed and the server will serve public/. ***"; }; \
+  fi && \
   mkdir -p dist && \
   chown -R bun:bun dist
 
