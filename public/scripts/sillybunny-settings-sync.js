@@ -14,8 +14,17 @@ const hasEncodeInto = typeof textEncoder.encodeInto === 'function';
 const SCRATCH_BUFFER_SIZE = 8192;
 
 /**
- * Synchronous streaming SHA-256 hasher so settings fingerprints retain 64 hex chars instead of megabytes of JSON.
- * Uses a single reusable UTF-8 scratch buffer and an inline ASCII fast-path to avoid per-token TextEncoder allocations.
+ * @param {number} byteLength Length of the canonical JSON in UTF-8 bytes
+ * @param {string} hexDigest SHA-256 digest of those bytes, in lowercase hex
+ * @returns {string}
+ */
+function formatFingerprint(byteLength, hexDigest) {
+    return `v1:${byteLength}:${hexDigest}`;
+}
+
+/**
+ * Synchronous SHA-256 hasher for pages without `crypto.subtle`, which browsers hide on insecure origins such as a LAN address over plain HTTP.
+ * Uses a single reusable UTF-8 scratch buffer and an inline ASCII fast-path to avoid per-call TextEncoder allocations.
  */
 function createSha256Hasher() {
     let h0 = 0x6a09e667;
@@ -115,13 +124,6 @@ function createSha256Hasher() {
         }
     }
 
-    function updateByte(byte) {
-        if (scratchLen === SCRATCH_BUFFER_SIZE) {
-            flushScratch();
-        }
-        scratch[scratchLen++] = byte;
-    }
-
     function updateString(str) {
         if (!str) return;
         const len = str.length;
@@ -172,76 +174,75 @@ function createSha256Hasher() {
         compress();
 
         const words = [h0, h1, h2, h3, h4, h5, h6, h7];
-        return `v1:${totalBytes}:${words.map(word => word.toString(16).padStart(8, '0')).join('')}`;
+        return formatFingerprint(totalBytes, words.map(word => word.toString(16).padStart(8, '0')).join(''));
     }
 
-    return { updateByte, updateString, digestHex };
+    return { updateString, digestHex };
 }
 
 /**
- * Streams a canonical key-sorted JSON representation directly into the hasher without cloning objects or building one giant string.
- * @param {unknown} value JSON value
- * @param {{ updateByte: (byte: number) => void, updateString: (str: string) => void }} hasher Target hasher
- * @param {boolean} [skipVersionKey=false] When true, omits the root `_version` property without mutating the input object.
+ * Sorts object keys at every level, so that equal settings give equal JSON whatever their key order.
+ * @param {unknown} value JSON data
+ * @returns {unknown}
  */
-function hashCanonicalJson(value, hasher, skipVersionKey = false) {
-    if (value && typeof value === 'object' && typeof value.toJSON === 'function') {
-        value = value.toJSON();
-    }
+function sortKeys(value) {
     if (Array.isArray(value)) {
-        hasher.updateByte(0x5b); // '['
-        for (let i = 0; i < value.length; i++) {
-            if (i > 0) hasher.updateByte(0x2c); // ','
-            const item = value[i];
-            const itemType = typeof item;
-            hashCanonicalJson(
-                item === undefined || itemType === 'function' || itemType === 'symbol' ? null : item,
-                hasher,
-                false,
-            );
-        }
-        hasher.updateByte(0x5d); // ']'
-        return;
+        return value.map(sortKeys);
     }
     if (value && typeof value === 'object') {
-        hasher.updateByte(0x7b); // '{'
-        const keys = Object.keys(value).sort();
-        let wroteAny = false;
-        for (let i = 0; i < keys.length; i++) {
-            const key = keys[i];
-            if (skipVersionKey && key === '_version') continue;
-            const entry = value[key];
-            const entryType = typeof entry;
-            if (entry === undefined || entryType === 'function' || entryType === 'symbol') continue;
-            if (wroteAny) hasher.updateByte(0x2c); // ','
-            wroteAny = true;
-            hasher.updateString(JSON.stringify(key));
-            hasher.updateByte(0x3a); // ':'
-            hashCanonicalJson(entry, hasher, false);
-        }
-        hasher.updateByte(0x7d); // '}'
-        return;
+        return Object.fromEntries(Object.keys(value).sort().map(key => [key, sortKeys(value[key])]));
     }
-    hasher.updateString(JSON.stringify(value));
+    return value;
+}
+
+/**
+ * @param {string | Record<string, unknown>} input Settings as JSON text, or as an object that JSON.stringify can serialize
+ * @returns {string} The settings without the root `_version`, with sorted keys, as JSON text
+ */
+function getCanonicalJson(input) {
+    const settings = JSON.parse(typeof input === 'string' ? input : JSON.stringify(input));
+    delete settings._version;
+    return JSON.stringify(sortKeys(settings));
+}
+
+function digestCanonicalJsonInJs(canonicalJson) {
+    const hasher = createSha256Hasher();
+    hasher.updateString(canonicalJson);
+    return hasher.digestHex();
+}
+
+async function digestCanonicalJson(canonicalJson) {
+    const subtle = globalThis.crypto?.subtle;
+    if (!subtle) {
+        return digestCanonicalJsonInJs(canonicalJson);
+    }
+    try {
+        const bytes = textEncoder.encode(canonicalJson);
+        const digest = new Uint8Array(await subtle.digest('SHA-256', bytes));
+        return formatFingerprint(bytes.length, Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join(''));
+    } catch {
+        return digestCanonicalJsonInJs(canonicalJson);
+    }
 }
 
 /**
  * Remembers a compact fingerprint of the settings that the page last loaded from the server or saved to it.
  *
- * The page builds every save from objects that it keeps changing, so it hashes the canonical JSON directly from
- * either a JSON string or a live settings object rather than retaining the objects or re-parsing a multi-megabyte string.
+ * The page builds every save from objects that it keeps changing, so it remembers a SHA-256 digest of the settings'
+ * canonical JSON, not those objects and not the JSON itself, which can be many megabytes with a large preset.
  * A save with the remembered settings would change nothing on the server, and a page whose settings are stale would only
  * get the settings conflict prompt for it.
- * @returns {{ getFingerprint: (input: string | Record<string, unknown>) => string, remember: (fingerprint: string) => void, isSynced: (fingerprint: string) => boolean }}
+ * @returns {{ getFingerprint: (input: string | Record<string, unknown>) => Promise<string>, remember: (fingerprint: string) => void, isSynced: (fingerprint: string) => boolean }}
  */
 export function createSettingsSync() {
     let syncedFingerprint = null;
     return {
-        getFingerprint(input) {
-            const settings = typeof input === 'string' ? JSON.parse(input) : input;
-            const hasher = createSha256Hasher();
-            hashCanonicalJson(settings, hasher, true);
-            return hasher.digestHex();
+        /**
+         * Hashes with the browser's SHA-256 where `crypto.subtle` exists. Browsers hide it on insecure origins, such as a
+         * LAN address over plain HTTP, and the digest is then computed in JavaScript, which blocks the page while it runs.
+         */
+        async getFingerprint(input) {
+            return digestCanonicalJson(getCanonicalJson(input));
         },
         remember(fingerprint) {
             syncedFingerprint = fingerprint;

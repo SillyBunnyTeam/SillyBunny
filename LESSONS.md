@@ -1901,7 +1901,7 @@ This is the largest class by a wide margin.
 ### Settings sync live-object fingerprinting
 
 - **Breaks:** `public/scripts/sillybunny-settings-sync.js` accepted only JSON strings and called `textEncoder.encode()` per JSON token; calling it on a live settings save forced `JSON.stringify()` + `JSON.parse()` + ~30k `Uint8Array` allocations (`~53 ms` desktop, `200–350 ms` Android).
-- **Guards:** `sillybunny-settings-sync.js` hashes live JS objects directly (omitting root `_version` without mutating, skipping `undefined`/function/symbol properties and invoking `toJSON()`) using a reusable 8 KiB byte buffer with an inline ASCII fast-path and `encodeInto()`; `public/script.js` hashes `settings` on load and computes `settingsSync.getFingerprint(payload)` before `JSON.stringify(payload)` on save.
+- **Guards:** `sillybunny-settings-sync.js` keeps a SHA-256 digest of the canonical JSON (sorted keys, no root `_version`) instead of the JSON, so a large preset does not stay in memory. `getFingerprint()` is async: it digests with `crypto.subtle`, and only a page without it (a LAN address over plain HTTP) runs the JavaScript SHA-256, which is slower than the browser's by an order of magnitude. `public/script.js` builds `body` first and awaits the fingerprint of that text on save, and of `data.settings` on load, so the remembered value is of what the server holds even when the page changes its objects during the await.
 - **Tests:** `tests/sillybunny-settings-sync.test.js`, `tests/unit/sillybunny-memory-engine-hotfixes.test.js`.
 
 ### Token cache bounds (`public/scripts/tokenizers.js`)

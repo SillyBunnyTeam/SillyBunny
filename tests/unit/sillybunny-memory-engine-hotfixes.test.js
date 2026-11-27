@@ -78,16 +78,16 @@ describe('Slice 1E: chat recovery line-streaming validation without record reten
 });
 
 describe('Slice 1E: compact streaming SHA-256 settings sync fingerprints', () => {
-    test('returns a fixed-size digest regardless of payload size while matching canonical equality', () => {
+    test('returns a fixed-size digest regardless of payload size while matching canonical equality', async () => {
         const sync = createSettingsSync();
         const hugeText = 'x'.repeat(250_000);
         const firstJson = JSON.stringify({ _version: 1, z: hugeText, a: { c: 3, b: [1, 2] } });
         const secondJson = JSON.stringify({ a: { b: [1, 2], c: 3 }, z: hugeText, _version: 99 });
         const changedJson = JSON.stringify({ a: { b: [1, 3], c: 3 }, z: hugeText, _version: 99 });
 
-        const fp1 = sync.getFingerprint(firstJson);
-        const fp2 = sync.getFingerprint(secondJson);
-        const fp3 = sync.getFingerprint(changedJson);
+        const fp1 = await sync.getFingerprint(firstJson);
+        const fp2 = await sync.getFingerprint(secondJson);
+        const fp3 = await sync.getFingerprint(changedJson);
 
         expect(fp1).toMatch(/^v1:\d+:[a-f0-9]{64}$/);
         expect(fp1.length).toBeLessThan(100);

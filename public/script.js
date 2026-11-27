@@ -12950,8 +12950,8 @@ export async function getSettings() {
     const data = await response.json();
     if (data.result != 'file not find' && data.settings) {
         settings = JSON.parse(data.settings);
-        // SillyBunny: hash the parsed settings object before mutations so boot skips a second JSON.parse.
-        settingsSync.remember(settingsSync.getFingerprint(settings));
+        // SillyBunny: the loaded text, before the page changes the objects that it parses into.
+        settingsSync.remember(await settingsSync.getFingerprint(data.settings));
         lastServerSettingsVersion = normalizeSettingsVersion(settings._version);
         settingsConflictReloadRequired = false;
         settingsConflictPromptDismissed = false;
@@ -13158,16 +13158,16 @@ async function saveSettingsInner(loopCounter = 0) {
     };
 
     try {
-        // SillyBunny: a page that changed nothing sends no request (and avoids JSON.stringify/JSON.parse churn).
-        // Every boot saves, and the server refuses that save from a page whose settings another tab or device changed since this page loaded them.
-        const fingerprint = settingsSync.getFingerprint(payload);
+        const body = JSON.stringify(payload);
+        // SillyBunny: a page that changed nothing sends no request. Every boot saves, and the server refuses that save
+        // from a page whose settings another tab or device changed since this page loaded them.
+        // The digest is of `body`, not of the live objects, so that it matches what the server receives even when the digest is awaited.
+        const fingerprint = await settingsSync.getFingerprint(body);
         if (settingsSync.isSynced(fingerprint)) {
             settings = payload;
             await eventSource.emit(event_types.SETTINGS_UPDATED);
             return true;
         }
-
-        const body = JSON.stringify(payload);
 
         const saveSettingsRequest = await compressRequest({
             method: 'POST',
