@@ -17,7 +17,7 @@ const presetManagerSource = fs.readFileSync(fileURLToPath(new URL('../public/scr
 
 describe('OpenAI-compatible Claude model capabilities', () => {
     test('removes unsupported parameters from provider-prefixed Claude 5 requests', () => {
-        for (const model of ['anthropic/claude-sonnet-5', 'anthropic/claude-opus-5']) {
+        for (const model of ['anthropic/claude-sonnet-5', 'anthropic/claude-opus-5', 'anthropic/claude-sonnet-5-5', 'anthropic/claude-haiku-5-5']) {
             const payload = {
                 model,
                 temperature: 0.8,
@@ -36,7 +36,7 @@ describe('OpenAI-compatible Claude model capabilities', () => {
     });
 
     test('preserves native Claude 5 reasoning controls while removing sampling parameters', () => {
-        for (const model of ['claude-sonnet-5', 'claude-opus-5']) {
+        for (const model of ['claude-sonnet-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']) {
             const payload = {
                 model,
                 temperature: 0.8,

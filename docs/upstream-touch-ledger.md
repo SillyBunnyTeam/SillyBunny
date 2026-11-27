@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js` and `src/endpoints/backends/chat-completions.js` - Claude Sonnet 5.5 and Haiku 5.5
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `src/endpoints/backends/chat-completions.js` (plus SillyBunny-owned `public/scripts/openai-model-capabilities.js`). |
+| Area | Claude 5.5 model catalog, 1M context, vision detection, native JSON output, thinking compatibility and Custom endpoint guards. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6129 reconciled with upstream PR #6213 before the next full upstream sync, adding Claude Sonnet 5.5 and Haiku 5.5 to the pickers and extending SillyBunny's `openai-model-capabilities.js` restricted-sampling helper, Claude native JSON output, `between_tools` null-budget thinking rule, and Custom endpoint guards while preserving SillyBunny's `claude_model` default (`claude-opus-5`). |
+| Target seam | `sendClaudeRequest()` and the Custom endpoint thinking guard in `src/endpoints/backends/chat-completions.js`, plus `applyClaudeModelParameterConstraints()` in `public/scripts/openai-model-capabilities.js` (adapted early port of upstream SillyTavern PR #6129 / #6213, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Add `claude-sonnet-5-5` and `claude-haiku-5-5` options to the Claude and caption pickers, add `haiku-5` to the 1M-context regex, `visionSupportedModels`, `hasRestrictedSampling` and `isClaude5Model`, extend `useNativeJsonOutput` to include `sonnet-5-5` and `haiku-5-5`, send `between_tools` for Sonnet 5.5 when no effort is set, and guard Custom endpoint `thinking` payloads for Sonnet 5.5 and Haiku 5.5. |
+| Protecting tests | `tests/claude-sonnet5.test.js`, `tests/openai-model-capabilities.test.js`, `tests/openai-static-models.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- claude-sonnet5.test.js openai-model-capabilities.test.js openai-static-models.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the `claude-sonnet-5-5` and `claude-haiku-5-5` `<option>` rows from `public/index.html` and `public/scripts/extensions/caption/settings.html`, remove `haiku-5` from `public/scripts/openai-model-capabilities.js` and `public/scripts/openai.js`, restore `isClaude5Model`, `useNativeJsonOutput`, the null-budget thinking branch, and Custom endpoint guards in `src/endpoints/backends/chat-completions.js`, and revert the added cases in `tests/claude-sonnet5.test.js`, `tests/openai-model-capabilities.test.js`, and `tests/openai-static-models.test.js`. Saved presets and chats are unchanged. Reconcile this entry on the upstream sync carrying ST #6129 / #6213. |
+| Last reviewed | 2026-11-27 (adapted early port of ST #6129 / #6213). |
+| Owner | Server and API compatibility integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

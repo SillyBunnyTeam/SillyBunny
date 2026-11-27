@@ -17,7 +17,7 @@ const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
 await jest.unstable_mockModule('node-fetch', () => ({
     default: nodeFetchMock,
 }));
-const currentClaude5Models = ['claude-sonnet-5', 'claude-opus-5'];
+const currentClaude5Models = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-5-5'];
 
 function captureClaudePayload() {
     nodeFetchMock.mockClear();
@@ -128,6 +128,10 @@ describe('Claude 5 backend request handling', () => {
         'anthropic/claude-fable-5-1',
         'claude-opus-5-5',
         'anthropic/claude-opus-5-5',
+        'claude-sonnet-5-5',
+        'anthropic/claude-sonnet-5-5',
+        'claude-haiku-5-5',
+        'anthropic/claude-haiku-5-5',
     ])('%s uses native JSON output alongside adaptive thinking', async (model) => {
         const getBody = captureClaudePayload();
         const schema = {
@@ -264,6 +268,40 @@ describe('Claude 5 backend request handling', () => {
     });
 
     test.each([
+        { effort: 'none', includeReasoning: false },
+        { effort: 'none', includeReasoning: true },
+        { effort: undefined, includeReasoning: false },
+        { effort: 'auto', includeReasoning: false },
+    ])('Sonnet 5.5 sends between_tools thinking without display for effort=$effort and summaries=$includeReasoning', async ({ effort, includeReasoning }) => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({
+            model: 'claude-sonnet-5-5',
+            reasoning_effort: effort,
+            include_reasoning: includeReasoning,
+        });
+
+        expect(res.status).toBe(200);
+        const body = getBody();
+        expect(body.thinking).toEqual({ type: 'between_tools' });
+        expect(body.output_config).toBeUndefined();
+        expect(body.temperature).toBeUndefined();
+        expect(body.top_p).toBeUndefined();
+        expect(body.top_k).toBeUndefined();
+    });
+
+    test('Sonnet 5.5 with effort=high sends adaptive thinking and omits sampling params', async () => {
+        const getBody = captureClaudePayload();
+        const res = await makeRequest({ model: 'claude-sonnet-5-5', reasoning_effort: 'high', include_reasoning: true });
+        expect(res.status).toBe(200);
+        const body = getBody();
+        expect(body.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(body.output_config?.effort).toBe('high');
+        expect(body.temperature).toBeUndefined();
+        expect(body.top_p).toBeUndefined();
+        expect(body.top_k).toBeUndefined();
+    });
+
+    test.each([
         { label: 'canonical Fable 5.1 ID', model: 'claude-fable-5-1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
         { label: 'OpenRouter-style Fable 5.1 ID', model: 'anthropic/claude-fable-5.1', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
         { label: 'canonical Opus 5.5 ID', model: 'claude-opus-5-5', customExcludeBody: undefined, expectedThinking: { type: 'adaptive' } },
@@ -271,6 +309,10 @@ describe('Claude 5 backend request handling', () => {
         { label: 'Opus 5.5 thinking exclusion', model: 'claude-opus-5-5', customExcludeBody: 'thinking', expectedThinking: undefined },
         { label: 'Opus 5.5 adaptive display', model: 'claude-opus-5-5', customIncludeBody: 'thinking:\n  type: adaptive\n  display: summarized', expectedThinking: { type: 'adaptive', display: 'summarized' } },
         { label: 'Opus 5.5 adaptive display with legacy budget', model: 'claude-opus-5-5', customIncludeBody: 'thinking:\n  type: adaptive\n  display: summarized\n  budget_tokens: 1024', expectedThinking: { type: 'adaptive', display: 'summarized' } },
+        { label: 'Sonnet 5.5 legacy enabled', model: 'claude-sonnet-5-5', customIncludeBody: 'thinking:\n  type: enabled\n  budget_tokens: 1024', expectedThinking: { type: 'adaptive' } },
+        { label: 'Sonnet 5.5 between_tools preserved', model: 'claude-sonnet-5-5', customIncludeBody: 'thinking:\n  type: between_tools\n  budget_tokens: 1024', expectedThinking: { type: 'between_tools' } },
+        { label: 'Haiku 5.5 legacy enabled converted to adaptive', model: 'claude-haiku-5-5', customIncludeBody: 'thinking:\n  type: enabled\n  budget_tokens: 1024', expectedThinking: { type: 'adaptive' } },
+        { label: 'Haiku 5.5 disabled preserved', model: 'claude-haiku-5-5', customIncludeBody: 'thinking:\n  type: disabled', expectedThinking: { type: 'disabled' } },
     ])('Custom Claude adaptive-thinking exception with $label handles thinking correctly', async ({ model, customIncludeBody = 'thinking:\n  type: enabled\n  budget_tokens: 1024', customExcludeBody, expectedThinking }) => {
         const getBody = captureClaudePayload();
         const res = await makeRequest({
