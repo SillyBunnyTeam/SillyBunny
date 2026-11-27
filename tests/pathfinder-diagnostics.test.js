@@ -1,13 +1,15 @@
 /* eslint-disable playwright/no-duplicate-hooks */
 /* global globalThis */
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { importOpenAiModule } from './util/openai-harness.js';
 
-const toolSource = readFileSync(new URL('../public/scripts/tool-calling.js', import.meta.url), 'utf8');
-const ToolDefinition = new Function(`return (${toolSource.match(/class ToolDefinition \{[\s\S]*?\n\}/)[0]});`)();
 const TOOL_NAMES = ['Pathfinder_Search', 'Pathfinder_Summarize', 'Pathfinder_Remember'];
 let runtimeAgent;
 let refreshRegistrations;
+
+// Load the real ToolManager so diagnostics run against real ToolDefinition instances.
+await importOpenAiModule({ mockToolCalling: false });
+const { ToolManager } = await import('../public/scripts/tool-calling.js');
 
 await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ getContext: () => null }));
 await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({
@@ -24,6 +26,26 @@ await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agen
 const { clearAllTrees, getSettings, getTree, replaceSettings, saveTree } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js');
 const { runDiagnostics } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/diagnostics.js');
 
+function buildRealToolDefinitions(names) {
+    for (const name of TOOL_NAMES) {
+        ToolManager.unregisterFunctionTool(name);
+    }
+    for (const name of names) {
+        ToolManager.registerFunctionTool({
+            name,
+            displayName: name,
+            description: '',
+            parameters: {},
+            action: jest.fn(),
+        });
+    }
+    const created = [...ToolManager.tools];
+    for (const name of names) {
+        ToolManager.unregisterFunctionTool(name);
+    }
+    return created;
+}
+
 describe('Pathfinder diagnostics', () => {
     let manager;
     let load;
@@ -39,7 +61,7 @@ describe('Pathfinder diagnostics', () => {
         runtimeAgent = { tools: TOOL_NAMES.map(name => ({ name, enabled: true })) };
         refreshRegistrations = jest.fn();
         manager = {
-            tools: TOOL_NAMES.map(name => new ToolDefinition(name, name, '', {}, jest.fn())),
+            tools: buildRealToolDefinitions(TOOL_NAMES),
             isToolCallingSupported: () => true,
         };
         load = jest.fn();

@@ -1,6 +1,7 @@
 /* global globalThis */
 import { jest } from '@jest/globals';
 import { fileURLToPath } from 'node:url';
+import v8 from 'node:v8';
 
 const pub = relative => fileURLToPath(new URL(`../../public/${relative}`, import.meta.url));
 
@@ -22,11 +23,13 @@ export function createNoopJQuery() {
         html: () => chain,
         empty: () => chain,
         append: () => chain,
+        prepend: () => chain,
         find: () => chain,
         filter: () => chain,
         addClass: () => chain,
         removeClass: () => chain,
         toggleClass: () => chain,
+        hasClass: () => false,
         toggle: () => chain,
         show: () => chain,
         hide: () => chain,
@@ -41,6 +44,8 @@ export function createNoopJQuery() {
         children: () => chain,
         first: () => chain,
         css: () => chain,
+        remove: () => chain,
+        detach: () => chain,
     };
     const jq = () => chain;
     jq.fn = {};
@@ -52,23 +57,56 @@ export function createNoopJQuery() {
  * and imports the real module. Call before importing `openai.js` or modules that depend on it.
  * @param {object} [options]
  * @param {boolean} [options.mockToolCalling] Mock `tool-calling.js` instead of loading the real `ToolManager`.
+ * @param {boolean} [options.mockPromptManager] Mock `PromptManager.js` instead of loading the real `PromptManager`.
+ * @param {boolean} [options.mockTokenizers] Mock `tokenizers.js` instead of loading real tokenizers.
  * @param {object} [options.script] Extra overrides merged into the `public/script.js` mock.
  * @param {object} [options.powerUser] Initial `power_user` object.
  * @param {object} [options.secrets] Extra overrides merged into the `public/scripts/secrets.js` mock.
  * @param {object} [options.accountStorage] Extra overrides for `accountStorage`.
+ * @param {object} [options.koboldCpp] Extra overrides for `sillybunny-koboldcpp-models.js`.
+ * @param {object} [options.popup] Extra overrides for `popup.js`.
+ * @param {object} [options.templates] Extra overrides for `templates.js`.
+ * @param {Function} [options.fetchResumable] Custom mock implementation for `fetchResumable`.
  * @returns {Promise<{ openai: typeof import('../../public/scripts/openai.js'), mocks: Record<string, any> }>}
  */
 export async function importOpenAiModule({
     mockToolCalling = true,
+    mockPromptManager = true,
+    mockTokenizers = true,
     script: scriptOverrides = {},
     powerUser: powerUserOverrides = {},
     secrets: secretsOverrides = {},
     accountStorage: accountStorageOverrides = {},
+    koboldCpp: koboldCppOverrides = {},
+    popup: popupOverrides = {},
+    templates: templatesOverrides = {},
+    fetchResumable: fetchResumableOverride = null,
 } = {}) {
+    if (typeof globalThis.structuredClone !== 'function') {
+        globalThis.structuredClone = value => v8.deserialize(v8.serialize(value));
+    }
+    if (typeof globalThis.CSS === 'undefined') {
+        globalThis.CSS = {
+            supports: () => false,
+            escape: value => String(value).replace(/([^\w-])/g, '\\$1'),
+        };
+    }
+    if (typeof globalThis.window !== 'undefined' && typeof globalThis.window.matchMedia !== 'function') {
+        globalThis.window.matchMedia = () => ({
+            matches: false,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+        });
+    }
     if (typeof globalThis.$ !== 'function') {
         const jq = createNoopJQuery();
         globalThis.$ = jq;
         globalThis.jQuery = jq;
+    } else if (globalThis.$.expr?.pseudos && !globalThis.$.expr.pseudos.is) {
+        // jQuery 3.5.1 falls back to Sizzle when jsdom rejects `:has(...)`; Sizzle lacks CSS `:is(...)`.
+        globalThis.$.expr.pseudos.is = globalThis.$.expr.createPseudo(
+            selector => elem => globalThis.$(elem).is(selector),
+        );
     }
     if (!globalThis.toastr) {
         globalThis.toastr = {
@@ -76,6 +114,7 @@ export async function importOpenAiModule({
             success: jest.fn(),
             warning: jest.fn(),
             error: jest.fn(),
+            clear: jest.fn(),
         };
     }
 
@@ -104,11 +143,13 @@ export async function importOpenAiModule({
         persona_description_position: 0,
         persona_description_depth: 2,
         persona_description_role: 0,
+        request_token_probabilities: false,
+        user_prompt_bias: '',
         ...powerUserOverrides,
     };
 
     const scriptMock = {
-        abortStatusCheck: jest.fn(),
+        abortStatusCheck: new AbortController(),
         addOneMessage: jest.fn(),
         cancelStatusCheck: jest.fn(),
         characters: [],
@@ -139,10 +180,11 @@ export async function importOpenAiModule({
         main_api: 'openai',
         name1: 'User',
         name2: 'Assistant',
+        online_status: 'no_connection',
         refreshMessageModelIcons: jest.fn(),
         resultCheckStatus: jest.fn(),
         saveChatConditional: jest.fn(async () => {}),
-        saveSettings: jest.fn(async () => {}),
+        saveSettings: jest.fn(async () => true),
         saveSettingsDebounced: jest.fn(),
         setOnlineStatus: jest.fn(),
         startStatusLoading: jest.fn(),
@@ -201,14 +243,22 @@ export async function importOpenAiModule({
         ...accountStorageOverrides,
     };
 
+    class MockPopup {
+        static show = {
+            confirm: jest.fn(async () => true),
+            text: jest.fn(async () => null),
+            input: jest.fn(async () => null),
+        };
+        constructor() {}
+        async show() { return null; }
+    }
+
     const popupMock = {
         callGenericPopup: jest.fn(async () => null),
-        Popup: class Popup {
-            constructor() {}
-            async show() { return null; }
-        },
+        Popup: MockPopup,
         POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null },
         POPUP_TYPE: { TEXT: 1, CONFIRM: 2, INPUT: 3, DISPLAY: 4 },
+        ...popupOverrides,
     };
 
     const promptManagerMock = {
@@ -218,7 +268,14 @@ export async function importOpenAiModule({
             constructor(data = {}) { Object.assign(this, data); }
         },
         PromptManager: class PromptManager {
-            init() {}
+            init(configuration, settings) {
+                this.configuration = configuration;
+                this.serviceSettings = settings;
+            }
+            setChatCompletion() {}
+            preparePrompt(prompt) { return prompt; }
+            log() {}
+            render() {}
             getPromptCollection() { return { collection: [] }; }
             getPromptOrderForCharacter() { return []; }
             getPromptById() { return null; }
@@ -227,31 +284,60 @@ export async function importOpenAiModule({
         promptManagerDefaultPromptOrders: [],
     };
 
+    const fetchResumableMock = fetchResumableOverride ?? jest.fn();
+    const renderTemplateAsyncMock = jest.fn(async () => '');
+    const templatesMock = {
+        renderTemplateAsync: renderTemplateAsyncMock,
+        ...templatesOverrides,
+    };
+    const registeredCommands = new Map();
+    const koboldCppMock = {
+        getKoboldCppChatState: jest.fn(() => null),
+        refreshKoboldCppModels: jest.fn(async () => {}),
+        countKoboldCppChatTokens: jest.fn(async () => 0),
+        isKoboldCppChatCompletion: jest.fn(() => false),
+        ...koboldCppOverrides,
+    };
+    const toolManagerMock = {
+        RECURSE_LIMIT: 5,
+        canPerformToolCalls: jest.fn(() => false),
+        getToolDefinitions: jest.fn(() => []),
+        isToolCallingSupported: jest.fn(() => false),
+        registerFunctionToolsOpenAI: jest.fn(async () => {}),
+    };
+
     await jest.unstable_mockModule(pub('lib.js'), () => ({
         Fuse: class Fuse { search() { return []; } },
         DOMPurify: { sanitize: value => value },
+        localforage: { getItem: async () => null, setItem: async () => {} },
     }));
     await jest.unstable_mockModule(pub('script.js'), () => scriptMock);
     await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({
         getGroupNames: jest.fn(() => []),
+        groups: [],
+        is_group_generating: false,
         selected_group: null,
     }));
-    await jest.unstable_mockModule(pub('scripts/PromptManager.js'), () => promptManagerMock);
+    if (mockPromptManager) {
+        await jest.unstable_mockModule(pub('scripts/PromptManager.js'), () => promptManagerMock);
+    }
     await jest.unstable_mockModule(pub('scripts/power-user.js'), () => ({
         forceCharacterEditorTokenize: jest.fn(),
         getCustomStoppingStrings: jest.fn(() => []),
         persona_description_positions: { IN_PROMPT: 0, TOP_AN: 2, BOTTOM_AN: 3, AT_DEPTH: 4, NONE: 9 },
         power_user: powerUser,
+        registerDebugFunction: jest.fn(),
     }));
     await jest.unstable_mockModule(pub('scripts/secrets.js'), () => secretsMock);
     await jest.unstable_mockModule(pub('scripts/sse-stream.js'), () => ({
         getEventSourceStream: jest.fn(),
     }));
     await jest.unstable_mockModule(pub('scripts/resumable-generation.js'), () => ({
-        fetchResumable: jest.fn(),
+        fetchResumable: fetchResumableMock,
     }));
     await jest.unstable_mockModule(pub('scripts/utils.js'), () => ({
         createThumbnail: jest.fn(),
+        debounce: fn => fn,
         delay: jest.fn(async () => {}),
         download: jest.fn(),
         escapeHtml: value => String(value ?? ''),
@@ -260,7 +346,7 @@ export async function importOpenAiModule({
         getFileText: jest.fn(async () => ''),
         getImageSizeFromDataURL: jest.fn(async () => ({ width: 0, height: 0 })),
         getSortableDelay: jest.fn(() => 0),
-        getStringHash: jest.fn(() => 0),
+        getStringHash: jest.fn(value => String(value ?? '')),
         getVideoDurationFromDataURL: jest.fn(async () => 0),
         isDataURL: jest.fn(() => false),
         isFalseBoolean: value => value === false || String(value).toLowerCase() === 'false',
@@ -279,13 +365,16 @@ export async function importOpenAiModule({
         stringFormat: (str, ...args) => String(str).replace(/\{(\d+)\}/g, (_m, i) => args[i] ?? ''),
         textValueMatcher: jest.fn(() => true),
         uuidv4: jest.fn(() => '00000000-0000-4000-8000-000000000000'),
+        waitUntilCondition: jest.fn(async () => true),
     }));
-    await jest.unstable_mockModule(pub('scripts/tokenizers.js'), () => ({
-        countChatCompletionPayloadTokensOpenAIAsync: jest.fn(async () => 0),
-        countTokensOpenAIAsync: jest.fn(async () => 0),
-        getTokenizerModel: jest.fn(() => 'gpt-4o'),
-        primeOpenAITokenCache: jest.fn(),
-    }));
+    if (mockTokenizers) {
+        await jest.unstable_mockModule(pub('scripts/tokenizers.js'), () => ({
+            countChatCompletionPayloadTokensOpenAIAsync: jest.fn(async () => 0),
+            countTokensOpenAIAsync: jest.fn(async () => 0),
+            getTokenizerModel: jest.fn(() => 'gpt-4o'),
+            primeOpenAITokenCache: jest.fn(),
+        }));
+    }
     await jest.unstable_mockModule(pub('scripts/RossAscends-mods.js'), () => ({
         isMobile: jest.fn(() => false),
     }));
@@ -293,7 +382,11 @@ export async function importOpenAiModule({
         saveLogprobsForActiveMessage: jest.fn(),
     }));
     await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandParser.js'), () => ({
-        SlashCommandParser: { addCommandObject: jest.fn() },
+        SlashCommandParser: {
+            addCommandObject: jest.fn(command => {
+                if (command?.name) registeredCommands.set(command.name, command);
+            }),
+        },
     }));
     await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommand.js'), () => ({
         SlashCommand: { fromProps: jest.fn(props => props) },
@@ -316,9 +409,7 @@ export async function importOpenAiModule({
     await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandReturnHelper.js'), () => ({
         slashCommandReturnHelper: { doReturn: jest.fn() },
     }));
-    await jest.unstable_mockModule(pub('scripts/templates.js'), () => ({
-        renderTemplateAsync: jest.fn(async () => ''),
-    }));
+    await jest.unstable_mockModule(pub('scripts/templates.js'), () => templatesMock);
     await jest.unstable_mockModule(pub('scripts/popup.js'), () => popupMock);
     await jest.unstable_mockModule(pub('scripts/sillybunny-delete-confirm.js'), () => ({
         confirmVerb: jest.fn(() => ({})),
@@ -328,11 +419,7 @@ export async function importOpenAiModule({
     }));
     if (mockToolCalling) {
         await jest.unstable_mockModule(pub('scripts/tool-calling.js'), () => ({
-            ToolManager: {
-                canPerformToolCalls: jest.fn(() => false),
-                getToolDefinitions: jest.fn(() => []),
-                isToolCallingSupported: jest.fn(() => false),
-            },
+            ToolManager: toolManagerMock,
         }));
     }
     await jest.unstable_mockModule(pub('scripts/util/AccountStorage.js'), () => ({
@@ -351,10 +438,7 @@ export async function importOpenAiModule({
     await jest.unstable_mockModule(pub('scripts/sillybunny-connection-notices.js'), () => ({
         flagMissingKey: jest.fn(),
     }));
-    await jest.unstable_mockModule(pub('scripts/sillybunny-koboldcpp-models.js'), () => ({
-        getKoboldCppChatState: jest.fn(() => ({})),
-        refreshKoboldCppModels: jest.fn(async () => {}),
-    }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-koboldcpp-models.js'), () => koboldCppMock);
     await jest.unstable_mockModule(pub('scripts/sillybunny-request-errors.js'), () => ({
         createFailedResponseError: jest.fn(async () => new Error('Request failed')),
         showRequestError: jest.fn(),
@@ -380,6 +464,11 @@ export async function importOpenAiModule({
             accountStorage: accountStorageMock,
             popup: popupMock,
             eventSource,
+            fetchResumable: fetchResumableMock,
+            renderTemplateAsync: renderTemplateAsyncMock,
+            registeredCommands,
+            koboldCpp: koboldCppMock,
+            toolManager: toolManagerMock,
         },
     };
 }

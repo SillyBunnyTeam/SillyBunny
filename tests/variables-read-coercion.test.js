@@ -1,20 +1,51 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
+import { describe, expect, jest, test } from '@jest/globals';
 import { fileURLToPath } from 'node:url';
 
 import {
     booleanOperandToString,
-    isNumericOperand,
     isNumericZero,
-    isTrueBoolean,
     readVariableValue,
 } from '../public/scripts/slash-commands/SlashCommandRuntimeUtils.js';
 
-// readVariableValue backs all three variable readers: getLocalVariable and
-// getGlobalVariable in public/scripts/variables.js, and SlashCommandScope.getVariable
-// for scoped (/let, /var) variables. Those modules pull in browser-only code and cannot
-// be imported here, so the shared helper is what gets covered.
+const resolvePublic = relativePath => fileURLToPath(new URL(`../public/${relativePath}`, import.meta.url));
+const chatMetadata = { variables: {} };
+const extensionSettings = { variables: { global: {} } };
+const noop = () => {};
+
+await jest.unstable_mockModule(resolvePublic('script.js'), () => ({
+    chat_metadata: chatMetadata,
+    getCurrentChatId: () => 'test-chat',
+    saveSettingsDebounced: noop,
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/extensions.js'), () => ({
+    extension_settings: extensionSettings,
+    saveMetadataDebounced: noop,
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands.js'), () => ({
+    executeSlashCommandsWithOptions: async () => ({ pipe: '' }),
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommand.js'), () => ({ SlashCommand: { fromProps: props => props } }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandAbortController.js'), () => ({ SlashCommandAbortController: class {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandArgument.js'), () => ({
+    ARGUMENT_TYPE: { STRING: 'string', NUMBER: 'number', BOOLEAN: 'boolean', LIST: 'list', DICTIONARY: 'dictionary', CLOSURE: 'closure', RANGE: 'range', VARIABLE_NAME: 'variable_name' },
+    SlashCommandArgument: { fromProps: props => props },
+    SlashCommandNamedArgument: { fromProps: props => props },
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandBreakController.js'), () => ({ SlashCommandBreakController: class {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandClosure.js'), () => ({ SlashCommandClosure: class {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandClosureResult.js'), () => ({ SlashCommandClosureResult: class {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandCommonEnumsProvider.js'), () => ({ commonEnumProviders: {}, enumIcons: {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandEnumValue.js'), () => ({ SlashCommandEnumValue: class {}, enumTypes: {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandParser.js'), () => ({ SlashCommandParser: { addCommandObject: noop } }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandReturnHelper.js'), () => ({ slashCommandReturnHelper: {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandScope.js'), () => ({ SlashCommandScope: class {} }));
+await jest.unstable_mockModule(resolvePublic('scripts/utils.js'), () => ({
+    isFalseBoolean: value => ['false', '0', 'off', 'no'].includes(String(value).toLowerCase()),
+    isTrueBoolean: value => ['true', '1', 'on', 'yes'].includes(String(value).toLowerCase()),
+    convertValueType: value => value,
+}));
+
+const { evalBoolean, getGlobalVariable, getLocalVariable, setGlobalVariable, setLocalVariable } = await import('../public/scripts/variables.js');
 
 /** The expression this replaced, verbatim, for parity checks. */
 const upstream = (value) =>
@@ -57,31 +88,27 @@ describe('reading a variable whose text a number would change', () => {
         }
     });
 
-    test('a zero-padded clock minute survives, which is the reported symptom', () => {
-        expect(readVariableValue('00')).toBe('00');
-        expect(`7:${readVariableValue('00')}`).toBe('7:00');
+    test('a zero-padded clock minute survives through local and global variable readers', () => {
+        setLocalVariable('minute', '00');
+        setGlobalVariable('minute', '00');
+        expect(getLocalVariable('minute')).toBe('00');
+        expect(getGlobalVariable('minute')).toBe('00');
+        expect(`7:${getLocalVariable('minute')}`).toBe('7:00');
     });
 });
 
 describe('reading a variable that is not numeric', () => {
     test('a whitespace-only value is preserved, not turned into 0', () => {
-        // Guarded upstream since 4336253b2; Number('   ') is 0, which is what that
-        // commit was fixing. Kept exactly as it was.
         expect(readVariableValue('   ')).toBe('   ');
     });
 
     test('unset and null keep their existing, differing results', () => {
-        // Not a distinction worth changing here: both are upstream behaviour and
-        // altering either would be a separate change with its own blast radius.
         expect(readVariableValue(undefined)).toBe('');
         expect(readVariableValue(null)).toBe(0);
     });
 });
 
 describe('values arriving from the index path', () => {
-    // getLocalVariable/getGlobalVariable JSON.parse the value when args.index is set,
-    // so the helper can be handed a number or a boolean rather than a string. Those
-    // must keep their old behaviour: Number(false) is 0, but Number('false') is NaN.
     test('numbers pass straight through', () => {
         expect(readVariableValue(5)).toBe(5);
         expect(readVariableValue(0)).toBe(0);
@@ -114,8 +141,6 @@ describe('parity with the upstream expression', () => {
 });
 
 describe('arithmetic callers still work', () => {
-    // addLocalVariable/addGlobalVariable re-read through the helper and then apply
-    // Number() themselves, so a preserved string must still add up correctly.
     test('a padded value still adds numerically', () => {
         const current = readVariableValue('00');
         expect(current).toBe('00');
@@ -127,8 +152,6 @@ describe('arithmetic callers still work', () => {
     });
 
     test('the || 0 fallback in addLocalVariable is unaffected', () => {
-        // '0' stays the number 0 (falsy), and '00' becomes a truthy string, but both
-        // yield 0 once Number() is applied, which is all the caller does with it.
         expect(Number(readVariableValue('0') || 0)).toBe(0);
         expect(Number(readVariableValue('00') || 0)).toBe(0);
     });
@@ -153,44 +176,6 @@ describe('boolean callers retain upstream semantics', () => {
     });
 });
 
-// The helpers above only prove the pieces behave; they say nothing about evalBoolean
-// actually calling them. variables.js and utils.js both import script.js, so neither can
-// be imported here. Lift the two functions out as source and run them for real, the same
-// way the *-wiring tests reach logic stranded inside script.js.
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-function getFunctionSource(source, name) {
-    const start = source.indexOf(`function ${name}(`);
-    expect(start).toBeGreaterThanOrEqual(0);
-
-    const bodyStart = source.indexOf('{', start);
-    let depth = 0;
-
-    for (let index = bodyStart; index < source.length; index++) {
-        if (source[index] === '{') {
-            depth++;
-        } else if (source[index] === '}') {
-            depth--;
-            if (depth === 0) {
-                return source.slice(start, index + 1);
-            }
-        }
-    }
-
-    throw new Error(`Unable to find function source for ${name}`);
-}
-
-const isFalseBoolean = new Function(`${getFunctionSource(
-    readFileSync(path.join(repoRoot, 'public', 'scripts', 'utils.js'), 'utf8'), 'isFalseBoolean',
-)}; return isFalseBoolean;`)();
-
-const evalBoolean = new Function(
-    'isTrueBoolean', 'isFalseBoolean', 'isNumericOperand', 'isNumericZero', 'booleanOperandToString',
-    `${getFunctionSource(
-        readFileSync(path.join(repoRoot, 'public', 'scripts', 'variables.js'), 'utf8'), 'evalBoolean',
-    )}; return evalBoolean;`,
-)(isTrueBoolean, isFalseBoolean, isNumericOperand, isNumericZero, booleanOperandToString);
-
 describe('evalBoolean is wired to those helpers', () => {
     test('every numeric spelling of zero is still falsy', () => {
         for (const stored of ['00', '-0', '+0', '0.0', '0e0', '0x0', '-00.0']) {
@@ -207,8 +192,6 @@ describe('evalBoolean is wired to those helpers', () => {
     });
 
     test('containment compares the canonical spelling, not the padding', () => {
-        // '007'.includes('0') was true while the reader preserved the text and the string
-        // branch did not canonicalise. Upstream read 7 and answered false.
         expect(evalBoolean('in', readVariableValue('007'), 0)).toBe(false);
         expect(evalBoolean('nin', readVariableValue('007'), 0)).toBe(true);
         expect(evalBoolean('in', readVariableValue('1e3'), 100)).toBe(true);
