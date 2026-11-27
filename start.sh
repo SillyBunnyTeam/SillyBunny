@@ -242,11 +242,14 @@ compute_boot_stamp() {
         fi
     fi
 
+    # server-init.js migrates the config.yaml in the server folder whatever
+    # --configPath or --global say, so that file belongs in the stamp.
     for path_item in \
         package.json \
         package-lock.json \
         bun.lock \
         default/config.yaml \
+        config.yaml \
         scripts/dependency-state.js \
         src/server-init.js \
         src/config-init.js \

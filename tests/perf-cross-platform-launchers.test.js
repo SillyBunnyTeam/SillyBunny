@@ -158,6 +158,79 @@ function seedRuntimePackages(appDir) {
     }
 }
 
+const BOOT_FIXTURE_COLD_CALLS = ['dep:check,node-production', 'init', 'server'];
+
+/**
+ * Builds an app folder that a launcher can boot in Node.js mode. Every script the launcher
+ * calls is a stub that appends one line to boot-calls.log, so a test can read which steps ran.
+ */
+function createBootApp(name, launcherPath = startShPath) {
+    const appDir = path.join(suiteRoot, name);
+    for (const folder of ['scripts', 'src', 'default', 'public', 'node_modules']) {
+        fs.mkdirSync(path.join(appDir, folder), { recursive: true });
+    }
+
+    const logLine = text => `import fs from "node:fs"; fs.appendFileSync("boot-calls.log", ${text});\n`;
+    if (launcherPath.endsWith('.bat')) {
+        // The trailing `pause` would block an unattended run.
+        fs.writeFileSync(
+            path.join(appDir, path.basename(launcherPath)),
+            fs.readFileSync(launcherPath, 'utf8').replace(/\r\npause\r\n/, '\r\n'),
+            'utf8',
+        );
+    } else {
+        fs.copyFileSync(launcherPath, path.join(appDir, path.basename(launcherPath)));
+    }
+    fs.writeFileSync(path.join(appDir, 'scripts', 'install-prerequisites.sh'), '#!/usr/bin/env bash\necho "prereq" >> boot-calls.log\n');
+    fs.writeFileSync(path.join(appDir, 'scripts', 'dependency-state.js'), logLine('`dep:${process.argv.slice(2).join(",")}\\n`'));
+    fs.writeFileSync(path.join(appDir, 'src', 'server-init.js'), logLine('"init\\n"'));
+    fs.writeFileSync(path.join(appDir, 'src', 'config-init.js'), 'export function addMissingConfigValues() {}\n');
+    fs.writeFileSync(path.join(appDir, 'server.js'), logLine('"server\\n"'));
+    fs.writeFileSync(path.join(appDir, 'package.json'), '{"name":"sillybunny","type":"module"}\n');
+    fs.writeFileSync(path.join(appDir, 'package-lock.json'), '{"lockfileVersion":3}\n');
+    fs.writeFileSync(path.join(appDir, 'default', 'config.yaml'), 'port: 4444\n');
+    fs.writeFileSync(path.join(appDir, 'config.yaml'), 'port: 4444\n');
+    fs.writeFileSync(path.join(appDir, 'public', 'index.html'), '<!doctype html>\n');
+    fs.writeFileSync(path.join(appDir, 'node_modules', '.sillybunny-dependencies.json'), '{"version":1,"profiles":{}}\n');
+    seedRuntimePackages(appDir);
+
+    git(suiteRoot, 'init', '--quiet', '--initial-branch=release', appDir);
+    git(appDir, 'add', 'package.json', 'package-lock.json', 'default/config.yaml', 'scripts/dependency-state.js', 'src/server-init.js', 'src/config-init.js');
+    git(appDir, 'commit', '--quiet', '-m', 'posix boot fixture');
+    return appDir;
+}
+
+function runStartShIn(appDir, args = ['--skip-self-update'], extraEnv = {}) {
+    const result = spawnSync(
+        bashExecutable,
+        [toPosixShellPath(bashExecutable, path.join(appDir, 'start.sh')), ...args],
+        {
+            cwd: appDir,
+            env: makeGitEnv({ SILLYBUNNY_USE_NODE: '1', ...extraEnv }),
+            encoding: 'utf8',
+            windowsHide: true,
+        },
+    );
+    return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
+}
+
+function runBatIn(appDir, batName, extraEnv = {}) {
+    const result = spawnSync('cmd.exe', ['/d', '/c', `call ${batName}`], {
+        cwd: appDir,
+        env: makeGitEnv({ SILLYBUNNY_USE_NODE: '1', SILLYBUNNY_AUTO_UPDATE: '0', ...extraEnv }),
+        encoding: 'utf8',
+        windowsHide: true,
+    });
+    return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
+}
+
+function takeBootCalls(appDir) {
+    const logPath = path.join(appDir, 'boot-calls.log');
+    const calls = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean) : [];
+    fs.writeFileSync(logPath, '');
+    return calls;
+}
+
 function extractShellFunction(source, name) {
     const lines = source.split('\n');
     const start = lines.findIndex(line => line.startsWith(`${name}() {`));
@@ -232,6 +305,8 @@ describe('cross-platform launcher static and line-ending contracts', () => {
 
         expect(startBatSource).toContain('node_modules\\.cache\\.sillybunny-boot-stamp');
         expect(startNodeBatSource).toContain('node_modules\\.cache\\.sillybunny-boot-stamp');
+        expect(startBatSource).toContain('"default\\config.yaml" "config.yaml" "scripts\\dependency-state.js"');
+        expect(startNodeBatSource).toContain('"default\\config.yaml" "config.yaml" "scripts\\dependency-state.js"');
         expect(startBatSource).toContain('node_modules\\send\\node_modules\\mime\\package.json');
         expect(startNodeBatSource).toContain('node_modules\\send\\node_modules\\mime\\package.json');
         expect(startBatSource).toContain('else if exist "!_common_rel!\\packed-refs"');
@@ -729,6 +804,28 @@ describeWin32('Windows batch warm-boot fast-stamp execution', () => {
     });
 });
 
+describeWin32('Windows batch launcher stamp and updater failure handling', () => {
+    test.each([
+        ['Start.bat'],
+        ['Start-Node.bat'],
+    ])('%s runs server-init.js again after config.yaml changes between boots', (batName) => {
+        const appDir = createBootApp(`win-config-stamp-${batName}`, path.join(repoRoot, batName));
+        const boot = () => runBatIn(appDir, batName);
+
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(['server']);
+
+        fs.writeFileSync(path.join(appDir, 'config.yaml'), 'port: 4444\ndisableChatBackup: true\n');
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(['server']);
+    });
+});
+
 describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () => {
     test('start.sh and scripts/self-update.sh execute warm-boot stamp, exit-75 restart, PR #1039 invalidation, and self-update cleanly', () => {
         const { upstreamWorkDir, cloneDir } = createSelfUpdateFixture();
@@ -853,6 +950,29 @@ describeShell('POSIX shell warm-boot fast-stamp and self-update execution', () =
             'init',
             'server:0:skipBrowser=',
         ]);
+    });
+
+    test.each([
+        ['no server arguments', []],
+        ['a custom --configPath', ['--configPath', 'custom.yaml']],
+        ['--global', ['--global']],
+    ])('start.sh runs server-init.js again after config.yaml changes between boots (%s)', (label, serverArgs) => {
+        const appDir = createBootApp(`posix-config-stamp-${label.replace(/\W+/g, '-')}`);
+        const boot = () => runStartShIn(appDir, ['--skip-self-update', ...serverArgs]);
+
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(['server']);
+
+        // A config restored from an older install carries legacy keys that only init migrates.
+        fs.writeFileSync(path.join(appDir, 'config.yaml'), 'port: 4444\ndisableChatBackup: true\n');
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(BOOT_FIXTURE_COLD_CALLS);
+
+        // The stamp saved after init covers the rewritten file, so the next boot is warm again.
+        expect(boot().status).toBe(0);
+        expect(takeBootCalls(appDir)).toEqual(['server']);
     });
 
     test('start.sh compute_boot_stamp handles Darwin GNU stat fallback, BSD stat fallback, and total stat failure', () => {
