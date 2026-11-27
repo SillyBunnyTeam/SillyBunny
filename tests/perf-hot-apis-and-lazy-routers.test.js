@@ -351,6 +351,85 @@ describe('lazyRouter', () => {
     });
 });
 
+describe('lazyRouter import failure', () => {
+    /** @type {import('node:http').Server} */
+    let server;
+    let baseUrl = '';
+    let loads = 0;
+    let failure = null;
+    /** @type {Promise<unknown>} */
+    let gate = Promise.resolve();
+
+    beforeAll(async () => {
+        const app = express();
+        app.use('/api/broken', lazyRouter(async () => {
+            loads++;
+            await gate;
+            if (failure) {
+                throw failure;
+            }
+            const router = express.Router();
+            router.get('/ok', (_req, res) => res.json({ ok: true }));
+            return { router };
+        }));
+        app.use((error, _req, res, _next) => {
+            res.status(500).json({ error: error.message });
+        });
+        await new Promise(resolve => {
+            server = app.listen(0, '127.0.0.1', resolve);
+        });
+        baseUrl = `http://127.0.0.1:${server.address().port}`;
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    afterAll(async () => {
+        server?.closeAllConnections?.();
+        await new Promise(resolve => server.close(resolve));
+    });
+
+    test('logs a failed import once with the mount path, answers every waiting request with a 500, and retries on the next request', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        failure = new Error('Cannot find package "vectra"');
+
+        // Hold the import until all three requests wait for it, so that they share one load.
+        let releaseImport = () => { };
+        gate = new Promise(resolve => {
+            releaseImport = () => resolve(undefined);
+        });
+        const pendingResponses = [1, 2, 3].map(() => fetch(`${baseUrl}/api/broken/ok`));
+        await new Promise(resolve => setTimeout(resolve, 150));
+        releaseImport();
+        const concurrent = await Promise.all(pendingResponses);
+        gate = Promise.resolve();
+        for (const response of concurrent) {
+            expect(response.status).toBe(500);
+            expect(await response.json()).toEqual({ error: 'Cannot find package "vectra"' });
+        }
+        expect(loads).toBe(1);
+        expect(errorSpy).toHaveBeenCalledTimes(1);
+        expect(String(errorSpy.mock.calls[0][0])).toContain('/api/broken');
+        expect(errorSpy.mock.calls[0]).toContain(failure);
+
+        const again = await fetch(`${baseUrl}/api/broken/ok`);
+        expect(again.status).toBe(500);
+        expect(loads).toBe(2);
+        expect(errorSpy).toHaveBeenCalledTimes(2);
+
+        failure = null;
+        const recovered = await fetch(`${baseUrl}/api/broken/ok`);
+        expect(recovered.status).toBe(200);
+        expect(await recovered.json()).toEqual({ ok: true });
+        expect(loads).toBe(3);
+        expect(errorSpy).toHaveBeenCalledTimes(2);
+
+        await fetch(`${baseUrl}/api/broken/ok`);
+        expect(loads).toBe(3);
+    });
+});
+
 describe('setupPrivateEndpoints', () => {
     /** @type {Array<[string|Function, Function?]>} */
     const mounts = [];

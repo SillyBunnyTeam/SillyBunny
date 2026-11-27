@@ -81,6 +81,7 @@ export function lazyRouter(loader) {
         }
 
         if (!pending) {
+            const mountPath = req.baseUrl || '/';
             pending = Promise.resolve().then(loader).then((module) => {
                 if (typeof module?.router !== 'function') {
                     throw new TypeError('Lazy router module did not export a router function');
@@ -88,7 +89,10 @@ export function lazyRouter(loader) {
                 router = module.router;
                 return router;
             }).catch((error) => {
-                // A failed import is retried on the next request instead of being cached.
+                // A failed import is retried on the next request instead of being cached. The load runs once for all
+                // requests that wait for it, so this logs once per failed load. Each waiting request gets the error
+                // through next(), and the route error handler answers it with a 500.
+                console.error(`Failed to load the router mounted at ${mountPath}:`, error);
                 pending = null;
                 throw error;
             });

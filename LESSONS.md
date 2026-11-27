@@ -433,6 +433,7 @@ This is the largest class by a wide margin.
 - **Limit:** a crash restart loses what the server process holds in memory, such as session-auth sessions and server-side generations that were running.
 - **Tests:** `tests/route-errors.test.js`, `tests/server-supervisor-crash-restart.test.js`, `tests/csrf-refusal-retry.test.js` (the csrf-sync setup of `src/server-main.js` with a colored message, and `fetchWithCsrfRetry()` against its real answers).
 - **Fixes:** `ae27417cc` (async route errors), `120fa5fbf` (crash restarts), `a41adfe62` (crash exit code), `b0735ddab` (CSRF refusal text).
+- **A lazy router that cannot load logs it once and is tried again:** the 13 routers that `lazyRouter()` (`src/server-startup.js`) mounts load on their first request, so a broken install shows up as a 500 at first use and no longer stops the boot. A failed load logs `Failed to load the router mounted at <mount path>:` and the error once, however many requests waited for it, hands the error to each waiting request through `next()`, and clears the shared promise, so the next request imports the module again and a repaired file loads without a restart. Test: `tests/perf-hot-apis-and-lazy-routers.test.js` ("lazyRouter import failure").
 
 ### Runtimes, Termux, launchers and updates
 
