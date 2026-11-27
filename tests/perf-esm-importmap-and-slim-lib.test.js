@@ -966,6 +966,58 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(isRawFrontendRequested({})).toBe(false);
     });
 
+    test('(n) the CSS flattener keeps @import rules with layer() or supports() as imports and ignores @import inside strings and comments', () => {
+        const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-css-import-fixture-'));
+        try {
+            fs.mkdirSync(path.join(fixtureRoot, 'css'), { recursive: true });
+            for (const name of ['base', 'grid', 'anon', 'combined', 'plain']) {
+                fs.writeFileSync(path.join(fixtureRoot, 'css', `${name}.css`), `.${name} { color: red; }\n`, 'utf8');
+            }
+
+            fs.writeFileSync(path.join(fixtureRoot, 'layered.css'), [
+                '@import url("./css/base.css") layer(base);',
+                '@import "./css/grid.css" supports(display: grid) screen and (min-width: 600px);',
+                '@import url(./css/anon.css) layer;',
+                '@import url("./css/combined.css") layer(x) supports(display: flex) (min-width: 10px);',
+                '@import url("./css/plain.css") screen and (min-width: 600px);',
+                '.after { color: blue; }',
+                '',
+            ].join('\n'), 'utf8');
+
+            const layered = flattenCssFile('layered.css', { publicRoot: fixtureRoot });
+            expect(layered.inlinedImports).toEqual(['css/plain.css']);
+            expect(layered.css).not.toMatch(/@media\s+(?:layer|supports)/i);
+            expect(layered.css).toContain('@import url("/css/base.css") layer(base);');
+            expect(layered.css).toContain('@import url("/css/grid.css") supports(display: grid) screen and (min-width: 600px);');
+            expect(layered.css).toContain('@import url("/css/anon.css") layer;');
+            expect(layered.css).toContain('@import url("/css/combined.css") layer(x) supports(display: flex) (min-width: 10px);');
+            // A plain media query is still inlined as @media, and every kept @import stays ahead of the rules.
+            expect(layered.css).toMatch(/@media screen and \(min-width: 600px\) \{\s*\.plain \{ color: red; \}\s*\}/);
+            expect(layered.css.lastIndexOf('@import')).toBeLessThan(layered.css.indexOf('@media'));
+            expect(layered.css.lastIndexOf('@import')).toBeLessThan(layered.css.indexOf('.after'));
+
+            fs.writeFileSync(path.join(fixtureRoot, 'strings.css'), [
+                '.a::after { content: "@import \'nope.css\';"; }',
+                '.b::after { content: \'@import "nope2.css";\'; }',
+                '.c::after { content: "\\"@import \'nope3.css\';"; }',
+                '/* @import url("css/base.css"); */',
+                '@import url("./css/plain.css");',
+                '',
+            ].join('\n'), 'utf8');
+
+            const strings = flattenCssFile('strings.css', { publicRoot: fixtureRoot });
+            expect(strings.inlinedImports).toEqual(['css/plain.css']);
+            expect(strings.css).toContain('.a::after { content: "@import \'nope.css\';"; }');
+            expect(strings.css).toContain('.b::after { content: \'@import "nope2.css";\'; }');
+            expect(strings.css).toContain('.c::after { content: "\\"@import \'nope3.css\';"; }');
+            expect(strings.css).not.toContain('@import url("/nope');
+            expect(strings.css).not.toContain('base.css');
+            expect(strings.css).toContain('.plain { color: red; }');
+        } finally {
+            fs.rmSync(fixtureRoot, { recursive: true, force: true });
+        }
+    });
+
     test('(i) no case reads or writes the repository\'s own dist/frontend', () => {
         expect(snapshotRepositoryDist()).toBe(repositoryDistBefore);
     });

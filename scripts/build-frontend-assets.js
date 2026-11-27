@@ -281,7 +281,88 @@ function parseImportStatement(statement) {
 
     const targetUrl = match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? '';
     const mediaCondition = (match[6] ?? '').trim();
-    return { targetUrl, mediaCondition };
+    // layer() and supports() change how the browser applies the imported sheet. Wrapping such a sheet in @media would
+    // produce an invalid media query and the browser would drop the whole block, so these imports are never inlined.
+    const hasLayerOrSupports = /(?:^|\s)(?:layer|supports)(?:\s*\(|\s|$)/i.test(mediaCondition);
+    return { targetUrl, mediaCondition, hasLayerOrSupports };
+}
+
+/**
+ * Returns the index after a quoted CSS string that starts at `start`.
+ * @param {string} source CSS text
+ * @param {number} start Index of the opening quote
+ * @returns {number}
+ */
+function skipCssString(source, start) {
+    const quote = source[start];
+    let index = start + 1;
+    while (index < source.length) {
+        if (source[index] === '\\') {
+            index += 2;
+            continue;
+        }
+        if (source[index] === quote) {
+            return index + 1;
+        }
+        index += 1;
+    }
+    return source.length;
+}
+
+/**
+ * Finds the @import statements of a CSS text without looking inside string literals, so a declaration such as
+ * `content: "@import 'x.css';"` is not split. Comments must be stripped first. A `;` inside parentheses or a string
+ * (for example in an unquoted data: URL) does not end a statement.
+ * @param {string} source CSS text without comments
+ * @returns {{ index: number, text: string }[]}
+ */
+function findImportStatements(source) {
+    const statements = [];
+    let index = 0;
+
+    while (index < source.length) {
+        const char = source[index];
+
+        if (char === '"' || char === '\'') {
+            index = skipCssString(source, index);
+            continue;
+        }
+
+        if (char === '@' && /^@import\s/i.test(source.slice(index, index + 8))) {
+            let cursor = index + '@import'.length;
+            let parenDepth = 0;
+            let end = -1;
+
+            while (cursor < source.length) {
+                const current = source[cursor];
+                if (current === '"' || current === '\'') {
+                    cursor = skipCssString(source, cursor);
+                    continue;
+                }
+                if (current === '(') {
+                    parenDepth += 1;
+                } else if (current === ')') {
+                    parenDepth = Math.max(0, parenDepth - 1);
+                } else if (current === ';' && parenDepth === 0) {
+                    end = cursor + 1;
+                    break;
+                }
+                cursor += 1;
+            }
+
+            if (end === -1) {
+                break;
+            }
+
+            statements.push({ index, text: source.slice(index, end) });
+            index = end;
+            continue;
+        }
+
+        index += 1;
+    }
+
+    return statements;
 }
 
 /**
@@ -324,32 +405,36 @@ export function flattenCssFile(cssPosixPath, {
     const nextAncestors = new Set(ancestors);
     nextAncestors.add(normalizedPath);
 
-    const importRuleRe = /@import\s+(?:url\(\s*(?:"[^"]*"|'[^']*'|[^)\s]+)\s*\)|"[^"]*"|'[^']*')[^;]*;/gi;
     const chunks = [];
     let lastIndex = 0;
 
-    for (const match of source.matchAll(importRuleRe)) {
-        const segment = source.slice(lastIndex, match.index);
+    for (const statement of findImportStatements(source)) {
+        const segment = source.slice(lastIndex, statement.index);
         if (segment) {
             chunks.push(rewriteCssUrls(segment, normalizedPath, assets));
         }
-        lastIndex = match.index + match[0].length;
+        lastIndex = statement.index + statement.text.length;
 
-        const parsedImport = parseImportStatement(match[0]);
+        const parsedImport = parseImportStatement(statement.text);
         if (!parsedImport) {
-            chunks.push(match[0]);
+            chunks.push(statement.text);
             continue;
         }
 
         const resolvedTarget = resolveCssTargetPath(normalizedPath, parsedImport.targetUrl);
         if (!resolvedTarget || resolvedTarget.resolved === 'css/user.css') {
-            hoistedImports.push(match[0]);
+            hoistedImports.push(statement.text);
             continue;
         }
 
         const targetPosix = resolvedTarget.resolved;
         const targetFullPath = path.join(publicRoot, targetPosix);
-        if (nextAncestors.has(targetPosix) || !fsSync.existsSync(targetFullPath) || !fsSync.statSync(targetFullPath).isFile()) {
+        if (
+            parsedImport.hasLayerOrSupports
+            || nextAncestors.has(targetPosix)
+            || !fsSync.existsSync(targetFullPath)
+            || !fsSync.statSync(targetFullPath).isFile()
+        ) {
             const mediaSuffix = parsedImport.mediaCondition ? ` ${parsedImport.mediaCondition}` : '';
             const preservedUrl = resolvedTarget.wasRootRelative
                 ? parsedImport.targetUrl
