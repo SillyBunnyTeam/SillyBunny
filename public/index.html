@@ -2107,7 +2107,8 @@
                                             </em>
                                         </div>
                                     </div>
-                                    <div class="range-block" data-source="openai,aimlapi,openrouter,mistralai,makersuite,vertexai,claude,custom,xai,pollinations,moonshot,cohere,cometapi,nanogpt,electronhub,azure_openai,zai,siliconflow,chutes,workers_ai,linkapi,koboldcpp">
+                                    <!-- SillyBunny: expose inline media for DeepSeek vision models (ST #6041). -->
+                                    <div class="range-block" data-source="openai,aimlapi,openrouter,mistralai,makersuite,vertexai,claude,custom,xai,pollinations,moonshot,cohere,cometapi,nanogpt,electronhub,azure_openai,zai,siliconflow,chutes,workers_ai,linkapi,koboldcpp,deepseek">
                                         <label for="openai_media_inlining" class="checkbox_label flexWrap widthFreeExpand">
                                             <input id="openai_media_inlining" type="checkbox" />
                                             <span data-i18n="Send inline media">Send inline media</span>
@@ -3982,7 +3983,8 @@
                             <div>
                                 <h4 data-i18n="DeepSeek Model">DeepSeek Model</h4>
                                 <select id="model_deepseek_select">
-                                    <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+                                    <!-- SillyBunny: DeepSeek renamed its default flash model to deepseek-flash (ST #6041). -->
+                                    <option value="deepseek-flash">deepseek-flash</option>
                                     <option value="deepseek-v4-pro">deepseek-v4-pro</option>
                                 </select>
                             </div>

@@ -644,7 +644,8 @@ const default_settings = {
     nanogpt_ignored_providers: [],
     nanogpt_payg_override: false,
     nanogpt_service_tier: '',
-    deepseek_model: 'deepseek-v4-flash',
+    // SillyBunny: DeepSeek renamed its default flash model to deepseek-flash (ST #6041).
+    deepseek_model: 'deepseek-flash',
     aimlapi_model: 'chatgpt-4o-latest',
     xai_model: 'grok-3-beta',
     pollinations_model: 'openai',
@@ -4423,7 +4424,8 @@ function saveModelList(data) {
         $('#model_workers_ai_select').val(oai_settings.workers_ai_model).trigger('change');
     }
 
-    if (oai_settings.chat_completion_source == chat_completion_sources.DEEPSEEK) {
+    // SillyBunny: keep static DeepSeek options when the API returns no models (ST #6213).
+    if (oai_settings.chat_completion_source == chat_completion_sources.DEEPSEEK && model_list.length > 0) {
         $('#model_deepseek_select').empty();
         model_list.forEach((model) => {
             $('#model_deepseek_select').append(
@@ -5108,7 +5110,8 @@ export async function createGenerationParameters(settings, model, type, messages
 
     // DeepSeek only accepts image blocks in user messages. Media can also be
     // attached to system and assistant messages by the shared inlining path.
-    const isDeepSeekVisionModel = typeof model === 'string' && model.toLowerCase().includes('deepseek-v4-flash-vision-exp');
+    // SillyBunny: match both deepseek-flash and legacy deepseek-v4-flash vision ids (ST #6041 / #6213).
+    const isDeepSeekVisionModel = typeof model === 'string' && /deepseek-(?:flash|v4-flash)/i.test(model);
     if (isDeepSeekVisionModel) {
         messages = messages.flatMap((message) => {
             if (!['system', 'assistant'].includes(message.role) || !Array.isArray(message.content)) {
@@ -9570,6 +9573,9 @@ export function isImageInliningSupported() {
         'kimi-latest',
         // DeepSeek
         'deepseek-v4-flash-vision-exp',
+        // SillyBunny: recognize current deepseek-flash and legacy deepseek-v4-flash ids as vision-capable (ST #6041 / #6213).
+        'deepseek-flash',
+        'deepseek-v4-flash',
         // Z.AI (GLM)
         'glm-5.3-flash',
         'glm-5v-turbo',
