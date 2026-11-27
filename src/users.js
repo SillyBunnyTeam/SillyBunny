@@ -24,6 +24,7 @@ import { serverDirectory } from './server-directory.js';
 import { filterValidIpPatterns, getIpFromRequest } from './express-common.js';
 import { extensionsEnabledFeatureGuard } from './endpoints/extensions.js';
 import { setStoredMediaHeaders } from './stored-media-headers.js'; // SillyBunny: gives the stored images route its own content type and nosniff.
+import { NativeDeflateZipEntry } from './zip-native-deflate.js'; // SillyBunny: native zlib deflate for the backup ZIP entries.
 
 export const KEY_PREFIX = 'user:';
 const AVATAR_PREFIX = 'avatar:';
@@ -1669,11 +1670,11 @@ function waitForWritableDrain(writable, isAborted) {
  * Streams a single opened file handle into an fflate ZIP entry while honoring downstream backpressure.
  * @param {object} options Stream options
  * @param {fs.promises.FileHandle} options.fileHandle Opened regular file handle
- * @param {import('fflate').ZipDeflate | import('fflate').ZipPassThrough} options.entry Target fflate ZIP entry
+ * @param {import('fflate').ZipPassThrough | NativeDeflateZipEntry} options.entry Target fflate ZIP entry (stored as is, or deflated by native zlib)
  * @param {import('node:stream').Writable} options.writable Target HTTP response or writable stream
  * @param {() => boolean} options.isAborted Returns true when aborted
  * @param {() => boolean} options.consumeDrainFlag Consumes and returns whether downstream asked for backpressure
- * @param {(stream: fs.ReadStream | null) => void} options.setActiveStream Tracks active read stream for abort cleanup
+ * @param {(stream: { destroy: () => unknown } | null) => void} options.setActiveStream Tracks what to destroy when the backup is aborted
  * @returns {Promise<void>}
  */
 async function streamFileIntoZipEntry({ fileHandle, entry, writable, isAborted, consumeDrainFlag, setActiveStream }) {
@@ -1684,6 +1685,32 @@ async function streamFileIntoZipEntry({ fileHandle, entry, writable, isAborted, 
     setActiveStream(readStream);
 
     try {
+        if (entry instanceof NativeDeflateZipEntry) {
+            const compressedChunks = entry.start(readStream);
+            // Destroying the entry destroys the source and the compressor together.
+            setActiveStream(entry);
+            for await (const compressed of compressedChunks) {
+                if (isAborted()) {
+                    return;
+                }
+
+                entry.ondata?.(null, compressed, false);
+                if (consumeDrainFlag()) {
+                    await waitForWritableDrain(writable, isAborted);
+                }
+            }
+
+            if (isAborted()) {
+                return;
+            }
+
+            entry.finish();
+            if (consumeDrainFlag()) {
+                await waitForWritableDrain(writable, isAborted);
+            }
+            return;
+        }
+
         for await (const chunk of readStream) {
             if (isAborted()) {
                 return;
@@ -1730,7 +1757,7 @@ async function streamFileIntoZipEntry({ fileHandle, entry, writable, isAborted, 
  * @param {() => Promise<typeof import('archiver').default>} [options.loadArchiver] Loader override for optional `archiver` ZIP64 fallback
  * @returns {Promise<void>} Promise that resolves when the archive is created
  */
-// SillyBunny: stream backups via lazy fflate (STORE for compressed media) and fall back to lazy archiver when ZIP64 is required.
+// SillyBunny: stream backups via lazy fflate (native zlib deflate, STORE for compressed media) and fall back to lazy archiver when ZIP64 is required.
 export async function createBackupArchive(handle, response, { zip64Thresholds = undefined, loadArchiver = undefined } = {}) {
     const directories = getUserDirectories(handle);
 
@@ -1749,7 +1776,7 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
     }
 
     const { files } = collected;
-    const { Zip, ZipDeflate, ZipPassThrough } = await loadFflate();
+    const { Zip, ZipPassThrough } = await loadFflate();
 
     const timestamp = generateTimestamp();
     if (typeof response.attachment === 'function') {
@@ -1762,7 +1789,7 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
     let zipEnded = false;
     /** @type {Error | null} */
     let streamError = null;
-    /** @type {fs.ReadStream | null} */
+    /** @type {{ destroy: () => unknown } | null} */
     let activeReadStream = null;
 
     const zip = new Zip((err, chunk, final) => {
@@ -1843,10 +1870,15 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
                 }
 
                 const ext = path.extname(file.entryName).toLowerCase();
-                const entry = ZIP_STORE_EXTENSIONS.has(ext)
-                    ? new ZipPassThrough(file.entryName)
-                    : new ZipDeflate(file.entryName, { level: 6 });
-                entry.mtime = clampZipEntryMtime(fdStat.mtime);
+                const mtime = clampZipEntryMtime(fdStat.mtime);
+                let entry;
+                if (ZIP_STORE_EXTENSIONS.has(ext)) {
+                    entry = new ZipPassThrough(file.entryName);
+                    entry.mtime = mtime;
+                } else {
+                    // Native zlib deflates compressible data several times faster than fflate's JavaScript deflate at the same level.
+                    entry = new NativeDeflateZipEntry(file.entryName, { mtime });
+                }
 
                 zip.add(entry);
                 if (consumeDrainFlag()) {

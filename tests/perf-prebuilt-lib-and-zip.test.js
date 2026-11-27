@@ -120,6 +120,92 @@ function inspectZipWithYauzl(buffer) {
     });
 }
 
+// Lists every entry of a ZIP with its central-directory metadata and, on request, its raw (still compressed) bytes.
+function readZipEntries(buffer, { raw = false } = {}) {
+    return new Promise((resolve, reject) => {
+        const entries = new Map();
+        yauzl.fromBuffer(buffer, { lazyEntries: true }, (openError, zipfile) => {
+            if (openError) {
+                reject(openError);
+                return;
+            }
+            zipfile.on('error', reject);
+            zipfile.on('end', () => resolve(entries));
+            zipfile.on('entry', (entry) => {
+                // yauzl accepts `decompress` for deflated entries only; a stored entry is raw already.
+                const readOptions = raw && entry.compressionMethod === 8 ? { decompress: false } : {};
+                try {
+                    zipfile.openReadStream(entry, readOptions, (streamError, stream) => {
+                        if (streamError) {
+                            reject(streamError);
+                            return;
+                        }
+                        const chunks = [];
+                        stream.on('data', chunk => chunks.push(chunk));
+                        stream.on('error', reject);
+                        stream.on('end', () => {
+                            entries.set(entry.fileName, {
+                                content: Buffer.concat(chunks),
+                                compressionMethod: entry.compressionMethod,
+                                crc32: entry.crc32,
+                                uncompressedSize: entry.uncompressedSize,
+                                unixMode: entry.externalFileAttributes >>> 16,
+                                madeByUnix: (entry.versionMadeBy >> 8) === 3,
+                            });
+                            zipfile.readEntry();
+                        });
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+            zipfile.readEntry();
+        });
+    });
+}
+
+// Extracts a backup ZIP into a folder the way an unzip tool does: folders from names ending in a slash, Unix permissions from the entry.
+async function extractZipToDirectory(buffer, destinationDir) {
+    const entries = await readZipEntries(buffer);
+    for (const [name, entry] of entries) {
+        const target = path.join(destinationDir, ...name.split('/'));
+        if (name.endsWith('/')) {
+            fs.mkdirSync(target, { recursive: true });
+            if (entry.madeByUnix && entry.unixMode) {
+                fs.chmodSync(target, entry.unixMode & 0o777);
+            }
+            continue;
+        }
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, entry.content);
+        if (entry.madeByUnix && entry.unixMode) {
+            fs.chmodSync(target, entry.unixMode & 0o777);
+        }
+    }
+    return entries;
+}
+
+// Lists a folder as sorted `kind path mode sha256` rows, so that two trees can be compared with one assertion.
+// A folder with files in it is recreated from their paths, so only the mode of an empty folder is part of the row.
+function describeTree(rootDir) {
+    const rows = [];
+    const walk = (dir) => {
+        for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, dirent.name);
+            const relative = path.relative(rootDir, full).split(path.sep).join('/');
+            const mode = (fs.lstatSync(full).mode & 0o777).toString(8);
+            if (dirent.isDirectory()) {
+                rows.push(fs.readdirSync(full).length === 0 ? `dir ${relative} ${mode}` : `dir ${relative}`);
+                walk(full);
+            } else if (dirent.isFile()) {
+                rows.push(`file ${relative} ${mode} ${sha256Hex(fs.readFileSync(full))}`);
+            }
+        }
+    };
+    walk(rootDir);
+    return rows.sort();
+}
+
 afterAll(() => {
     for (const dir of tempRoots) {
         fs.rmSync(dir, { recursive: true, force: true });
@@ -939,6 +1025,199 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
         const names = entryNames(await backupToBuffer(handle));
 
         expect(names).toEqual(['settings.json']);
+    });
+
+    function compressibleText(megabytes, seed = 1) {
+        // Pseudo-random words, so that deflate has real work to do and the output spans many chunks.
+        let state = seed;
+        const next = () => (state = (state * 1664525 + 1013904223) >>> 0) / 4294967296;
+        const syllables = ['ka', 'lo', 'mi', 'ra', 'ten', 'sol', 'vi', 'dor', 'an', 'el', 'is', 'thu', 'gra', 'ne', 'pho', 'qua', 'zen', 'bru', 'fy', 'lum'];
+        const words = Array.from({ length: 4000 }, () => Array.from({ length: 1 + Math.floor(next() * 3) }, () => syllables[Math.floor(next() * syllables.length)]).join(''));
+        const lines = [];
+        let size = 0;
+        while (size < megabytes * 1024 * 1024) {
+            const line = JSON.stringify({ mes: Array.from({ length: 30 }, () => words[Math.floor(next() ** 2 * words.length)]).join(' '), n: lines.length });
+            lines.push(line);
+            size += line.length + 1;
+        }
+        return `${lines.join('\n')}\n`;
+    }
+
+    test('deflates compressible entries with native zlib at level 1, as the earlier archiver backup did, and stores compressed media', async () => {
+        const handle = `zip-level-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        const chat = compressibleText(2);
+        const png = Buffer.alloc(100 * 1024);
+        for (let i = 0; i < png.length; i++) {
+            png[i] = (i * 131 + (i >> 5)) & 0xff;
+        }
+        writeFiles(userRoot, {
+            'chats/chat.jsonl': chat,
+            'settings.json': '{"level":1}',
+            'empty.txt': '',
+            'characters/card.png': png,
+        });
+
+        const zipBuffer = await backupToBuffer(handle);
+        const entries = await readZipEntries(zipBuffer, { raw: true });
+
+        expect(entries.get('chats/chat.jsonl').compressionMethod).toBe(8);
+        // The compressed size is that of deflate at level 1 (the level archiver used by default) and clearly above level 6,
+        // which fflate's own deflate was set to. The bytes themselves can differ between runtimes' zlib builds, the size band does not.
+        const level1Size = zlib.deflateRawSync(Buffer.from(chat), { level: 1 }).byteLength;
+        const level6Size = zlib.deflateRawSync(Buffer.from(chat), { level: 6 }).byteLength;
+        const archivedSize = entries.get('chats/chat.jsonl').content.byteLength;
+        expect(level1Size).toBeGreaterThan(level6Size * 1.05);
+        expect(archivedSize).toBeGreaterThan(level6Size * 1.05);
+        expect(archivedSize).toBeLessThan(level1Size * 1.02);
+        expect(zlib.inflateRawSync(entries.get('settings.json').content).toString('utf8')).toBe('{"level":1}');
+        expect(entries.get('empty.txt').compressionMethod).toBe(8);
+        expect(entries.get('characters/card.png').compressionMethod).toBe(0);
+        expect(entries.get('characters/card.png').content.equals(png)).toBe(true);
+
+        const unzipped = unzipSync(new Uint8Array(zipBuffer));
+        expect(Buffer.from(unzipped['chats/chat.jsonl']).toString('utf8')).toBe(chat);
+        expect(Buffer.from(unzipped['empty.txt']).byteLength).toBe(0);
+        for (const [name, entry] of await readZipEntries(zipBuffer)) {
+            expect(entry.crc32).toBe(zlib.crc32(entry.content));
+            expect(entry.uncompressedSize).toBe(entry.content.byteLength);
+            expect(name).not.toBe('');
+        }
+    });
+
+    test.each([
+        ['streaming path', undefined],
+        ['ZIP64 fallback path', { zip64Thresholds: { maxTotalBytes: 1 } }],
+    ])('extracts to the same tree as the source folder in the %s', async (_label, options) => {
+        const handle = `zip-tree-${options ? 'zip64' : 'stream'}-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        const binary = Buffer.alloc(300 * 1024);
+        for (let i = 0; i < binary.length; i++) {
+            binary[i] = (i * 2654435761 >>> 24) & 0xff;
+        }
+        writeFiles(userRoot, {
+            'settings.json': '{"tree":true}',
+            'chats/Émile/chat.jsonl': compressibleText(1, 7),
+            'chats/日本語.jsonl': compressibleText(0.2, 9),
+            'dir with space/sp ace.txt': 'spaced',
+            '.hidden-file': 'dot',
+            'empty.txt': '',
+            'user/images/a.png': binary,
+            'user/files/blob.bin': binary,
+            'secrets.json': '{"api_key":"never-export"}',
+        });
+        fs.mkdirSync(path.join(userRoot, 'a', 'b', 'c'), { recursive: true });
+
+        const zipBuffer = await backupToBuffer(handle, options);
+        const extractedRoot = makeTempDir('sb-tree-extract-');
+        await extractZipToDirectory(zipBuffer, extractedRoot);
+
+        // Everything is archived except the secrets file, and the folder tree is the same, including empty folders.
+        const expectedRows = describeTree(userRoot).filter(row => !row.includes(' secrets.json '));
+        expect(describeTree(extractedRoot)).toEqual(expectedRows);
+    });
+
+    describe('a compressible file that changes while it is read', () => {
+        async function backupWhileChanging(label, mutate) {
+            const handle = `zip-change-${label}-${Date.now()}`;
+            const userRoot = path.join(global.DATA_ROOT, handle);
+            const original = compressibleText(3, 11);
+            writeFiles(userRoot, { 'chats/live.jsonl': original, 'settings.json': '{"after":true}' });
+            const livePath = path.join(userRoot, 'chats', 'live.jsonl');
+
+            const chunks = [];
+            let writes = 0;
+            const output = new Writable({
+                highWaterMark: 4096,
+                write(chunk, _encoding, callback) {
+                    chunks.push(Buffer.from(chunk));
+                    writes += 1;
+                    if (writes === 3) {
+                        mutate(livePath);
+                    }
+                    setImmediate(callback);
+                },
+            });
+            await createBackupArchive(handle, output);
+            return { original, zipBuffer: Buffer.concat(chunks) };
+        }
+
+        test('that shrinks gives a consistent entry with the bytes that were read', async () => {
+            const { original, zipBuffer } = await backupWhileChanging('shrink', livePath => fs.truncateSync(livePath, 100 * 1024));
+            const entries = await readZipEntries(zipBuffer);
+            const live = entries.get('chats/live.jsonl');
+
+            expect(live.content.byteLength).toBeLessThan(Buffer.byteLength(original));
+            expect(live.uncompressedSize).toBe(live.content.byteLength);
+            expect(live.crc32).toBe(zlib.crc32(live.content));
+            expect(Buffer.from(original).subarray(0, live.content.byteLength).equals(live.content)).toBe(true);
+            expect(entries.get('settings.json').content.toString('utf8')).toBe('{"after":true}');
+        });
+
+        test('that grows gives a consistent entry that starts with the original bytes', async () => {
+            const appended = 'appended-while-reading\n'.repeat(5000);
+            const { original, zipBuffer } = await backupWhileChanging('grow', livePath => fs.appendFileSync(livePath, appended));
+            const entries = await readZipEntries(zipBuffer);
+            const live = entries.get('chats/live.jsonl');
+
+            expect(live.uncompressedSize).toBe(live.content.byteLength);
+            expect(live.crc32).toBe(zlib.crc32(live.content));
+            expect(live.content.subarray(0, Buffer.byteLength(original)).equals(Buffer.from(original))).toBe(true);
+            expect(entries.get('settings.json').content.toString('utf8')).toBe('{"after":true}');
+        });
+    });
+
+    test('keeps the output bounded by the slow reader for a large compressible file, and stops cleanly when the client leaves', async () => {
+        const handle = `zip-compressible-pressure-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        const chat = compressibleText(4, 21);
+        writeFiles(userRoot, { 'chats/big.jsonl': chat, 'settings.json': '{}' });
+
+        let maxBuffered = 0;
+        let drainCount = 0;
+        const chunks = [];
+        const slow = new Writable({
+            highWaterMark: 16 * 1024,
+            write(chunk, _encoding, callback) {
+                chunks.push(Buffer.from(chunk));
+                maxBuffered = Math.max(maxBuffered, this.writableLength);
+                setImmediate(callback);
+            },
+        });
+        slow.on('drain', () => {
+            drainCount += 1;
+        });
+        await createBackupArchive(handle, slow);
+
+        expect(drainCount).toBeGreaterThan(0);
+        expect(maxBuffered).toBeLessThan(256 * 1024);
+        expect(Buffer.from(unzipSync(new Uint8Array(Buffer.concat(chunks)))['chats/big.jsonl']).toString('utf8')).toBe(chat);
+
+        // Client leaves in the middle of the compressible entry: the backup resolves, nothing is thrown late.
+        const uncaught = [];
+        const onUncaught = error => uncaught.push(error);
+        process.on('uncaughtException', onUncaught);
+        let writes = 0;
+        const leaving = new Writable({
+            highWaterMark: 1024,
+            write(_chunk, _encoding, callback) {
+                writes += 1;
+                if (writes === 4) {
+                    this.destroy();
+                    callback();
+                    return;
+                }
+                setImmediate(callback);
+            },
+        });
+        try {
+            await expect(createBackupArchive(handle, leaving)).resolves.toBeUndefined();
+            await new Promise(resolve => setTimeout(resolve, 50));
+            expect(leaving.destroyed).toBe(true);
+            expect(uncaught).toEqual([]);
+        } finally {
+            process.off('uncaughtException', onUncaught);
+        }
     });
 
     test('honors downstream backpressure on slow writable streams without corrupting output', async () => {
