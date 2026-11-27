@@ -293,13 +293,20 @@ export async function importScriptModule(options = {}) {
         markdownit: jest.fn(() => ({ render: jest.fn(v => String(v ?? '')), use: jest.fn().mockReturnThis() })),
         markdownItEmoji: jest.fn(),
         markdownItCjkFriendly: jest.fn(),
-        moment: Object.assign(jest.fn(() => ({
-            format: () => '2026-01-01',
-            valueOf: () => 0,
-            isValid: () => true,
-            unix: () => 0,
-            diff: () => 0,
-        })), { unix: () => ({ format: () => '2026-01-01', valueOf: () => 0, diff: () => 0 }) }),
+        moment: Object.assign(jest.fn(() => {
+            const inst = {
+                format: () => '2026-01-01',
+                valueOf: () => 0,
+                isValid: () => true,
+                unix: () => 0,
+                diff: () => 0,
+                locale: () => inst,
+            };
+            return inst;
+        }), {
+            unix: () => ({ format: () => '2026-01-01', valueOf: () => 0, diff: () => 0, isValid: () => true }),
+            invalid: () => ({ format: () => '', valueOf: () => NaN, diff: () => 0, isValid: () => false }),
+        }),
         DOMPurify: { sanitize: jest.fn(v => String(v ?? '')), addHook: jest.fn(), removeAllHooks: jest.fn() },
         hljs: { highlightElement: jest.fn(), highlightAuto: jest.fn(v => ({ value: v })) },
         Handlebars: { compile: jest.fn(tpl => () => String(tpl ?? '')), registerHelper: jest.fn() },
@@ -313,6 +320,7 @@ export async function importScriptModule(options = {}) {
             debounce: (fn) => Object.assign((...args) => fn(...args), { cancel: jest.fn(), flush: jest.fn() }),
             throttle: (fn) => Object.assign((...args) => fn(...args), { cancel: jest.fn(), flush: jest.fn() }),
             cloneDeep: v => v,
+            isPlainObject: v => Boolean(v) && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype,
             isEqual: (a, b) => JSON.stringify(a) === JSON.stringify(b),
             merge: Object.assign,
             get: () => undefined,
@@ -327,6 +335,20 @@ export async function importScriptModule(options = {}) {
         isProbablyReaderable: () => false,
     };
 
+    let scriptRef = null;
+    const defaultContext = () => ({
+        extensionSettings: extension_settings,
+        extensionPrompts: scriptRef?.extension_prompts ?? {},
+        characters: scriptRef?.characters ?? [],
+        chat: scriptRef?.chat ?? [],
+        characterId: scriptRef?.this_chid,
+        groupId: null,
+        groups: [],
+        chatMetadata: scriptRef?.chat_metadata ?? {},
+        getCurrentChatId: () => scriptRef?.getCurrentChatId?.() ?? null,
+    });
+
+    const activeDebounceTimers = new Set();
     const defaultMocks = {
         'lib.js': {
             ...libs,
@@ -396,6 +418,12 @@ export async function importScriptModule(options = {}) {
             charUpdatePrimaryWorld: jest.fn(),
             charSetAuxWorlds: jest.fn(),
             importWorldInfo: jest.fn(),
+            createWorldInfoEntry: jest.fn(() => ({ uid: 1 })),
+            syncWIOriginalDataEntry: jest.fn(),
+            deleteWIOriginalDataValue: jest.fn(),
+            reloadEditor: jest.fn(),
+            loadWorldInfo: jest.fn(async () => ({ entries: {} })),
+            saveWorldInfo: jest.fn(async () => {}),
         },
         'scripts/group-chats.js': {
             groups: [],
@@ -548,10 +576,23 @@ export async function importScriptModule(options = {}) {
             debounce: (fn, timeout = 0) => {
                 let timer;
                 const wrapped = (...args) => {
-                    clearTimeout(timer);
-                    timer = setTimeout(() => fn(...args), timeout);
+                    if (timer) {
+                        clearTimeout(timer);
+                        activeDebounceTimers.delete(timer);
+                    }
+                    timer = setTimeout(() => {
+                        activeDebounceTimers.delete(timer);
+                        fn(...args);
+                    }, timeout);
+                    activeDebounceTimers.add(timer);
                 };
-                wrapped.cancel = () => clearTimeout(timer);
+                wrapped.cancel = () => {
+                    if (timer) {
+                        clearTimeout(timer);
+                        activeDebounceTimers.delete(timer);
+                        timer = null;
+                    }
+                };
                 return wrapped;
             },
             delay: ms => new Promise(resolve => setTimeout(resolve, ms)),
@@ -583,7 +624,11 @@ export async function importScriptModule(options = {}) {
             onlyUnique: (v, i, a) => a.indexOf(v) === i,
             getBase64Async: jest.fn(async () => ''),
             humanFileSize: n => `${n} B`,
-            Stopwatch: class { start() {} stop() { return 0; } },
+            Stopwatch: class {
+                start() {}
+                stop() { return 0; }
+                async tick(callback) { await callback(); }
+            },
             isValidUrl: () => true,
             ensureImageFormatSupported: jest.fn(async v => v),
             flashHighlight: jest.fn(),
@@ -612,7 +657,15 @@ export async function importScriptModule(options = {}) {
             isFalseBoolean: v => ['false', 'off', '0', 'no'].includes(String(v ?? '').toLowerCase().trim()),
             findChar: jest.fn(),
             getCharIndex: jest.fn(() => -1),
-            regexFromString: jest.fn(),
+            regexFromString: input => {
+                try {
+                    const m = String(input ?? '').match(/^\/([\w\W]+?)\/([gimsydvu]*)$/);
+                    if (!m) return undefined;
+                    return new RegExp(m[1], m[2]);
+                } catch {
+                    return undefined;
+                }
+            },
             showFontAwesomePicker: jest.fn(),
             stringToRange: jest.fn(),
             findPersona: jest.fn(),
@@ -630,7 +683,7 @@ export async function importScriptModule(options = {}) {
             initExtensions: jest.fn(async () => {}),
             loadExtensionSettings: jest.fn(),
             runGenerationInterceptors: jest.fn(async () => false),
-            getContext: jest.fn(() => ({ extensionSettings: extension_settings })),
+            getContext: jest.fn(defaultContext),
             saveMetadataDebounced: jest.fn(),
         },
         'scripts/slash-commands.js': {
@@ -699,7 +752,7 @@ export async function importScriptModule(options = {}) {
             getAuthorsNoteRole: jest.fn(() => 0),
             initAuthorsNote: jest.fn(),
             setFloatingPrompt: jest.fn(),
-            shouldWIAddPrompt: jest.fn(() => false),
+            shouldWIAddPrompt: false,
         },
         'scripts/PromptManager.js': { registerPromptManagerMigration: jest.fn() },
         'scripts/extensions/regex/engine.js': {
@@ -729,12 +782,13 @@ export async function importScriptModule(options = {}) {
                 setFilterData() {}
                 getFilterData() { return null; }
                 applyFilters() {}
+                clearFuzzySearchCaches() {}
             },
             isFilterState: () => false,
         },
         'scripts/cfg-scale.js': {
-            getCfgPrompt: jest.fn(() => null),
-            getGuidanceScale: jest.fn(() => 1),
+            getCfgPrompt: jest.fn(() => ({ value: '', depth: 0 })),
+            getGuidanceScale: jest.fn(() => null),
             initCfg: jest.fn(),
         },
         'scripts/instruct-mode.js': {
@@ -854,6 +908,8 @@ export async function importScriptModule(options = {}) {
                 recurse: jest.fn(async () => false),
                 parseToolCalls: jest.fn(() => []),
                 hasToolCalls: jest.fn(() => false),
+                registerFunctionTool: jest.fn(),
+                unregisterFunctionTool: jest.fn(),
             },
         },
         'scripts/util/showdown-patch.js': { addShowdownPatch: jest.fn() },
@@ -885,7 +941,13 @@ export async function importScriptModule(options = {}) {
                 removePrefix(text) { return text; }
             },
             ReasoningHandler: class {
+                reasoning = '';
+                initContinue() {}
+                async process() {}
+                updateDom() {}
                 updateReasoning() {}
+                hasReasoningContent() { return false; }
+                getDuration() { return 0; }
                 async finish() {}
             },
             removeReasoningFromString: jest.fn(v => v),
@@ -965,7 +1027,12 @@ export async function importScriptModule(options = {}) {
             leaveTemporaryChat: jest.fn(async () => {}),
             showTemporaryChatError: jest.fn(),
         },
-        'scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js': { lorebookSelectOptions: jest.fn(() => ({})) },
+        'scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js': {
+            presetChoicesOptions: jest.fn(() => ({})),
+            embeddedLorebookOptions: jest.fn(() => ({})),
+            lorebookSortingOptions: jest.fn(() => ({})),
+            lorebookSelectOptions: jest.fn(() => ({})),
+        },
         'scripts/sillybunny-editor/adapters/misc-dialogs.js': { messageScreenshotOptions: jest.fn(() => ({})) },
         'scripts/sillybunny-character-editor.js': {
             beginCharacterEditorLoad: jest.fn(),
@@ -980,7 +1047,12 @@ export async function importScriptModule(options = {}) {
             discardCharacterEditorForEntity: jest.fn(),
         },
         'scripts/resumable-generation.js': {
-            fetchResumable: jest.fn(),
+            fetchResumable: jest.fn(async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ results: [{ text: 'AI reply' }] }),
+                text: async () => '',
+            })),
             registerGenerationCommitPlan: jest.fn(),
             settleGenerationCommit: jest.fn(),
         },
@@ -1034,6 +1106,7 @@ export async function importScriptModule(options = {}) {
     }
 
     const script = await import(pub('script.js'));
+    scriptRef = script;
     if (options.initMarkdown !== false) {
         script.reloadMarkdownProcessor();
     }
@@ -1050,6 +1123,13 @@ export async function importScriptModule(options = {}) {
             power_user,
             extension_settings,
             accountStorage,
+        },
+        cleanup() {
+            for (const timer of activeDebounceTimers) {
+                clearTimeout(timer);
+            }
+            activeDebounceTimers.clear();
+            script.cancelDebouncedChatSave?.();
         },
     };
 }

@@ -235,8 +235,16 @@ export async function importOpenAiModule({
             KOBOLDCPP: 'api_key_koboldcpp',
         },
         secret_state: secretState,
+        canViewSecrets: jest.fn(async () => false),
         writeSecret: jest.fn(async () => 'secret-id'),
         rotateSecret: jest.fn(async () => 'secret-id'),
+        deleteSecret: jest.fn(async () => {}),
+        findSecret: jest.fn(async () => null),
+        renameSecret: jest.fn(async () => {}),
+        readSecretState: jest.fn(async () => {}),
+        getSecretLabelById: jest.fn(() => ''),
+        resolveSecretKey: jest.fn(() => ''),
+        updateSecretDisplay: jest.fn(),
         ...secretsOverrides,
     };
 
@@ -314,6 +322,7 @@ export async function importOpenAiModule({
     await jest.unstable_mockModule(pub('lib.js'), () => ({
         Fuse: class Fuse { search() { return []; } },
         DOMPurify: domPurify ?? { sanitize: value => value },
+        Popper: { createPopper: jest.fn(() => ({ update: jest.fn(), destroy: jest.fn() })) },
         localforage: {
             getItem: async () => null,
             setItem: async () => {},
@@ -358,11 +367,17 @@ export async function importOpenAiModule({
             debounce: fn => fn,
             delay: jest.fn(async () => {}),
             download: jest.fn(),
+            ensureImageFormatSupported: jest.fn(async value => value),
             escapeHtml: value => String(value ?? ''),
             escapeRegex: value => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
             getAudioDurationFromDataURL: jest.fn(async () => 0),
             getBase64Async: jest.fn(async () => ''),
             getFileText: jest.fn(async () => ''),
+            getFileExtension: jest.fn(() => ''),
+            convertTextToBase64: jest.fn(v => Buffer.from(String(v ?? '')).toString('base64')),
+            isSameFile: jest.fn(() => false),
+            clamp: (v, min, max) => Math.min(Math.max(v, min), max),
+            humanFileSize: jest.fn(n => `${n} B`),
             getImageSizeFromDataURL: jest.fn(async () => ({ width: 0, height: 0 })),
             getSortableDelay: jest.fn(() => 0),
             getStringHash: jest.fn(value => String(value ?? '')),
@@ -467,6 +482,10 @@ export async function importOpenAiModule({
         }));
     }
     await jest.unstable_mockModule(pub('scripts/sillybunny-editor/adapters/window-content-dialogs.js'), () => ({
+        accountProfileOptions: jest.fn(() => ({})),
+        snapshotsOptions: jest.fn(() => ({})),
+        adminPanelOptions: jest.fn(() => ({})),
+        scenarioOverrideOptions: jest.fn(() => ({})),
         customEndpointParametersOptions: jest.fn(() => ({})),
     }));
     await jest.unstable_mockModule(pub('scripts/sillybunny-connection-notices.js'), () => ({
@@ -485,8 +504,14 @@ export async function importOpenAiModule({
     if (mockModelDetails) {
         await jest.unstable_mockModule(pub('scripts/sillybunny-editor/option-details.js'), () => ({
             registerOptionDetails: jest.fn(),
+            hasOptionDetails: jest.fn(() => false),
+            toDetails: jest.fn(v => v),
+            detailsToText: jest.fn(() => ''),
+            renderDetails: jest.fn(() => document.createElement('div')),
             icon: jest.fn(),
             link: jest.fn(),
+            badge: jest.fn(),
+            createDetailsMapper: jest.fn(() => jest.fn()),
         }));
         await jest.unstable_mockModule(pub('scripts/sillybunny-model-details.js'), () => ({
             describeAimlapiModel: jest.fn(),
