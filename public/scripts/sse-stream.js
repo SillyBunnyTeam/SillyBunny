@@ -266,13 +266,11 @@ async function* parseStreamData(json, { segments = false } = {}) {
     throw new Error('Unknown event data format');
 }
 
-// SillyBunny: coalesce sub-frame smooth-streaming waits into ~16 ms rAF slices with bounded timer fallback and backlog catch-up.
+// SillyBunny: coalesce sub-frame smooth-streaming waits into ~16 ms rAF slices with bounded timer fallback.
 /** A single-step wait shorter than this is coalesced into a ~16 ms frame slice instead of its own timer. */
 const SMOOTH_MIN_PAUSE_MS = 12;
 /** Target presentation frame slice when coalescing sub-frame waits via rAF. */
 const SMOOTH_FRAME_SLICE_MS = 16;
-/** Characters left in one event before the pauses start shrinking to catch up. */
-const SMOOTH_CATCH_UP_UNITS = 120;
 
 function waitForAnimationFrameOrDelay(waitMs) {
     if (
@@ -327,7 +325,8 @@ function splitStreamUnits(text) {
 /**
  * Paces the characters of one smooth stream. Each character is still delivered as its own event,
  * but sub-frame pauses are accumulated into ~16 ms presentation slices (yielded via rAF when
- * available), and a large backlog in one event shortens pauses adaptively so text catches up.
+ * available). The pauses add up to the time that the Smooth Streaming speed setting asks for, however
+ * many characters one event holds.
  */
 export class StreamPacer {
     /** Last character delivered, which sets the pause before the next one. */
@@ -343,16 +342,14 @@ export class StreamPacer {
     /**
      * Takes the pause before the next character.
      * @param {boolean} paced Whether this character waits at all
-     * @param {number} backlog Characters left in the current event, this one included
      * @returns {Promise<void>|null} A promise to await, or null when no timer is needed now
      */
-    pause(paced, backlog) {
+    pause(paced) {
         if (!paced) {
             this.owedMs = 0;
             return null;
         }
-        const catchUp = backlog > SMOOTH_CATCH_UP_UNITS ? SMOOTH_CATCH_UP_UNITS / backlog : 1;
-        const stepMs = getDelay(this.lastUnit) * catchUp;
+        const stepMs = getDelay(this.lastUnit);
         if (stepMs < SMOOTH_MIN_PAUSE_MS) {
             this.owedMs += stepMs;
             if (this.owedMs < SMOOTH_FRAME_SLICE_MS) {
@@ -398,7 +395,7 @@ export class SmoothEventSourceStream extends EventSourceStream {
                     // SillyBunny: stream per-segment shallow clones with rAF pacing and single-event no_think reasoning passthrough.
                     for await (const segment of parseStreamData(json, { segments: true })) {
                         if (typeof segment.build !== 'function') {
-                            const wait = pacer.pause(isFocused(), 1);
+                            const wait = pacer.pause(isFocused());
                             if (wait) await wait;
                             controller.enqueue(new MessageEvent(event.type, { data: JSON.stringify(segment.data) }));
                             pacer.lastUnit = segment.chunk;
@@ -414,7 +411,7 @@ export class SmoothEventSourceStream extends EventSourceStream {
 
                         const units = splitStreamUnits(segment.text);
                         for (let index = 0; index < units.length; index++) {
-                            const wait = pacer.pause(isFocused(), units.length - index);
+                            const wait = pacer.pause(isFocused());
                             if (wait) await wait;
                             const isLast = index === units.length - 1;
                             const unit = isLast ? units[index] + segment.suffix : units[index];

@@ -924,7 +924,6 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 'parseStreamData',
                 'SMOOTH_MIN_PAUSE_MS',
                 'SMOOTH_FRAME_SLICE_MS',
-                'SMOOTH_CATCH_UP_UNITS',
                 'waitForAnimationFrameOrDelay',
                 'graphemeSegmenter',
                 'splitStreamUnits',
@@ -1023,7 +1022,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             expect(elapsedMs).toBeLessThan(100);
         });
 
-        test('StreamPacer coalesces sub-frame waits onto rAF and shrinks pauses under large backlog', async () => {
+        test('StreamPacer coalesces sub-frame waits onto rAF and keeps the configured pause however many characters one event holds', async () => {
             const rafQueue = [];
             const { StreamPacer, delayCalls } = createSseContext({
                 speed: 95, // (100 - 95) * 0.4 = 2 ms per char (< 12 ms sub-frame threshold)
@@ -1035,23 +1034,36 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
 
             // First 7 chars accumulate 2 * 7 = 14 ms (< 16 ms slice) -> null wait!
             for (let i = 0; i < 7; i++) {
-                expect(pacer.pause(true, 10)).toBeNull();
+                expect(pacer.pause(true)).toBeNull();
             }
             // 8th char reaches 16 ms -> schedules rAF slice instead of setTimeout!
-            const waitPromise = pacer.pause(true, 10);
+            const waitPromise = pacer.pause(true);
             expect(typeof waitPromise?.then).toBe('function');
             expect(rafQueue).toHaveLength(1);
             expect(delayCalls).toHaveLength(0);
             rafQueue.shift()();
             await waitPromise;
 
-            // Adaptive catch-up: at speed 50 (20 ms/char), backlog = 480 (4x SMOOTH_CATCH_UP_UNITS = 120)
-            // scales step down to 20 * (120 / 480) = 5 ms (< 12 ms, coalesced!).
+            // At speed 50 (20 ms per char) the pause stays 20 ms, also when the event holds hundreds of characters.
             const slowCtx = createSseContext({ speed: 50, focus: true });
-            const catchupPacer = new slowCtx.StreamPacer();
-            catchupPacer.lastUnit = 'a';
-            expect(catchupPacer.pause(true, 480)).toBeNull();
-            expect(catchupPacer.owedMs).toBeCloseTo(5, 5);
+            const slowPacer = new slowCtx.StreamPacer();
+            slowPacer.lastUnit = 'a';
+            await slowPacer.pause(true, 480);
+            await slowPacer.pause(true, 2000);
+            expect(slowCtx.delayCalls).toEqual([20, 20]);
+            expect(slowPacer.owedMs).toBe(0);
+        });
+
+        test('one event of 330 characters waits as long as 330 single characters at speed 60', async () => {
+            const { SmoothEventSourceStream, delayCalls } = createSseContext({ speed: 60, focus: true });
+            const text = 'abcdefghij '.repeat(30);
+            const events = await runSmoothFrames(SmoothEventSourceStream, [
+                { choices: [{ index: 0, delta: { content: text } }] },
+                '[DONE]',
+            ]);
+            expect(events).toHaveLength(331);
+            // 16 ms per character; the first character has no earlier character to wait for.
+            expect(delayCalls.reduce((sum, ms) => sum + ms, 0)).toBeCloseTo(329 * 16, 5);
         });
 
         test('waitForAnimationFrameOrDelay falls back to bounded timer if rAF stalls, re-checks focus mid-chunk, and skips Intl.Segmenter on no_think reasoning', async () => {
