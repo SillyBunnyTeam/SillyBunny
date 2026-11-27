@@ -1,17 +1,11 @@
-/* eslint-disable playwright/no-standalone-expect -- These are parameterised Jest tests. */
-import { describe, expect, jest, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Parameterised Jest/jsdom tests. */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
 import * as model from '../../public/scripts/sillybunny-persona-model.js';
+import { importPersonasModule } from '../util/personas-module-harness.js';
 
-const personaSource = readFileSync(new URL('../../public/scripts/personas.js', import.meta.url), 'utf8');
 const indexSource = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8');
-
-function functionSource(name) {
-    const match = personaSource.match(new RegExp(`^(?:export )?((?:async )?function ${name}\\([\\s\\S]*?^})`, 'm'));
-    if (!match) throw new Error(`Missing function ${name}`);
-    return match[1];
-}
 
 function selectOptions(id) {
     const select = indexSource.match(new RegExp(`<select\\b[^>]*\\bid="${id}"[^>]*>([\\s\\S]*?)<\\/select>`));
@@ -58,21 +52,76 @@ function depsFor(state, overrides = {}) {
     };
 }
 
-function legacyAppendixNormalizer() {
-    return runInNewContext([
-        ...['createPersonaAppendixId', 'normalizePersonaAppendixSelections', 'normalizePersonaAppendices'].map(functionSource),
-        'normalizePersonaAppendices;',
-    ].join('\n'), {
-        Date: { now: () => 123 },
-        PERSONA_APPENDICES_DEFAULT_SCOPE_KEY: '__default__',
-        PERSONA_APPENDICES_SELECTIONS_KEY: 'activeAppendices',
+async function setupPersonas(overrides = {}) {
+    document.body.innerHTML = `
+        <div id="PersonaManagement" class="openDrawer"></div>
+        <div id="user_avatar_block"></div>
+        <button id="persona_lore_button"></button>
+        <button id="persona_grid_toggle"></button>
+        <input id="avatar_upload_overwrite" />
+        <input id="avatar_upload_file" type="file" />
+        <input id="persona_description" />
+    `;
+    const panel = document.getElementById('PersonaManagement');
+    panel.getClientRects = () => [{}];
+
+    const { state } = fixture();
+    const power_user = {
+        ...state,
+        default_persona: '',
+        persona_allow_multi_connections: false,
+        persona_show_notifications: false,
+        persona_sort_order: 'asc',
+        ...(overrides.power_user ?? {}),
+    };
+    const serverAvatars = ['ari.png'];
+    const fetchMock = overrides.fetch ?? jest.fn(async (url, init) => {
+        if (url === '/api/avatars/get') {
+            return { ok: true, json: async () => [...serverAvatars] };
+        }
+        if (url === '/api/avatars/upload') {
+            return { ok: true, json: async () => ({ path: 'copy.png' }) };
+        }
+        if (url === '/api/avatars/delete') {
+            const payload = JSON.parse(init?.body || '{}');
+            const idx = serverAvatars.indexOf(payload.avatar);
+            if (idx >= 0) serverAvatars.splice(idx, 1);
+            return { ok: true, json: async () => ({ ok: true }) };
+        }
+        return {
+            ok: true,
+            blob: async () => new Blob(['img'], { type: 'image/png' }),
+            json: async () => ({ ok: true }),
+        };
     });
+
+    const loaded = await importPersonasModule({
+        power_user,
+        characters: overrides.characters ?? [{ avatar: 'friend.png', name: 'Friend' }],
+        this_chid: overrides.this_chid ?? 0,
+        selected_group: overrides.selected_group ?? null,
+        name2: overrides.name2 ?? 'Friend',
+        default_user_avatar: overrides.default_user_avatar ?? 'default.png',
+        chat_metadata: overrides.chat_metadata ?? {},
+        fetch: fetchMock,
+        script: overrides.script,
+        popup: overrides.popup,
+        deleteConfirm: overrides.deleteConfirm,
+        accountStorage: overrides.accountStorage,
+    });
+    loaded.personas.initUserAvatar(overrides.user_avatar ?? 'active.png');
+    return loaded;
 }
 
+afterEach(() => {
+    jest.restoreAllMocks();
+    document.body.replaceChildren();
+});
+
 describe('persona schema parity', () => {
-    test('positions match the legacy enum and role/depth defaults stay fixed', () => {
-        const literal = personaSource.match(/export const persona_description_positions = (\{[\s\S]*?^\});/m)[1];
-        expect(model.PERSONA_POSITION).toEqual(runInNewContext(`(${literal})`));
+    test('positions match the legacy enum and role/depth defaults stay fixed', async () => {
+        const { personas } = await setupPersonas();
+        expect(model.PERSONA_POSITION).toEqual(personas.persona_description_positions);
         expect(model.PERSONA_ROLE).toEqual({ SYSTEM: 0, USER: 1, ASSISTANT: 2 });
         expect(model.DEFAULT_DEPTH).toBe(2);
         expect(model.DEFAULT_ROLE).toBe(0);
@@ -88,14 +137,23 @@ describe('persona schema parity', () => {
         expect(Object.isFrozen(model.ROLE_OPTIONS)).toBe(true);
     });
 
-    test.each(['Hello, World!', '---', '', undefined, 'é日本語', 'a'.repeat(70), ' An_Appendix '])(
-        'appendix id slug matches legacy for %p', name => {
-            const legacy = runInNewContext(`${functionSource('createPersonaAppendixId')}; createPersonaAppendixId`, {
-                Date: { now: () => 123 },
-            });
-            expect(model.createAppendixId(name, 123)).toBe(legacy(name));
+    test.each(['Hello, World!', '---', 'é日本語', 'a'.repeat(70), ' An_Appendix '])(
+        'appendix id slug matches legacy normalizer for %p', async name => {
+            const clock = jest.spyOn(Date, 'now').mockReturnValue(123);
+            try {
+                const { personas, state } = await setupPersonas();
+                state.power_user.persona_descriptions['ari.png'].appendices = [{ name }];
+                const normalized = personas.getPersonaRecord('ari.png').descriptor.appendices;
+                expect(`${model.createAppendixId(name, 123)}-0`).toBe(normalized[0].id);
+            } finally {
+                clock.mockRestore();
+            }
         },
     );
+
+    test.each(['', undefined])('appendix id falls back to "appendix" for blank %p', name => {
+        expect(model.createAppendixId(name, 123)).toBe('appendix-123');
+    });
 });
 
 describe('persona draft boundary', () => {
@@ -169,9 +227,10 @@ describe('persona draft boundary', () => {
 });
 
 describe('persona apply and rollback', () => {
-    test('note receipts canonicalize previous and written notes exactly like the legacy normalizer', () => {
+    test('note receipts canonicalize previous and written notes exactly like the legacy normalizer', async () => {
         const clock = jest.spyOn(Date, 'now').mockReturnValue(123);
         try {
+            const { personas, state: legacyState } = await setupPersonas();
             const { state, descriptor, baseline, draft } = fixture();
             const notes = [
                 { id: ' same ', name: ' First ', description: 1, extra: true },
@@ -183,8 +242,12 @@ describe('persona apply and rollback', () => {
             ];
             descriptor.appendices = structuredClone(notes);
             draft.appendices = [...notes, { id: 'same', name: ' Last ' }];
-            const expectedPrevious = legacyAppendixNormalizer()({ appendices: notes });
-            const expectedWritten = legacyAppendixNormalizer()({ appendices: draft.appendices });
+
+            legacyState.power_user.persona_descriptions['ari.png'].appendices = structuredClone(notes);
+            const expectedPrevious = structuredClone(personas.getPersonaRecord('ari.png').descriptor.appendices);
+            legacyState.power_user.persona_descriptions['ari.png'].appendices = structuredClone(draft.appendices);
+            const expectedWritten = structuredClone(personas.getPersonaRecord('ari.png').descriptor.appendices);
+
             const applied = model.applyDraft(state, 'ari.png', baseline, draft);
             expect(applied.previous.appendices).toEqual(expectedPrevious);
             expect(descriptor.appendices).toEqual(expectedWritten);
@@ -381,19 +444,21 @@ describe('persona draft concurrency', () => {
 
 describe('acknowledged persona commits', () => {
     test('failed active saves fully restore notes after real legacy projection normalization', async () => {
-        const { state, descriptor, baseline, draft } = fixture();
+        const { personas, state } = await setupPersonas({ user_avatar: 'ari.png' });
+        const descriptor = state.power_user.persona_descriptions['ari.png'];
+        const baseline = model.personaToDraft({ name: 'Ari', descriptor });
+        const draft = structuredClone(baseline);
         const previous = structuredClone(descriptor);
-        const normalize = legacyAppendixNormalizer();
         const projected = [];
         draft.appendices = [
             { id: 'first', name: ' Renamed ', description: 'Changed' },
             { id: 'first', name: ' Added ', description: 7 },
         ];
-        const deps = depsFor(state, {
+        const deps = depsFor(state.power_user, {
             isActive: jest.fn(() => true),
             project: jest.fn(() => {
                 const before = structuredClone(descriptor.appendices);
-                normalize(descriptor);
+                personas.projectActivePersona();
                 projected.push({ before, after: structuredClone(descriptor.appendices) });
             }),
             save: jest.fn(async () => false),
@@ -406,13 +471,15 @@ describe('acknowledged persona commits', () => {
     });
 
     test('real legacy projection still preserves a concurrent note writer after a failed save', async () => {
-        const { state, descriptor, baseline, draft } = fixture();
-        const normalize = legacyAppendixNormalizer();
+        const { personas, state } = await setupPersonas({ user_avatar: 'ari.png' });
+        const descriptor = state.power_user.persona_descriptions['ari.png'];
+        const baseline = model.personaToDraft({ name: 'Ari', descriptor });
+        const draft = structuredClone(baseline);
         const later = [{ id: 'later', name: 'Later', description: 'External edit' }];
         draft.appendices[0].name = ' My edit ';
-        const deps = depsFor(state, {
+        const deps = depsFor(state.power_user, {
             isActive: jest.fn(() => true),
-            project: jest.fn(() => normalize(descriptor)),
+            project: jest.fn(() => personas.projectActivePersona()),
             save: jest.fn(async () => { descriptor.appendices = structuredClone(later); return false; }),
         });
         await expect(model.commit(deps, 'ari.png', baseline, draft)).resolves.toEqual({ ok: false, reason: 'save' });
@@ -564,389 +631,411 @@ describe('acknowledged persona commits', () => {
     });
 });
 
-function createApi(overrides = {}, legacyFunctions = []) {
-    const { state } = fixture();
-    const dom = { toggleClass: jest.fn(), val: jest.fn(), trigger: jest.fn(), text: jest.fn() };
-    const context = {
-        power_user: state,
-        user_avatar: 'active.png',
-        selected_group: null,
-        characters: [{ avatar: 'friend.png' }],
-        this_chid: 0,
-        name2: 'Friend',
-        DEFAULT_DEPTH: 2,
-        DEFAULT_ROLE: 0,
-        PERSONA_APPENDICES_DEFAULT_SCOPE_KEY: '__default__',
-        PERSONA_APPENDICES_SELECTIONS_KEY: 'activeAppendices',
-        PERSONA_APPENDICES_METADATA_KEY: 'persona_appendices',
-        chat_metadata: {},
-        persona_description_positions: model.PERSONA_POSITION,
-        default_user_avatar: 'default.png',
-        normalizePersonaAppendices: jest.fn(),
-        getUserAvatars: jest.fn(async () => ['ari.png']),
-        addMissingPersonas: jest.fn(async () => {}),
-        getPersonaStates: jest.fn(() => ({ default: true, locked: { chat: false, character: true } })),
-        syncPersonaDescriptionFromDescriptor: jest.fn(),
-        countPersonaDescriptionTokens: jest.fn(),
-        updatePersonaUIStates: jest.fn(),
-        updatePersonaConnectionsAvatarList: jest.fn(),
-        saveSettings: jest.fn(async () => true),
-        saveSettingsDebounced: jest.fn(),
-        setUserName: jest.fn(),
-        setUserAvatar: jest.fn(async () => {}),
-        toggleDefaultPersona: jest.fn(async () => {}),
-        lockPersona: jest.fn(async () => {}),
-        unlockPersona: jest.fn(async () => {}),
-        setActivePersonaAppendixIds: jest.fn(async () => {}),
-        getCurrentConnectionObj: jest.fn(() => ({ type: 'character', id: 'friend.png' })),
-        initPersona: jest.fn(async () => {}),
-        uploadUserAvatar: jest.fn(async () => {}),
-        duplicatePersona: jest.fn(async () => 'copy.png'),
-        deletePersona: jest.fn(async () => true),
-        eventSource: { emit: jest.fn(async () => {}) },
-        event_types: { PERSONA_UPDATED: 'updated', PERSONA_RENAMED: 'renamed' },
-        $: jest.fn(() => dom),
-        console: { warn: jest.fn() },
-        personaEditorAdapter: null,
-        t: strings => strings.join(''),
-        ...overrides,
-    };
-    const start = personaSource.indexOf('// #region SillyBunny persona editor adapter and data API');
-    const end = personaSource.indexOf('// #endregion', start);
-    const apiSource = personaSource.slice(start, end).replace(/^export /gm, '');
-    runInNewContext([apiSource, ...legacyFunctions.map(functionSource)].join('\n'), context);
-    return { api: context, state: context.power_user, dom };
-}
-
 describe('targetable persona API', () => {
-    test('record reads normalize live notes but never create absent descriptors or personas', () => {
-        const { api, state } = createApi();
-        const record = api.getPersonaRecord('ari.png');
-        expect(record).toEqual({ avatarId: 'ari.png', name: 'Ari', descriptor: state.persona_descriptions['ari.png'] });
-        expect(record.descriptor).toBe(state.persona_descriptions['ari.png']);
-        expect(api.normalizePersonaAppendices).toHaveBeenCalledWith(record.descriptor);
-        expect(api.getPersonaRecord('absent.png')).toBeNull();
-        delete state.persona_descriptions['ari.png'];
-        expect(api.getPersonaRecord('ari.png').descriptor).toBeUndefined();
-        expect(state.persona_descriptions).toEqual({});
-    });
-
-    test('record reads run legacy note normalization before returning', () => {
-        const { api, state } = createApi({}, ['normalizePersonaAppendices', 'normalizePersonaAppendixSelections', 'createPersonaAppendixId']);
-        state.persona_descriptions['ari.png'].appendices = [
+    test('record reads normalize live notes but never create absent descriptors or personas', async () => {
+        const { personas, state } = await setupPersonas();
+        state.power_user.persona_descriptions['ari.png'].appendices = [
             { id: 'same', name: ' First ', description: 1 },
             { id: 'same', name: 'Second' },
         ];
-        const { descriptor } = api.getPersonaRecord('ari.png');
-        expect(descriptor.appendices).toEqual([
+        const record = personas.getPersonaRecord('ari.png');
+        expect(record).toEqual({ avatarId: 'ari.png', name: 'Ari', descriptor: state.power_user.persona_descriptions['ari.png'] });
+        expect(record.descriptor).toBe(state.power_user.persona_descriptions['ari.png']);
+        expect(record.descriptor.appendices).toEqual([
             { id: 'same', name: 'First', description: '1' },
             { id: 'same-1', name: 'Second', description: '' },
         ]);
-        expect(descriptor.activeAppendices.__default__).toEqual([]);
+        expect(record.descriptor.activeAppendices.__default__).toEqual([]);
+        expect(personas.getPersonaRecord('absent.png')).toBeNull();
+        delete state.power_user.persona_descriptions['ari.png'];
+        expect(personas.getPersonaRecord('ari.png').descriptor).toBeUndefined();
+        expect(state.power_user.persona_descriptions).toEqual({});
     });
 
     test('listing fetches without rendering and applies missing-persona initialization', async () => {
-        const { api } = createApi();
-        await expect(api.listPersonaAvatars()).resolves.toEqual(['ari.png']);
-        expect(api.getUserAvatars).toHaveBeenCalledWith(false, '', { strict: true });
-        expect(api.addMissingPersonas).toHaveBeenCalledWith(['ari.png']);
+        const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ['ari.png', 'missing.png'] }));
+        const { personas, state } = await setupPersonas({ fetch: fetchMock });
+        await expect(personas.listPersonaAvatars()).resolves.toEqual(['ari.png', 'missing.png']);
+        expect(fetchMock).toHaveBeenCalledWith('/api/avatars/get', expect.objectContaining({ method: 'POST' }));
+        expect(state.power_user.personas['missing.png']).toBe('[Unnamed Persona]');
     });
 
     test('listing accepts a genuinely empty library', async () => {
-        const { api } = createApi({ getUserAvatars: jest.fn(async () => []) });
-        await expect(api.listPersonaAvatars()).resolves.toEqual([]);
+        const { personas } = await setupPersonas({
+            fetch: jest.fn(async () => ({ ok: true, json: async () => [] })),
+        });
+        await expect(personas.listPersonaAvatars()).resolves.toEqual([]);
     });
 
     test.each([undefined, null, {}])('listing rejects a failed response %p instead of caching an empty library', async value => {
-        const { api } = createApi({ getUserAvatars: jest.fn(async () => value) });
-        await expect(api.listPersonaAvatars()).rejects.toThrow();
-        expect(api.addMissingPersonas).not.toHaveBeenCalled();
+        const { personas, state } = await setupPersonas({
+            fetch: jest.fn(async () => (value === undefined ? { ok: false } : { ok: true, json: async () => value })),
+        });
+        const before = { ...state.power_user.personas };
+        await expect(personas.listPersonaAvatars()).rejects.toThrow();
+        expect(state.power_user.personas).toEqual(before);
     });
 
     test('listing handles fetch rejection', async () => {
         const error = new Error('Offline');
-        const { api } = createApi({ getUserAvatars: jest.fn().mockRejectedValue(error) });
-        await expect(api.listPersonaAvatars()).rejects.toBe(error);
+        const { personas } = await setupPersonas({
+            fetch: jest.fn().mockRejectedValue(error),
+        });
+        await expect(personas.listPersonaAvatars()).rejects.toBe(error);
     });
 
-    test('states wrap the legacy state and add in-use without exposing another schema', () => {
-        const { api } = createApi();
-        expect(api.getPersonaEditorStates('ari.png')).toEqual({ inUse: false, default: true, locked: { chat: false, character: true } });
-        expect(api.getPersonaEditorStates('active.png').inUse).toBe(true);
-        expect(api.getPersonaStates).toHaveBeenCalledWith('ari.png');
+    test('states wrap the legacy state and add in-use without exposing another schema', async () => {
+        const { personas, state } = await setupPersonas({ user_avatar: 'active.png' });
+        state.power_user.default_persona = 'ari.png';
+        expect(personas.getPersonaEditorStates('ari.png')).toEqual({
+            inUse: false, default: true, locked: { chat: false, character: true },
+        });
+        expect(personas.getPersonaEditorStates('active.png').inUse).toBe(true);
     });
 
     test.each([
-        [null, [{ avatar: 'friend.png' }], { key: 'friend.png', kind: 'character' }],
-        ['group-1', [{ avatar: 'friend.png' }], { key: 'group-1', kind: 'group' }],
-        [null, [], { key: '__default__', kind: 'default' }],
-    ])('scope uses the existing roleplay scope for group %p and characters %p', (selected_group, characters, expected) => {
-        const { api } = createApi({ selected_group, characters }, ['getPersonaAppendixScopeKey']);
-        expect(api.getPersonaAppendixScope()).toEqual(expected);
+        [null, [{ avatar: 'friend.png' }], 0, { key: 'friend.png', kind: 'character' }],
+        ['group-1', [{ avatar: 'friend.png' }], 0, { key: 'group-1', kind: 'group' }],
+        [null, [], undefined, { key: '__default__', kind: 'default' }],
+    ])('scope uses the existing roleplay scope for group %p and characters %p', async (selected_group, characters, this_chid, expected) => {
+        const { personas } = await setupPersonas({ selected_group, characters, this_chid });
+        expect(personas.getPersonaAppendixScope()).toEqual(expected);
     });
 
-    test('projection reads only the active descriptor without saving, renaming, or locking', () => {
-        const { api, state, dom } = createApi({ user_avatar: 'ari.png' });
-        state.persona_descriptions['ari.png'].position = 4;
-        state.persona_descriptions['ari.png'].depth = 8;
-        state.persona_descriptions['ari.png'].role = 2;
-        api.projectActivePersona();
-        expect(state).toMatchObject({
-            persona_description_position: 4, persona_description_depth: 8, persona_description_role: 2,
+    test('projection reads only the active descriptor without saving, renaming, or locking', async () => {
+        const { personas, state, mocks, eventSource } = await setupPersonas({ user_avatar: 'ari.png' });
+        const emitSpy = jest.spyOn(eventSource, 'emit');
+        state.power_user.persona_descriptions['ari.png'].position = 4;
+        state.power_user.persona_descriptions['ari.png'].depth = 8;
+        state.power_user.persona_descriptions['ari.png'].role = 2;
+        personas.projectActivePersona();
+        expect(state.power_user).toMatchObject({
+            persona_description_position: 4,
+            persona_description_depth: 8,
+            persona_description_role: 2,
             persona_description_lorebook: 'Lore',
+            persona_description: 'Base description\n\n(Second)\nSecond note',
         });
-        expect(api.syncPersonaDescriptionFromDescriptor).toHaveBeenCalledTimes(1);
-        expect(dom.toggleClass).toHaveBeenCalledWith('world_set', true);
-        expect(api.saveSettingsDebounced).not.toHaveBeenCalled();
-        expect(api.setUserName).not.toHaveBeenCalled();
-        expect(api.lockPersona).not.toHaveBeenCalled();
-        expect(api.eventSource.emit).not.toHaveBeenCalled();
+        expect(document.getElementById('persona_lore_button').classList.contains('world_set')).toBe(true);
+        expect(mocks.script.saveSettingsDebounced).not.toHaveBeenCalled();
+        expect(mocks.script.setUserName).not.toHaveBeenCalled();
+        expect(emitSpy).not.toHaveBeenCalled();
     });
 
-    test('projection migrates the deprecated after-character position on the global only', () => {
-        const { api, state } = createApi({ user_avatar: 'ari.png' });
-        state.persona_descriptions['ari.png'].position = 1;
-        api.projectActivePersona();
-        expect(state.persona_description_position).toBe(0);
-        expect(state.persona_descriptions['ari.png'].position).toBe(1);
+    test('projection migrates the deprecated after-character position on the global only', async () => {
+        const { personas, state } = await setupPersonas({ user_avatar: 'ari.png' });
+        state.power_user.persona_descriptions['ari.png'].position = 1;
+        personas.projectActivePersona();
+        expect(state.power_user.persona_description_position).toBe(0);
+        expect(state.power_user.persona_descriptions['ari.png'].position).toBe(1);
     });
 
-    test('projection uses defaults without creating an active descriptor', () => {
-        const { api, state, dom } = createApi();
-        api.projectActivePersona();
-        expect(state).toMatchObject({
-            persona_description_position: 0, persona_description_depth: 2, persona_description_role: 0,
+    test('projection uses defaults without creating an active descriptor', async () => {
+        const { personas, state } = await setupPersonas({ user_avatar: 'active.png' });
+        personas.projectActivePersona();
+        expect(state.power_user).toMatchObject({
+            persona_description_position: 0,
+            persona_description_depth: 2,
+            persona_description_role: 0,
             persona_description_lorebook: '',
         });
-        expect(state.persona_descriptions).not.toHaveProperty('active.png');
-        expect(dom.toggleClass).toHaveBeenCalledWith('world_set', false);
+        expect(state.power_user.persona_descriptions).not.toHaveProperty('active.png');
+        expect(document.getElementById('persona_lore_button').classList.contains('world_set')).toBe(false);
     });
 
     test('the model and API recompose active prompt text from the base and scoped notes on save', async () => {
-        const { api, state } = createApi({ user_avatar: 'ari.png' }, [
-            'syncPersonaDescriptionFromDescriptor', 'composePersonaDescription', 'getActivePersonaAppendices',
-            'getActivePersonaAppendixIds', 'getPersonaAppendices', 'getLegacyPersonaAppendicesMetadata',
-            'normalizePersonaAppendices', 'normalizePersonaAppendixSelections', 'createPersonaAppendixId',
-            'getPersonaAppendixScopeKey',
-        ]);
-        const record = api.getPersonaRecord('ari.png');
+        const { personas, state, mocks } = await setupPersonas({ user_avatar: 'ari.png' });
+        const record = personas.getPersonaRecord('ari.png');
         const baseline = model.personaToDraft(record);
         const draft = { ...baseline, description: 'Updated base' };
-        await expect(model.commit(api.getPersonaModelDeps(), 'ari.png', baseline, draft)).resolves.toMatchObject({ ok: true });
-        expect(state.persona_description).toBe('Updated base\n\n(Second)\nSecond note');
-        expect(state.persona_descriptions['ari.png'].description).toBe('Updated base');
-        expect(api.saveSettings).toHaveBeenCalledWith(0, { returnResult: true });
+        await expect(model.commit(personas.getPersonaModelDeps(), 'ari.png', baseline, draft)).resolves.toMatchObject({ ok: true });
+        expect(state.power_user.persona_description).toBe('Updated base\n\n(Second)\nSecond note');
+        expect(state.power_user.persona_descriptions['ari.png'].description).toBe('Updated base');
+        expect(mocks.script.saveSettings).toHaveBeenCalledWith(0, { returnResult: true });
     });
 
     test.each([true, false, undefined])('immediate save returns the acknowledged result for %p', async result => {
-        const { api } = createApi({ saveSettings: jest.fn(async () => result) });
-        await expect(api.savePersonaSettingsNow()).resolves.toBe(Boolean(result));
-        expect(api.saveSettings).toHaveBeenCalledWith(0, { returnResult: true });
+        const { personas, mocks } = await setupPersonas({
+            script: { saveSettings: jest.fn(async () => result) },
+        });
+        await expect(personas.savePersonaSettingsNow()).resolves.toBe(Boolean(result));
+        expect(mocks.script.saveSettings).toHaveBeenCalledWith(0, { returnResult: true });
     });
 
     test('immediate save catches errors', async () => {
-        const { api } = createApi({ saveSettings: jest.fn().mockRejectedValue(new Error('Offline')) });
-        await expect(api.savePersonaSettingsNow()).resolves.toBe(false);
+        const { personas } = await setupPersonas({
+            script: { saveSettings: jest.fn().mockRejectedValue(new Error('Offline')) },
+        });
+        await expect(personas.savePersonaSettingsNow()).resolves.toBe(false);
     });
 
     test('use and lock APIs delegate without changing their target', async () => {
-        const { api } = createApi();
-        await api.usePersona('ari.png');
-        expect(api.setUserAvatar).toHaveBeenCalledWith('ari.png');
-        await expect(api.setPersonaChatLock('ari.png', true)).resolves.toBe(false);
-        expect(api.lockPersona).not.toHaveBeenCalled();
-        await expect(api.setPersonaChatLock('active.png', true)).resolves.toBe(true);
-        expect(api.lockPersona).toHaveBeenCalledWith('chat');
-        await expect(api.setPersonaChatLock('active.png', false)).resolves.toBe(true);
-        expect(api.unlockPersona).toHaveBeenCalledWith('chat');
+        const { personas, state } = await setupPersonas({ user_avatar: 'active.png' });
+        await expect(personas.setPersonaChatLock('ari.png', true)).resolves.toBe(false);
+        expect(state.chat_metadata.persona).toBeUndefined();
+
+        await expect(personas.setPersonaChatLock('active.png', true)).resolves.toBe(true);
+        expect(state.chat_metadata.persona).toBe('active.png');
+
+        await expect(personas.setPersonaChatLock('active.png', false)).resolves.toBe(true);
+        expect(state.chat_metadata.persona).toBeUndefined();
+
+        await personas.usePersona('ari.png');
+        expect(personas.user_avatar).toBe('ari.png');
     });
 
     test('default is an idempotent setter using the legacy quiet path', async () => {
-        const { api, state } = createApi();
-        await api.setPersonaDefault('ari.png', false);
-        expect(api.toggleDefaultPersona).not.toHaveBeenCalled();
-        await api.setPersonaDefault('ari.png', true);
-        expect(api.toggleDefaultPersona).toHaveBeenCalledWith('ari.png', { quiet: true });
-        state.default_persona = 'ari.png';
-        api.toggleDefaultPersona.mockClear();
-        await api.setPersonaDefault('ari.png', true);
-        expect(api.toggleDefaultPersona).not.toHaveBeenCalled();
-        await api.setPersonaDefault('ari.png', false);
-        expect(api.toggleDefaultPersona).toHaveBeenCalledWith('ari.png', { quiet: true });
+        const { personas, state, mocks } = await setupPersonas();
+        await personas.setPersonaDefault('ari.png', false);
+        expect(mocks.script.saveSettingsDebounced).not.toHaveBeenCalled();
+
+        await personas.setPersonaDefault('ari.png', true);
+        expect(state.power_user.default_persona).toBe('ari.png');
+        expect(mocks.toastr.success).not.toHaveBeenCalled();
+
+        mocks.script.saveSettingsDebounced.mockClear();
+        await personas.setPersonaDefault('ari.png', true);
+        expect(mocks.script.saveSettingsDebounced).not.toHaveBeenCalled();
+
+        await personas.setPersonaDefault('ari.png', false);
+        expect(state.power_user.default_persona).toBeFalsy();
+        expect(mocks.toastr.info).not.toHaveBeenCalled();
     });
 
     test('connections target an inactive persona, return unlinked ids, and preserve other connections', async () => {
-        const { api, state } = createApi();
-        state.personas['other.png'] = 'Other';
-        state.persona_descriptions['other.png'] = {
+        const { personas, state, mocks, eventSource } = await setupPersonas();
+        const emitSpy = jest.spyOn(eventSource, 'emit');
+        state.power_user.personas['other.png'] = 'Other';
+        state.power_user.persona_descriptions['other.png'] = {
             connections: [{ type: 'character', id: 'friend.png' }, { type: 'group', id: 'friend.png' }],
         };
-        state.persona_descriptions['ari.png'].connections = [{ type: 'character', id: 'else.png' }];
-        await expect(api.setPersonaCharacterConnection('ari.png', true)).resolves.toEqual({ ok: true, unlinked: ['other.png'] });
-        expect(state.persona_descriptions['ari.png'].connections).toEqual([
+        state.power_user.persona_descriptions['ari.png'].connections = [{ type: 'character', id: 'else.png' }];
+        await expect(personas.setPersonaCharacterConnection('ari.png', true)).resolves.toEqual({ ok: true, unlinked: ['other.png'] });
+        expect(state.power_user.persona_descriptions['ari.png'].connections).toEqual([
             { type: 'character', id: 'else.png' }, { type: 'character', id: 'friend.png' },
         ]);
-        expect(state.persona_descriptions['other.png'].connections).toEqual([{ type: 'group', id: 'friend.png' }]);
-        expect(api.saveSettingsDebounced).toHaveBeenCalledTimes(1);
-        expect(api.eventSource.emit).not.toHaveBeenCalled();
-        await expect(api.setPersonaCharacterConnection('ari.png', false)).resolves.toEqual({ ok: true, unlinked: [] });
-        expect(state.persona_descriptions['ari.png'].connections).toEqual([{ type: 'character', id: 'else.png' }]);
+        expect(state.power_user.persona_descriptions['other.png'].connections).toEqual([{ type: 'group', id: 'friend.png' }]);
+        expect(mocks.script.saveSettingsDebounced).toHaveBeenCalledTimes(1);
+        expect(emitSpy).not.toHaveBeenCalled();
+        await expect(personas.setPersonaCharacterConnection('ari.png', false)).resolves.toEqual({ ok: true, unlinked: [] });
+        expect(state.power_user.persona_descriptions['ari.png'].connections).toEqual([{ type: 'character', id: 'else.png' }]);
     });
 
     test('multiple-connection mode preserves links on other personas', async () => {
-        const { api, state } = createApi();
-        state.persona_allow_multi_connections = true;
-        state.persona_descriptions['other.png'] = { connections: [{ type: 'character', id: 'friend.png' }] };
-        await expect(api.setPersonaCharacterConnection('ari.png', true)).resolves.toEqual({ ok: true, unlinked: [] });
-        expect(state.persona_descriptions['other.png'].connections).toHaveLength(1);
+        const { personas, state } = await setupPersonas({ power_user: { persona_allow_multi_connections: true } });
+        state.power_user.personas['other.png'] = 'Other';
+        state.power_user.persona_descriptions['other.png'] = { connections: [{ type: 'character', id: 'friend.png' }] };
+        await expect(personas.setPersonaCharacterConnection('ari.png', true)).resolves.toEqual({ ok: true, unlinked: [] });
+        expect(state.power_user.persona_descriptions['other.png'].connections).toHaveLength(1);
     });
 
     test('connections require an existing persona and a current character or group', async () => {
-        const { api } = createApi();
-        await expect(api.setPersonaCharacterConnection('absent.png', true)).resolves.toEqual({ ok: false, unlinked: [] });
-        api.getCurrentConnectionObj.mockReturnValue(null);
-        await expect(api.setPersonaCharacterConnection('ari.png', true)).resolves.toEqual({ ok: false, unlinked: [] });
-        expect(api.saveSettingsDebounced).not.toHaveBeenCalled();
+        const { personas, mocks } = await setupPersonas();
+        await expect(personas.setPersonaCharacterConnection('absent.png', true)).resolves.toEqual({ ok: false, unlinked: [] });
+        expect(mocks.script.saveSettingsDebounced).not.toHaveBeenCalled();
+
+        const { personas: noContextPersonas, mocks: noContextMocks } = await setupPersonas({ characters: [], this_chid: undefined });
+        await expect(noContextPersonas.setPersonaCharacterConnection('ari.png', true)).resolves.toEqual({ ok: false, unlinked: [] });
+        expect(noContextMocks.script.saveSettingsDebounced).not.toHaveBeenCalled();
     });
 
     test('one connection can be removed without affecting another type with the same id', async () => {
-        const { api, state } = createApi();
-        state.persona_descriptions['ari.png'].connections.push({ type: 'group', id: 'friend.png' });
-        await expect(api.removePersonaConnection('ari.png', { type: 'character', id: 'friend.png' })).resolves.toBe(true);
-        expect(state.persona_descriptions['ari.png'].connections).toEqual([{ type: 'group', id: 'friend.png' }]);
-        expect(api.saveSettingsDebounced).toHaveBeenCalledTimes(1);
-        expect(api.eventSource.emit).not.toHaveBeenCalled();
+        const { personas, state, mocks, eventSource } = await setupPersonas();
+        const emitSpy = jest.spyOn(eventSource, 'emit');
+        state.power_user.persona_descriptions['ari.png'].connections.push({ type: 'group', id: 'friend.png' });
+        await expect(personas.removePersonaConnection('ari.png', { type: 'character', id: 'friend.png' })).resolves.toBe(true);
+        expect(state.power_user.persona_descriptions['ari.png'].connections).toEqual([{ type: 'group', id: 'friend.png' }]);
+        expect(mocks.script.saveSettingsDebounced).toHaveBeenCalledTimes(1);
+        expect(emitSpy).not.toHaveBeenCalled();
     });
 
     test('lorebook changes create a descriptor only for existing personas and leave inactive globals alone', async () => {
-        const { api, state, dom } = createApi();
-        delete state.persona_descriptions['ari.png'];
-        await expect(api.setPersonaLorebook('absent.png', 'New lore')).resolves.toBe(false);
-        await expect(api.setPersonaLorebook('ari.png', 'New lore')).resolves.toBe(true);
-        expect(state.persona_descriptions['ari.png'].lorebook).toBe('New lore');
-        expect(state.persona_description_lorebook).toBeUndefined();
-        expect(dom.toggleClass).not.toHaveBeenCalled();
-        expect(api.eventSource.emit).toHaveBeenCalledWith('updated', 'ari.png');
-        api.user_avatar = 'ari.png';
-        await api.setPersonaLorebook('ari.png', '');
-        expect(state.persona_description_lorebook).toBe('');
-        expect(dom.toggleClass).toHaveBeenCalledWith('world_set', false);
+        const { personas, state, eventSource } = await setupPersonas({ user_avatar: 'active.png' });
+        const emitSpy = jest.spyOn(eventSource, 'emit');
+        delete state.power_user.persona_descriptions['ari.png'];
+        await expect(personas.setPersonaLorebook('absent.png', 'New lore')).resolves.toBe(false);
+        await expect(personas.setPersonaLorebook('ari.png', 'New lore')).resolves.toBe(true);
+        expect(state.power_user.persona_descriptions['ari.png'].lorebook).toBe('New lore');
+        expect(state.power_user.persona_description_lorebook).toBeUndefined();
+        expect(document.getElementById('persona_lore_button').classList.contains('world_set')).toBe(false);
+        expect(emitSpy).toHaveBeenCalledWith('persona_updated', 'ari.png');
+
+        personas.initUserAvatar('ari.png');
+        await personas.setPersonaLorebook('ari.png', '');
+        expect(state.power_user.persona_description_lorebook).toBe('');
+        expect(document.getElementById('persona_lore_button').classList.contains('world_set')).toBe(false);
     });
 
     test('activation, duplication, deletion and image change delegate to legacy data paths', async () => {
-        const { api, dom } = createApi();
-        await api.setPersonaAppendicesActive('ari.png', ['first']);
-        expect(api.setActivePersonaAppendixIds).toHaveBeenCalledWith('ari.png', ['first']);
-        await expect(api.duplicatePersonaRecord('ari.png')).resolves.toBe('copy.png');
-        expect(api.duplicatePersona).toHaveBeenCalledWith('ari.png', { silent: true });
-        await expect(api.deletePersonaRecord('ari.png')).resolves.toBe(true);
-        expect(api.deletePersona).toHaveBeenCalledWith('ari.png');
-        api.changePersonaImage('ari.png');
-        expect(api.$.mock.calls).toEqual([['#avatar_upload_overwrite'], ['#avatar_upload_file']]);
-        expect(dom.val).toHaveBeenCalledWith('ari.png');
-        expect(dom.trigger).toHaveBeenCalledWith('click');
+        const avatars = ['ari.png'];
+        const { personas, state, mocks } = await setupPersonas({
+            fetch: jest.fn(async (url, init) => {
+                if (url === '/api/avatars/upload') {
+                    avatars.push('copy.png');
+                    return { ok: true, json: async () => ({ path: 'copy.png' }) };
+                }
+                if (url === '/api/avatars/get') return { ok: true, json: async () => [...avatars] };
+                if (url === '/api/avatars/delete') {
+                    const payload = JSON.parse(init?.body || '{}');
+                    const idx = avatars.indexOf(payload.avatar);
+                    if (idx >= 0) avatars.splice(idx, 1);
+                    return { ok: true, json: async () => ({ ok: true }) };
+                }
+                return { ok: true, blob: async () => new Blob(['img'], { type: 'image/png' }), json: async () => ({ ok: true }) };
+            }),
+        });
+
+        await personas.setPersonaAppendicesActive('ari.png', ['first']);
+        expect(state.power_user.persona_descriptions['ari.png'].activeAppendices['friend.png']).toEqual(['first']);
+
+        const duplicatedId = await personas.duplicatePersonaRecord('ari.png');
+        expect(duplicatedId).toBeTruthy();
+        expect(mocks.toastr.success).not.toHaveBeenCalled();
+
+        const fileClicks = jest.fn();
+        document.getElementById('avatar_upload_file').addEventListener('click', fileClicks);
+        personas.changePersonaImage('ari.png');
+        expect(document.getElementById('avatar_upload_overwrite').value).toBe('ari.png');
+        expect(fileClicks).toHaveBeenCalledTimes(1);
+
+        await expect(personas.deletePersonaRecord('ari.png')).resolves.toBe(true);
+        expect(mocks.Popup.show.confirm).toHaveBeenCalled();
+        expect(state.power_user.personas['ari.png']).toBeUndefined();
     });
 
     test('provisional cleanup can delete silently through the legacy API', async () => {
-        const { api } = createApi();
-        await expect(api.deletePersonaRecord('ari.png', { silent: true })).resolves.toBe(true);
-        expect(api.deletePersona).toHaveBeenCalledWith('ari.png', { silent: true });
+        const { personas, state, mocks } = await setupPersonas();
+        await expect(personas.deletePersonaRecord('ari.png', { silent: true })).resolves.toBe(true);
+        expect(mocks.Popup.show.confirm).not.toHaveBeenCalled();
+        expect(mocks.toastr.info).not.toHaveBeenCalled();
+        expect(state.power_user.personas['ari.png']).toBeUndefined();
     });
 
     test('creation uses the legacy id scheme and default avatar, without activation', async () => {
-        const { api } = createApi({ Date: { now: () => 123 } });
-        await expect(api.createPersonaRecord({ name: ' Ari! ', title: 'Title', description: 'Text' })).resolves.toBe('123-Ari.png');
-        expect(api.initPersona).toHaveBeenCalledWith('123-Ari.png', 'Ari!', 'Text', 'Title');
-        expect(api.uploadUserAvatar).toHaveBeenCalledWith('default.png', '123-Ari.png');
-        expect(api.setUserAvatar).not.toHaveBeenCalled();
-        await expect(api.createPersonaRecord({ name: ' ' })).resolves.toBe('');
-        api.uploadUserAvatar.mockRejectedValue(new Error('Offline'));
-        await expect(api.createPersonaRecord({ name: 'Ari' })).resolves.toBe('');
+        const clock = jest.spyOn(Date, 'now').mockReturnValue(123);
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const fetchMock = jest.fn(async (url) => {
+                if (url === '/api/avatars/upload') return { ok: true, json: async () => ({ path: '123-Ari.png' }) };
+                if (url === '/api/avatars/get') return { ok: true, json: async () => ['ari.png', '123-Ari.png'] };
+                return { ok: true, blob: async () => new Blob(['img'], { type: 'image/png' }), json: async () => ({}) };
+            });
+            const { personas, state } = await setupPersonas({ fetch: fetchMock, user_avatar: 'active.png' });
+
+            await expect(personas.createPersonaRecord({ name: ' Ari! ', title: 'Title', description: 'Text' })).resolves.toBe('123-Ari.png');
+            expect(state.power_user.personas['123-Ari.png']).toBe('Ari!');
+            expect(state.power_user.persona_descriptions['123-Ari.png']).toMatchObject({ title: 'Title', description: 'Text' });
+            expect(fetchMock).toHaveBeenCalledWith('default.png');
+            expect(personas.user_avatar).toBe('active.png');
+
+            await expect(personas.createPersonaRecord({ name: ' ' })).resolves.toBe('');
+
+            fetchMock.mockRejectedValueOnce(new Error('Offline'));
+            await expect(personas.createPersonaRecord({ name: 'Ari' })).resolves.toBe('');
+        } finally {
+            warn.mockRestore();
+            clock.mockRestore();
+        }
     });
 
     test('dependency adapter supplies active projection, acknowledged saves, and the existing event bus', async () => {
-        const { api, state } = createApi();
-        const deps = api.getPersonaModelDeps();
-        expect(deps.state).toBe(state);
+        const { personas, state, mocks, eventSource, event_types } = await setupPersonas({ user_avatar: 'active.png' });
+        const emitSpy = jest.spyOn(eventSource, 'emit');
+        const deps = personas.getPersonaModelDeps();
+        expect(deps.state).toBe(state.power_user);
         expect(deps.isActive('ari.png')).toBe(false);
         expect(deps.isActive('active.png')).toBe(true);
-        expect(deps.project).toBe(api.projectActivePersona);
-        expect(deps.setUserName).toBe(api.setUserName);
-        expect(deps.save).toBe(api.savePersonaSettingsNow);
-        expect(deps.events).toEqual({ PERSONA_UPDATED: 'updated', PERSONA_RENAMED: 'renamed' });
-        await deps.emit('updated', 'ari.png');
-        expect(api.eventSource.emit).toHaveBeenCalledWith('updated', 'ari.png');
+        expect(deps.project).toBe(personas.projectActivePersona);
+        expect(deps.setUserName).toBe(mocks.script.setUserName);
+        expect(deps.save).toBe(personas.savePersonaSettingsNow);
+        expect(deps.events).toEqual({
+            PERSONA_UPDATED: event_types.PERSONA_UPDATED,
+            PERSONA_RENAMED: event_types.PERSONA_RENAMED,
+        });
+        await deps.emit(event_types.PERSONA_UPDATED, 'ari.png');
+        expect(emitSpy).toHaveBeenCalledWith(event_types.PERSONA_UPDATED, 'ari.png');
     });
 });
 
 describe('inert persona editor adapter hooks', () => {
-    test('visibility uses the legacy drawer by default and returns to it when the adapter is cleared', () => {
-        const panel = { classList: { contains: jest.fn(() => true) }, getClientRects: () => [1] };
-        const document = { getElementById: jest.fn(() => panel) };
-        const { api } = createApi({ document }, ['isPersonaPanelOpen']);
-        expect(api.isPersonaPanelOpen()).toBe(true);
+    test('visibility uses the legacy drawer by default and returns to it when the adapter is cleared', async () => {
+        const { personas } = await setupPersonas();
+        expect(personas.isPersonaPanelOpen()).toBe(true);
         const adapter = { isOpen: jest.fn(() => 0), refresh: jest.fn() };
-        api.setPersonaEditorAdapter(adapter);
-        expect(api.isPersonaPanelOpen()).toBe(false);
-        expect(document.getElementById).toHaveBeenCalledTimes(1);
-        api.setPersonaEditorAdapter(null);
-        expect(api.isPersonaPanelOpen()).toBe(true);
-        expect(document.getElementById).toHaveBeenCalledTimes(2);
+        personas.setPersonaEditorAdapter(adapter);
+        expect(personas.isPersonaPanelOpen()).toBe(false);
+        expect(adapter.isOpen).toHaveBeenCalledTimes(1);
+        personas.setPersonaEditorAdapter(null);
+        expect(personas.isPersonaPanelOpen()).toBe(true);
     });
 
-    test('a mounted adapter suppresses legacy layout and redirects state refreshes before navigation or DOM work', () => {
-        const { api } = createApi({}, ['updatePersonaUIStates', 'switchPersonaGridView']);
+    test('a mounted adapter suppresses legacy layout and redirects state refreshes before navigation or DOM work', async () => {
+        const { personas, eventSource, event_types, $ } = await setupPersonas({
+            accountStorage: { PersonaGridView: 'true' },
+        });
+        await personas.initPersonas();
+        document.getElementById('user_avatar_block').classList.remove('gridView');
+
         const adapter = { isOpen: () => true, refresh: jest.fn() };
-        api.setPersonaEditorAdapter(adapter);
-        api.updatePersonaUIStates({ navigateToCurrent: true });
-        api.switchPersonaGridView();
+        personas.setPersonaEditorAdapter(adapter);
+
+        await eventSource.emit(event_types.CHAT_CHANGED, 'chat-2');
         expect(adapter.refresh).toHaveBeenCalledWith('states');
-        expect(api.$).not.toHaveBeenCalled();
+
+        $('#persona_grid_toggle').trigger('click');
+        expect(document.getElementById('user_avatar_block').classList.contains('gridView')).toBe(false);
     });
 
     test('avatar fetching still normalizes missing personas but skips the legacy render pipeline', async () => {
-        const { api } = createApi({
-            fetch: jest.fn(async () => ({ ok: true, json: async () => ['ari.png', 'other.png'] })),
-            getRequestHeaders: jest.fn(() => ({})),
-        }, ['getUserAvatars']);
+        const fetchMock = jest.fn(async () => ({ ok: true, json: async () => ['ari.png', 'other.png'] }));
+        const { personas, state } = await setupPersonas({ fetch: fetchMock });
         const adapter = { isOpen: () => true, refresh: jest.fn() };
-        api.setPersonaEditorAdapter(adapter);
-        await expect(api.getUserAvatars()).resolves.toEqual(['ari.png', 'other.png']);
-        expect(api.addMissingPersonas).toHaveBeenCalledWith(['ari.png', 'other.png']);
+        personas.setPersonaEditorAdapter(adapter);
+
+        await expect(personas.getUserAvatars()).resolves.toEqual(['ari.png', 'other.png']);
+        expect(state.power_user.personas['other.png']).toBe('[Unnamed Persona]');
         expect(adapter.refresh).toHaveBeenCalledWith('list');
-        expect(api.$).not.toHaveBeenCalled();
+        expect(document.getElementById('user_avatar_block').children).toHaveLength(0);
+
         adapter.refresh.mockClear();
-        api.addMissingPersonas.mockClear();
-        await expect(api.getUserAvatars(false)).resolves.toEqual(['ari.png', 'other.png']);
+        delete state.power_user.personas['other.png'];
+        await expect(personas.getUserAvatars(false)).resolves.toEqual(['ari.png', 'other.png']);
         expect(adapter.refresh).not.toHaveBeenCalled();
-        expect(api.addMissingPersonas).not.toHaveBeenCalled();
+        expect(state.power_user.personas['other.png']).toBeUndefined();
     });
 
     test('the pre-existing non-OK avatar response still returns undefined', async () => {
-        const { api } = createApi({
-            fetch: jest.fn(async () => ({ ok: false })), getRequestHeaders: jest.fn(() => ({})),
-        }, ['getUserAvatars']);
-        await expect(api.getUserAvatars()).resolves.toBeUndefined();
+        const { personas } = await setupPersonas({
+            fetch: jest.fn(async () => ({ ok: false })),
+        });
+        await expect(personas.getUserAvatars()).resolves.toBeUndefined();
     });
 
-    test('persona events notify the adapter for inactive records while keeping active data sync', () => {
-        const callbacks = new Map();
-        const context = {
-            personaEditorAdapter: { refresh: jest.fn() },
-            event_types: { PERSONA_UPDATED: 'updated' },
-            eventSource: { on: (event, callback) => callbacks.set(event, callback) },
-            user_avatar: 'active.png',
-            syncPersonaDescriptionFromDescriptor: jest.fn(),
+    test('persona events notify the adapter for inactive records while keeping active data sync', async () => {
+        const { personas, state, eventSource, event_types } = await setupPersonas({ user_avatar: 'active.png' });
+        state.power_user.personas['active.png'] = 'Active';
+        state.power_user.persona_descriptions['active.png'] = {
+            description: 'Initial active description',
+            appendices: [],
+            activeAppendices: {},
         };
-        const listener = personaSource.match(/[ ]{4}eventSource\.on\(event_types\.PERSONA_UPDATED, \(avatarId\) => \{[\s\S]*?^[ ]{4}\}\);/m)[0];
-        runInNewContext(listener, context);
-        callbacks.get('updated')('ari.png');
-        expect(context.personaEditorAdapter.refresh).toHaveBeenCalledWith('persona', 'ari.png');
-        expect(context.syncPersonaDescriptionFromDescriptor).not.toHaveBeenCalled();
-        callbacks.get('updated')('active.png');
-        expect(context.syncPersonaDescriptionFromDescriptor).toHaveBeenCalledTimes(1);
-        context.personaEditorAdapter = null;
-        callbacks.get('updated')('active.png');
-        expect(context.syncPersonaDescriptionFromDescriptor).toHaveBeenCalledTimes(2);
+        await personas.initPersonas();
+        const adapter = { isOpen: () => true, refresh: jest.fn() };
+        personas.setPersonaEditorAdapter(adapter);
+
+        state.power_user.persona_description = 'Stale prompt';
+        await eventSource.emit(event_types.PERSONA_UPDATED, 'ari.png');
+        expect(adapter.refresh).toHaveBeenCalledWith('persona', 'ari.png');
+        expect(state.power_user.persona_description).toBe('Stale prompt');
+
+        state.power_user.persona_descriptions['active.png'].description = 'Fresh active description';
+        await eventSource.emit(event_types.PERSONA_UPDATED, 'active.png');
+        expect(adapter.refresh).toHaveBeenLastCalledWith('persona', 'active.png');
+        expect(state.power_user.persona_description).toBe('Fresh active description');
+
+        personas.setPersonaEditorAdapter(null);
+        state.power_user.persona_descriptions['active.png'].description = 'After unmount description';
+        await eventSource.emit(event_types.PERSONA_UPDATED, 'active.png');
+        expect(state.power_user.persona_description).toBe('After unmount description');
     });
 });

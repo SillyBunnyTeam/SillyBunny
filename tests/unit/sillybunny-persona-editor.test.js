@@ -3,7 +3,24 @@
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests assert DOM synchronously. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { readFileSync } from 'node:fs';
-import { createContext, runInNewContext, SourceTextModule } from 'node:vm';
+import { createContext, SourceTextModule } from 'node:vm';
+
+import { importPersonasModule } from '../util/personas-module-harness.js';
+
+// Capture real personas.js and real performance-loader.js once before mocking personas.js for editor tests.
+const { eventSource: sharedEventSource, event_types: sharedEventTypes } = await import('../../public/scripts/events.js');
+let realPersonasFetchImpl = async () => ({ ok: true, json: async () => [] });
+const realPersonasBundle = await importPersonasModule({
+    eventSource: sharedEventSource,
+    event_types: sharedEventTypes,
+    fetch: (...args) => realPersonasFetchImpl(...args),
+});
+await realPersonasBundle.personas.initPersonas();
+
+window.requestIdleCallback = jest.fn();
+await import('../../public/scripts/performance-loader.js');
+const realActivateDeferredStylesheet = window.SillyBunnyLoadStylesheet;
+jest.resetModules();
 
 let adapter;
 let records;
@@ -104,9 +121,8 @@ const { eventSource, event_types } = await import('../../public/scripts/events.j
 const { createStatusPage } = await import('../../public/scripts/sillybunny-editor/status-page.js');
 const folderStore = await import('../../public/scripts/sillybunny-folders.js');
 const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
-const performanceLoaderSource = readFileSync(new URL('../../public/scripts/performance-loader.js', import.meta.url), 'utf8');
+// Deferred to Batch 6 until sillybunny-tabs.js behavioural harness is introduced.
 const tabsSource = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
-const personasSource = readFileSync(new URL('../../public/scripts/personas.js', import.meta.url), 'utf8');
 const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
 const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
@@ -120,14 +136,14 @@ let container;
 let mounted;
 
 function subscribeLegacyPersonaChatStates() {
-    // Exercise the real legacy registration and its adapter boundary, not a stand-in handler.
-    const update = personasSource.match(/^function updatePersonaUIStates\([\s\S]*?^}/m)?.[0];
-    const registration = personasSource.match(/^\s*eventSource.on\(event_types.CHAT_CHANGED, updatePersonaUIStates\);/m)?.[0];
-    if (!update || !registration) throw new Error('Persona chat-state subscription is missing.');
-    const handler = runInNewContext(`${update}\n${registration}\nupdatePersonaUIStates;`, {
-        eventSource, event_types, get personaEditorAdapter() { return adapter; },
-    });
-    return () => eventSource.removeListener(event_types.CHAT_CHANGED, handler);
+    // Route the real personas.js CHAT_CHANGED handler to the mounted editor adapter.
+    realPersonasBundle.personas.setPersonaEditorAdapter(adapter);
+    const forward = () => sharedEventSource.emit(sharedEventTypes.CHAT_CHANGED);
+    eventSource.on(event_types.CHAT_CHANGED, forward);
+    return () => {
+        eventSource.removeListener(event_types.CHAT_CHANGED, forward);
+        realPersonasBundle.personas.setPersonaEditorAdapter(null);
+    };
 }
 
 async function personaTabMount(stylesheets = personaStylesheets) {
@@ -157,14 +173,8 @@ async function activateDeferredStylesheet({ href }) {
     link.setAttribute('data-sb-deferred-style', '');
     link.dataset.sbMedia = 'all';
     document.head.append(link);
-    const loaderWindow = { requestIdleCallback: jest.fn() };
-    const module = new SourceTextModule(performanceLoaderSource, {
-        context: createContext({ document, window: loaderWindow }),
-    });
-    await module.link(() => { throw new Error('Unexpected static import in performance loader.'); });
-    await module.evaluate();
-    loaderWindow.SillyBunnyLoadStylesheet();
-    return { link, activate: loaderWindow.SillyBunnyLoadStylesheet };
+    realActivateDeferredStylesheet();
+    return { link, activate: realActivateDeferredStylesheet };
 }
 
 function personas(count = 3) {
@@ -253,11 +263,10 @@ afterEach(() => {
 
 describe('Persona editor shell', () => {
     function realAvatarList(fetch) {
-        return runInNewContext(`
-            ${personasSource.match(/^export async function getUserAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}
-            ${personasSource.match(/^export async function listPersonaAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}
-            listPersonaAvatars;
-        `, { fetch, getRequestHeaders: () => ({}), addMissingPersonas: async () => {}, t: strings => strings.join('') });
+        return async () => {
+            realPersonasFetchImpl = fetch;
+            return await realPersonasBundle.personas.listPersonaAvatars();
+        };
     }
 
     test('real HTTP list failure rejects first readiness and reopening fetches successfully', async () => {
@@ -295,10 +304,8 @@ describe('Persona editor shell', () => {
     test('malformed JSON lists reject the strict editor API while legacy avatar callers keep empty-success', async () => {
         const fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ invalid: true }) });
         await expect(realAvatarList(fetch)()).rejects.toThrow('Error');
-        const legacy = runInNewContext(`${personasSource.match(/^export async function getUserAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}\ngetUserAvatars;`, {
-            fetch, getRequestHeaders: () => ({}),
-        });
-        await expect(legacy(false)).resolves.toEqual([]);
+        realPersonasFetchImpl = fetch;
+        await expect(realPersonasBundle.personas.getUserAvatars(false)).resolves.toEqual([]);
     });
 
     test('mount is idempotent and hides only the legacy layout after styles resolve', async () => {

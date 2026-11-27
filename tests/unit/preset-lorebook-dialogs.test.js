@@ -1,12 +1,20 @@
 /** @jest-environment jsdom */
+/* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom DOM assertions. */
 import { afterEach, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { importWorldInfoModule } from '../util/world-info-module-harness.js';
+
+const pub = relative => fileURLToPath(new URL(`../../public/${relative}`, import.meta.url));
+const cachedJQuerySource = readFileSync(pub('lib/jquery-3.5.1.min.js'), 'utf8');
 
 jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({ t: parts => parts.join('') }));
 const openPicker = jest.fn();
 jest.unstable_mockModule('../../public/scripts/sillybunny-editor/picker.js', () => ({ closePicker: jest.fn(), isPickerOpen: () => false, openPicker }));
-const { embeddedLorebookOptions, lorebookSelectOptions, lorebookSortingOptions, presetChoicesOptions } = await import('../../public/scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js');
+const realDialogs = await import('../../public/scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js');
+const { embeddedLorebookOptions, lorebookSelectOptions, lorebookSortingOptions, presetChoicesOptions } = realDialogs;
 const { releaseRowIds } = await import('../../public/scripts/sillybunny-editor/rows.js');
 
 function root(html) {
@@ -218,14 +226,254 @@ test('empty auxiliary lorebooks reuse the upstream placeholder and omit only the
     options.onClose();
 });
 
-test('upstream entry points retain adapter, result filtering and destructive default seams', () => {
-    const preset = readFileSync(new URL('../../public/scripts/preset-manager.js', import.meta.url), 'utf8');
-    expect(preset.match(/presetChoicesOptions\(html.filter\('div'\)\[0\]\)/g)).toHaveLength(2);
-    expect(preset).toContain('presetChoicesOptions(html[0], { deletion: true })');
-    expect(preset.match(/input:checked:not\(\[data-sb-select-all\]\)/g)).toHaveLength(3);
-    expect(preset).toContain('defaultResult: POPUP_RESULT.NEGATIVE');
-    const world = readFileSync(new URL('../../public/scripts/world-info.js', import.meta.url), 'utf8');
-    expect(world).toContain('...lorebookSortingOptions(contentEl, customInputs)');
-    expect(world).toContain('...embeddedLorebookOptions(contentEl)');
-    expect(world).toContain('lorebookSelectOptions(template[0])');
+test('preset-manager entry points wire presetChoicesOptions, exclude Select All and default deletion to Cancel', async () => {
+    if (!globalThis.window.jQuery) {
+        (0, eval)(cachedJQuerySource);
+    }
+    const $ = globalThis.window.jQuery;
+    globalThis.$ = $;
+    globalThis.jQuery = $;
+    globalThis.toastr = { info: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() };
+    document.body.innerHTML = `
+        <select id="settings_preset_openai" data-preset-manager-for="openai">
+            <option value="0">Preset 0</option>
+            <option value="1">Preset 1</option>
+            <option value="2">Preset 2</option>
+            <option value="3">Preset 3</option>
+            <option value="4">Preset 4</option>
+            <option value="5">Preset 5</option>
+        </select>
+        <select id="instruct_presets" data-preset-manager-for="instruct"><option value="0">Default</option></select>
+        <select id="context_presets" data-preset-manager-for="context"><option value="0">Default</option></select>
+        <select id="sysprompt_select" data-preset-manager-for="sysprompt"><option value="0">Default</option></select>
+        <select id="reasoning_select" data-preset-manager-for="reasoning"><option value="0">Default</option></select>
+        <select id="settings_preset_textgenerationwebui" data-preset-manager-for="textgenerationwebui"><option value="0">Default</option></select>
+    `;
+
+    const popupCalls = [];
+    const POPUP_RESULT = { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null };
+    const POPUP_TYPE = { TEXT: 1, CONFIRM: 2, INPUT: 3 };
+    const PopupMock = jest.fn(function (content, type, inputValue, options) {
+        this.content = content;
+        this.type = type;
+        this.options = options;
+        popupCalls.push({ content, type, options });
+        this.show = jest.fn(async () => {
+            // Check every checkbox including Select All so the caller must filter out Select All.
+            const selectAll = content[0]?.querySelector?.('[data-sb-select-all]');
+            if (selectAll && !selectAll.checked) {
+                selectAll.click();
+            }
+            content.find('input[type="checkbox"]').prop('checked', true);
+            return POPUP_RESULT.AFFIRMATIVE;
+        });
+    });
+
+    const presetChoicesSpy = jest.fn((...args) => presetChoicesOptions(...args));
+    const renderTemplateAsync = jest.fn(async (name, { sections }) => {
+        const rows = Object.values(sections).map(section => `
+            <label class="checkbox_label">
+                <input type="checkbox" value="${section.key}" ${section.checked !== false ? 'checked' : ''} />
+                <span>${section.name}</span>
+            </label>
+        `).join('');
+        return `<div class="${name}">${rows}</div>`;
+    });
+
+    jest.resetModules();
+    await jest.unstable_mockModule(pub('lib.js'), () => ({ Fuse: class {}, lodash: { isEqual: (a, b) => JSON.stringify(a) === JSON.stringify(b) } }));
+    await jest.unstable_mockModule(pub('script.js'), () => ({
+        amount_gen: 100,
+        characters: [],
+        eventSource: { on: jest.fn(), emit: jest.fn(async () => {}) },
+        event_types: { SETTINGS_LOADED: 's', APP_READY: 'a', PRESET_CHANGED: 'p', PRESET_DELETED: 'd' },
+        getRequestHeaders: () => ({}),
+        koboldai_setting_names: [],
+        koboldai_settings: [],
+        main_api: 'openai',
+        max_context: 4096,
+        nai_settings: {},
+        novelai_setting_names: [],
+        novelai_settings: [],
+        online_status: 'connected',
+        saveSettings: jest.fn(async () => {}),
+        saveSettingsDebounced: jest.fn(),
+        this_chid: undefined,
+    }));
+    await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({ groups: [], selected_group: null }));
+    await jest.unstable_mockModule(pub('scripts/i18n.js'), () => ({ t: parts => parts.join('') }));
+    await jest.unstable_mockModule(pub('scripts/instruct-mode.js'), () => ({ instruct_presets: [{ name: 'Default', input_sequence: '', output_sequence: '' }] }));
+    await jest.unstable_mockModule(pub('scripts/kai-settings.js'), () => ({ kai_settings: {} }));
+    await jest.unstable_mockModule(pub('scripts/nai-settings.js'), () => ({ convertNovelPreset: v => v }));
+    await jest.unstable_mockModule(pub('scripts/openai.js'), () => ({
+        getChatCompletionPreset: () => ({}),
+        getPresetApplicationPromise: () => Promise.resolve(),
+        oai_settings: {},
+        openai_setting_names: { 'Preset 0': 0, 'Preset 1': 1, 'Preset 2': 2, 'Preset 3': 3, 'Preset 4': 4, 'Preset 5': 5 },
+        openai_settings: Array.from({ length: 6 }, () => ({})),
+    }));
+    await jest.unstable_mockModule(pub('scripts/popup.js'), () => ({ POPUP_RESULT, POPUP_TYPE, Popup: PopupMock }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-delete-confirm.js'), () => ({ confirmVerb: jest.fn(async () => true) }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js'), () => ({
+        ...realDialogs,
+        presetChoicesOptions: presetChoicesSpy,
+    }));
+    await jest.unstable_mockModule(pub('scripts/power-user.js'), () => ({
+        context_presets: [{ name: 'Default', story_string: '' }],
+        getContextSettings: () => ({}),
+        power_user: { disable_preset_autosave: false },
+    }));
+    await jest.unstable_mockModule(pub('scripts/reasoning.js'), () => ({
+        reasoning_templates: [{ name: 'Default', prefix: '', suffix: '', separator: '' }],
+    }));
+    await jest.unstable_mockModule(pub('scripts/sysprompt.js'), () => ({
+        checkForSystemPromptInInstructTemplate: jest.fn(),
+        system_prompts: [{ name: 'Default', content: '' }],
+    }));
+    await jest.unstable_mockModule(pub('scripts/templates.js'), () => ({ renderTemplateAsync }));
+    await jest.unstable_mockModule(pub('scripts/textgen-settings.js'), () => ({
+        getTextCompletionPresetSettings: () => ({}),
+        textgenerationwebui_settings: {},
+        textgenerationwebui_preset_names: ['Default'],
+        textgenerationwebui_presets: [{ temp: 1, top_k: 0, top_p: 1, rep_pen: 1 }],
+    }));
+    await jest.unstable_mockModule(pub('scripts/utils.js'), () => ({
+        download: jest.fn(),
+        ensurePlainObject: v => v ?? {},
+        equalsIgnoreCaseAndAccents: (a, b) => String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase(),
+        getSanitizedFilename: v => String(v ?? ''),
+        parseJsonFile: jest.fn(async () => ({})),
+        waitUntilCondition: jest.fn(async () => {}),
+    }));
+    const enumProxy = new Proxy({}, { get: () => jest.fn(() => []) });
+    await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommand.js'), () => ({ SlashCommand: { fromProps: jest.fn(p => p) } }));
+    await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandArgument.js'), () => ({
+        ARGUMENT_TYPE: { STRING: 'string' },
+        SlashCommandArgument: { fromProps: jest.fn(p => p) },
+    }));
+    await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandCommonEnumsProvider.js'), () => ({
+        enumIcons: new Proxy({}, { get: () => '' }),
+        commonEnumProviders: enumProxy,
+    }));
+    await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandEnumValue.js'), () => ({
+        SlashCommandEnumValue: class {},
+        enumTypes: { enum: 'enum' },
+    }));
+    await jest.unstable_mockModule(pub('scripts/slash-commands/SlashCommandParser.js'), () => ({
+        SlashCommandParser: { addCommandObject: jest.fn() },
+    }));
+
+    const presetManagerMod = await import('../../public/scripts/preset-manager.js');
+    await presetManagerMod.initPresetManager();
+    const openaiManager = presetManagerMod.getPresetManager('openai');
+    const PresetManager = openaiManager.constructor;
+
+    // 1. Master import uses presetChoicesOptions and ignores Select All when importing sections.
+    const savedSections = [];
+    const originalMasterSections = PresetManager.masterSections;
+    PresetManager.masterSections = Object.fromEntries(
+        Array.from({ length: 6 }, (_, index) => [`sec${index}`, {
+            name: `Section ${index}`,
+            isValid: () => true,
+            getData: () => ({ id: index }),
+            setData: jest.fn(async value => savedSections.push([`sec${index}`, value])),
+        }]),
+    );
+    try {
+        const importData = Object.fromEntries(Array.from({ length: 6 }, (_, index) => [`sec${index}`, { name: `P${index}` }]));
+        await PresetManager.performMasterImport(importData, 'master.json');
+        expect(presetChoicesSpy).toHaveBeenCalledTimes(1);
+        expect(savedSections.map(([key]) => key)).toEqual(['sec0', 'sec1', 'sec2', 'sec3', 'sec4', 'sec5']);
+
+        // 2. Master export uses presetChoicesOptions and never emits a key for Select All.
+        const exportedJson = await PresetManager.performMasterExport();
+        expect(presetChoicesSpy).toHaveBeenCalledTimes(2);
+        expect(Object.keys(JSON.parse(exportedJson))).toEqual(['sec0', 'sec1', 'sec2', 'sec3', 'sec4', 'sec5']);
+    } finally {
+        PresetManager.masterSections = originalMasterSections;
+    }
+
+    // 3. Bulk deletion passes { deletion: true } + defaultResult: NEGATIVE and excludes Select All from result.
+    const selectedForDelete = await openaiManager.selectPresetsForDeletion();
+    expect(presetChoicesSpy).toHaveBeenCalledTimes(3);
+    expect(presetChoicesSpy).toHaveBeenLastCalledWith(expect.any(HTMLElement), { deletion: true });
+    expect(popupCalls.at(-1).options.defaultResult).toBe(POPUP_RESULT.NEGATIVE);
+    expect(selectedForDelete).toEqual(['Preset 0', 'Preset 1', 'Preset 2', 'Preset 3', 'Preset 4', 'Preset 5']);
+    delete globalThis.toastr;
+});
+
+test('world-info entry points wire lorebookSortingOptions, embeddedLorebookOptions and lorebookSelectOptions', async () => {
+    document.body.innerHTML = `
+        <button id="world_apply_current_sorting"></button>
+        <button id="world_batch_import_embedded"></button>
+        <select id="world_editor_select"><option value="0">LoreA</option></select>
+        <div id="world_popup_entries_list"></div>
+        <div id="world_info_pagination"></div>
+    `;
+    const sortingSpy = jest.fn((...args) => lorebookSortingOptions(...args));
+    const embeddedSpy = jest.fn((...args) => embeddedLorebookOptions(...args));
+    const selectSpy = jest.fn((...args) => lorebookSelectOptions(...args));
+    const chatLorebookHtml = readFileSync(new URL('../../public/scripts/templates/chatLorebook.html', import.meta.url), 'utf8');
+
+    const alice = { name: 'Alice', avatar: 'alice.png', data: { character_book: { name: 'AliceBook', entries: [{ keys: ['a'], content: 'x' }] } } };
+    const loaded = await importWorldInfoModule({
+        world_names: ['LoreA'],
+        characters: [alice],
+        script: {
+            getEntitiesList: jest.fn(() => [{ type: 'character', id: 0, item: alice }]),
+        },
+        fetch: jest.fn(async (url) => {
+            if (url === '/api/worldinfo/get') {
+                return { ok: true, json: async () => ({ entries: { 0: { uid: 0, key: ['a'], content: 'body', order: 100 } } }) };
+            }
+            return { ok: true, json: async () => ({ name: 'AliceBook' }) };
+        }),
+        presetLorebookDialogs: {
+            lorebookSortingOptions: sortingSpy,
+            embeddedLorebookOptions: embeddedSpy,
+            lorebookSelectOptions: selectSpy,
+        },
+        renderTemplateAsync: jest.fn(async name => (name === 'chatLorebook' ? chatLorebookHtml : '<div></div>')),
+    });
+    const { worldInfo, $, mocks } = loaded;
+    mocks.script.getEntitiesList.mockReturnValue([{ type: 'character', id: 0, item: alice }]);
+    mocks.popup.callGenericPopup.mockResolvedValue(0);
+    mocks.popup.Popup.mockImplementation(function (content, type, inputValue, options) {
+        this.dlg = document.createElement('div');
+        this.dlg.innerHTML = '<div class="popup-inputs"><input id="wi_sort_start" type="number" value="100"><input id="wi_sort_step" type="number" value="1"><input id="wi_sort_ascending" type="checkbox"></div>';
+        this.dlg.append(content);
+        this.inputResults = new Map();
+        this.options = options;
+        this.show = jest.fn(async () => 0);
+    });
+
+    // 1. Apply Current Sorting wires lorebookSortingOptions(contentEl, customInputs).
+    worldInfo.setWorldInfoSettings({}, { world_names: ['LoreA'] });
+    worldInfo.initWorldInfo();
+    $('#world_editor_select').val('0').trigger('change');
+    for (let i = 0; i < 15; i++) await Promise.resolve();
+    $('#world_apply_current_sorting').trigger('click');
+    await Promise.resolve();
+    expect(sortingSpy).toHaveBeenCalledTimes(1);
+    expect(sortingSpy.mock.calls[0][1]).toHaveLength(3);
+
+    // 2. Batch import embedded lorebooks wires embeddedLorebookOptions(contentEl).
+    await worldInfo.importEmbeddedWorldInfoBatch();
+    expect(embeddedSpy).toHaveBeenCalledTimes(1);
+    expect(mocks.popup.callGenericPopup).toHaveBeenCalledWith(
+        expect.anything(),
+        mocks.popup.POPUP_TYPE.CONFIRM,
+        '',
+        expect.objectContaining({ tier: 'dialog' }),
+    );
+
+    // 3. Assign lorebook to chat wires lorebookSelectOptions(template[0]).
+    await worldInfo.assignLorebookToChat({ shiftKey: true, altKey: false });
+    expect(selectSpy).toHaveBeenCalledTimes(1);
+    expect(mocks.popup.callGenericPopup).toHaveBeenLastCalledWith(
+        expect.anything(),
+        mocks.popup.POPUP_TYPE.TEXT,
+        '',
+        expect.objectContaining({ tier: 'dialog' }),
+    );
 });

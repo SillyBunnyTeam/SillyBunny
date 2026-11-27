@@ -2,8 +2,13 @@
 import { jest } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { TextEncoder } from 'node:util';
 import v8 from 'node:v8';
 import lodash from 'lodash';
+
+if (typeof globalThis.TextEncoder === 'undefined') {
+    globalThis.TextEncoder = TextEncoder;
+}
 
 import { event_types } from '../../public/scripts/events.js';
 
@@ -472,7 +477,13 @@ export async function importWorldInfoModule(options = {}) {
         fuzzySearchWorldInfo: jest.fn(() => []),
     };
 
-    const renderTemplateAsync = jest.fn(async () => '<div></div>');
+    const renderTemplateAsync = options.renderTemplateAsync ?? jest.fn(async () => '<div></div>');
+    const presetLorebookDialogs = {
+        embeddedLorebookOptions: jest.fn(() => ({})),
+        lorebookSelectOptions: jest.fn(() => ({})),
+        lorebookSortingOptions: jest.fn(() => ({})),
+        ...(options.presetLorebookDialogs ?? {}),
+    };
 
     await jest.unstable_mockModule(pub('lib.js'), () => ({
         Fuse: createFakeFuse(),
@@ -569,11 +580,7 @@ export async function importWorldInfoModule(options = {}) {
             hide: jest.fn(),
         })),
     }));
-    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js'), () => ({
-        embeddedLorebookOptions: jest.fn(() => ({})),
-        lorebookSelectOptions: jest.fn(() => ({})),
-        lorebookSortingOptions: jest.fn(() => ({})),
-    }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-editor/adapters/preset-lorebook-dialogs.js'), () => presetLorebookDialogs);
 
     if (options.worldInfoEditorMock) {
         await jest.unstable_mockModule(pub('scripts/sillybunny-world-info-editor.js'), () => options.worldInfoEditorMock);
