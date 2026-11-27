@@ -604,6 +604,7 @@
         {"identity":"#vectors_ollama_model","kind":"text","where":"hidden"},
         {"identity":"#vectors_ollama_keep","kind":"switch","where":"hidden"},
         {"identity":"#vectors_ollama_pull","kind":"link","where":"hidden"},
+        {"identity":"#vectors_llamacpp_model","kind":"text","where":"hidden"},
         {"identity":"#vectors_openai_model","kind":"select","where":"hidden"},
         {"identity":"#vectors_cohere_model","kind":"select","where":"hidden"},
         {"identity":"#vectors_togetherai_model","kind":"select","where":"hidden"},

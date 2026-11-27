@@ -79,6 +79,8 @@ const settings = {
     cohere_model: 'embed-english-v3.0',
     ollama_model: 'mxbai-embed-large',
     ollama_keep: false,
+    // SillyBunny: support optional model ID for llama.cpp router-mode embeddings (ST #6171).
+    llamacpp_model: '',
     vllm_model: '',
     webllm_model: '',
     google_model: 'text-embedding-005',
@@ -1087,6 +1089,8 @@ function getVectorsRequestBody(args = {}) {
             break;
         case 'llamacpp':
             body.apiUrl = settings.use_alt_endpoint ? settings.alt_endpoint_url : textgenerationwebui_settings.server_urls[textgen_types.LLAMACPP];
+            // SillyBunny: forward optional llama.cpp embedding model ID (ST #6171).
+            body.model = extension_settings.vectors.llamacpp_model;
             break;
         case 'vllm':
             body.apiUrl = settings.use_alt_endpoint ? settings.alt_endpoint_url : textgenerationwebui_settings.server_urls[textgen_types.VLLM];
@@ -1953,6 +1957,12 @@ export async function init() {
     });
     $('#vectors_ollama_model').val(settings.ollama_model).on('input', () => {
         settings.ollama_model = String($('#vectors_ollama_model').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    // SillyBunny: bind optional llama.cpp embedding model ID input (ST #6171).
+    $('#vectors_llamacpp_model').val(settings.llamacpp_model).on('input', () => {
+        settings.llamacpp_model = String($('#vectors_llamacpp_model').val());
         Object.assign(extension_settings.vectors, settings);
         saveSettingsDebounced();
     });

@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/extensions/vectors/index.js`, `public/scripts/extensions/vectors/settings.html`, `src/endpoints/vectors.js` and `src/vectors/llamacpp-vectors.js` - llama.cpp vector model ID
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/vectors/index.js`, `public/scripts/extensions/vectors/settings.html`, `src/endpoints/vectors.js`, `src/vectors/llamacpp-vectors.js`. |
+| Area | Vector Storage extension and embeddings backend: optional model ID for llama.cpp router-mode servers. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6171 before the next full upstream sync so router-mode llama.cpp embedding servers can receive a model ID, while keeping SillyBunny's `createSingleVectorFn(getLlamaCppBatchVector)` export in `src/vectors/llamacpp-vectors.js` and updating `tests/fixtures/settings-inventory.json`. |
+| Target seam | `getLlamaCppBatchVector()` / `getLlamaCppVector` (`createSingleVectorFn`) in `src/vectors/llamacpp-vectors.js`, `getSourceSettings()` in `src/endpoints/vectors.js`, and `#vectors_llamacpp_model` in `public/scripts/extensions/vectors/` (adapted early port of upstream SillyTavern PR #6171, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Add `llamacpp_model: ''` to vector settings, bind `#vectors_llamacpp_model` in `#llamacpp_vectorsModel`, forward `body.model` through `src/endpoints/vectors.js` into `getLlamaCppBatchVector(texts, apiUrl, model, directories)` (sending `model: model || undefined`), and keep SillyBunny's `createSingleVectorFn(getLlamaCppBatchVector)` export for `getLlamaCppVector`. |
+| Protecting tests | `tests/llamacpp-vectors.test.js`, `tests/unit/settings-inventory.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- llamacpp-vectors.test.js unit/settings-inventory.test.js unit/sillybunny-lexicon-coverage.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove `llamacpp_model` and the `#vectors_llamacpp_model` binding from `public/scripts/extensions/vectors/index.js`, remove the label and input from `public/scripts/extensions/vectors/settings.html`, stop forwarding `model` in `src/endpoints/vectors.js` and `src/vectors/llamacpp-vectors.js`, remove `#vectors_llamacpp_model` from `tests/fixtures/settings-inventory.json`, and delete `tests/llamacpp-vectors.test.js`. Existing saved vector settings remain compatible. Reconcile on the upstream sync carrying ST #6171 while keeping `createSingleVectorFn`. |
+| Last reviewed | 2026-11-27 (adapted early port of ST #6171). |
+| Owner | Built-in extensions and server compatibility integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

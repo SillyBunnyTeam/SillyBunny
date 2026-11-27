@@ -9,10 +9,12 @@ import { createSingleVectorFn, extractOpenAIEmbeddings } from './common.js';
  * Gets the vector for the given text from LlamaCpp
  * @param {string[]} texts - The array of texts to get the vectors for
  * @param {string} apiUrl - The API URL
+ * @param {string} model - The model to use (required by a router-mode server, optional otherwise)
  * @param {import('../users.js').UserDirectoryList} directories - The directories object for the user
  * @returns {Promise<number[][]>} - The array of vectors for the texts
  */
-export async function getLlamaCppBatchVector(texts, apiUrl, directories) {
+// SillyBunny: accept optional model ID for llama.cpp router-mode embeddings (ST #6171).
+export async function getLlamaCppBatchVector(texts, apiUrl, model, directories) {
     const url = new URL(urlJoin(trimV1(apiUrl), '/v1/embeddings'));
 
     const headers = {};
@@ -24,7 +26,8 @@ export async function getLlamaCppBatchVector(texts, apiUrl, directories) {
             'Content-Type': 'application/json',
             ...headers,
         },
-        body: JSON.stringify({ input: texts }),
+        // SillyBunny: omit model key when empty so single-model llama.cpp servers stay unchanged (ST #6171).
+        body: JSON.stringify({ input: texts, model: model || undefined }),
     });
 
     if (!response.ok) {
@@ -41,6 +44,7 @@ export async function getLlamaCppBatchVector(texts, apiUrl, directories) {
  * Gets the vector for the given text from LlamaCpp
  * @param {string} text - The text to get the vector for
  * @param {string} apiUrl - The API URL
+ * @param {string} model - The model to use (required by a router-mode server, optional otherwise)
  * @param {import('../users.js').UserDirectoryList} directories - The directories object for the user
  * @returns {Promise<number[]>} - The vector for the text
  */
