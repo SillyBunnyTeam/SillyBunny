@@ -302,6 +302,7 @@ const {
     reconcileBackgroundGrid,
 } = await import('../public/scripts/sillybunny-background-gallery.js');
 const folderStore = await import('../public/scripts/sillybunny-folders.js');
+const { characterGroupOverlay } = await import('../public/script.js');
 
 const settle = async () => {
     for (let i = 0; i < 30; i++) await Promise.resolve();
@@ -794,7 +795,7 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             offsetHeightSpy.mockRestore();
         });
 
-        test('Shift-click range selection spans virtualized boundaries using getAllKeys when anchor row is unmounted', () => {
+        test('Shift-click range selection spans virtualized boundaries using getRangeKeys when anchor row is unmounted', () => {
             const root = document.createElement('div');
             const header = document.createElement('header');
             const list = document.createElement('div');
@@ -823,7 +824,7 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
                 actionBar,
                 rowSelector: '.ds-entity-row',
                 getKey: row => row.dataset.sbListKey,
-                getAllKeys: () => allOrderedKeys,
+                getRangeKeys: () => allOrderedKeys,
                 range: true,
                 onChange: jest.fn(),
             });
@@ -843,6 +844,106 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             row5.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
             expect([...mode.selectedKeys].sort()).toEqual(['k1', 'k2', 'k3', 'k4', 'k5']);
             mode.destroy();
+        });
+
+        describe('Shift-click range selection follows the rows on screen', () => {
+            const placeInFolder = (name, expanded, ids) => {
+                const folder = folderStore.createFolder('characters', name, { expanded });
+                folderStore.setFolder('characters', ids.map(id => `char_${id}.png`), folder.id);
+                return folder;
+            };
+
+            async function mountModel(entities, { hasAnyFilter = false } = {}) {
+                charModel = {
+                    view: 'characters',
+                    entities,
+                    sourceCount: entities.length,
+                    hasAnyFilter,
+                    folderOpen: false,
+                    fullRefresh: false,
+                    pageLoaded: jest.fn(),
+                };
+                charMounted = await mountCharacterList(undefined, { render: false });
+                jest.spyOn(charMounted.section, 'getClientRects').mockReturnValue([{}]);
+                await charRenderer.render(charModel);
+            }
+
+            const rowOf = id => document.getElementById(`CharID${id}`);
+            const displayedIds = () => [...document.querySelectorAll('#rm_print_characters_block > .character_select')]
+                .map(row => Number(row.getAttribute('chid')));
+
+            /** Starts selecting at one row, Shift-clicks another and runs a bulk action; returns the ids the action received. */
+            async function shiftSelect(anchorId, targetId = anchorId) {
+                rowOf(anchorId).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                rowOf(targetId).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+                document.querySelector('[data-action-id="favorite"]').click();
+                await settle();
+                expect(characterGroupOverlay.runBulkAction).toHaveBeenCalledTimes(1);
+                const [action, ids] = characterGroupOverlay.runBulkAction.mock.calls[0];
+                expect(action).toBe('favorite');
+                return [...ids].sort((a, b) => a - b);
+            }
+
+            test.each([
+                ['a row above the folder section', 0, 6, [0, 2, 4, 6]],
+                ['an open folder row down to an unfiled row, past the collapsed folder', 5, 2, [0, 2, 5, 9]],
+                ['the same range, from the other end', 2, 5, [0, 2, 5, 9]],
+            ])('selects only the displayed rows between the two clicks: %s', async (_name, anchorId, targetId, expected) => {
+                setupCharacterListDom();
+                const entities = seedCharacters(12);
+                placeInFolder('Open', true, [1, 5, 9]);
+                placeInFolder('Collapsed', false, [3, 7]);
+                await mountModel(entities);
+
+                // Folders come first, then the unfiled rows; the members of the collapsed folder are not on screen.
+                expect(displayedIds()).toEqual([1, 5, 9, 0, 2, 4, 6, 8, 10, 11]);
+                expect(await shiftSelect(anchorId, targetId)).toEqual(expected);
+            });
+
+            test('with a filter active, a folder the filter opens is part of the range in its displayed order', async () => {
+                setupCharacterListDom();
+                const entities = seedCharacters(12);
+                placeInFolder('Open', true, [1, 5, 9]);
+                placeInFolder('Collapsed', false, [3, 7]);
+                const matches = entities.filter(entity => [0, 1, 3, 4, 5, 7, 8].includes(entity.id));
+                await mountModel(matches, { hasAnyFilter: true });
+
+                expect(displayedIds()).toEqual([1, 5, 3, 7, 0, 4, 8]);
+                expect(await shiftSelect(5, 4)).toEqual([0, 3, 4, 5, 7]);
+            });
+
+            test('across a virtualized list the range spans the rows that are not mounted and skips the collapsed folder', async () => {
+                setupCharacterListDom();
+                const entities = seedCharacters(120);
+                charSizes.characters = 200;
+                placeInFolder('Open', true, Array.from({ length: 10 }, (_, index) => 90 + index));
+                placeInFolder('Collapsed', false, Array.from({ length: 10 }, (_, index) => 40 + index));
+                jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+                    return this.hasAttribute?.('data-sb-list-key') ? 56 : 0;
+                });
+                await mountModel(entities);
+                const box = charMounted.section.querySelector('.sb-character-list__box');
+                Object.defineProperty(box, 'clientHeight', { configurable: true, value: 480 });
+                await charRenderer.render(charModel);
+                expect(rowOf(90)).not.toBeNull();
+
+                rowOf(90).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                box.scrollTop = 1e6;
+                box.dispatchEvent(new Event('scroll'));
+                expect(rowOf(90)).toBeNull();
+                expect(rowOf(119)).not.toBeNull();
+
+                rowOf(119).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true }));
+                document.querySelector('[data-action-id="favorite"]').click();
+                await settle();
+                const ids = [...characterGroupOverlay.runBulkAction.mock.calls[0][1]].sort((a, b) => a - b);
+
+                const expected = [
+                    ...Array.from({ length: 40 }, (_, index) => index),
+                    ...Array.from({ length: 70 }, (_, index) => 50 + index),
+                ];
+                expect(ids).toEqual(expected);
+            });
         });
 
         test('pre-indexed group membership Map resolves 200 groups x 10 members across 1,000 characters in O(G*M + C) without calling O(G*M*C) getGroupRowData', async () => {

@@ -63,6 +63,8 @@ function isVisibleFocusTarget(element) {
  * @param {(row: HTMLElement) => string} [options.getKey]
  * @param {boolean} [options.range=false] Enables anchored Shift-click and Shift-Space/Enter ranges.
  * @param {() => Iterable<string>} [options.getAllKeys] Keys across every filtered page for select-all.
+ * @param {() => Iterable<string>} [options.getRangeKeys] Keys of every row the list shows, in display order, including rows that
+ * are not mounted. Only a list that mounts a window of its rows needs it; without it a Shift range follows the mounted rows.
  * @param {HTMLElement} [options.header] Standalone header. Required unless `headerSlots` is given, which ignores it.
  * @param {{ header: HTMLElement, headerStart: HTMLElement, headerEnd: HTMLElement, titleNode: HTMLElement,
  * search?: { isOpen: boolean, query: string, open: () => void, close: () => void, setQuery: (value: string) => void },
@@ -89,6 +91,7 @@ export function createSelectionMode({
     getKey = row => row.dataset.sbListKey,
     range = false,
     getAllKeys,
+    getRangeKeys,
     rowLabel = row => row.getAttribute('aria-label') || row.querySelector('.ds-row-label, .sb-prompt-row-name')?.textContent?.trim() || '',
     header,
     actionBar,
@@ -138,6 +141,9 @@ export function createSelectionMode({
     const keyFromRow = row => normalizeKey(getKey(row));
     const rows = () => [...list.querySelectorAll(rowSelector)].filter(row => row instanceof HTMLElement);
     const allKeys = () => getAllKeys ? normalizeKeys(getAllKeys()) : rows().map(keyFromRow);
+    // A Shift range covers what the user sees between two rows. getAllKeys follows the data, which can list rows that are
+    // filtered out, in a collapsed folder or in another order than the display.
+    const rangeKeys = () => getRangeKeys ? normalizeKeys(getRangeKeys()) : rows().map(keyFromRow);
     const areAllSelected = keys => keys.length > 0 && keys.every(key => key !== null && selected.has(key));
     const selectedSnapshot = () => [...selected];
 
@@ -425,7 +431,7 @@ export function createSelectionMode({
 
     function toggleRow(row, extendRange) {
         const key = keyFromRow(row);
-        const orderedKeys = range && extendRange ? (getAllKeys ? allKeys() : rows().map(keyFromRow)) : [];
+        const orderedKeys = range && extendRange ? rangeKeys() : [];
         const anchorIndex = anchorKey === null ? -1 : orderedKeys.indexOf(anchorKey);
         const targetIndex = key === null ? -1 : orderedKeys.indexOf(key);
         if (anchorIndex < 0 || targetIndex < 0) {

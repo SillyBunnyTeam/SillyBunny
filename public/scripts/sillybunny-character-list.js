@@ -1281,6 +1281,9 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             range: true,
             iconOnlyAtNarrow: true,
             getAllKeys: () => state.selectableKeys,
+            // The rows are a window of the list, so the range cannot come from the DOM. It takes the shown rows in display
+            // order, which leaves out the members of a collapsed folder and follows each folder's own grouping.
+            getRangeKeys: () => currentPageRows.filter(entry => entry.kind === 'entity').map(entry => entry.key),
             canEnter: () => !bulkBusy && state.selectableKeys.length > 0,
             actions,
             onChange: decorateSelection,
