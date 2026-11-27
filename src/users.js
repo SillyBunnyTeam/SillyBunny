@@ -1406,6 +1406,9 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
     const archive = archiver('zip', { forceZip64: true, zlib: { level: 6 } });
     let aborted = false;
     let settled = false;
+    /** @type {fs.ReadStream | null} */
+    let activeReadStream = null;
+    let releaseEntryWait = () => {};
 
     await new Promise((resolve, reject) => {
         const cleanup = () => {
@@ -1414,7 +1417,17 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
             response.off('error', onError);
             archive.off('error', onError);
             archive.off('warning', onWarning);
+            archive.off('entry', onEntry);
         };
+
+        const abortArchiving = () => {
+            aborted = true;
+            archive.abort();
+            activeReadStream?.destroy();
+            releaseEntryWait();
+        };
+
+        const onEntry = () => releaseEntryWait();
 
         const finishResolve = () => {
             if (settled) {
@@ -1430,9 +1443,8 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
                 return;
             }
             settled = true;
-            aborted = true;
             cleanup();
-            archive.abort();
+            abortArchiving();
 
             if (typeof response.headersSent === 'boolean' && response.headersSent) {
                 console.error('ZIP64 backup stream failed after headers were sent:', error);
@@ -1456,8 +1468,7 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
 
         const onResponseClose = () => {
             if (!response.writableFinished) {
-                aborted = true;
-                archive.abort();
+                abortArchiving();
             }
             finishResolve();
         };
@@ -1472,6 +1483,7 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
         response.on('error', onError);
         archive.on('error', onError);
         archive.on('warning', onWarning);
+        archive.on('entry', onEntry);
 
         // @ts-ignore
         archive.pipe(response);
@@ -1482,26 +1494,30 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
                     return;
                 }
 
-                let stat;
-                try {
-                    stat = await fs.promises.lstat(file.absolutePath);
-                } catch (error) {
-                    if (error?.code === 'ENOENT') {
-                        continue;
-                    }
-                    throw error;
-                }
-
-                if (stat.isSymbolicLink() || !stat.isFile()) {
+                // archive.file() would open the path itself, after the walk, and follow a symlink that replaced the file.
+                const opened = await openBackupFile(file.absolutePath);
+                if (!opened) {
                     continue;
                 }
 
+                // One entry at a time: archiver queues every appended source, so appending the whole list at once
+                // would hold an open descriptor per file and a second copy of the list.
+                const entryProcessed = new Promise((resolve) => {
+                    releaseEntryWait = resolve;
+                });
+                activeReadStream = opened.fileHandle.createReadStream({
+                    highWaterMark: BACKUP_STREAM_HIGH_WATER_MARK,
+                    autoClose: true,
+                });
                 const ext = path.extname(file.entryName).toLowerCase();
-                archive.file(file.absolutePath, {
+                archive.append(activeReadStream, {
                     name: file.entryName,
                     store: ZIP_STORE_EXTENSIONS.has(ext),
-                    date: clampZipEntryMtime(stat.mtime),
+                    date: clampZipEntryMtime(opened.stat.mtime),
+                    mode: opened.stat.mode & 0o7777,
                 });
+                await entryProcessed;
+                activeReadStream = null;
             }
 
             if (!aborted && !response.destroyed) {
@@ -1509,6 +1525,60 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
             }
         })().catch(onError);
     });
+}
+
+// Not defined on Windows, where the identity check in openBackupFile() is the only guard.
+const O_NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0;
+const BACKUP_OPEN_ATTEMPTS = 2;
+
+/**
+ * Opens a regular file of a user folder for a backup, refusing anything that is no longer that file.
+ * The walk only skips symlinks that exist when it looks, so the open must not follow one that replaced the file
+ * afterwards: it uses O_NOFOLLOW where the platform has it, and it always checks that the opened descriptor is the
+ * file that the preceding lstat saw (same device and inode). A file that was rewritten atomically in between gets one retry.
+ * @param {string} absolutePath Absolute path of the file inside the real user root
+ * @returns {Promise<{ fileHandle: fs.promises.FileHandle, stat: fs.Stats } | null>} The opened file, or null when it vanished, is a symlink or is not a regular file
+ */
+async function openBackupFile(absolutePath) {
+    for (let attempt = 0; attempt < BACKUP_OPEN_ATTEMPTS; attempt++) {
+        let pathStat;
+        try {
+            pathStat = await fs.promises.lstat(absolutePath);
+        } catch (error) {
+            if (error?.code === 'ENOENT') {
+                return null;
+            }
+            throw error;
+        }
+        if (pathStat.isSymbolicLink() || !pathStat.isFile()) {
+            return null;
+        }
+
+        let fileHandle;
+        try {
+            fileHandle = await fs.promises.open(absolutePath, fs.constants.O_RDONLY | O_NOFOLLOW);
+        } catch (error) {
+            // ELOOP is what O_NOFOLLOW reports for a symlink; FreeBSD reports EMLINK.
+            if (error?.code === 'ENOENT' || error?.code === 'ELOOP' || error?.code === 'EMLINK') {
+                return null;
+            }
+            throw error;
+        }
+
+        try {
+            const fdStat = await fileHandle.stat();
+            if (fdStat.isFile() && fdStat.dev === pathStat.dev && fdStat.ino === pathStat.ino) {
+                return { fileHandle, stat: fdStat };
+            }
+        } catch (error) {
+            await fileHandle.close().catch(() => {});
+            throw error;
+        }
+        await fileHandle.close().catch(() => {});
+    }
+
+    console.warn(`Backup skipped "${absolutePath}": the file changed while it was being opened.`);
+    return null;
 }
 
 /**
@@ -1700,26 +1770,11 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
                 break;
             }
 
-            let fileHandle = null;
-            let fdStat = null;
-            try {
-                const stat = await fs.promises.lstat(file.absolutePath);
-                if (stat.isSymbolicLink() || !stat.isFile()) {
-                    continue;
-                }
-                fileHandle = await fs.promises.open(file.absolutePath, 'r');
-                fdStat = await fileHandle.stat();
-                if (!fdStat.isFile()) {
-                    await fileHandle.close().catch(() => {});
-                    continue;
-                }
-            } catch (error) {
-                await fileHandle?.close().catch(() => {});
-                if (error?.code === 'ENOENT') {
-                    continue;
-                }
-                throw error;
+            const opened = await openBackupFile(file.absolutePath);
+            if (!opened) {
+                continue;
             }
+            const { fileHandle, stat: fdStat } = opened;
 
             let streamStarted = false;
             try {

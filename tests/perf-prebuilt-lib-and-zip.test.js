@@ -811,6 +811,136 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
         expect(Buffer.from(unzipped['c-after.json']).toString('utf8')).toBe('{"after":true}');
         expect(unzipped['b-vanish.tmp']).toBeUndefined();
     });
+
+    test('ZIP64 fallback resolves without hanging when the client disconnects mid-archive, and keeps entry modes', async () => {
+        const handle = `zip-zip64-abort-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        writeFiles(userRoot, {
+            'a.png': Buffer.alloc(256 * 1024, 0xab),
+            'b.png': Buffer.alloc(256 * 1024, 0xcd),
+            'c.png': Buffer.alloc(256 * 1024, 0xef),
+        });
+
+        let writes = 0;
+        const abortingStream = new Writable({
+            highWaterMark: 1024,
+            write(_chunk, _encoding, callback) {
+                writes += 1;
+                if (writes === 2) {
+                    this.destroy();
+                    callback();
+                    return;
+                }
+                setImmediate(callback);
+            },
+        });
+
+        await expect(createBackupArchive(handle, abortingStream, { zip64Thresholds: { maxTotalBytes: 1 } })).resolves.toBeUndefined();
+        expect(abortingStream.destroyed).toBe(true);
+
+        const modeHandle = `zip-zip64-mode-${Date.now()}`;
+        const modeRoot = path.join(global.DATA_ROOT, modeHandle);
+        writeFiles(modeRoot, { 'run.sh': '#!/bin/sh\n' });
+        fs.chmodSync(path.join(modeRoot, 'run.sh'), 0o755);
+        const chunks = [];
+        const output = new PassThrough();
+        output.on('data', chunk => chunks.push(chunk));
+        await createBackupArchive(modeHandle, output, { zip64Thresholds: { maxTotalBytes: 1 } });
+        const entries = await new Promise((resolve, reject) => {
+            yauzl.fromBuffer(Buffer.concat(chunks), { lazyEntries: false }, (error, zipfile) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                const found = [];
+                zipfile.on('entry', entry => found.push(entry));
+                zipfile.on('end', () => resolve(found));
+            });
+        });
+        expect(entries.map(entry => entry.fileName)).toEqual(['run.sh']);
+        expect((entries[0].externalFileAttributes >>> 16) & 0o777).toBe(0o755);
+    });
+
+    describe('a file replaced by a symlink between the lstat check and the open', () => {
+        // Replaces the victim with a symlink to an outside file right before the backup opens it,
+        // which is the window between the walk's lstat and the open.
+        function swapVictimForSymlinkOnOpen(victimPath, outsideFile, { dropFlags = false } = {}) {
+            const realOpen = fs.promises.open;
+            let swaps = 0;
+            const spy = jest.spyOn(fs.promises, 'open').mockImplementation((targetPath, flags, ...rest) => {
+                if (String(targetPath) === victimPath && swaps === 0) {
+                    swaps += 1;
+                    fs.rmSync(victimPath);
+                    fs.symlinkSync(outsideFile, victimPath);
+                    // A platform without O_NOFOLLOW opens whatever the path points at.
+                    return realOpen(targetPath, dropFlags ? 'r' : flags, ...rest);
+                }
+                return realOpen(targetPath, flags, ...rest);
+            });
+            return { spy, swapped: () => swaps };
+        }
+
+        function prepareUser(label) {
+            const handle = `zip-swap-${label}-${Date.now()}`;
+            const userRoot = path.join(global.DATA_ROOT, handle);
+            const outsideFile = path.join(makeTempDir('sb-swap-outside-'), 'secret.txt');
+            fs.writeFileSync(outsideFile, 'OUTSIDE-SECRET-BYTES');
+            writeFiles(userRoot, {
+                'a-keep.json': '{"keep":true}',
+                'b-victim.json': '{"victim":true}',
+                'c-after.json': '{"after":true}',
+            });
+            return { handle, victimPath: path.join(fs.realpathSync(userRoot), 'b-victim.json'), outsideFile };
+        }
+
+        async function backupWith(handle, options) {
+            const chunks = [];
+            const output = new PassThrough();
+            output.on('data', chunk => chunks.push(chunk));
+            await createBackupArchive(handle, output, options);
+            return Buffer.concat(chunks);
+        }
+
+        test.each([
+            ['streaming path', undefined],
+            ['ZIP64 fallback path', { zip64Thresholds: { maxTotalBytes: 1 } }],
+        ])('is not archived by the %s (open refuses to follow the link)', async (_label, options) => {
+            const { handle, victimPath, outsideFile } = prepareUser(options ? 'zip64' : 'stream');
+            const { spy, swapped } = swapVictimForSymlinkOnOpen(victimPath, outsideFile);
+
+            let zipBuffer;
+            try {
+                zipBuffer = await backupWith(handle, options);
+            } finally {
+                spy.mockRestore();
+            }
+
+            expect(swapped()).toBe(1);
+            expect(zipBuffer.includes(Buffer.from('OUTSIDE-SECRET-BYTES'))).toBe(false);
+            const names = Object.keys(unzipSync(new Uint8Array(zipBuffer))).sort();
+            expect(names).toEqual(['a-keep.json', 'c-after.json']);
+        });
+
+        test.each([
+            ['streaming path', undefined],
+            ['ZIP64 fallback path', { zip64Thresholds: { maxTotalBytes: 1 } }],
+        ])('is not archived by the %s when the platform has no O_NOFOLLOW (identity check)', async (_label, options) => {
+            const { handle, victimPath, outsideFile } = prepareUser(options ? 'zip64-id' : 'stream-id');
+            const { spy, swapped } = swapVictimForSymlinkOnOpen(victimPath, outsideFile, { dropFlags: true });
+
+            let zipBuffer;
+            try {
+                zipBuffer = await backupWith(handle, options);
+            } finally {
+                spy.mockRestore();
+            }
+
+            expect(swapped()).toBe(1);
+            expect(zipBuffer.includes(Buffer.from('OUTSIDE-SECRET-BYTES'))).toBe(false);
+            const names = Object.keys(unzipSync(new Uint8Array(zipBuffer))).sort();
+            expect(names).toEqual(['a-keep.json', 'c-after.json']);
+        });
+    });
 });
 
 describe('zero-feature-loss Android node_modules pruner', () => {
