@@ -2,6 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { waitForAppReady } from './helpers/app-ready.js';
 import { requireMetric } from './helpers/require-metric.js';
+import { IDLE_BEHIND_SETTINGS, runtimeBudgetsFor, STREAMING_REASONING } from './helpers/runtime-budget.js';
 import {
     createStreamingReasoningFixture,
     measureIdleActivity,
@@ -21,10 +22,11 @@ const coreAssetPaths = [
 const STARTUP_RESOURCE_LIMIT = 854;
 const STARTUP_JS_BYTE_LIMIT = 13 * 1024 * 1024;
 
-// `querySelectorAll` calls over a 20-step stream that follows a large reasoning block. Page timers and observers run
-// during the stream, so the count is page-wide. The limit lies between the count of a build that re-queries the
-// message DOM on every streamed update and the count of a build that does not, with room for run-to-run variation.
-const STREAMING_QUERY_SELECTOR_ALL_LIMIT = 800;
+// The limits of the idle, streaming and Settings tests are read from `scripts/frontend-perf-budget.json`, the file that
+// `perf:frontend` uses, so that each of them has one number. The start-up resource count above is not read from there:
+// the measure script counts resources with a different wait and viewport, so its `resourceCount` is another
+// measurement. The measure script's `mobile` profile is the 390 px wide viewport of the idle and streaming tests, and
+// its `desktop` profile is the 1366 px wide viewport of the Settings test.
 
 // The first start of a day for an admin account asks the server for the install type and then saves the notice stamp
 // to the account settings (`sillybunny-install-notice.js`), so a start that runs before any other start of that
@@ -165,10 +167,9 @@ test.describe('frontend performance smoke', () => {
             const idle = await measureIdleActivity(page, { cdpSession, durationMs: 1500 });
             const label = 'idle behind Settings';
             expect(idle.available).toBe(true);
-            expect(requireMetric(idle, 'runningAnimations', label)).toBe(0);
-            expect(requireMetric(idle, 'mutationCallbacks', label)).toBeLessThanOrEqual(10);
-            expect(requireMetric(idle, 'cdp.recalcStyleCount', label)).toBeLessThanOrEqual(6);
-            expect(requireMetric(idle, 'cdp.layoutCount', label)).toBeLessThanOrEqual(6);
+            for (const { metric, limit } of runtimeBudgetsFor('mobile', IDLE_BEHIND_SETTINGS)) {
+                expect(requireMetric(idle, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+            }
             expect(pageErrors).toEqual([]);
         } finally {
             await cdpSession?.detach().catch(() => {});
@@ -206,9 +207,9 @@ test.describe('frontend performance smoke', () => {
             // a loop that never reached the code under guard.
             expect(requireMetric(stream, 'reasoningUpdateCount', label)).toBe(fixture.stepCount);
             expect(requireMetric(stream, 'reasoningRenderedChars', label)).toBeGreaterThan(8000);
-            expect(requireMetric(stream, 'getBoundingClientRectCount', label)).toBeLessThanOrEqual(250);
-            expect(requireMetric(stream, 'querySelectorAllCount', label)).toBeLessThanOrEqual(STREAMING_QUERY_SELECTOR_ALL_LIMIT);
-            expect(requireMetric(stream, 'cdp.recalcStyleCount', label)).toBeLessThanOrEqual(120);
+            for (const { metric, limit } of runtimeBudgetsFor('mobile', STREAMING_REASONING)) {
+                expect(requireMetric(stream, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+            }
             expect(pageErrors).toEqual([]);
         } finally {
             await cdpSession?.detach().catch(() => {});
@@ -243,10 +244,9 @@ test.describe('frontend performance smoke', () => {
             expect(interaction.idleBehindSettings?.available).toBe(true);
             const idle = interaction.idleBehindSettings;
             const label = 'idle after Settings interactions';
-            expect(requireMetric(idle, 'runningAnimations', label)).toBe(0);
-            expect(requireMetric(idle, 'mutationCallbacks', label)).toBeLessThanOrEqual(10);
-            expect(requireMetric(idle, 'cdp.recalcStyleCount', label)).toBeLessThanOrEqual(6);
-            expect(requireMetric(idle, 'cdp.layoutCount', label)).toBeLessThanOrEqual(6);
+            for (const { metric, limit } of runtimeBudgetsFor('desktop', IDLE_BEHIND_SETTINGS)) {
+                expect(requireMetric(idle, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+            }
             expect(pageErrors).toEqual([]);
         } finally {
             await cdpSession?.detach().catch(() => {});
