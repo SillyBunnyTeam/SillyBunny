@@ -184,6 +184,9 @@ export function withPersonaFolders(file, personaId, record) {
     if (isEmptyFolderRecord(record)) {
         delete personas[personaId];
     } else {
+        if (!Object.hasOwn(personas, personaId) && Object.keys(personas).length >= MAX_PERSONAS_IN_FILE) {
+            throw invalid(`Folders can be kept for at most ${MAX_PERSONAS_IN_FILE} personas.`);
+        }
         personas[personaId] = toStoredRecord(record);
     }
     return { version: FOLDER_FILE_VERSION, personas };

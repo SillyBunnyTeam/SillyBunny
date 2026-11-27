@@ -67,12 +67,17 @@ describe('rebaseChat', () => {
         expect(result).toMatchObject({ appended: 0, lostEdits: 0, lostDeletes: 0 });
     });
 
-    test('keeps the newer memory summary of the two headers', () => {
+    test('keeps the newer memory summary of the two headers and reports headerChanged only when local replaced server', () => {
         const newer = { memory_summary: 'mine', memory_message_count: 4, memory_updated_at: 200 };
         const older = { memory_summary: 'theirs', memory_message_count: 2, memory_updated_at: 100 };
 
-        expect(rebaseChat({ localMessages: base, localHeader: header('s1', newer), synced, serverRecords: [header('s2', older), ...base] }).header.chat_metadata.sb_conversation).toEqual(newer);
-        expect(rebaseChat({ localMessages: base, localHeader: header('s1', older), synced, serverRecords: [header('s2', newer), ...base] }).header.chat_metadata.sb_conversation).toEqual(newer);
+        const localWins = rebaseChat({ localMessages: base, localHeader: header('s1', newer), synced, serverRecords: [header('s2', older), ...base] });
+        expect(localWins.header.chat_metadata.sb_conversation).toEqual(newer);
+        expect(localWins.headerChanged).toBe(true);
+
+        const serverWins = rebaseChat({ localMessages: base, localHeader: header('s1', older), synced, serverRecords: [header('s2', newer), ...base] });
+        expect(serverWins.header.chat_metadata.sb_conversation).toEqual(newer);
+        expect(serverWins.headerChanged).toBe(false);
     });
 
     test('does not change the arrays that it was given', () => {

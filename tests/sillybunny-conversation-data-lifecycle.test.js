@@ -213,6 +213,39 @@ describe('Delete Chat and Delete Conversation', () => {
         expect(removals).toContainEqual({ conversationId: GROUP.id });
         expect(removals).toContainEqual({ conversationId: DIRECT.id, chatId: 'trip' });
     });
+
+    test('deleteChat and deleteConversation suppress spurious 404 errors from concurrent in-flight chat saves', async () => {
+        await started([TWO_CHATS, GROUP]);
+        await data.loadChat({ conversationId: DIRECT.id, chatId: 'main' });
+        await data.loadChat({ conversationId: GROUP.id, chatId: 'main' });
+        const heldSaves = [];
+        const original = adapter.fetchJson;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/chat/save') {
+                await new Promise(resolve => heldSaves.push(resolve));
+            }
+            return original(path, body, options);
+        };
+
+        data.commitChat({ conversationId: DIRECT.id, chatId: 'main' }, (draft) => {
+            draft.messages.push(line('late-1', 'in flight before chat delete', { minute: 50 }));
+        });
+        data.commitChat({ conversationId: GROUP.id, chatId: 'main' }, (draft) => {
+            draft.messages.push(line('late-2', 'in flight before conv delete', { minute: 51 }));
+        });
+        await new Promise(resolve => setImmediate(resolve));
+        expect(heldSaves).toHaveLength(2);
+
+        await data.deleteChat({ conversationId: DIRECT.id, chatId: 'main' });
+        await data.deleteConversation(GROUP.id);
+        heldSaves.splice(0).forEach(release => release());
+        await new Promise(resolve => setImmediate(resolve));
+        await new Promise(resolve => setImmediate(resolve));
+
+        expect(errors).toEqual([]);
+        expect(data.chat({ conversationId: DIRECT.id, chatId: 'main' })).toBeNull();
+        expect(data.get(GROUP.id)).toBeNull();
+    });
 });
 
 describe('editing a group', () => {
@@ -267,8 +300,11 @@ describe('members', () => {
 
     test('Add Member on a direct conversation makes a new group and leaves the direct conversation as it is', async () => {
         await started([DIRECT]);
+        const listEvents = [];
+        data.subscribe(event => event.type === 'list' && listEvents.push(event));
 
         const result = await data.addMembers(DIRECT.id, ['Orion.png']);
+        await Promise.resolve();
 
         expect(result.created).toBe(true);
         expect(result.conversation.kind).toBe('group');
@@ -277,6 +313,7 @@ describe('members', () => {
         expect(data.get(result.conversation.id)).toBe(result.conversation);
         expect(data.get(DIRECT.id)).toMatchObject({ kind: 'direct', characters: ['Nova.png'], messageCount: 4 });
         expect(data.list()).toHaveLength(2);
+        expect(listEvents.at(-1)).toEqual({ type: 'list', id: result.conversation.id });
     });
 
     test('a character that is not a card, or is a member already, is refused with the code of the route', async () => {

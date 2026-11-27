@@ -50,7 +50,7 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/prompt.js', () => ({ scheduleConversationMemorySummary }));
 
 const { afterIncomingMessage, appendConversationMessage } = await import('../public/scripts/sillybunny-conversation/message-writer.js');
-const { addConversationReminder, ensureConversationChatLoaded, reloadConversationChat } = await import('../public/scripts/sillybunny-conversation/conversation-store.js');
+const { addConversationReminder, ensureConversationChatLoaded, parseReminderDelayToMs, reloadConversationChat } = await import('../public/scripts/sillybunny-conversation/conversation-store.js');
 
 let server;
 
@@ -335,5 +335,54 @@ describe('a message or a reminder that a caller gives an id', () => {
         const reminders = data.get('conv_1_direct01').reminders;
         expect(reminders.map(item => item.id)).toEqual(['rem_pending_g0_0']);
         delete globalThis.toastr;
+    });
+});
+
+describe('parseReminderDelayToMs and addConversationReminder validation', () => {
+    afterEach(() => {
+        delete globalThis.toastr;
+        jest.useRealTimers();
+    });
+
+    test('parses HH:MM clock times before bare numbers and rejects invalid times or mixed garbage', () => {
+        jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+        jest.setSystemTime(new Date(2026, 4, 10, 10, 0, 0, 0));
+
+        // 14:30 is 4h30m away from 10:00 (not 14 minutes).
+        expect(parseReminderDelayToMs('14:30')).toBe(4.5 * 60 * 60 * 1000);
+        // 09:15 wraps to tomorrow (23h15m away).
+        expect(parseReminderDelayToMs('09:15')).toBe((23 * 60 + 15) * 60 * 1000);
+        expect(parseReminderDelayToMs('0:05')).toBe((14 * 60 + 5) * 60 * 1000);
+
+        // Out-of-range clock values and malformed strings return 0.
+        expect(parseReminderDelayToMs('24:00')).toBe(0);
+        expect(parseReminderDelayToMs('12:60')).toBe(0);
+        expect(parseReminderDelayToMs('1h30m')).toBe(0);
+        expect(parseReminderDelayToMs('14:30:00')).toBe(0);
+        expect(parseReminderDelayToMs('5abc')).toBe(0);
+
+        // Strict bare numeric minutes and standard units still parse.
+        expect(parseReminderDelayToMs('10')).toBe(10 * 60 * 1000);
+        expect(parseReminderDelayToMs('1.5')).toBe(90 * 1000);
+        expect(parseReminderDelayToMs('30s')).toBe(30 * 1000);
+        expect(parseReminderDelayToMs('2h')).toBe(2 * 60 * 60 * 1000);
+    });
+
+    test('rounds fractional triggerAt to an integer accepted by the server and rejects out-of-range delays', async () => {
+        globalThis.toastr = { info: jest.fn() };
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        await startData([TWO_CHATS]);
+
+        const fractional = addConversationReminder('Nova.png', '', '0.0005s', 'sub-ms rounding', { chatId: 'main', personaId: PERSONA });
+        expect(fractional).not.toBeNull();
+        expect(Number.isSafeInteger(fractional.triggerAt)).toBe(true);
+        await data.flush();
+        expect(data.get('conv_1_direct01').reminders).toHaveLength(1);
+
+        const huge = addConversationReminder('Nova.png', '', '100000000000d', 'way too far', { chatId: 'main', personaId: PERSONA });
+        expect(huge).toBeNull();
+        expect(data.get('conv_1_direct01').reminders).toHaveLength(1);
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
     });
 });

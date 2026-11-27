@@ -154,6 +154,84 @@ describe('start', () => {
         await settle();
         expect(data.status().state).toBe('ready');
     });
+
+    test('enters failed state with retry when /migration/status fails instead of stalling in loading', async () => {
+        let statusFails = true;
+        let listFails = true;
+        const scripted = scriptedAdapter(async (path) => {
+            if (path === '/migration/status') {
+                if (statusFails) {
+                    throw new Error('status unreachable');
+                }
+                return { status: 200, json: { state: 'migrated' } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            return listFails ? { status: 503, json: { error: 'migration_failed' } } : { status: 200, json: { conversations: [], problems: [] } };
+        });
+        data = createConversationData(scripted);
+
+        await data.start();
+        expect(data.status()).toMatchObject({ state: 'failed', code: 'network' });
+
+        statusFails = false;
+        listFails = false;
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        await settle();
+        expect(data.status().state).toBe('ready');
+    });
+
+    test('enters failed state with retry when the retry load after waitForMigration fails', async () => {
+        let listAttempts = 0;
+        const scripted = scriptedAdapter(async (path) => {
+            if (path === '/migration/status') {
+                return { status: 200, json: { state: 'migrated' } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            listAttempts++;
+            if (listAttempts === 1) {
+                return { status: 503, json: { error: 'migration_failed' } };
+            }
+            if (listAttempts === 2) {
+                return { status: 500, json: { error: 'internal' } };
+            }
+            return { status: 200, json: { conversations: [], problems: [] } };
+        });
+        data = createConversationData(scripted);
+
+        await data.start();
+        expect(data.status()).toMatchObject({ state: 'failed', code: 'internal' });
+
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        await settle();
+        expect(data.status().state).toBe('ready');
+    });
+
+    test('proceeds to retry load instead of stalling when reloadPage returns false', async () => {
+        let listAttempts = 0;
+        const reloadPage = jest.fn(() => false);
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/migration/status') {
+                return { status: 200, json: { state: 'migrated' } };
+            }
+            if (path === '/characters/get') {
+                return { status: 200, json: { version: 1, characters: {} } };
+            }
+            listAttempts++;
+            return listAttempts === 1
+                ? { status: 503, json: { error: 'migration_failed' } }
+                : { status: 200, json: { conversations: [], problems: [] } };
+        }, { isSettingsStale: () => true, reloadPage });
+        data = createConversationData(scripted);
+
+        await data.start();
+
+        expect(reloadPage).toHaveBeenCalledTimes(1);
+        expect(data.status().state).toBe('ready');
+    });
 });
 
 describe('resolve and find', () => {
@@ -175,6 +253,8 @@ describe('resolve and find', () => {
     test('is null for a conversation that does not exist, another persona, or a direct id used as a group', () => {
         expect(data.resolve({ avatar: 'Ghost.png', personaId: PERSONA })).toBeNull();
         expect(data.resolve({ avatar: 'Nova.png', personaId: 'other.png' })).toBeNull();
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_2_group001', personaId: 'other.png' })).toBeNull();
+        expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_2_group001' })).toEqual({ conversationId: 'conv_2_group001', chatId: 'later' });
         expect(data.resolve({ avatar: 'Nova.png', groupId: 'conv_1_direct01', personaId: PERSONA })).toBeNull();
         expect(data.get('nope')).toBeNull();
     });
@@ -484,6 +564,284 @@ describe('saving messages', () => {
         expect(scripted.callsTo('/chat/save')).toHaveLength(RETRY_DELAYS_MS.length + 1);
         expect(events.filter(event => event.type === 'error')).toHaveLength(1);
         expect(data.hasPendingWrites()).toBe(true);
+    });
+
+    test('resets the rebase counter after a successful save so later conflicts still rebase', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+
+        for (let round = 1; round <= 3; round++) {
+            const stored = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+            await saveStoredChat(server.user, 'conv_1_direct01', 'main', [...stored, message(`remote-${round}`, `remote ${round}`)]);
+            data.commitChat(ADDRESS, (draft) => {
+                draft.messages.push(message(`local-${round}`, `local ${round}`));
+            });
+            await data.flush();
+        }
+
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+        expect(loadStoredChat(server.user, 'conv_1_direct01', 'main').map(item => item.id)).toEqual(
+            expect.arrayContaining(['local-1', 'local-2', 'local-3', 'remote-1', 'remote-2', 'remote-3']),
+        );
+    });
+
+    test('keeps the session dirty and preserves allowShrink when rebases exceed two or reload returns 4xx', async () => {
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                return { status: 200, json: { chat: [header({ integrity: 'server-slug' }), message('m1', 'one')] } };
+            }
+            if (path === '/chat/save') {
+                return { status: 409, json: { error: 'integrity' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m2', 'two'));
+        }, { shrink: true });
+        await data.flush();
+
+        expect(events.some(event => event.type === 'error' && event.code === 'integrity')).toBe(true);
+        expect(data.hasPendingWrites()).toBe(true);
+
+        // A 4xx response from /chat/get during rebase also keeps the session dirty.
+        let getCalls = 0;
+        const scripted4xx = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                getCalls++;
+                return getCalls === 1
+                    ? { status: 200, json: { chat: [header({ integrity: 's0' }), message('m1', 'one')] } }
+                    : { status: 400, json: { error: 'bad_chat' } };
+            }
+            if (path === '/chat/save') {
+                return { status: 409, json: { error: 'integrity' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        const secondData = createConversationData(scripted4xx);
+        const secondEvents = [];
+        secondData.subscribe(event => secondEvents.push(event));
+        await secondData.start();
+        await secondData.loadChat(ADDRESS);
+
+        secondData.commitChat(ADDRESS, (draft) => {
+            draft.messages.splice(0, 1);
+        }, { shrink: true });
+        await secondData.flush();
+
+        expect(secondEvents.some(event => event.type === 'error' && event.code === 'bad_chat')).toBe(true);
+        expect(secondData.hasPendingWrites()).toBe(true);
+        secondData.destroy();
+    });
+
+    test('retries via scheduleRetry when /chat/get returns 5xx during a rebase', async () => {
+        let getCalls = 0;
+        let saveCalls = 0;
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                getCalls++;
+                if (getCalls === 2) {
+                    return { status: 503, json: { error: 'busy' } };
+                }
+                return { status: 200, json: { chat: [header({ integrity: `s${getCalls}` }), message('m1', 'one')] } };
+            }
+            if (path === '/chat/save') {
+                saveCalls++;
+                return saveCalls <= 2
+                    ? { status: 409, json: { error: 'integrity' } }
+                    : { status: 200, json: { ok: true, integrity: 'final' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m2', 'two'));
+        });
+        await settle();
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+        expect(data.hasPendingWrites()).toBe(true);
+
+        await scripted.clock.advance(RETRY_DELAYS_MS[0]);
+        await settle();
+        expect(data.hasPendingWrites()).toBe(false);
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+    });
+
+    test('persists a preserved local memory summary after a conflict even when no new messages were appended', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        const stored = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        await saveStoredChat(server.user, 'conv_1_direct01', 'main', [...stored, message('main-9', 'from another tab')]);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.header.chat_metadata.sb_conversation = { memory_summary: 'Fresh local summary', memory_message_count: 3, memory_updated_at: 999 };
+        });
+        await data.flush();
+
+        const onDisk = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        expect(onDisk[0].chat_metadata.sb_conversation).toMatchObject({ memory_summary: 'Fresh local summary', memory_updated_at: 999 });
+        expect(onDisk.some(item => item.id === 'main-9')).toBe(true);
+    });
+
+    test('snapshots synced messages before awaiting /chat/save so in-flight mutations remain detectable', async () => {
+        await started([DIRECT]);
+        await data.loadChat(ADDRESS);
+        let releaseSave;
+        const saveGate = new Promise((resolve) => {
+            releaseSave = resolve;
+        });
+        const original = adapter.fetchJson;
+        let saveCount = 0;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/chat/save') {
+                saveCount++;
+                if (saveCount === 1) {
+                    const snapshot = structuredClone(body);
+                    const answer = await original(path, snapshot, options);
+                    await saveGate;
+                    return answer;
+                }
+            }
+            return original(path, body, options);
+        };
+
+        // First save appends a message; while the response waits, mutate it in place without calling commitChat yet.
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m-edit', 'v1'));
+        });
+        await settle(3);
+        const loaded = data.chat(ADDRESS);
+        loaded.messages.find(item => item.id === 'm-edit').mes = 'v2-in-flight';
+        releaseSave();
+        await settle(5);
+
+        // Another tab edits the same message on disk so a subsequent save hits a conflict.
+        const onDisk = loadStoredChat(server.user, 'conv_1_direct01', 'main');
+        onDisk.find(item => item.id === 'm-edit').mes = 'v3-server';
+        await saveStoredChat(server.user, 'conv_1_direct01', 'main', onDisk);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m-trigger', 'trigger conflict'));
+        });
+        await data.flush();
+
+        expect(events.find(event => event.type === 'conflict')).toMatchObject({ lostEdits: 1 });
+    });
+
+    test('markDirty clears a pending retry timer and resets retries for the new edit', async () => {
+        let saveCalls = 0;
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                return { status: 200, json: { chat: [header()] } };
+            }
+            if (path === '/chat/save') {
+                saveCalls++;
+                return saveCalls <= 4 ? { status: 500, json: { error: 'internal' } } : { status: 200, json: { ok: true, integrity: 'ok' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        data = createConversationData(scripted);
+        data.subscribe(event => events.push(event));
+        await data.start();
+        await data.loadChat(ADDRESS);
+
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m1', 'first'));
+        });
+        await settle();
+        expect(saveCalls).toBe(1);
+        await scripted.clock.advance(RETRY_DELAYS_MS[0]);
+        await settle();
+        expect(saveCalls).toBe(2);
+
+        // A new edit cancels the scheduled 5s retry timer and resets retries to 0, so the next failure schedules 2s again.
+        data.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m2', 'second'));
+        });
+        await settle();
+        expect(saveCalls).toBe(3);
+        await scripted.clock.advance(RETRY_DELAYS_MS[0]);
+        await settle();
+        expect(saveCalls).toBe(4);
+        await scripted.clock.advance(RETRY_DELAYS_MS[1]);
+        await settle();
+        expect(saveCalls).toBe(5);
+        expect(data.hasPendingWrites()).toBe(false);
+        expect(events.filter(event => event.type === 'error')).toEqual([]);
+    });
+
+    test('loadChat returns null when the conversation is dropped while /chat/get is in flight, and destroy clears retry timers', async () => {
+        await started([DIRECT]);
+        let releaseGet;
+        const getGate = new Promise((resolve) => {
+            releaseGet = resolve;
+        });
+        const original = adapter.fetchJson;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/chat/get') {
+                const answer = await original(path, body, options);
+                await getGate;
+                return answer;
+            }
+            return original(path, body, options);
+        };
+
+        const loading = data.loadChat(ADDRESS);
+        await settle(2);
+        await data.deleteConversation(DIRECT.id);
+        releaseGet();
+
+        await expect(loading).resolves.toBeNull();
+        expect(data.chat(ADDRESS)).toBeNull();
+
+        // Destroy cancels pending chat retry timers and character flush timers.
+        const scripted = scriptedAdapter((path) => {
+            if (path === '/list') {
+                return { status: 200, json: { conversations: [{ id: 'conv_1_direct01', kind: 'direct', personaId: PERSONA, characters: ['Nova.png'], extras: [], settings: {}, activeChatId: 'main', chats: [{ id: 'main', name: 'Main', createdAt: 1, readThrough: '' }], reminders: [], createdAt: 1, updatedAt: 1 }], problems: [] } };
+            }
+            if (path === '/chat/get') {
+                return { status: 200, json: { chat: [header()] } };
+            }
+            if (path === '/chat/save') {
+                return { status: 500, json: { error: 'internal' } };
+            }
+            return { status: 200, json: { version: 1, characters: {} } };
+        });
+        const managed = createConversationData(scripted);
+        await managed.start();
+        await managed.loadChat(ADDRESS);
+        managed.commitChat(ADDRESS, (draft) => {
+            draft.messages.push(message('m1', 'retry me'));
+        });
+        await settle();
+        managed.patchCharacter('Nova.png', { statusOverride: 'dnd' });
+        const savesBeforeDestroy = scripted.callsTo('/chat/save').length;
+        managed.destroy();
+        await scripted.clock.advance(60_000);
+        await settle();
+
+        expect(scripted.callsTo('/chat/save')).toHaveLength(savesBeforeDestroy);
+        expect(scripted.callsTo('/characters/update')).toHaveLength(0);
     });
 });
 
@@ -1032,6 +1390,49 @@ describe('characters', () => {
         await data.flush();
         expect(readCharacterState(server.user).characters['Nova.png']).toEqual({ routine: { enabled: false, text: 'a' } });
         expect(data.characterState('Ghost.png')).toEqual({});
+    });
+
+    test('refresh preserves queued and in-flight character patches over the server response and drops refused patches', async () => {
+        await started([]);
+        let releaseUpdate;
+        const gate = new Promise((resolve) => {
+            releaseUpdate = resolve;
+        });
+        const original = adapter.fetchJson;
+        let holdNext = true;
+        adapter.fetchJson = async (path, body, options) => {
+            if (path === '/characters/update' && holdNext) {
+                holdNext = false;
+                await gate;
+            }
+            return original(path, body, options);
+        };
+
+        data.patchCharacter('Nova.png', { statusOverride: 'dnd' });
+        // Queued before timer fires: refresh keeps it.
+        await data.refresh();
+        expect(data.characterState('Nova.png')).toEqual({ statusOverride: 'dnd' });
+
+        // Move to in-flight and also queue another character patch.
+        await adapter.clock.advance(0);
+        await settle(2);
+        data.patchCharacter('Orion.png', { statusOverride: 'idle' });
+        await data.refresh();
+        expect(data.characterState('Nova.png')).toEqual({ statusOverride: 'dnd' });
+        expect(data.characterState('Orion.png')).toEqual({ statusOverride: 'idle' });
+
+        releaseUpdate();
+        await adapter.clock.advance(0);
+        await data.flush();
+        expect(readCharacterState(server.user).characters['Nova.png']).toEqual({ statusOverride: 'dnd' });
+        expect(readCharacterState(server.user).characters['Orion.png']).toEqual({ statusOverride: 'idle' });
+
+        // A refused character patch is forgotten before refresh restores server state.
+        data.patchCharacter('Nova.png', { statusOverride: 'invalid_status' });
+        await adapter.clock.advance(0);
+        await data.flush();
+        await settle();
+        expect(data.characterState('Nova.png')).toEqual({ statusOverride: 'dnd' });
     });
 });
 

@@ -29,12 +29,15 @@ await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.
 }));
 
 const {
+    clearConversationMemorySummary,
+    getConversationMemorySummary,
     getConversationWelcomeChats,
     getConversationSessionMarker,
     getLastUserActivity,
     getSettings,
     hasAnyConversationModeUsage,
     isConversationModeEnabled,
+    saveConversationMemorySummary,
     setConversationSessionMarker,
     setLastUserActivity,
 } = await import('../public/scripts/sillybunny-conversation/settings-store.js');
@@ -189,5 +192,45 @@ describe('the conversations of the persona', () => {
         expect(chats.map(chat => chat.conversation_id)).toEqual(['conv_3_second001', 'conv_1_direct01']);
         expect(chats[0]).toMatchObject({ conversation_chat_id: 'trip', conversation_chat_name: 'Trip', is_conversation: true, avatar: 'Orion.png', group: '' });
         expect(getConversationWelcomeChats({ max: 1 })).toHaveLength(1);
+    });
+});
+
+describe('memory summaries', () => {
+    test('clearConversationMemorySummary clears only the resolved target chat and leaves other loaded chats intact', async () => {
+        await startData([{
+            ...DIRECT,
+            chats: [
+                { id: 'main', name: 'Main', messages: ['hello'] },
+                { id: 'side', name: 'Side', messages: ['other branch'] },
+            ],
+            activeChatId: 'main',
+        }]);
+        await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
+        await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'side' });
+        saveConversationMemorySummary('Nova.png', 'Main summary', 1, { chatId: 'main', groupId: '' });
+        saveConversationMemorySummary('Nova.png', 'Side summary', 1, { chatId: 'side', groupId: '' });
+
+        expect(clearConversationMemorySummary('Nova.png', { groupId: '' })).toBe(true);
+        expect(getConversationMemorySummary('Nova.png', { chatId: 'main', groupId: '' })).toBe('');
+        expect(getConversationMemorySummary('Nova.png', { chatId: 'side', groupId: '' })).toBe('Side summary');
+
+        expect(clearConversationMemorySummary('Nova.png', { chatId: 'side', groupId: '' })).toBe(true);
+        expect(getConversationMemorySummary('Nova.png', { chatId: 'side', groupId: '' })).toBe('');
+        expect(clearConversationMemorySummary('Nova.png', { chatId: 'missing', groupId: '' })).toBe(false);
+        await data.flush();
+    });
+
+    test('saveConversationMemorySummary and clearConversationMemorySummary initialize missing header.chat_metadata', async () => {
+        await startData([DIRECT]);
+        const loaded = await data.loadChat({ conversationId: 'conv_1_direct01', chatId: 'main' });
+        delete loaded.header.chat_metadata;
+
+        saveConversationMemorySummary('Nova.png', 'Recovered summary', 2, { chatId: 'main', groupId: '' });
+        expect(getConversationMemorySummary('Nova.png', { chatId: 'main', groupId: '' })).toBe('Recovered summary');
+
+        delete loaded.header.chat_metadata;
+        expect(clearConversationMemorySummary('Nova.png', { chatId: 'main', groupId: '' })).toBe(true);
+        expect(getConversationMemorySummary('Nova.png', { chatId: 'main', groupId: '' })).toBe('');
+        await data.flush();
     });
 });

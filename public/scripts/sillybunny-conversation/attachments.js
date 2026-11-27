@@ -202,7 +202,7 @@ export async function populateConversationUserAttachments(messageInput) {
         return;
     }
 
-    const { populateFileAttachment } = await import('./chats.js');
+    const { populateFileAttachment } = await import('../chats.js');
     await populateFileAttachment(messageInput, CHROME_IDS.fileInput);
     if (getConversationMediaAttachments(messageInput).length) {
         messageInput.extra.media_display = MEDIA_DISPLAY.LIST;
@@ -219,7 +219,7 @@ export async function buildConversationAttachmentPromptContext(messageInput, vis
     const parts = [summary];
     if (getConversationFileAttachments(messageInput).length) {
         try {
-            const { appendFileContent } = await import('./chats.js');
+            const { appendFileContent } = await import('../chats.js');
             const promptMessage = {
                 ...messageInput,
                 extra: { ...messageInput.extra },
@@ -236,6 +236,18 @@ export async function buildConversationAttachmentPromptContext(messageInput, vis
     }
 
     return parts.join('\n');
+}
+
+function clearSubmittedComposer(input, { avatar, groupId, personaId }) {
+    // Keep the box untouched when the user switched conversations while the send awaited I/O.
+    if (getCurrentCharAvatar() !== avatar
+        || getConversationGroupIdForAvatar(avatar) !== groupId
+        || getConversationPersonaId() !== personaId) {
+        return;
+    }
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    clearConversationAttachmentInput();
 }
 
 export async function submitConversationInput() {
@@ -269,37 +281,6 @@ export async function submitConversationInput() {
         return;
     }
 
-    // Writing to a character that has no conversation with this persona yet starts one.
-    let conversationRecord = getConversationRecord(avatar, { groupId, personaId });
-    if (!conversationRecord && !groupId && (text || pendingFiles.length)) {
-        try {
-            conversationRecord = await ensureDirectConversation(avatar, { personaId });
-        } catch (error) {
-            console.error('Conversation Mode: the conversation could not be made', error);
-            return;
-        }
-    }
-    const chatId = conversationRecord?.activeChatId || '';
-    if (!await ensureConversationChatLoaded(avatar, { chatId, groupId, personaId })) {
-        return;
-    }
-    const settings = getSettings(avatar, { groupId, personaId });
-
-    if (!text && !pendingFiles.length) {
-        queueForcedConversationReply(avatar, { chatId, groupId, personaId });
-        return;
-    }
-
-    if (text.startsWith('/') && !pendingFiles.length) {
-        const handled = await handleConversationSlashAction(text, { avatar, chatId, settings, groupId, personaId });
-        if (handled) {
-            input.value = '';
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            clearConversationAttachmentInput();
-            return;
-        }
-    }
-
     conversationState.conversationUploadActive = true;
     const sendButton = document.getElementById(CHROME_IDS.send);
     if (sendButton instanceof HTMLButtonElement) {
@@ -307,6 +288,35 @@ export async function submitConversationInput() {
     }
 
     try {
+        // Writing to a character that has no conversation with this persona yet starts one.
+        let conversationRecord = getConversationRecord(avatar, { groupId, personaId });
+        if (!conversationRecord && !groupId && (text || pendingFiles.length)) {
+            try {
+                conversationRecord = await ensureDirectConversation(avatar, { personaId });
+            } catch (error) {
+                console.error('Conversation Mode: the conversation could not be made', error);
+                return;
+            }
+        }
+        const chatId = conversationRecord?.activeChatId || '';
+        if (!await ensureConversationChatLoaded(avatar, { chatId, groupId, personaId })) {
+            return;
+        }
+        const settings = getSettings(avatar, { groupId, personaId });
+
+        if (!text && !pendingFiles.length) {
+            queueForcedConversationReply(avatar, { chatId, groupId, personaId });
+            return;
+        }
+
+        if (text.startsWith('/') && !pendingFiles.length) {
+            const handled = await handleConversationSlashAction(text, { avatar, chatId, settings, groupId, personaId });
+            if (handled) {
+                clearSubmittedComposer(input, { avatar, groupId, personaId });
+                return;
+            }
+        }
+
         const userName = getConversationPersonaName(personaId, 'You');
         const hasAttachments = pendingFiles.length > 0;
         const attachmentContextParts = [];
@@ -357,9 +367,7 @@ export async function submitConversationInput() {
             }
         }
 
-        input.value = '';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        clearConversationAttachmentInput();
+        clearSubmittedComposer(input, { avatar, groupId, personaId });
         updateLastUserActivity(avatar, { chatId, groupId, personaId });
         scheduleInterfaceRefresh();
         // Conversation mode has no MESSAGE_SENT, so Home hears about the first message here (Getting Started, step 4).

@@ -52,6 +52,7 @@ const {
     getConversationKey,
     getConversationRecord,
     getConversationStore,
+    isAvatarInConversationGroup,
     makeConversationGroup,
     renameConversationChat,
 } = await import('../public/scripts/sillybunny-conversation/context.js');
@@ -100,6 +101,19 @@ describe('conversations as the rest of the mode reads them', () => {
         expect(getConversationGroupById('conv_3_second001').name).toBe('Conversation Group');
         expect(getConversationGroupById('conv_1_direct01')).toBeNull();
         expect(getConversationGroupById('conv_2_group001', { personaId: 'other.png' })).toBeNull();
+    });
+
+    test('getConversationGroupById and isAvatarInConversationGroup default to the active persona and accept explicit persona overrides', async () => {
+        const otherGroup = { ...GROUP, id: 'conv_4_othergrp', personaId: 'other.png', name: 'Other Crew' };
+        await startData([GROUP, otherGroup]);
+
+        expect(getConversationGroupById('conv_4_othergrp')).toBeNull();
+        expect(isAvatarInConversationGroup('Orion.png', 'conv_4_othergrp')).toBe(false);
+        expect(isAvatarInConversationGroup('Orion.png', 'conv_2_group001')).toBe(true);
+        expect(getConversationGroupById('conv_4_othergrp', { personaId: 'other.png' })).toMatchObject({ id: 'conv_4_othergrp', personaId: 'other.png' });
+        expect(isAvatarInConversationGroup('Orion.png', 'conv_4_othergrp', { personaId: 'other.png' })).toBe(true);
+        expect(getConversationGroupById('conv_4_othergrp', { personaId: null })).toMatchObject({ id: 'conv_4_othergrp', personaId: 'other.png' });
+        expect(isAvatarInConversationGroup('Orion.png', 'conv_4_othergrp', { personaId: null })).toBe(true);
     });
 
     test('the anchor of a group is its first member with a character card, and its key is the id of the conversation', async () => {

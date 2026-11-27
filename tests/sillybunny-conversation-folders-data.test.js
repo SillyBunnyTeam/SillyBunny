@@ -590,6 +590,84 @@ describe('flush and destroy', () => {
 
         expect(adapter.callsTo('/folders/update')).toHaveLength(0);
     });
+
+    test('destroy during an in-flight failed update emits no error and fetches nothing after teardown', async () => {
+        let rejectUpdate;
+        adapter = scriptedAdapter((path) => {
+            if (path === '/folders/get') {
+                return { status: 200, json: { version: 1, personas: {} } };
+            }
+            return new Promise((_resolve, reject) => {
+                rejectUpdate = reject;
+            });
+        }, { randomHex: length => 'c'.repeat(length) });
+        folders = createConversationFolders(adapter);
+        folders.subscribe(event => events.push(event));
+        await folders.load();
+        const getsBefore = adapter.callsTo('/folders/get').length;
+        events.length = 0;
+
+        folders.createFolder(PERSONA, 'Work');
+        await adapter.clock.advance(0);
+        await settle(2);
+        events.length = 0;
+        folders.destroy();
+        rejectUpdate(new Error('aborted'));
+        await settle();
+        await adapter.clock.advance(30_000);
+        await settle();
+
+        expect(events).toEqual([]);
+        expect(adapter.callsTo('/folders/get')).toHaveLength(getsBefore);
+    });
+
+    test('serializes the rollback read inside the queue when retries are exhausted', async () => {
+        const order = [];
+        let updateCalls = 0;
+        let releaseRollbackGet;
+        const rollbackGate = new Promise((resolve) => {
+            releaseRollbackGet = resolve;
+        });
+        let rollbackGetHeld = false;
+        adapter = scriptedAdapter(async (path) => {
+            if (path === '/folders/get') {
+                if (updateCalls > 0) {
+                    order.push('rollback-get-start');
+                    rollbackGetHeld = true;
+                    await rollbackGate;
+                    order.push('rollback-get-end');
+                }
+                return { status: 200, json: { version: 1, personas: {} } };
+            }
+            updateCalls++;
+            if (updateCalls <= 1 + FOLDER_RETRY_DELAYS_MS.length) {
+                return { status: 500, json: { error: 'internal' } };
+            }
+            order.push('next-update');
+            return { status: 200, json: { folders: { folders: [], members: {} } } };
+        }, { randomHex: length => 'd'.repeat(length) });
+        folders = createConversationFolders(adapter);
+        await folders.load();
+
+        folders.createFolder(PERSONA, 'FailMe');
+        await adapter.clock.advance(0);
+        await settle();
+        for (const delay of FOLDER_RETRY_DELAYS_MS) {
+            await adapter.clock.advance(delay);
+            await settle(2);
+        }
+        expect(rollbackGetHeld).toBe(true);
+
+        // Queue another change while the rollback /folders/get is still running; it must wait for rollback to finish.
+        folders.setFavoritesExpanded(OTHER, false);
+        await adapter.clock.advance(FOLDER_FREQUENT_DELAY_MS);
+        await settle(3);
+        expect(order).toEqual(['rollback-get-start']);
+
+        releaseRollbackGet();
+        await folders.flush();
+        expect(order).toEqual(['rollback-get-start', 'rollback-get-end', 'next-update']);
+    });
 });
 
 describe('onLoad of the data module, which keeps the folders in step', () => {

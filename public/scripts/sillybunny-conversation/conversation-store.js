@@ -61,6 +61,9 @@ export function markImageGenerated(avatar, timestamp = Date.now(), { chatId = ''
     setConversationSessionMarker(avatar, 'image_at', timestamp, { chatId, groupId, personaId });
 }
 
+// Matches MAX_TIMESTAMP in src/conversation-schema.js so client-created reminders stay within the server's accepted range.
+const MAX_REMINDER_TIMESTAMP = 8_640_000_000_000_000;
+
 export function parseReminderDelayToMs(rawDelay) {
     const delay = String(rawDelay || '').trim().toLowerCase();
     if (!delay) {
@@ -69,30 +72,37 @@ export function parseReminderDelayToMs(rawDelay) {
 
     const match = delay.match(/^(\d+(?:\.\d+)?)\s*(s|m|h|d|secs?|mins?|hours?|days?)$/);
     if (match) {
-        const value = parseFloat(match[1]);
+        const value = Number(match[1]);
         const unit = match[2];
-        if (unit.startsWith('s')) return value * 1000;
-        if (unit.startsWith('m')) return value * 60 * 1000;
-        if (unit.startsWith('h')) return value * 60 * 60 * 1000;
-        if (unit.startsWith('d')) return value * 24 * 60 * 60 * 1000;
-    }
-
-    const numeric = parseFloat(delay);
-    if (Number.isFinite(numeric) && numeric > 0) {
-        return numeric * 60 * 1000;
+        let multiplier = 0;
+        if (unit.startsWith('s')) multiplier = 1000;
+        else if (unit.startsWith('m')) multiplier = 60 * 1000;
+        else if (unit.startsWith('h')) multiplier = 60 * 60 * 1000;
+        else if (unit.startsWith('d')) multiplier = 24 * 60 * 60 * 1000;
+        const ms = value * multiplier;
+        return Number.isFinite(ms) && ms > 0 ? ms : 0;
     }
 
     const timeMatch = delay.match(/^(\d{1,2}):(\d{2})$/);
     if (timeMatch) {
-        const hours = parseInt(timeMatch[1], 10);
-        const minutes = parseInt(timeMatch[2], 10);
+        const hours = Number.parseInt(timeMatch[1], 10);
+        const minutes = Number.parseInt(timeMatch[2], 10);
+        if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+            return 0;
+        }
         const now = new Date();
-        const target = new Date();
+        const target = new Date(now.getTime());
         target.setHours(hours, minutes, 0, 0);
         if (target.getTime() <= now.getTime()) {
             target.setDate(target.getDate() + 1);
         }
         return target.getTime() - now.getTime();
+    }
+
+    if (/^\d+(?:\.\d+)?$/.test(delay)) {
+        const numeric = Number(delay);
+        const ms = numeric * 60 * 1000;
+        return Number.isFinite(ms) && ms > 0 ? ms : 0;
     }
 
     return 0;
@@ -109,6 +119,13 @@ export function addConversationReminder(avatar, groupId, delayText, memoText, { 
         return null;
     }
 
+    const now = Date.now();
+    const triggerAt = Math.round(now + delayMs);
+    if (!Number.isSafeInteger(triggerAt) || triggerAt < 0 || triggerAt > MAX_REMINDER_TIMESTAMP) {
+        console.warn(`Conversation Mode: out-of-range reminder delay "${delayText}"`);
+        return null;
+    }
+
     const address = getConversationAddress(avatar, { groupId, personaId, chatId });
     const view = address ? conversationData.get(address.conversationId) : null;
     if (!view) {
@@ -119,15 +136,14 @@ export function addConversationReminder(avatar, groupId, delayText, memoText, { 
         return null;
     }
 
-    const triggerAt = Date.now() + delayMs;
     const reminder = {
-        id: id || `rem_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        id: id || `rem_${now}_${Math.random().toString(36).slice(2)}`,
         avatar,
         chatId: address.chatId,
         triggerAt,
         text: String(memoText || '').trim().slice(0, 4000),
         fired: false,
-        createdAt: Date.now(),
+        createdAt: now,
     };
 
     conversationData.patchConversation(view.id, { reminders: [...view.reminders, reminder] });
@@ -231,7 +247,11 @@ export async function ensureConversationChatLoaded(avatar, { chatId = '', groupI
     if (!address) {
         return null;
     }
-    await landPendingReplies(address, await conversationData.loadChat(address));
+    const loaded = await conversationData.loadChat(address);
+    if (!loaded) {
+        return null;
+    }
+    await landPendingReplies(address, loaded);
     return address;
 }
 

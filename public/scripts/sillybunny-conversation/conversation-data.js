@@ -18,7 +18,7 @@
  * @property {(handle: any) => void} clearTimer
  * @property {() => string} random Six characters of `[a-z0-9]` for a new chat id.
  * @property {() => boolean} isSettingsStale Whether the settings that the page loaded still hold the old store.
- * @property {() => void} reloadPage Reloads the page, at most once for this cause.
+ * @property {() => boolean|void} reloadPage Reloads the page, at most once for this cause. Returns false when suppressed.
  * @property {(path: string, body: object) => Promise<{ status: number, text: string, fileName: string }>} [fetchText]
  * POST to a route that answers a file instead of JSON. `text` holds the JSON of the error for a status other than 200.
  * Only `exportChat` needs it.
@@ -166,8 +166,10 @@ export function createConversationData(adapter) {
     /** @type {Map<string, ReturnType<typeof createSerialQueue>>} */
     const conversationQueues = new Map();
     const characterQueue = createSerialQueue();
-    /** @type {Map<string, { patch: object, scheduled: boolean }>} */
+    /** @type {Map<string, { patch: object, timer: any }>} */
     const pendingCharacters = new Map();
+    /** @type {Map<string, { patch: object }[]>} */
+    const sentCharacters = new Map();
     let characterState = { version: 1, characters: {} };
     const listeners = new Set();
     const removalListeners = new Set();
@@ -392,12 +394,15 @@ export function createConversationData(adapter) {
             if (session) {
                 session.dropped = true;
                 adapter.clearTimer(session.retryTimer);
+                session.retryTimer = null;
                 sessions.delete(key);
             }
         }
         for (const [key, session] of [...sessions]) {
             if (session.address.conversationId === id) {
                 session.dropped = true;
+                adapter.clearTimer(session.retryTimer);
+                session.retryTimer = null;
                 sessions.delete(key);
             }
         }
@@ -440,7 +445,7 @@ export function createConversationData(adapter) {
     /** Names the chat that a call in the old form (an avatar, a group id and a persona) means. */
     function resolve({ avatar = '', groupId = '', personaId = '', chatId = '' } = {}) {
         const view = groupId
-            ? [...views.values()].find(item => item.id === groupId && item.kind === 'group') ?? null
+            ? [...views.values()].find(item => item.id === groupId && item.kind === 'group' && (!personaId || item.personaId === personaId)) ?? null
             : findDirect(personaId, avatar);
         if (!view) {
             return null;
@@ -769,19 +774,30 @@ export function createConversationData(adapter) {
         }
     }
 
+    function forgetSentCharacter(avatar, sent) {
+        const list = sentCharacters.get(avatar);
+        const index = list?.indexOf(sent) ?? -1;
+        if (index >= 0) {
+            list.splice(index, 1);
+        }
+        if (list && !list.length) {
+            sentCharacters.delete(avatar);
+        }
+    }
+
     function patchCharacter(avatar, patch) {
         if (!avatar || !isObject(patch)) {
             return false;
         }
         applyCharacterPatchLocal(avatar, patch);
         const pending = pendingCharacters.get(avatar);
-        pendingCharacters.set(avatar, { patch: pending ? { ...pending.patch, ...patch, ...(patch.routine && pending.patch.routine ? { routine: { ...pending.patch.routine, ...patch.routine } } : {}) } : patch, scheduled: pending?.scheduled ?? false });
-        if (!pendingCharacters.get(avatar).scheduled) {
-            pendingCharacters.get(avatar).scheduled = true;
-            adapter.setTimer(() => {
-                void flushCharacter(avatar);
-            }, 0);
-        }
+        const merged = pending
+            ? { ...pending.patch, ...patch, ...(isObject(patch.routine) && isObject(pending.patch.routine) ? { routine: { ...pending.patch.routine, ...patch.routine } } : {}) }
+            : patch;
+        const timer = pending?.timer ?? adapter.setTimer(() => {
+            void flushCharacter(avatar);
+        }, 0);
+        pendingCharacters.set(avatar, { patch: merged, timer });
         emit('characters', { avatar });
         return true;
     }
@@ -791,11 +807,21 @@ export function createConversationData(adapter) {
         if (!pending) {
             return;
         }
+        adapter.clearTimer(pending.timer);
         pendingCharacters.delete(avatar);
+        const sent = { patch: pending.patch };
+        let list = sentCharacters.get(avatar);
+        if (!list) {
+            list = [];
+            sentCharacters.set(avatar, list);
+        }
+        list.push(sent);
         await characterQueue.run(async () => {
             try {
-                await requestOk('/characters/update', { avatar, patch: pending.patch }, options);
+                await requestOk('/characters/update', { avatar, patch: sent.patch }, options);
+                forgetSentCharacter(avatar, sent);
             } catch (error) {
+                forgetSentCharacter(avatar, sent);
                 reportError(error.code, 'The state of a character could not be saved.', { avatar });
                 await refresh();
             }
@@ -816,11 +842,13 @@ export function createConversationData(adapter) {
             shrink: false,
             saving: false,
             dropped: false,
+            deleting: false,
             failed: '',
             lastUsed: ++useCounter,
             created: null,
             retryTimer: null,
             retries: 0,
+            rebases: 0,
         };
     }
 
@@ -856,8 +884,15 @@ export function createConversationData(adapter) {
         if (existing?.loading) {
             return existing.loading;
         }
+        const placeholder = { address, loading: null, chat: null, dropped: false, deleting: false };
         const loading = (async () => {
             const json = await requestOk('/chat/get', { id: address.conversationId, chatId: address.chatId });
+            if (placeholder.dropped || placeholder.deleting || sessions.get(key) !== placeholder || !views.has(address.conversationId)) {
+                if (sessions.get(key) === placeholder) {
+                    sessions.delete(key);
+                }
+                return null;
+            }
             const session = newSession(address, json.chat);
             sessions.delete(key);
             attachSession(session);
@@ -866,11 +901,14 @@ export function createConversationData(adapter) {
             emit('list', { id: address.conversationId });
             return session.chat;
         })();
-        sessions.set(key, { address, loading, chat: null });
+        placeholder.loading = loading;
+        sessions.set(key, placeholder);
         try {
             return await loading;
         } catch (error) {
-            sessions.delete(key);
+            if (sessions.get(key) === placeholder) {
+                sessions.delete(key);
+            }
             throw error;
         }
     }
@@ -898,6 +936,11 @@ export function createConversationData(adapter) {
         session.version++;
         session.failed = '';
         session.shrink = session.shrink || shrink;
+        if (session.retryTimer !== null) {
+            adapter.clearTimer(session.retryTimer);
+            session.retryTimer = null;
+        }
+        session.retries = 0;
         const view = views.get(session.address.conversationId);
         const entry = view?.chats.find(item => item.id === session.address.chatId);
         if (view && entry) {
@@ -913,7 +956,7 @@ export function createConversationData(adapter) {
     }
 
     function saveSession(session, options) {
-        if (session.saving || !session.dirty || session.dropped || session.failed) {
+        if (session.saving || !session.dirty || session.dropped || session.deleting || session.failed) {
             return session.savePromise ?? Promise.resolve();
         }
         session.saving = true;
@@ -922,7 +965,7 @@ export function createConversationData(adapter) {
                 if (session.created) {
                     await session.created;
                 }
-                while (session.dirty && !session.dropped) {
+                while (session.dirty && !session.dropped && !session.deleting) {
                     const outcome = await saveOnce(session, options);
                     if (outcome !== 'saved') {
                         break;
@@ -941,6 +984,8 @@ export function createConversationData(adapter) {
         const allowShrink = session.shrink;
         session.shrink = false;
         const sent = session.chat.messages.slice();
+        // Snapshot the sent messages before awaiting so in-place edits during the save stay detectable as local changes.
+        const synced = describeSyncedMessages(sent);
         options ??= session.pendingOptions;
         session.pendingOptions = undefined;
         const body = { id: conversationId, chatId, chat: [session.chat.header, ...sent] };
@@ -951,16 +996,28 @@ export function createConversationData(adapter) {
         try {
             answer = await request('/chat/save', body, options);
         } catch (error) {
+            if (session.dropped || session.deleting) {
+                if (!session.dropped) {
+                    session.dirty = true;
+                    session.shrink = session.shrink || allowShrink;
+                }
+                return 'dropped';
+            }
             return scheduleRetry(session, allowShrink, error);
         }
-        if (session.dropped) {
+        if (session.dropped || session.deleting) {
+            if (!session.dropped) {
+                session.dirty = true;
+                session.shrink = session.shrink || allowShrink;
+            }
             return 'dropped';
         }
         if (answer.status === 200) {
             session.chat.header.chat_metadata ??= {};
             session.chat.header.chat_metadata.integrity = answer.json.integrity;
-            session.synced = describeSyncedMessages(sent);
+            session.synced = synced;
             session.retries = 0;
+            session.rebases = 0;
             emit('saved', { address: session.address });
             return 'saved';
         }
@@ -991,6 +1048,9 @@ export function createConversationData(adapter) {
     }
 
     function scheduleRetry(session, allowShrink, error) {
+        if (session.dropped || session.deleting) {
+            return 'dropped';
+        }
         session.dirty = true;
         session.shrink = session.shrink || allowShrink;
         const delay = RETRY_DELAYS_MS[session.retries];
@@ -1017,7 +1077,7 @@ export function createConversationData(adapter) {
         session.chat.messages.splice(0, session.chat.messages.length, ...result.messages);
         replaceContents(session.chat.header, result.header);
         session.synced = describeSyncedMessages(serverRecords.slice(1));
-        session.dirty = result.appended > 0;
+        session.dirty = result.appended > 0 || Boolean(result.headerChanged);
         session.shrink = false;
         const view = views.get(conversationId);
         const entry = view?.chats.find(item => item.id === chatId);
@@ -1044,12 +1104,13 @@ export function createConversationData(adapter) {
         if (session.saving) {
             await session.savePromise;
         }
-        if (session.dirty && !session.failed && !session.dropped) {
+        if (session.dirty && !session.failed && !session.dropped && !session.deleting) {
             adapter.clearTimer(session.retryTimer);
+            session.retryTimer = null;
             session.retries = 0;
             await saveSession(session);
         }
-        return !session.dirty && !session.saving && !session.failed && !session.dropped;
+        return !session.dirty && !session.saving && !session.failed && !session.dropped && !session.deleting;
     }
 
     /**
@@ -1078,7 +1139,7 @@ export function createConversationData(adapter) {
             if (answer.status !== 200) {
                 throw failureOf(answer);
             }
-            if (session.dropped || sessions.get(key) !== session) {
+            if (session.dropped || session.deleting || sessions.get(key) !== session) {
                 return null;
             }
             if (session.version !== version || session.dirty || session.saving) {
@@ -1102,6 +1163,8 @@ export function createConversationData(adapter) {
         if (session.rebases > 2) {
             session.rebases = 0;
             session.failed = 'integrity';
+            session.dirty = true;
+            session.shrink = session.shrink || allowShrink;
             reportError('integrity', 'The chat changed elsewhere again and could not be merged.', { address: session.address });
             return 'failed';
         }
@@ -1109,10 +1172,31 @@ export function createConversationData(adapter) {
         try {
             answer = await request('/chat/get', { id: conversationId, chatId });
         } catch (error) {
+            session.rebases = Math.max(0, session.rebases - 1);
+            if (session.dropped || session.deleting) {
+                if (!session.dropped) {
+                    session.dirty = true;
+                    session.shrink = session.shrink || allowShrink;
+                }
+                return 'dropped';
+            }
             return scheduleRetry(session, allowShrink, error);
+        }
+        if (session.dropped || session.deleting) {
+            if (!session.dropped) {
+                session.dirty = true;
+                session.shrink = session.shrink || allowShrink;
+            }
+            return 'dropped';
+        }
+        if (answer.status >= 500) {
+            session.rebases = Math.max(0, session.rebases - 1);
+            return scheduleRetry(session, allowShrink, failureOf(answer));
         }
         if (answer.status !== 200) {
             session.failed = answer.json?.error ?? `http_${answer.status}`;
+            session.dirty = true;
+            session.shrink = session.shrink || allowShrink;
             reportError(session.failed, 'The chat could not be reloaded after it changed elsewhere.', { address: session.address });
             return 'failed';
         }
@@ -1155,6 +1239,9 @@ export function createConversationData(adapter) {
      */
     async function markRead(address) {
         const loaded = chat(address) ?? await loadChat(address);
+        if (!loaded) {
+            return;
+        }
         let last = null;
         for (let index = loaded.messages.length - 1; index >= 0 && !last; index--) {
             last = isPendingServerReply(loaded.messages[index]) ? null : loaded.messages[index];
@@ -1191,8 +1278,20 @@ export function createConversationData(adapter) {
             adapter.clearTimer(pending.timer);
             pendingPatches.delete(id);
         }
-        await queueOf(id).idle();
-        await requestOk('/delete', { id });
+        const targetSessions = [...sessions.values()].filter(session => session.address.conversationId === id);
+        for (const session of targetSessions) {
+            session.deleting = true;
+            adapter.clearTimer(session.retryTimer);
+            session.retryTimer = null;
+        }
+        try {
+            await queueOf(id).run(() => requestOk('/delete', { id }));
+        } catch (error) {
+            for (const session of targetSessions) {
+                session.deleting = false;
+            }
+            throw error;
+        }
         dropConversation(id);
         emit('list', { id });
     }
@@ -1264,21 +1363,34 @@ export function createConversationData(adapter) {
             return null;
         }
         announceRemoval(address);
+        const key = keyOf(address);
+        const targetSession = sessions.get(key);
+        if (targetSession) {
+            targetSession.deleting = true;
+            adapter.clearTimer(targetSession.retryTimer);
+            targetSession.retryTimer = null;
+        }
         const keptReminders = view.reminders.filter(reminder => reminder.chatId !== address.chatId);
         if (keptReminders.length !== view.reminders.length) {
             patchConversation(address.conversationId, { reminders: keptReminders });
         }
-        const pending = pendingPatches.get(address.conversationId);
-        if (pending) {
-            await flushConversation(address.conversationId);
+        const flushing = pendingPatches.has(address.conversationId) ? flushConversation(address.conversationId) : null;
+        let json;
+        try {
+            json = await queueOf(address.conversationId).run(() => requestOk('/chat/delete', { id: address.conversationId, chatId: address.chatId }));
+        } catch (error) {
+            if (targetSession) {
+                targetSession.deleting = false;
+            }
+            throw error;
+        } finally {
+            await flushing;
         }
-        await queueOf(address.conversationId).idle();
-        const json = await requestOk('/chat/delete', { id: address.conversationId, chatId: address.chatId });
-        const key = keyOf(address);
         const session = sessions.get(key);
         if (session) {
             session.dropped = true;
             adapter.clearTimer(session.retryTimer);
+            session.retryTimer = null;
             sessions.delete(key);
         }
         ingestConversation(json.conversation);
@@ -1337,6 +1449,9 @@ export function createConversationData(adapter) {
     async function branchChat(address, messageId, { name = '', activate = true } = {}) {
         requireView(address.conversationId);
         const source = await loadChat(address);
+        if (!source) {
+            throw new ConversationDataError('not_found', 'The chat no longer exists.', { status: 404 });
+        }
         const index = source.messages.findIndex(item => item.id === messageId);
         if (index < 0) {
             throw new ConversationDataError('not_found', 'The message is not in the chat.', { details: { messageId } });
@@ -1367,7 +1482,7 @@ export function createConversationData(adapter) {
         await settleConversation(id);
         const json = await requestAbout(id, path, { id, ...body });
         const view = ingestConversation(json.conversation);
-        emit('list', { id });
+        emit('list', { id: view.id });
         return { view, json };
     }
 
@@ -1477,29 +1592,46 @@ export function createConversationData(adapter) {
         }
         ingestList(listAnswer.json.conversations ?? []);
         if (charactersAnswer.status === 200) {
-            characterState = { version: charactersAnswer.json.version ?? 1, characters: charactersAnswer.json.characters ?? {} };
+            characterState = { version: charactersAnswer.json.version ?? 1, characters: { ...(charactersAnswer.json.characters ?? {}) } };
+            // Keep in-flight and queued character edits over the server snapshot so refresh does not revert them.
+            for (const [avatar, list] of sentCharacters) {
+                for (const sent of list) {
+                    applyCharacterPatchLocal(avatar, sent.patch);
+                }
+            }
+            for (const [avatar, pending] of pendingCharacters) {
+                applyCharacterPatchLocal(avatar, pending.patch);
+            }
         }
         announceLoad();
         return listAnswer.json;
     }
 
+    function scheduleStartRetry(code, delay, message = '') {
+        status = { state: 'failed', code, retryAt: adapter.now() + delay, message };
+        emit('status', { status: getStatus() });
+        retryTimer = adapter.setTimer(() => {
+            retryTimer = null;
+            startPromise = null;
+            void start();
+        }, Math.max(0, delay));
+    }
+
     async function waitForMigration(error) {
         const answer = await request('/migration/status', {});
+        if (answer.status !== 200) {
+            throw failureOf(answer);
+        }
         const state = answer.json ?? {};
         if (state.state === 'failed') {
-            status = { state: 'failed', code: state.error?.code ?? error.code, retryAt: adapter.now() + (state.retryAfterMs ?? MIGRATION_RETRY_FALLBACK_MS), message: state.error?.message ?? '' };
-            emit('status', { status: getStatus() });
-            retryTimer = adapter.setTimer(() => {
-                retryTimer = null;
-                startPromise = null;
-                void start();
-            }, Math.max(0, status.retryAt - adapter.now()));
+            scheduleStartRetry(state.error?.code ?? error.code, state.retryAfterMs ?? MIGRATION_RETRY_FALLBACK_MS, state.error?.message ?? '');
             return false;
         }
         // The migration ran after this page read its settings: the settings it holds are older than the server's.
         if (state.state === 'migrated' && adapter.isSettingsStale()) {
-            adapter.reloadPage();
-            return false;
+            if (adapter.reloadPage() !== false) {
+                return false;
+            }
         }
         return true;
     }
@@ -1516,19 +1648,18 @@ export function createConversationData(adapter) {
                 await load();
             } catch (error) {
                 if (error.code === 'migration_failed') {
-                    const retry = await waitForMigration(error);
-                    if (!retry) {
+                    try {
+                        const retry = await waitForMigration(error);
+                        if (!retry) {
+                            return;
+                        }
+                        await load();
+                    } catch (retryError) {
+                        scheduleStartRetry(retryError.code ?? 'network', RETRY_DELAYS_MS[1]);
                         return;
                     }
-                    await load();
                 } else {
-                    status = { state: 'failed', code: error.code ?? 'network', retryAt: adapter.now() + RETRY_DELAYS_MS[1], message: '' };
-                    emit('status', { status: getStatus() });
-                    retryTimer = adapter.setTimer(() => {
-                        retryTimer = null;
-                        startPromise = null;
-                        void start();
-                    }, RETRY_DELAYS_MS[1]);
+                    scheduleStartRetry(error.code ?? 'network', RETRY_DELAYS_MS[1]);
                     return;
                 }
             }
@@ -1560,7 +1691,7 @@ export function createConversationData(adapter) {
     }
 
     function hasPendingWrites() {
-        if (pendingPatches.size || pendingCharacters.size || characterQueue.size) {
+        if (pendingPatches.size || pendingCharacters.size || sentCharacters.size || characterQueue.size) {
             return true;
         }
         // A patch that waits for its next attempt is in no queue.
@@ -1597,8 +1728,9 @@ export function createConversationData(adapter) {
             if (session.saving) {
                 await session.savePromise;
             }
-            if (session.dirty && !session.failed) {
+            if (session.dirty && !session.failed && !session.dropped && !session.deleting) {
                 adapter.clearTimer(session.retryTimer);
+                session.retryTimer = null;
                 session.retries = 0;
                 await saveSession(session, options);
             }
@@ -1607,6 +1739,7 @@ export function createConversationData(adapter) {
 
     function destroy() {
         adapter.clearTimer(retryTimer);
+        retryTimer = null;
         for (const pending of pendingPatches.values()) {
             adapter.clearTimer(pending.timer);
         }
@@ -1614,6 +1747,13 @@ export function createConversationData(adapter) {
             for (const sent of list) {
                 adapter.clearTimer(sent.timer);
             }
+        }
+        for (const pending of pendingCharacters.values()) {
+            adapter.clearTimer(pending.timer);
+        }
+        for (const session of sessions.values()) {
+            adapter.clearTimer(session.retryTimer);
+            session.retryTimer = null;
         }
         listeners.clear();
     }

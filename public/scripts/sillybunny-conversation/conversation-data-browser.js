@@ -14,9 +14,10 @@ const TOAST_OPTIONS = Object.freeze({ escapeHtml: true });
 const LEGACY_STORE_PARTS = ['characters', 'groups', 'reminders', 'legacyThreadPersonaAssignments'];
 
 export async function fetchJson(path, body, { keepalive = false } = {}) {
+    // Snapshot the body before awaiting dynamic imports so in-place mutations cannot alter the request payload.
+    const text = JSON.stringify(body ?? {});
     // Loaded when the first request goes out, so that this module can be imported before the page's own modules are.
     const [{ getRequestHeaders }, { compressRequest }] = await Promise.all([import('../../script.js'), import('../request-compression.js')]);
-    const text = JSON.stringify(body ?? {});
     const init = { method: 'POST', headers: getRequestHeaders(), body: text, cache: 'no-cache' };
     const request = keepalive && text.length < KEEPALIVE_MAX_CHARACTERS ? { ...init, keepalive: true } : await compressRequest(init);
     const response = await fetch(`${API_PREFIX}${path}`, request);
@@ -44,18 +45,20 @@ function isSettingsStale() {
 export function reloadPageOnce(flag = RELOAD_FLAG) {
     try {
         if (sessionStorage.getItem(flag)) {
-            return;
+            return false;
         }
         sessionStorage.setItem(flag, '1');
     } catch {
-        return;
+        return false;
     }
     window.location.reload();
+    return true;
 }
 
 async function fetchText(path, body) {
+    const text = JSON.stringify(body ?? {});
     const [{ getRequestHeaders }, { compressRequest }] = await Promise.all([import('../../script.js'), import('../request-compression.js')]);
-    const response = await fetch(`${API_PREFIX}${path}`, await compressRequest({ method: 'POST', headers: getRequestHeaders(), body: JSON.stringify(body ?? {}), cache: 'no-cache' }));
+    const response = await fetch(`${API_PREFIX}${path}`, await compressRequest({ method: 'POST', headers: getRequestHeaders(), body: text, cache: 'no-cache' }));
     const disposition = response.headers.get('content-disposition') ?? '';
     const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
     const plainName = /filename="([^"]+)"/i.exec(disposition)?.[1];

@@ -71,7 +71,11 @@ export function createMessageSelection({
         const count = countMessages(keys);
         const heading = count === 1 ? t`Delete Message?` : t`Delete ${count} Messages?`;
         const confirmed = await confirmDestructiveAction({ heading, text: 'TODO(copy)', confirmLabel: t`Delete`, copyPlaceholder: true });
-        if (!confirmed) {
+        if (!confirmed || !selection.isActive) {
+            return;
+        }
+        if (isStale()) {
+            selection.exit();
             return;
         }
         selection.exit();

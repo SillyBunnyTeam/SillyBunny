@@ -6,7 +6,6 @@ import {
 import {
     getActiveConversationChat,
     getConversationAddress,
-    getConversationChats,
     getConversationGroupAnchor,
     getConversationGroupIdForAvatar,
     getConversationPersonaId,
@@ -253,6 +252,7 @@ export function saveConversationMemorySummary(avatar, summary, messageCount, { c
     }
 
     conversationData.commitChat(address, (draft) => {
+        draft.header.chat_metadata ??= {};
         draft.header.chat_metadata.sb_conversation = {
             ...draft.header.chat_metadata.sb_conversation,
             memory_summary: String(summary || '').trim(),
@@ -262,18 +262,22 @@ export function saveConversationMemorySummary(avatar, summary, messageCount, { c
     });
 }
 
-export function clearConversationMemorySummary(avatar = getCurrentCharAvatar(), { groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
-    const view = getConversationRecord(avatar, { groupId, personaId });
-    if (!view) {
+export function clearConversationMemorySummary(avatar = getCurrentCharAvatar(), { chatId = '', groupId = getConversationGroupIdForAvatar(avatar), personaId = getConversationPersonaId() } = {}) {
+    const address = getConversationAddress(avatar, { chatId, groupId, personaId });
+    if (!address || !conversationData.chat(address)) {
         return false;
     }
+
     const cleared = Date.now();
-    const loaded = getConversationChats(avatar, { groupId, personaId }).filter(chat => chat.loaded);
-    for (const chat of loaded) {
-        conversationData.commitChat({ conversationId: view.id, chatId: chat.id }, (draft) => {
-            draft.header.chat_metadata.sb_conversation = { ...draft.header.chat_metadata.sb_conversation, memory_summary: '', memory_message_count: 0, memory_updated_at: cleared };
-        });
-    }
-    return loaded.length > 0;
+    conversationData.commitChat(address, (draft) => {
+        draft.header.chat_metadata ??= {};
+        draft.header.chat_metadata.sb_conversation = {
+            ...draft.header.chat_metadata.sb_conversation,
+            memory_summary: '',
+            memory_message_count: 0,
+            memory_updated_at: cleared,
+        };
+    });
+    return true;
 }
 

@@ -14,6 +14,7 @@ const MESSAGE_ROW = '#chat > .mes[mesid]';
 let controller = null;
 let deleteToolCalls = true;
 let onModeEnd = () => {};
+let onSyncWindowControls = () => {};
 
 function getRowKey(row) {
     const index = Number(row.getAttribute('mesid'));
@@ -40,6 +41,7 @@ async function cutTail(start) {
     chat.length = start;
     chat_metadata.tainted = true;
     await saveChatConditional({ allowShrink: true });
+    await onSyncWindowControls();
     chatElement.scrollTop(chatElement[0].scrollHeight);
     await eventSource.emit(event_types.MESSAGE_DELETED, chat.length);
     chatElement.find('.mes').removeClass('last_mes');
@@ -64,6 +66,7 @@ async function deleteSelected(keys) {
         await deleteMessage(index, undefined, false, false);
     }
     await saveChatConditional({ allowShrink: true });
+    await onSyncWindowControls();
 }
 
 function ensureController() {
@@ -114,11 +117,21 @@ function ensureController() {
  * Starts the mode. The caller has already refused it while a reply is generating.
  * @param {object} [options]
  * @param {boolean} [options.deleteToolCalls=true] Whether a message is selected and deleted with its tool calls.
+ * @param {() => boolean} [options.isStillWanted] Checked after async sheet load so a chat switch does not enter stale selection mode.
+ * @param {() => void|Promise<void>} [options.syncWindowControls] Refreshes windowed chat history controls after messages are removed.
  * @param {() => void} [options.onExit] Runs when the mode ends, however it ends.
  */
-export async function openMessageSelection({ deleteToolCalls: withToolCalls = true, onExit = () => {} } = {}) {
+export async function openMessageSelection({
+    deleteToolCalls: withToolCalls = true,
+    isStillWanted = () => true,
+    syncWindowControls = () => {},
+    onExit = () => {},
+} = {}) {
     // The check, the header and the action bar live in a deferred sheet that the chat has not needed until now.
     await loadStylesheetAsync(EDITOR_SHELL_STYLESHEET.href, { id: EDITOR_SHELL_STYLESHEET.id }).catch(() => {});
+    if (!isStillWanted()) {
+        return;
+    }
     const selection = ensureController();
     if (!selection) {
         onExit();
@@ -126,6 +139,7 @@ export async function openMessageSelection({ deleteToolCalls: withToolCalls = tr
     }
     deleteToolCalls = withToolCalls;
     onModeEnd = onExit;
+    onSyncWindowControls = syncWindowControls;
     selection.enter();
 }
 

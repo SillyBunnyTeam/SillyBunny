@@ -3845,6 +3845,8 @@ export async function clearChat({ clearData = false } = {}) {
     extension_prompts = {};
     if (is_delete_mode) {
         $('#dialogue_del_mes_cancel').trigger('click');
+        // SillyBunny: clear the flag even when selection mode had not mounted its cancel button yet.
+        is_delete_mode = false;
     }
     //This will also remove non '.mes' elements, e.g. chat history window controls.
     chatElement.children().remove();
@@ -14084,19 +14086,46 @@ function updateMessage(div) {
     return { mesBlock, text, mes, bias };
 }
 
+// SillyBunny: invalidates in-flight openMessageDelete loads across clearChat() or a newer request.
+let messageDeleteRequestId = 0;
+
 function openMessageDelete(fromSlashCommand, deleteToolCalls = true) {
     if (fromSlashCommand || (!is_send_press) || (selected_group && !is_group_generating)) {
         closeMessageEditor();
         hideSwipeButtons();
         // SillyBunny: the selection mode of sillybunny-message-selection.js (any messages, Shift ranges, Select All) replaces the
         // "this message and everything after it" bar. A refusal below changes nothing, where upstream still set the delete-mode flag.
+        const requestId = ++messageDeleteRequestId;
+        const renderVersion = chatRenderVersion;
+        const isStillWanted = () => is_delete_mode && requestId === messageDeleteRequestId && renderVersion === chatRenderVersion;
         is_delete_mode = true;
         import('./scripts/sillybunny-message-selection.js')
-            .then(({ openMessageSelection }) => openMessageSelection({ deleteToolCalls, onExit: () => { is_delete_mode = false; } }))
+            .then(({ openMessageSelection }) => {
+                if (!isStillWanted()) {
+                    return;
+                }
+                return openMessageSelection({
+                    deleteToolCalls,
+                    isStillWanted,
+                    syncWindowControls: () => {
+                        if (chat.length > 0 && getRenderedChatMessageWindow().renderedMessageCount === 0) {
+                            return printMessages();
+                        }
+                        syncChatHistoryWindowControls();
+                    },
+                    onExit: () => {
+                        if (requestId === messageDeleteRequestId) {
+                            is_delete_mode = false;
+                        }
+                    },
+                });
+            })
             .catch((error) => {
                 console.error('Could not enter message selection', error);
-                is_delete_mode = false;
-                showSwipeButtons();
+                if (requestId === messageDeleteRequestId) {
+                    is_delete_mode = false;
+                    showSwipeButtons();
+                }
             });
     } else {
         console.debug(`

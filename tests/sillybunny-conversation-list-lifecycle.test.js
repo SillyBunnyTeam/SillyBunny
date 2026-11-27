@@ -107,4 +107,18 @@ describe('the list when a character is deleted', () => {
         expect(only).toMatchObject({ kind: 'direct', characters: ['Orion.png'] });
         expect(listed()).toEqual([only.id]);
     });
+
+    test('lists groups for an explicit non-active personaId by passing personaId through group lookup', async () => {
+        const otherGroup = { ...GROUP, id: 'conv_4_othergrp', personaId: 'other.png', name: 'Other Trip' };
+        await startData([DIRECT_NOVA, GROUP, otherGroup]);
+
+        const otherItems = getConversationRailItems({ personaId: 'other.png' });
+        expect(otherItems).toHaveLength(1);
+        expect(otherItems[0]).toMatchObject({
+            key: 'conv_4_othergrp',
+            groupId: 'conv_4_othergrp',
+            group: expect.objectContaining({ id: 'conv_4_othergrp', personaId: 'other.png' }),
+        });
+        expect(listed()).toEqual(['conv_1_direct01', 'conv_2_group001']);
+    });
 });

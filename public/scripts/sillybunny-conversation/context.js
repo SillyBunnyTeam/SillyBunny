@@ -102,15 +102,15 @@ function toGroupRecord(view) {
     };
 }
 
-export function getConversationGroupById(groupId, { personaId } = {}) {
+export function getConversationGroupById(groupId, { personaId = getConversationPersonaId() } = {}) {
     const view = groupId ? conversationData.get(String(groupId)) : null;
-    if (!view || view.kind !== 'group' || (personaId !== undefined && view.personaId !== getConversationPersonaId(personaId))) {
+    if (!view || view.kind !== 'group' || (personaId !== null && view.personaId !== getConversationPersonaId(personaId))) {
         return null;
     }
     return toGroupRecord(view);
 }
 
-export function isAvatarInConversationGroup(avatar, groupId, { personaId } = {}) {
+export function isAvatarInConversationGroup(avatar, groupId, { personaId = getConversationPersonaId() } = {}) {
     const group = getConversationGroupById(groupId, { personaId });
     return Boolean(avatar && group?.members.includes(avatar));
 }

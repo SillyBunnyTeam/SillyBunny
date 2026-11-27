@@ -319,6 +319,9 @@ export function createConversationFolders(adapter) {
         }
         // The batch is answered, or it goes back to `pending`, or it is given up: it is no longer one that is out.
         leaveInFlight(personaId, ops);
+        if (destroyed) {
+            return false;
+        }
         if (answer.status === 200) {
             const entry = pending.get(personaId);
             if (entry) {
@@ -332,15 +335,23 @@ export function createConversationFolders(adapter) {
         }
         reportError(answer.json?.error ?? 'update_rejected', 'A change to the folders was refused.');
         await readFile();
-        schedule(personaId);
+        if (!destroyed) {
+            schedule(personaId);
+        }
         return true;
     }
 
-    function requeue(personaId, ops, attempt, code) {
+    async function requeue(personaId, ops, attempt, code) {
+        if (destroyed) {
+            return false;
+        }
         const delay = FOLDER_RETRY_DELAYS_MS[attempt];
-        if (delay === undefined || destroyed) {
+        if (delay === undefined) {
             reportError(code, 'A change to the folders could not be saved.');
-            void readFile().then(() => schedule(personaId));
+            await readFile();
+            if (!destroyed) {
+                schedule(personaId);
+            }
             return true;
         }
         const entry = pending.get(personaId) ?? { ops: [], firstAt: adapter.now(), timer: null, attempts: 0 };
@@ -357,7 +368,7 @@ export function createConversationFolders(adapter) {
     /** Sends up to one request's worth of the operations that wait for a persona, and goes on while some remain. */
     async function flushPersona(personaId, options) {
         const entry = pending.get(personaId);
-        if (!entry) {
+        if (!entry || destroyed) {
             return;
         }
         adapter.clearTimer(entry.timer);
@@ -368,7 +379,7 @@ export function createConversationFolders(adapter) {
         }
         inFlight.set(personaId, [...(inFlight.get(personaId) ?? []), batch]);
         const done = await queue.run(() => send(personaId, batch, options, attempt));
-        if (done && pending.has(personaId)) {
+        if (done && !destroyed && pending.has(personaId)) {
             await flushPersona(personaId, options);
         }
     }

@@ -6,6 +6,7 @@ import {
     MAX_FOLDER_NAME_LENGTH,
     MAX_FOLDER_OPS,
     MAX_MEMBER_IDS_PER_OP,
+    MAX_PERSONAS_IN_FILE,
     applyFolderOps,
     emptyFolderRecord,
     folderIdOf,
@@ -181,6 +182,18 @@ describe('getPersonaFolders and withPersonaFolders', () => {
         const file = withPersonaFolders({ version: 1, personas: {} }, 'a.png', record([folder(FOLDER_A)]));
         expect(Object.keys(file.personas)).toEqual(['a.png']);
         expect(withPersonaFolders(file, 'a.png', emptyFolderRecord()).personas).toEqual({});
+    });
+
+    test('refuses adding a new persona beyond MAX_PERSONAS_IN_FILE while still allowing updates and removals at the limit', () => {
+        const personas = {};
+        for (let index = 0; index < MAX_PERSONAS_IN_FILE; index++) {
+            personas[`p${index}.png`] = { folders: [folder(FOLDER_A)], members: {} };
+        }
+        const full = { version: 1, personas };
+
+        expect(codeOf(() => withPersonaFolders(full, 'extra.png', record([folder(FOLDER_A)])))).toBe('invalid_input');
+        expect(withPersonaFolders(full, 'p0.png', record([folder(FOLDER_B)])).personas['p0.png'].folders[0].id).toBe(FOLDER_B);
+        expect(Object.keys(withPersonaFolders(full, 'p0.png', emptyFolderRecord()).personas)).toHaveLength(MAX_PERSONAS_IN_FILE - 1);
     });
 });
 

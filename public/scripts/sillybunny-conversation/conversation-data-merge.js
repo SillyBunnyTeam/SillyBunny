@@ -33,7 +33,7 @@ function getMemory(header) {
  * @param {object} input.localHeader The header that this page holds.
  * @param {{ ids: Set<string>, json: Map<string, string> }} input.synced What the server had at the last load or save.
  * @param {object[]} input.serverRecords `[header, ...messages]` as the server has them now.
- * @returns {{ messages: object[], header: object, appended: number, lostEdits: number, lostDeletes: number }} New
+ * @returns {{ messages: object[], header: object, appended: number, lostEdits: number, lostDeletes: number, headerChanged: boolean }} New
  * values; the arguments are not changed.
  */
 export function rebaseChat({ localMessages, localHeader, synced, serverRecords }) {
@@ -63,8 +63,10 @@ export function rebaseChat({ localMessages, localHeader, synced, serverRecords }
     const header = structuredClone(serverHeader);
     const localMemory = getMemory(localHeader);
     const serverMemory = getMemory(serverHeader);
+    let headerChanged = false;
     if (localMemory && (Number(localMemory.memory_updated_at) || 0) > (Number(serverMemory?.memory_updated_at) || 0)) {
         header.chat_metadata = { ...header.chat_metadata, sb_conversation: structuredClone(localMemory) };
+        headerChanged = true;
     }
-    return { messages, header, appended, lostEdits, lostDeletes };
+    return { messages, header, appended, lostEdits, lostDeletes, headerChanged };
 }

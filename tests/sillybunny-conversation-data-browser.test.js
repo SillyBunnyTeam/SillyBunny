@@ -9,7 +9,7 @@ await jest.unstable_mockModule('../public/script.js', () => ({ getRequestHeaders
 await jest.unstable_mockModule('../public/scripts/request-compression.js', () => ({ compressRequest: async init => init }));
 await jest.unstable_mockModule('../public/scripts/utils.js', () => ({ download }));
 
-const { conversationData, downloadConversationChat, installConversationDataHooks } = await import('../public/scripts/sillybunny-conversation/conversation-data-browser.js');
+const { conversationData, downloadConversationChat, fetchJson, installConversationDataHooks, reloadPageOnce } = await import('../public/scripts/sillybunny-conversation/conversation-data-browser.js');
 
 function respond(path, { status = 200, json = {}, text = null, headers = {} } = {}) {
     answers.set(path, { status, json, text, headers });
@@ -95,5 +95,47 @@ describe('the download of a chat', () => {
         await expect(downloadConversationChat({ conversationId: 'conv_1_direct01', chatId: 'gone' })).rejects.toMatchObject({ code: 'not_found', status: 404 });
 
         expect(download).not.toHaveBeenCalled();
+    });
+});
+
+describe('browser adapter safety', () => {
+    afterEach(() => {
+        delete globalThis.sessionStorage;
+    });
+
+    test('reloadPageOnce returns true on the first reload and false when suppressed or storage throws', () => {
+        const reload = jest.fn();
+        globalThis.window = { addEventListener: jest.fn(), location: { reload } };
+        const store = new Map();
+        globalThis.sessionStorage = {
+            getItem: key => (store.has(key) ? store.get(key) : null),
+            setItem: (key, value) => store.set(key, String(value)),
+        };
+
+        expect(reloadPageOnce('test_reload_flag')).toBe(true);
+        expect(reload).toHaveBeenCalledTimes(1);
+        expect(reloadPageOnce('test_reload_flag')).toBe(false);
+        expect(reload).toHaveBeenCalledTimes(1);
+
+        globalThis.sessionStorage = {
+            getItem: () => {
+                throw new Error('storage blocked');
+            },
+            setItem: () => {},
+        };
+        expect(reloadPageOnce('test_reload_flag_2')).toBe(false);
+        expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    test('fetchJson serializes the request body before awaiting dynamic imports', async () => {
+        respond('/chat/save', { json: { ok: true } });
+        const payload = { id: 'conv_1_direct01', chat: [{ mes: 'before' }] };
+
+        const pending = fetchJson('/chat/save', payload);
+        payload.chat[0].mes = 'mutated synchronously after call';
+        await pending;
+
+        const sent = requests.find(item => item.path === '/chat/save');
+        expect(JSON.parse(sent.init.body)).toEqual({ id: 'conv_1_direct01', chat: [{ mes: 'before' }] });
     });
 });

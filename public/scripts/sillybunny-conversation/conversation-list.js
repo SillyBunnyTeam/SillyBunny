@@ -51,7 +51,7 @@ export function getDirectConversations({ personaId = getConversationPersonaId() 
 export function getConversationRailItems({ personaId = getConversationPersonaId() } = {}) {
     const items = [];
     for (const view of conversationData.list({ personaId })) {
-        const group = view.kind === 'group' ? getConversationGroupById(view.id) : null;
+        const group = view.kind === 'group' ? getConversationGroupById(view.id, { personaId }) : null;
         const anchor = group ? getConversationGroupAnchor(group, { personaId }) : null;
         const character = group ? anchor?.character : getCharacterForAvatar(view.characters[0]);
         if (!character?.avatar) {
