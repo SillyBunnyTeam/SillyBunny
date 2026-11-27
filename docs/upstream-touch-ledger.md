@@ -2939,15 +2939,15 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
-### `public/scripts/slash-commands/SlashCommandParser.js` and `public/scripts/autocomplete/MacroAutoComplete.js` - O(N) STScript parsing and MacroAutoComplete firewall
+### `public/scripts/slash-commands/SlashCommandParser.js` and `public/scripts/autocomplete/MacroAutoComplete.js` - O(N) STScript parsing and MacroAutoComplete parse gate
 | Field | Value |
 | --- | --- |
 | File | `public/scripts/slash-commands/SlashCommandParser.js`; `public/scripts/autocomplete/MacroAutoComplete.js`. |
-| Area | STScript parser performance and free-text macro autocomplete gating/observer scoping. |
-| Divergence reason | Upstream's `SlashCommandParser` rescans `this.text.slice(0, this.index)` on every `|` and allocates per-token slices and regexes (`O(pipes × N)`, freezing the UI for ~2.5 s on large Quick Reply packs), and `MacroAutoComplete` runs synchronous `MacroParser.parseDocument()` on every keystroke plus a `document.body` `MutationObserver` waking on streamed chat prose. |
-| Target seam | none yet; incremental brace tracking, sticky regex cache and lazy `Error.stack` getters live directly in `SlashCommandParser.js`, and `#chat` prose firewall + `{{` gate in `MacroAutoComplete.js`. |
-| Adapter shape | Marked `SillyBunny:` blocks in both files: incremental `macroBraceDepth`/`macroBraceScannedIndex`, cached sticky (`y`) regexes, lazy `isExtension`/`isThirdParty`/`source` getters and a one-time `hljs.registerLanguage` guard in `SlashCommandParser.js`; `shouldShowNormally && text.includes('{{')` short-circuit and `#chat .mes_text, #chat .mes_reasoning` MutationObserver firewall in `MacroAutoComplete.js`. |
-| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js` (2,000-command STScript parse `<50 ms`, split-brace & strict-escape edge cases, lazy `Error.stack`, Quick Reply run isolation, `MacroAutoComplete` gate & chat-prose firewall); `tests/macro-comment-pipes.test.js`. |
+| Area | STScript parser performance and free-text macro autocomplete gating. |
+| Divergence reason | Upstream's `SlashCommandParser` rescans `this.text.slice(0, this.index)` on every `|` and allocates per-token slices and regexes (`O(pipes × N)`, freezing the UI for ~2.5 s on large Quick Reply packs), and `MacroAutoComplete` runs synchronous `MacroParser.parseDocument()` on every keystroke. |
+| Target seam | none yet; incremental brace tracking, sticky regex cache and lazy `Error.stack` getters live directly in `SlashCommandParser.js`, and the `{{` gate with a leaf-element skip in `MacroAutoComplete.js`. |
+| Adapter shape | Marked `SillyBunny:` blocks in both files: incremental `macroBraceDepth`/`macroBraceScannedIndex`, cached sticky (`y`) regexes, lazy `isExtension`/`isThirdParty`/`source` getters and a one-time `hljs.registerLanguage` guard in `SlashCommandParser.js`; `shouldShowNormally && text.includes('{{')` short-circuit and the leaf-element skip in `MacroAutoComplete.js`. |
+| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js` (2,000-command STScript parse `<50 ms`, split-brace & strict-escape edge cases, lazy `Error.stack`, Quick Reply run isolation, `MacroAutoComplete` gate and observer wiring inside message text); `tests/macro-comment-pipes.test.js`. |
 | Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites (`tests/perf-ui-smoothness-cold-load.test.js` 23/23, 2,000-command parse in ~25 ms). |
 | Rollback path | Revert the marked `SillyBunny:` blocks in `SlashCommandParser.js` and `MacroAutoComplete.js` to restore upstream parsing and observer handling. All caches are in-memory only and no script formats change. |
 | Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |

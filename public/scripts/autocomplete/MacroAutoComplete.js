@@ -208,36 +208,14 @@ function hasMacroAttribute(element) {
     return value === null || value === '' || value === 'true';
 }
 
-// SillyBunny: firewall streaming chat prose mutations inside #chat .mes_text / .mes_reasoning from body MutationObserver scans.
-const IGNORED_CHAT_PROSE_SELECTOR = '#chat .mes_text, #chat .mes_reasoning';
-
-/**
- * SillyBunny: check whether a mutation target/node sits inside #chat prose containers that never host data-macros inputs.
- * @param {Node|null|undefined} node
- * @returns {boolean}
- */
-export function isIgnoredMacroMutationNode(node) {
-    if (!node) {
-        return false;
-    }
-    const element = node.nodeType === 1 ? node : node.parentElement;
-    if (!element || typeof element.closest !== 'function') {
-        return false;
-    }
-    return Boolean(element.closest(IGNORED_CHAT_PROSE_SELECTOR));
-}
-
 /**
  * Handles node changes from MutationObserver - checks for macro autocomplete attribute.
  *
  * @param {Node} node - The node to check.
  */
 function handleNodeChange(node) {
-    // SillyBunny: fast-skip non-elements and #chat prose nodes before touching DOM queries.
+    // SillyBunny: skip text nodes cheaply, and tolerate a missing Element global in non-DOM test environments.
     if (!node || node.nodeType !== 1 || (typeof Element === 'function' && !(node instanceof Element))) {
-        return;
-    }
-    if (isIgnoredMacroMutationNode(node)) {
         return;
     }
 
@@ -263,14 +241,11 @@ function handleNodeChange(node) {
 }
 
 /**
- * SillyBunny: process MutationObserver records while firewalling #chat prose churn.
+ * SillyBunny: MutationObserver callback, exported so tests can drive it with a DOM that has no global MutationObserver.
  * @param {MutationRecord[]} mutations
  */
 export function processMacroAutoCompleteMutations(mutations) {
     for (const mutation of mutations) {
-        if (isIgnoredMacroMutationNode(mutation.target)) {
-            continue;
-        }
         if (mutation.type === 'childList') {
             for (const node of mutation.addedNodes) {
                 handleNodeChange(node);
@@ -292,7 +267,7 @@ export function processMacroAutoCompleteMutations(mutations) {
  * MutationObserver to watch for dynamically added elements with macro autocomplete attribute.
  * @type {MutationObserver|null}
  */
-// SillyBunny: guard MutationObserver construction for non-DOM test environments and route through chat-prose firewall.
+// SillyBunny: guard MutationObserver construction for non-DOM test environments.
 const observer = typeof MutationObserver === 'function'
     ? new MutationObserver(processMacroAutoCompleteMutations)
     : null;

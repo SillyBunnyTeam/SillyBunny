@@ -3,6 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { JSDOM } from 'jsdom';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const readPublic = relPath => readFileSync(path.join(repoRoot, 'public', relPath), 'utf8');
@@ -25,6 +26,7 @@ const mockPowerUser = {
     },
     experimental_macro_engine: false,
 };
+const mockAutoCompleteTargets = [];
 const mockFindMacroAtCursor = jest.fn(() => null);
 const mockFindUnclosedScopes = jest.fn(() => []);
 const mockSaveSettingsDebounced = jest.fn();
@@ -291,7 +293,8 @@ await jest.unstable_mockModule('../public/scripts/slash-commands.js', () => ({
 await jest.unstable_mockModule('../public/scripts/autocomplete/AutoComplete.js', () => ({
     AUTOCOMPLETE_STATE: { DISABLED: 0, ALL: 1, MIN_LENGTH: 2 },
     AutoComplete: class FakeAutoComplete {
-        constructor() {
+        constructor(textarea) {
+            mockAutoCompleteTargets.push(textarea);
             this.domWrap = { dataset: {} };
             this.detailsWrap = { dataset: {} };
         }
@@ -332,7 +335,6 @@ const { SlashCommandScope } = await import('../public/scripts/slash-commands/Sla
 const { QuickReplySet } = await import('../public/scripts/extensions/quick-reply/src/QuickReplySet.js');
 
 const {
-    isIgnoredMacroMutationNode,
     MACRO_AUTOCOMPLETE_MODE,
     processMacroAutoCompleteMutations,
     shouldActivateMacroAutocomplete,
@@ -652,7 +654,7 @@ describe('Workstream 2: Conversation Mode O(N) receipts, delegated hover & cross
     });
 });
 
-describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolation, and MacroAutoComplete firewall', () => {
+describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolation, and MacroAutoComplete wiring', () => {
     test('parses 2,000 piped STScript commands with embedded macro pipes in <50 ms', () => {
         if (!SlashCommandParser.commands.echo) {
             SlashCommandParser.addCommandObjectUnsafe(SlashCommand.fromProps({
@@ -872,7 +874,7 @@ describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolatio
         }
     });
 
-    test('MacroAutoComplete gates MacroParser calls on shouldShowNormally && text.includes("{{") and firewalls #chat prose', () => {
+    test('MacroAutoComplete gates MacroParser calls on shouldShowNormally && text.includes("{{")', () => {
         // Default: showInAllMacroFields=false -> must short-circuit before findMacroAtCursor/findUnclosedScopes.
         expect(shouldActivateMacroAutocomplete('{{user}} hello', 8, { isForced: false, autocompleteMode: MACRO_AUTOCOMPLETE_MODE.DEFAULT })).toBe(false);
         expect(mockFindMacroAtCursor).not.toHaveBeenCalled();
@@ -886,35 +888,81 @@ describe('Workstream 3: O(N) STScript parser benchmark, Quick Reply run isolatio
 
         // Enabled mode WITH '{{' -> proceeds to macro check.
         expect(shouldActivateMacroAutocomplete('Hello {{', 8)).toBe(true);
+    });
 
-        // Chat prose MutationObserver firewall skips #chat .mes_text / .mes_reasoning completely.
-        const chatQuerySpy = jest.fn(() => []);
-        const mesTextNode = {
-            nodeType: 1,
-            firstElementChild: { nodeType: 1 },
-            closest: selector => selector.includes('.mes_text') ? {} : null,
-            hasAttribute: () => false,
-            querySelectorAll: chatQuerySpy,
-        };
-        expect(isIgnoredMacroMutationNode(mesTextNode)).toBe(true);
-        processMacroAutoCompleteMutations([
-            { type: 'childList', target: mesTextNode, addedNodes: [mesTextNode] },
-        ]);
-        expect(chatQuerySpy).not.toHaveBeenCalled();
+    test('MacroAutoComplete observer wires data-macros inputs added inside message text and skips prose', async () => {
+        const dom = new JSDOM(`<!doctype html><body>
+            <div id="chat"><div class="mes"><div class="mes_block">
+                <div class="mes_text"></div>
+                <div class="mes_reasoning"></div>
+            </div></div></div>
+            <div id="elsewhere"></div>
+        </body>`);
+        const { window } = dom;
+        Object.assign(global, {
+            window,
+            document: window.document,
+            Element: window.Element,
+            HTMLTextAreaElement: window.HTMLTextAreaElement,
+            HTMLInputElement: window.HTMLInputElement,
+        });
+        const observer = new window.MutationObserver(processMacroAutoCompleteMutations);
+        observer.observe(window.document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['data-macros'],
+        });
+        const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+        const mesText = window.document.querySelector('#chat .mes_text');
+        const mesReasoning = window.document.querySelector('#chat .mes_reasoning');
+        mockAutoCompleteTargets.length = 0;
 
-        // Non-chat container with element child still scans for [data-macros].
-        const panelQuerySpy = jest.fn(() => []);
-        const normalPanelNode = {
-            nodeType: 1,
-            firstElementChild: { nodeType: 1 },
-            closest: () => null,
-            hasAttribute: () => false,
-            querySelectorAll: panelQuerySpy,
-        };
-        processMacroAutoCompleteMutations([
-            { type: 'childList', target: normalPanelNode, addedNodes: [normalPanelNode] },
-        ]);
-        expect(panelQuerySpy).toHaveBeenCalledTimes(1);
+        try {
+            // messageEdit() appends this textarea straight into .mes_text.
+            const editTextarea = window.document.createElement('textarea');
+            editTextarea.id = 'curEditTextarea';
+            editTextarea.dataset.macros = '';
+            mesText.append(editTextarea);
+            await flush();
+            expect(mockAutoCompleteTargets).toEqual([editTextarea]);
+
+            // A real input inside a wrapper that is added to message text is found as well.
+            const wrapper = window.document.createElement('div');
+            const nestedInput = window.document.createElement('input');
+            nestedInput.dataset.macros = 'true';
+            wrapper.append(nestedInput);
+            mesReasoning.append(wrapper);
+            await flush();
+            expect(mockAutoCompleteTargets).toEqual([editTextarea, nestedInput]);
+
+            // An existing field in message text that gains data-macros later is wired too.
+            const lateTextarea = window.document.createElement('textarea');
+            mesText.append(lateTextarea);
+            await flush();
+            lateTextarea.dataset.macros = '';
+            await flush();
+            expect(mockAutoCompleteTargets).toEqual([editTextarea, nestedInput, lateTextarea]);
+
+            // Prose churn adds no field and wires nothing.
+            const paragraph = window.document.createElement('p');
+            paragraph.innerHTML = 'Some <em>formatted</em> <span>reply</span> text';
+            mesText.append(paragraph, window.document.createTextNode(' more'));
+            await flush();
+            expect(mockAutoCompleteTargets).toHaveLength(3);
+
+            // The same field outside message text is wired as before.
+            const otherTextarea = window.document.createElement('textarea');
+            otherTextarea.dataset.macros = '';
+            window.document.getElementById('elsewhere').append(otherTextarea);
+            await flush();
+            expect(mockAutoCompleteTargets).toHaveLength(4);
+            expect(mockAutoCompleteTargets[3]).toBe(otherTextarea);
+        } finally {
+            observer.disconnect();
+            delete global.HTMLTextAreaElement;
+            delete global.HTMLInputElement;
+        }
     });
 });
 
