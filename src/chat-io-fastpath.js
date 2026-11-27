@@ -289,29 +289,37 @@ export function getCanonicalChatCacheKey(filePath) {
     return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
-function isTestFaultInjectionAllowed() {
-    return process.env.SB_ALLOW_TEST_FAULTS === '1'
-        || process.env.NODE_ENV === 'test'
-        || Boolean(process.env.JEST_WORKER_ID);
+/** @type {{ point: string, action: (point: string) => void }|null} */
+let armedChatIoFault = null;
+
+/**
+ * Crash-test seam: runs `action` when the in-place writer or the save path reaches the fault point `point`.
+ * Nothing reads the environment or the configuration, so only code that imports this function can arm a
+ * fault, and a production process cannot be made to stop in the middle of a chat write.
+ * Call it without arguments to disarm.
+ * @param {string|null} [point] Fault point name, such as `after_barrier_1`
+ * @param {((point: string) => void)|null} [action]
+ */
+export function armChatIoFault(point = null, action = null) {
+    armedChatIoFault = point && typeof action === 'function' ? { point, action } : null;
 }
 
 /**
- * Test-only fault injection hook controlled by `SB_FAULT_AT` (active only under test environments).
- * Has negligible overhead when `SB_FAULT_AT` is unset.
+ * @param {string} point Fault point name
+ * @returns {boolean} Whether a fault is armed at `point`
+ */
+export function isChatIoFaultArmed(point) {
+    return armedChatIoFault?.point === point;
+}
+
+/**
+ * Runs the action armed by `armChatIoFault` for `point`. Does nothing when no fault is armed there.
  * @param {string} point Fault injection point name
  */
 export function maybeInjectChatIoFault(point) {
-    const targetPoint = process.env.SB_FAULT_AT;
-    if (!targetPoint || targetPoint !== point || !isTestFaultInjectionAllowed()) {
-        return;
+    if (armedChatIoFault?.point === point) {
+        armedChatIoFault.action(point);
     }
-    if (process.env.SB_FAULT_MODE === 'throw') {
-        throw Object.assign(new Error(`Injected chat I/O fault at ${point}`), {
-            code: 'EFAULT_INJECTED',
-            faultPoint: point,
-        });
-    }
-    process.kill(process.pid, 'SIGKILL');
 }
 
 /**
@@ -1000,7 +1008,7 @@ export function writeChatFileInPlaceFast(filePath, dataBuffer, {
                 // Barrier #2: write body + resize/truncate and fsync so complete payload is durable before restoring byte 0.
                 if (dataLength > 1) {
                     const body = dataBuffer.subarray(1);
-                    if (process.env.SB_FAULT_AT === 'during_body_write' && body.byteLength > 2) {
+                    if (isChatIoFaultArmed('during_body_write') && body.byteLength > 2) {
                         const half = Math.floor(body.byteLength / 2);
                         writeAllSync(fileDescriptor, body.subarray(0, half), 1);
                         maybeInjectChatIoFault('during_body_write');

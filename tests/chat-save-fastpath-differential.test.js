@@ -57,6 +57,7 @@ const WORKTREE_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CONFIG_PATH = fileURLToPath(new URL('../default/config.yaml', import.meta.url));
 const UTIL_URL = new URL('../src/util.js', import.meta.url).href;
 const CHATS_URL = new URL('../src/endpoints/chats.js', import.meta.url).href;
+const FASTPATH_URL = new URL('../src/chat-io-fastpath.js', import.meta.url).href;
 const RECOVERY_URL = new URL('../src/chat-recovery.js', import.meta.url).href;
 
 /**
@@ -1334,7 +1335,7 @@ describe('stat-tuple caches never serve content that an external write changed w
     });
 });
 
-describe('crash fault-injection tests (SIGKILL via SB_FAULT_AT=)', () => {
+describe('crash fault-injection tests (SIGKILL at an armed fault point)', () => {
     let tempRoot;
 
     beforeEach(() => {
@@ -1345,10 +1346,14 @@ describe('crash fault-injection tests (SIGKILL via SB_FAULT_AT=)', () => {
         fs.rmSync(tempRoot, { recursive: true, force: true });
     });
 
-    function runFaultInjectedChild({ chatsDir, backupsDir, owner, fileName, activePath, nextChat, faultAt, shrink }) {
+    function runFaultInjectedChild({ chatsDir, backupsDir, owner, fileName, activePath, nextChat, faultAt, shrink, arm = true, env = {} }) {
         const childScript = `
             import { setConfigFilePath } from ${JSON.stringify(UTIL_URL)};
             setConfigFilePath(${JSON.stringify(CONFIG_PATH)});
+            const { armChatIoFault } = await import(${JSON.stringify(FASTPATH_URL)});
+            if (${JSON.stringify(arm)}) {
+                armChatIoFault(${JSON.stringify(faultAt)}, () => process.kill(process.pid, 'SIGKILL'));
+            }
             const { trySaveChat } = await import(${JSON.stringify(CHATS_URL)});
             const { createCharacterChatTarget } = await import(${JSON.stringify(RECOVERY_URL)});
             const target = createCharacterChatTarget({
@@ -1372,12 +1377,7 @@ describe('crash fault-injection tests (SIGKILL via SB_FAULT_AT=)', () => {
 
         return spawnSync(process.execPath, ['--input-type=module', '-e', childScript], {
             cwd: WORKTREE_ROOT,
-            env: {
-                ...process.env,
-                SB_ALLOW_TEST_FAULTS: '1',
-                SB_FAULT_AT: faultAt,
-                SB_FAULT_MODE: 'kill',
-            },
+            env: { ...process.env, ...env },
             encoding: 'utf8',
             timeout: 15_000,
         });
@@ -1502,6 +1502,47 @@ describe('crash fault-injection tests (SIGKILL via SB_FAULT_AT=)', () => {
         const latestResult = readChatJsonlStrict(latestPath);
         expect(latestResult.status).toBe('ok');
         expect(latestResult.records).toHaveLength(nextChat.length);
+    });
+
+    test('ignores fault settings in the environment, so a production process cannot be made to stop in the middle of a chat write', () => {
+        const chatsDir = path.join(tempRoot, 'chats');
+        const backupsDir = path.join(tempRoot, 'backups');
+        const owner = 'EnvCard';
+        const fileName = 'env-session.jsonl';
+        const activePath = path.join(chatsDir, owner, fileName);
+        fs.mkdirSync(path.dirname(activePath), { recursive: true });
+        fs.mkdirSync(backupsDir, { recursive: true });
+
+        const originalChat = makeLargeChat(12, 'env-slug');
+        fs.writeFileSync(activePath, originalChat.map(JSON.stringify).join('\n'), 'utf8');
+        const nextChat = [
+            ...originalChat,
+            { name: 'User', is_user: true, send_date: '2026-06-05T10:00:00.000Z', mes: 'Written despite the environment', extra: {} },
+        ];
+
+        const child = runFaultInjectedChild({
+            chatsDir,
+            backupsDir,
+            owner,
+            fileName,
+            activePath,
+            nextChat,
+            faultAt: 'after_barrier_1',
+            shrink: false,
+            arm: false,
+            env: {
+                NODE_ENV: 'test',
+                SB_ALLOW_TEST_FAULTS: '1',
+                SB_FAULT_AT: 'after_barrier_1',
+                SB_FAULT_MODE: 'kill',
+            },
+        });
+
+        expect(child.stdout).toContain('completed');
+        expect(child.status).toBe(0);
+        const written = readChatJsonlStrict(activePath);
+        expect(written.status).toBe('ok');
+        expect(written.records).toHaveLength(nextChat.length);
     });
 });
 
