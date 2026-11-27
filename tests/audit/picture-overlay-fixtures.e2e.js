@@ -13,7 +13,8 @@ const THEME_IDS = [...THEMES, ...LEGACY_THEMES].map(theme => theme.id);
 
 async function bootAndOpen(browser, baseURL, surfaceId, variant) {
     const surface = surfaceById(surfaceId);
-    const context = await browser.newContext({ ...variantContextOptions(variant), baseURL, locale: 'en-US', timezoneId: 'UTC' });
+    const storageState = test.info().project.use.storageState;
+    const context = await browser.newContext({ ...variantContextOptions(variant), baseURL, locale: 'en-US', timezoneId: 'UTC', ...(storageState ? { storageState } : {}) });
     const page = await context.newPage();
     await bootSurfaceApp(page, baseURL, { variant, needs: surface.needs });
     await openSurface(page, surface, { viewport: variant.viewport });

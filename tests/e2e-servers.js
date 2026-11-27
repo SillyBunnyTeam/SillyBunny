@@ -7,12 +7,19 @@ import { fileURLToPath } from 'node:url';
 export const SERVER_COUNT_VARIABLE = 'SILLYBUNNY_TEST_SERVERS';
 export const SERVER_RUNTIME_VARIABLE = 'SILLYBUNNY_TEST_SERVER_RUNTIME';
 export const COMPRESSION_VARIABLE = 'SILLYBUNNY_TEST_COMPRESSION';
+export const ACCOUNT_ISOLATION_VARIABLE = 'SILLYBUNNY_TEST_ISOLATE_ACCOUNTS';
 // The main process writes the servers here before it starts any worker, and each worker inherits it.
 export const SERVER_LIST_VARIABLE = 'SILLYBUNNY_TEST_SERVER_LIST';
 export const SEQUENTIAL_SPECS_VARIABLE = 'SILLYBUNNY_TEST_SEQUENTIAL_SPECS';
+export const STORAGE_STATE_VARIABLE = 'SILLYBUNNY_TEST_STORAGE_STATE';
+export const WORKER_HANDLE_VARIABLE = 'SILLYBUNNY_TEST_WORKER_HANDLE';
 export const READY_MESSAGE = 'SillyBunny test servers are ready';
+export const DEFAULT_SERVER_COUNT = 1;
+export const DEFAULT_USER_HANDLE = 'default-user';
+export const STORAGE_DIRECTORY = '_e2e-storage';
 
 const BASE_URL_VARIABLES = ['SILLYBUNNY_TEST_BASE_URL', 'ST_BASE_URL', 'PLAYWRIGHT_BASE_URL'];
+const MAINTAINER_PORT = 4444;
 // A server handles its requests on one main thread. Against one server, more workers than this add timeouts
 // and no speed.
 const SINGLE_SERVER_WORKERS = 16;
@@ -27,14 +34,14 @@ const SKIPPED_DIRECTORIES = new Set(['node_modules', 'test-results', 'playwright
  */
 export const SUITE_IGNORED_DIRECTORIES = Object.freeze(['foundation', 'audit']);
 export const SUITE_IGNORE = Object.freeze(SUITE_IGNORED_DIRECTORIES.map(name => `**/${name}/**`));
-// A fresh data root has one account, and the server keeps its settings here.
-const SETTINGS_FILE = path.join('default-user', 'settings.json');
 
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.resolve(testsDirectory, '..');
 
 /**
  * Gets the number of servers that the config starts.
+ * Without a base URL variable, defaults to one managed server on a free port so tests never touch port 4444.
+ * Set `SILLYBUNNY_TEST_SERVERS=0` or a base URL variable to use a server that runs already.
  * @param {NodeJS.ProcessEnv} env Environment variables
  * @returns {number} 0 when the tests use one server that runs already
  */
@@ -44,12 +51,56 @@ export function getServerCount(env) {
     }
     const value = env[SERVER_COUNT_VARIABLE];
     if (value === undefined || value === '') {
+        return DEFAULT_SERVER_COUNT;
+    }
+    if (value === '0') {
         return 0;
     }
     if (!/^[1-9]\d*$/.test(value)) {
-        throw new Error(`${SERVER_COUNT_VARIABLE} must be a whole number of 1 or more, not "${value}".`);
+        throw new Error(`${SERVER_COUNT_VARIABLE} must be a whole number of 0 or more, not "${value}".`);
     }
     return Number(value);
+}
+
+/**
+ * Checks whether managed test servers isolate parallel workers in separate user accounts.
+ * @param {NodeJS.ProcessEnv} env Environment variables
+ * @param {boolean} startsServers Whether the config starts the servers
+ * @returns {boolean}
+ */
+export function isAccountIsolationEnabled(env, startsServers) {
+    if (!startsServers) {
+        return false;
+    }
+    const value = env[ACCOUNT_ISOLATION_VARIABLE];
+    if (value === undefined || value === '' || value === '1') {
+        return true;
+    }
+    if (value === '0') {
+        return false;
+    }
+    throw new Error(`${ACCOUNT_ISOLATION_VARIABLE} must be "0" or "1", not "${value}".`);
+}
+
+/**
+ * Gets the user account handle assigned to a parallel worker index.
+ * @param {number} parallelIndex Parallel index of the worker
+ * @returns {string}
+ */
+export function getWorkerAccountHandle(parallelIndex) {
+    return `worker-${parallelIndex}`;
+}
+
+/**
+ * Gets the storage-state JSON path inside a managed server's scratch data root.
+ * @param {{ dataRoot: string }} server Managed server entry
+ * @param {number} parallelIndex Parallel index of the worker
+ * @param {{ isolateAccounts?: boolean }} [options]
+ * @returns {string}
+ */
+export function getWorkerStorageStatePath(server, parallelIndex, { isolateAccounts = true } = {}) {
+    const fileName = isolateAccounts ? `${getWorkerAccountHandle(parallelIndex)}.json` : `${DEFAULT_USER_HANDLE}.json`;
+    return path.join(server.dataRoot, STORAGE_DIRECTORY, fileName);
 }
 
 /**
@@ -173,14 +224,15 @@ export function getProjects(sequentialSpecs) {
 }
 
 /**
- * Checks whether the first run of a server is over. The app shows its first-run prompt at every boot until the
- * stored settings say so.
+ * Checks whether the first run of a server account is over and Welcome will not reopen on the next boot.
  * @param {string} dataRoot Data root of the server
+ * @param {string} [handle] User account handle
  * @returns {boolean}
  */
-export function isFirstRunOver(dataRoot) {
+export function isFirstRunOver(dataRoot, handle = DEFAULT_USER_HANDLE) {
     try {
-        return !JSON.parse(fs.readFileSync(path.join(dataRoot, SETTINGS_FILE), 'utf8')).firstRun;
+        const settings = JSON.parse(fs.readFileSync(path.join(dataRoot, handle, 'settings.json'), 'utf8'));
+        return !settings.firstRun && settings.accountStorage?.WelcomePage_ShowAtStartup !== 'true';
     } catch {
         // The server can save during this read, so the read can fail or get a part of the file.
         return false;
@@ -188,72 +240,119 @@ export function isFirstRunOver(dataRoot) {
 }
 
 /**
- * Waits until the first run of a server is over, and fails when the time limit ends first.
+ * Waits until the first run of a server account is over, and fails when the time limit ends first.
  * @param {string} dataRoot Data root of the server
- * @param {{ timeoutMs?: number, intervalMs?: number }} [options] Time limit, and time between two checks
+ * @param {{ handle?: string, timeoutMs?: number, intervalMs?: number }} [options] Account handle, time limit, and poll interval
  * @returns {Promise<void>}
  */
-export async function waitUntilFirstRunIsOver(dataRoot, { timeoutMs = 60_000, intervalMs = 100 } = {}) {
+export async function waitUntilFirstRunIsOver(dataRoot, { handle = DEFAULT_USER_HANDLE, timeoutMs = 60_000, intervalMs = 100 } = {}) {
     const deadline = Date.now() + timeoutMs;
-    while (!isFirstRunOver(dataRoot)) {
+    while (!isFirstRunOver(dataRoot, handle)) {
         if (Date.now() >= deadline) {
-            throw new Error(`The server did not store the end of its first run in ${path.join(dataRoot, SETTINGS_FILE)} within ${timeoutMs / 1000} s.`);
+            throw new Error(`The server did not store the end of its first run in ${path.join(dataRoot, handle, 'settings.json')} within ${timeoutMs / 1000} s.`);
         }
         await new Promise(resolve => setTimeout(resolve, intervalMs));
     }
 }
 
 /**
- * Finds free ports. All of them are held open together, so that no port is returned twice.
+ * Removes the storage-state folder of each managed server. Safe to run in globalTeardown while servers still run.
+ * @param {{ dataRoot: string }[]} servers Managed servers
+ */
+export function removeStorageDirectories(servers) {
+    for (const server of servers) {
+        const directory = path.join(server.dataRoot, STORAGE_DIRECTORY);
+        if (!fs.existsSync(directory)) {
+            continue;
+        }
+        try {
+            fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+        } catch (error) {
+            console.warn(`Could not remove the test storage state directory ${directory}: ${error.message}`);
+        }
+    }
+}
+
+/**
+ * Removes the throwaway data root of each managed server.
+ * @param {{ dataRoot: string }[]} servers Managed servers
+ */
+export function cleanupServerDataRoots(servers) {
+    for (const server of servers) {
+        if (!fs.existsSync(server.dataRoot)) {
+            continue;
+        }
+        try {
+            // Windows releases the files of a stopped server with a delay.
+            fs.rmSync(server.dataRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+        } catch (error) {
+            console.warn(`Could not remove the test data root ${server.dataRoot}: ${error.message}`);
+        }
+    }
+}
+
+/**
+ * Finds free ports other than the maintainer's default port. All of them are held open together, so no port is returned twice.
  * @param {number} count Number of ports
  * @returns {Promise<number[]>}
  */
 async function findFreePorts(count) {
-    const listeners = await Promise.all(Array.from({ length: count }, () => new Promise((resolve, reject) => {
-        const listener = net.createServer();
-        listener.once('error', reject);
-        listener.listen(0, '127.0.0.1', () => resolve(listener));
-    })));
-    const ports = listeners.map(listener => listener.address().port);
-    await Promise.all(listeners.map(listener => new Promise(resolve => listener.close(resolve))));
-    return ports;
+    const listeners = [];
+    const discarded = [];
+    try {
+        while (listeners.length < count) {
+            const listener = await new Promise((resolve, reject) => {
+                const candidate = net.createServer();
+                candidate.once('error', reject);
+                candidate.listen(0, '127.0.0.1', () => resolve(candidate));
+            });
+            if (listener.address().port === MAINTAINER_PORT) {
+                discarded.push(listener);
+            } else {
+                listeners.push(listener);
+            }
+        }
+        return listeners.map(listener => listener.address().port);
+    } finally {
+        await Promise.all([...listeners, ...discarded].map(listener => new Promise(resolve => listener.close(resolve))));
+    }
 }
 
 /**
- * Chooses a port and a throwaway data root for each server.
+ * Chooses a port and a throwaway data root for each server, and writes an isolated config.yaml when accounts are enabled.
  * @param {number} count Number of servers
+ * @param {{ isolateAccounts?: boolean }} [options]
  * @returns {Promise<{ url: string, port: number, dataRoot: string }[]>}
  */
-async function createServerList(count) {
+async function createServerList(count, { isolateAccounts = true } = {}) {
     const ports = await findFreePorts(count);
-    const servers = ports.map(port => ({
-        url: `http://127.0.0.1:${port}`,
-        port,
-        dataRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-test-data-')),
-    }));
-    // Playwright stops the servers after globalTeardown, so the data roots are removed only when the process exits.
-    process.on('exit', () => {
-        for (const server of servers) {
-            try {
-                // Windows releases the files of a stopped server with a delay.
-                fs.rmSync(server.dataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-            } catch (error) {
-                console.warn(`Could not remove the test data root ${server.dataRoot}: ${error.message}`);
-            }
+    const servers = ports.map(port => {
+        const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-test-data-'));
+        if (isolateAccounts) {
+            // initConfig() merges default/config.yaml around any key already present in this scratch config.
+            fs.writeFileSync(path.join(dataRoot, 'config.yaml'), 'enableUserAccounts: true\n');
         }
+        return {
+            url: `http://127.0.0.1:${port}`,
+            port,
+            dataRoot,
+        };
     });
+    // Playwright stops the servers after globalTeardown, so the data roots are removed when the process exits.
+    process.on('exit', () => cleanupServerDataRoots(servers));
     return servers;
 }
 
 /**
  * Gets the SillyBunny parts of the Playwright config.
  *
- * With a base URL variable set, the tests use that server. Otherwise SILLYBUNNY_TEST_SERVERS=N starts N servers,
- * each on its own port with a throwaway data root, and each worker uses one of them. Without either, the tests use
- * the server at the default base URL.
+ * With a base URL variable set (or `SILLYBUNNY_TEST_SERVERS=0`), the tests use that server. Otherwise the config
+ * starts one managed server (or `SILLYBUNNY_TEST_SERVERS=N` servers) on free ports with throwaway data roots, enables
+ * per-worker user accounts by default (`SILLYBUNNY_TEST_ISOLATE_ACCOUNTS=0` opts out), and spreads workers over them.
  *
  * Playwright imports the config again in each worker process after it sets TEST_PARALLEL_INDEX, so a worker reads
- * its server here. Test helpers that read SILLYBUNNY_TEST_BASE_URL when they load get the same server.
+ * its server and storage state here. Test helpers that read SILLYBUNNY_TEST_BASE_URL or SILLYBUNNY_TEST_STORAGE_STATE
+ * when they load get the same server and account.
  * @param {NodeJS.ProcessEnv} [env] Environment variables
  * @returns {Promise<{ workers: number, use: object, config: object }>}
  */
@@ -271,24 +370,35 @@ export async function getServerConfig(env = process.env) {
     if (!servers) {
         const count = parallelIndex === undefined ? getServerCount(env) : 0;
         if (count === 0) {
-            if (parallelIndex === undefined && env[SERVER_COUNT_VARIABLE]) {
+            const hasExplicitBaseUrl = BASE_URL_VARIABLES.some(name => env[name]);
+            if (parallelIndex === undefined && hasExplicitBaseUrl && env[SERVER_COUNT_VARIABLE] && env[SERVER_COUNT_VARIABLE] !== '0') {
                 console.warn(`${SERVER_COUNT_VARIABLE} has no effect, because a base URL variable names a server.`);
             }
             return { workers: getDefaultWorkers(0, cpuCount), use: getUse(false), config: {} };
         }
         getServerRuntime(env);
-        servers = await createServerList(count);
+        const isolateAccounts = isAccountIsolationEnabled(env, true);
+        servers = await createServerList(count, { isolateAccounts });
         env[SERVER_LIST_VARIABLE] = JSON.stringify(servers);
     }
 
+    const isolateAccounts = isAccountIsolationEnabled(env, true);
     const use = getUse(true);
     if (parallelIndex === undefined) {
         // The main process runs no test. A worker that did not import the config again has no base URL, so it
         // fails at its first navigation. It does not use the server of another worker.
         use.baseURL = undefined;
+        use.storageState = undefined;
     } else {
-        use.baseURL = getServerUrl(servers, Number(parallelIndex));
+        const workerIndex = Number(parallelIndex);
+        const server = servers[workerIndex % servers.length];
+        use.baseURL = server.url;
+        use.storageState = getWorkerStorageStatePath(server, workerIndex, { isolateAccounts });
         env.SILLYBUNNY_TEST_BASE_URL = use.baseURL;
+        env[STORAGE_STATE_VARIABLE] = use.storageState;
+        if (isolateAccounts) {
+            env[WORKER_HANDLE_VARIABLE] = getWorkerAccountHandle(workerIndex);
+        }
     }
 
     // The main process searches once, and the workers take its result.
@@ -302,6 +412,7 @@ export async function getServerConfig(env = process.env) {
         config: {
             ...(projects && { projects }),
             globalSetup: path.join(testsDirectory, 'e2e-servers-prime.js'),
+            globalTeardown: path.join(testsDirectory, 'e2e-servers-teardown.js'),
             webServer: {
                 command: `"${process.execPath}" "${path.join(testsDirectory, 'e2e-servers-launch.js')}"`,
                 cwd: repositoryDirectory,

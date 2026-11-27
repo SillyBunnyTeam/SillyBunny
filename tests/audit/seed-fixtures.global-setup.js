@@ -1,4 +1,8 @@
-import { SERVER_LIST_VARIABLE } from '../e2e-servers.js';
+import {
+    SERVER_LIST_VARIABLE,
+    getWorkerStorageStatePath,
+    isAccountIsolationEnabled,
+} from '../e2e-servers.js';
 import { NEED_MODULES } from '../helpers/surfaces/fixture-data.js';
 import { seedServer } from '../helpers/surfaces/fixtures.js';
 import { assertSeedableServer, SEED_FAILURES_VARIABLE } from '../helpers/surfaces/seed-guard.js';
@@ -16,22 +20,41 @@ import { assertSeedableServer, SEED_FAILURES_VARIABLE } from '../helpers/surface
  */
 export default async function seedFixtures(config) {
     const needed = Object.keys(NEED_MODULES);
-    const servers = process.env[SERVER_LIST_VARIABLE]
-        ? JSON.parse(process.env[SERVER_LIST_VARIABLE]).map(({ url }) => url)
-        : [config.projects[0]?.use.baseURL ?? process.env.SILLYBUNNY_TEST_BASE_URL ?? 'http://127.0.0.1:4444'];
-    for (const url of servers) {
+    const managedServers = process.env[SERVER_LIST_VARIABLE] ? JSON.parse(process.env[SERVER_LIST_VARIABLE]) : null;
+    const isolateAccounts = Boolean(managedServers) && isAccountIsolationEnabled(process.env, true);
+    const workerCount = Math.max(1, Number(config?.workers) || 1);
+    const targets = managedServers
+        ? managedServers.map((server, serverIndex) => {
+            const storageStates = [];
+            if (isolateAccounts) {
+                for (let index = 0; index < workerCount; index++) {
+                    if (index % managedServers.length === serverIndex) {
+                        storageStates.push(getWorkerStorageStatePath(server, index, { isolateAccounts: true }));
+                    }
+                }
+            }
+            return { url: server.url, storageStates };
+        })
+        : [{
+            url: config.projects[0]?.use.baseURL ?? process.env.SILLYBUNNY_TEST_BASE_URL ?? 'http://127.0.0.1:4444',
+            storageStates: [],
+        }];
+    for (const { url } of targets) {
         assertSeedableServer(url, 'Surface audit fixtures');
     }
     const failures = {};
-    await Promise.all(servers.map(async url => {
+    await Promise.all(targets.map(async ({ url, storageStates }) => {
         const created = [];
         failures[new URL(url).origin] = {};
-        for (const need of needed) {
-            try {
-                created.push(...await seedServer(url, [need]));
-            } catch (error) {
-                failures[new URL(url).origin][need] = error.message;
-                console.warn(`audit fixtures: could not seed "${need}" on ${url}: ${error.message}`);
+        const states = storageStates.length ? storageStates : [undefined];
+        for (const storageState of states) {
+            for (const need of needed) {
+                try {
+                    created.push(...await seedServer(url, [need], { storageState }));
+                } catch (error) {
+                    failures[new URL(url).origin][need] = error.message;
+                    console.warn(`audit fixtures: could not seed "${need}" on ${url}: ${error.message}`);
+                }
             }
         }
         console.log(`audit fixtures on ${url}: ${created.length ? created.join(', ') : 'already seeded'}`);

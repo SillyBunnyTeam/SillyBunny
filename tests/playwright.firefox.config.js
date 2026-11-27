@@ -54,17 +54,22 @@ const NOT_RUNNABLE_IN_FIREFOX = [
     },
 ];
 
+const managedServers = Boolean(baseConfig.webServer);
+
 // Opt-in: `npm run test:e2e:firefox`. The default config stays Chromium only.
 export default defineConfig({
     ...baseConfig,
     testMatch: FIREFOX_SPECS.map(name => `**/${name}.e2e.js`),
     grepInvert: NOT_RUNNABLE_IN_FIREFOX.map(({ pattern }) => pattern),
-    globalSetup: './helpers/restart-cache-clear-seed.js',
-    use: {
-        ...baseConfig.use,
-        // The restart cache clear reloads the first load of a context, which Gecko's goto() does not wait for.
-        storageState: restartCacheClearStatePath(baseConfig.use.baseURL),
-    },
+    // Managed servers already seed restart-cache-clear cookies into each worker's storage state.
+    ...(managedServers ? {} : {
+        globalSetup: './helpers/restart-cache-clear-seed.js',
+        use: {
+            ...baseConfig.use,
+            // The restart cache clear reloads the first load of a context, which Gecko's goto() does not wait for.
+            storageState: restartCacheClearStatePath(baseConfig.use.baseURL),
+        },
+    }),
     // As in the WebKit config: a request that the app's service worker handles skips `page.route` stubs.
     projects: [{ name: 'firefox', use: { browserName: 'firefox', serviceWorkers: 'block' } }],
 });

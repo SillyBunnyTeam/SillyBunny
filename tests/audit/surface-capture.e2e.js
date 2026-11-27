@@ -373,7 +373,8 @@ for (const viewport of [...new Set(plan.tests.map(planned => planned.viewport))]
                     boots++;
                     const variant = { ...cell.variant, viewport };
                     if (BOOT_MODE === 'fresh') {
-                        const context = await browser.newContext({ ...variantContextOptions(variant), locale, timezoneId, baseURL, extraHTTPHeaders });
+                        const storageState = test.info().project.use.storageState;
+                        const context = await browser.newContext({ ...variantContextOptions(variant), locale, timezoneId, baseURL, extraHTTPHeaders, ...(storageState ? { storageState } : {}) });
                         await startClockAtFixedTime(context);
                         const fresh = await context.newPage();
                         await bootSurfaceApp(fresh, baseURL, { variant, needs: surface.needs });

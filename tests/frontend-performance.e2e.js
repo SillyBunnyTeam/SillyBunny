@@ -19,7 +19,8 @@ const STARTUP_JS_BYTE_LIMIT = 13 * 1024 * 1024;
 // depends on which start of a shared server came first. This start runs in a separate browser context until the
 // stamp is stored, so the measured start is a repeat start and its count is the same on every run.
 async function storeFirstStartState(browser, baseURL) {
-    const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 } });
+    const storageState = test.info().project.use.storageState;
+    const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, ...(storageState ? { storageState } : {}) });
     try {
         const page = await context.newPage();
         await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -76,8 +77,9 @@ test.describe('frontend performance smoke', () => {
         }, null, { timeout: 60000 });
         await waitForResourceStability(page);
 
-        const snapshot = await page.evaluate((expectedCoreAssetPaths) => {
+        const snapshot = await page.evaluate(async (expectedCoreAssetPaths) => {
             const browserGlobal = globalThis;
+            const { accountsEnabled } = await import('/scripts/user.js');
             const resources = browserGlobal.performance.getEntriesByType('resource');
             const jsBytes = resources
                 .filter(entry => /\.m?js(?:\?|$)/i.test(entry.name))
@@ -101,6 +103,7 @@ test.describe('frontend performance smoke', () => {
             return {
                 title: browserGlobal.document.title,
                 hasShell: Boolean(browserGlobal.SillyBunnyShell),
+                accountsEnabled,
                 resourceCount: resources.length,
                 jsBytes,
                 cssBytes,
@@ -109,9 +112,11 @@ test.describe('frontend performance smoke', () => {
             };
         }, coreAssetPaths);
 
+        // Multi-user servers make one extra startup request (`GET /api/users/me`) to load the current user profile.
+        const resourceLimit = STARTUP_RESOURCE_LIMIT + (snapshot.accountsEnabled ? 1 : 0);
         expect(snapshot.title).toBe('SillyBunny');
         expect(snapshot.hasShell).toBe(true);
-        expect(snapshot.resourceCount).toBeLessThanOrEqual(STARTUP_RESOURCE_LIMIT);
+        expect(snapshot.resourceCount).toBeLessThanOrEqual(resourceLimit);
         expect(snapshot.jsBytes).toBeGreaterThan(0);
         expect(snapshot.jsBytes).toBeLessThan(STARTUP_JS_BYTE_LIMIT);
         expect(snapshot.cssBytes).toBeGreaterThan(0);

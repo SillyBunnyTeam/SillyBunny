@@ -8,6 +8,7 @@
  */
 
 import { request as playwrightRequest } from '@playwright/test';
+import { STORAGE_STATE_VARIABLE } from '../../e2e-servers.js';
 import { NEED_MODULES, needClosure } from './fixture-data.js';
 import { assertSeedableServer } from './seed-guard.js';
 
@@ -17,13 +18,14 @@ export { applyAnswerFixtures, applySettingsFixtures, FIXTURES } from './fixture-
  * @param {string} baseURL A loopback server that this run started (see `seed-guard.js`; any loopback server when
  * `SILLYBUNNY_AUDIT_SEED=1`); port 4444 is always refused.
  * @param {readonly string[]} needs The needs to seed, with the needs they require.
+ * @param {{ storageState?: string }} [options] Optional Playwright storage state for authenticated accounts.
  * @returns {Promise<string[]>} A description of each thing that was created, for the log.
  */
-export async function seedServer(baseURL, needs) {
+export async function seedServer(baseURL, needs, { storageState = process.env[STORAGE_STATE_VARIABLE] } = {}) {
     assertSeedableServer(baseURL, 'Surface audit fixtures');
     const order = needClosure(needs);
     const created = [];
-    const client = await playwrightRequest.newContext({ baseURL });
+    const client = await playwrightRequest.newContext({ baseURL, ...(storageState ? { storageState } : {}) });
     try {
         const { token } = await (await client.get('/csrf-token')).json();
         const headers = { 'X-CSRF-Token': token };
