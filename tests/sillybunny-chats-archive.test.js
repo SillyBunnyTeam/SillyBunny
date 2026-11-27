@@ -1,9 +1,11 @@
 /* eslint-disable playwright/no-conditional-in-test */
 /* global globalThis */
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { JSDOM } from 'jsdom';
 
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
 
@@ -51,9 +53,12 @@ jest.unstable_mockModule('../src/endpoints/chats.js', () => ({ CHAT_BACKUPS_PREF
 jest.unstable_mockModule('../src/endpoints/settings.js', () => ({ getSettingsBackupFilePrefix: () => 'settings_' }));
 jest.unstable_mockModule('../src/util.js', () => ({
     // Data Maid reads conversation chats through `src/conversation-paths.js`, which loads `src/chat-recovery.js`, and that
-    // module imports the two writers.
+    // module imports the two writers. `src/endpoints/extensions.js` also reads color/config/url helpers.
+    color: new Proxy({}, { get: () => value => value }),
     fsyncDirectorySync: () => {},
+    getConfigValue: (_key, defaultValue) => defaultValue,
     isPathUnderParent: () => true,
+    isValidUrl: () => true,
     recoverFileWriteSync: () => {},
     tryParse: value => JSON.parse(value),
     tryWriteFileSync: () => {},
@@ -73,25 +78,7 @@ const [{ DataMaidService }, { navigateAndConfirm }] = await Promise.all([
 ]);
 
 const extensionRoot = new URL('../public/scripts/extensions/sillybunny-chats-archive/', import.meta.url);
-
-async function readArchiveUiSource() {
-    const moduleDirectory = new URL('src/ui/', extensionRoot);
-    const moduleFiles = (await readdir(moduleDirectory)).filter(file => file.endsWith('.js')).sort();
-    const sources = await Promise.all([
-        readFile(new URL('src/ui.js', extensionRoot), 'utf8'),
-        readFile(new URL('src/ui-navigation.js', extensionRoot), 'utf8'),
-        ...moduleFiles.map(file => readFile(new URL(file, moduleDirectory), 'utf8')),
-    ]);
-    return sources.join('\n');
-}
-
-const [entry, ui, manifestText, extensionsEndpoint] = await Promise.all([
-    readFile(new URL('index.js', extensionRoot), 'utf8'),
-    readArchiveUiSource(),
-    readFile(new URL('manifest.json', extensionRoot), 'utf8'),
-    readFile(new URL('../src/endpoints/extensions.js', import.meta.url), 'utf8'),
-]);
-const manifest = JSON.parse(manifestText);
+const manifest = JSON.parse(await readFile(new URL('manifest.json', extensionRoot), 'utf8'));
 const entryModule = await import('../public/scripts/extensions/sillybunny-chats-archive/index.js');
 const originalFetch = globalThis.fetch;
 const originalAbortSignalAny = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
@@ -1086,35 +1073,183 @@ describe('SillyBunny Chats Archive navigation', () => {
 });
 
 describe('SillyBunny Chats Archive integration', () => {
-    test('entry point is one host-sized native dialog button, not a fake tab', () => {
-        expect(entry).toMatch(/createElement\('button'\)/);
-        expect(entry).toMatch(/createElement\('i'\)/);
-        expect(entry).toMatch(/fa-box-archive/);
-        expect(entry).toMatch(/aria-haspopup', 'dialog'/);
-        expect(entry).not.toMatch(/role', 'tab'/);
-        expect(entry).not.toMatch(/data-sb-character-tab/);
-        expect(entry).toMatch(/button\.className = 'menu_button sbca-drawer-button'/);
+    function installEntryDom(html) {
+        const dom = new JSDOM(`<!doctype html><html><body>${html}</body></html>`);
+        const prev = {
+            document: globalThis.document,
+            window: globalThis.window,
+            MutationObserver: globalThis.MutationObserver,
+            SillyTavern: globalThis.SillyTavern,
+        };
+        const observerRecords = [];
+        class TrackingMutationObserver {
+            constructor(callback) {
+                this.callback = callback;
+                this.observeCalls = [];
+                this.disconnectCalls = 0;
+                observerRecords.push(this);
+            }
+            observe(target, options) {
+                this.observeCalls.push({ target, options });
+            }
+            disconnect() {
+                this.disconnectCalls += 1;
+            }
+        }
+        const eventSource = new EventEmitter();
+        globalThis.document = dom.window.document;
+        globalThis.window = dom.window;
+        globalThis.MutationObserver = TrackingMutationObserver;
+        globalThis.SillyTavern = {
+            getContext: () => ({
+                eventSource,
+                eventTypes: { APP_READY: 'app_ready' },
+                translate: text => text,
+            }),
+        };
+        return {
+            dom,
+            eventSource,
+            observerRecords,
+            async restore() {
+                await entryModule.disable();
+                globalThis.document = prev.document;
+                globalThis.window = prev.window;
+                globalThis.MutationObserver = prev.MutationObserver;
+                globalThis.SillyTavern = prev.SillyTavern;
+                dom.window.close();
+            },
+        };
+    }
+
+    test('entry point mounts one host-sized native dialog button, not a fake tab', async () => {
+        const env = installEntryDom('<div id="right-nav-panel"><div id="rm_buttons_container"></div></div>');
+        try {
+            await entryModule.activate();
+
+            const button = document.getElementById('sbca_drawer_button');
+            expect(button).not.toBeNull();
+            expect(button.tagName).toBe('BUTTON');
+            expect(button.type).toBe('button');
+            expect(button.className).toBe('menu_button sbca-drawer-button');
+            expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+            expect(button.getAttribute('role')).not.toBe('tab');
+            expect(button.hasAttribute('data-sb-character-tab')).toBe(false);
+            expect(button.querySelector('i.fa-box-archive')).not.toBeNull();
+
+            await entryModule.disable();
+            expect(document.getElementById('sbca_drawer_button')).toBeNull();
+        } finally {
+            await env.restore();
+        }
     });
 
-    test('manifest hooks resolve to exported lifecycle functions', () => {
+    test('manifest hooks, core extension discovery, and host navigation imports are wired', async () => {
         expect(manifest.hooks).toEqual({ activate: 'activate', enable: 'enable', disable: 'disable' });
         expect(manifest).not.toHaveProperty('bundled_opt_in');
         expect(manifest).not.toHaveProperty('minimum_client_version');
         for (const hook of Object.values(manifest.hooks)) {
             expect(typeof entryModule[hook]).toBe('function');
         }
-        expect(extensionsEndpoint).toMatch(/const CORE_EXTENSIONS = new Set\(\[[\s\S]*?'sillybunny-chats-archive',[\s\S]*?\]\);/);
-        expect(ui).toContain('import(\'../../../../script.js\')');
-        expect(ui).toContain('import(\'../../../group-chats.js\')');
+
+        // Verify the real Express /api/extensions/discover route classifies sillybunny-chats-archive as core.
+        const tempExtensions = await mkdtemp(path.join(os.tmpdir(), 'sbca-discover-'));
+        const originalCwd = process.cwd();
+        const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+        try {
+            process.chdir(projectRoot);
+            const { router: extensionsRouter } = await import('../src/endpoints/extensions.js');
+            const discoverLayer = extensionsRouter.stack.find(layer => layer.route?.path === '/discover');
+            expect(discoverLayer).toBeDefined();
+            let discoveredPayload = null;
+            const fakeReq = { user: { profile: { handle: 'test-user' }, directories: { extensions: tempExtensions } } };
+            const fakeRes = { send: payload => { discoveredPayload = payload; } };
+            discoverLayer.route.stack[0].handle(fakeReq, fakeRes);
+            expect(discoveredPayload).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ name: 'sillybunny-chats-archive', type: 'core' }),
+                ]),
+            );
+        } finally {
+            process.chdir(originalCwd);
+            await rm(tempExtensions, { recursive: true, force: true });
+        }
+
+        // Verify ui-navigation dynamic imports (`../../../../script.js` and `../../../group-chats.js`) resolve and run.
+        const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
+        const setActiveGroup = jest.fn();
+        const openGroupById = jest.fn(async () => true);
+        jest.resetModules();
+        await jest.unstable_mockModule(pub('script.js'), () => ({
+            this_chid: 0,
+            setActiveGroup,
+            setActiveCharacter: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({
+            selected_group: null,
+            openGroupById,
+        }));
+        const { jumpToChat } = await import('../public/scripts/extensions/sillybunny-chats-archive/src/ui-navigation.js');
+        const navEventSource = new EventEmitter();
+        let currentChatId = 'old-chat';
+        const navCtx = {
+            eventSource: navEventSource,
+            eventTypes: { CHAT_CHANGED: 'chat_changed' },
+            characters: [],
+            getCurrentChatId: () => currentChatId,
+            openGroupChat: jest.fn(async (_groupId, chatId) => {
+                currentChatId = chatId;
+                navEventSource.emit('chat_changed', chatId);
+            }),
+            saveSettingsDebounced: jest.fn(),
+            translate: text => text,
+        };
+        const dom = new JSDOM('<button><span class="sbca-button-copy">Open</span></button>');
+        const control = dom.window.document.querySelector('button');
+        const state = { navigationPending: false, closed: false };
+
+        await jumpToChat(navCtx, state, { kind: 'group', groupId: 'grp-1', file_id: 'group-chat-1' }, control);
+
+        expect(openGroupById).toHaveBeenCalledWith('grp-1');
+        expect(navCtx.openGroupChat).toHaveBeenCalledWith('grp-1', 'group-chat-1');
+        expect(setActiveGroup).toHaveBeenCalledWith('grp-1');
+        dom.window.close();
     });
 
-    test('entry observer narrows from the document body when the host panel appears', () => {
-        expect(entry).toMatch(/const target = document\.querySelector\(PANEL_SELECTOR\) \?\? document\.body/);
-        expect(entry).toMatch(/observerTarget !== target/);
-        expect(entry).toMatch(/observer\.observe\(target\.parentElement, \{ childList: true \}\)/);
-        expect(entry).toMatch(/pending = setTimeout\(\(\) => \{\s*pending = null;\s*install\(\);/);
-    });
+    test('entry observer narrows from the document body when the host panel appears', async () => {
+        jest.useFakeTimers();
+        const env = installEntryDom('<div id="host-shell"></div>');
+        try {
+            await entryModule.activate();
 
+            expect(env.observerRecords).toHaveLength(1);
+            const [obs] = env.observerRecords;
+            expect(obs.observeCalls).toEqual([
+                { target: document.body, options: { childList: true, subtree: true } },
+            ]);
+
+            // Mount the host panel later and fire the MutationObserver callback.
+            const hostShell = document.getElementById('host-shell');
+            const panel = document.createElement('div');
+            panel.id = 'right-nav-panel';
+            panel.innerHTML = '<div id="rm_buttons_container"></div>';
+            hostShell.append(panel);
+
+            obs.callback();
+            // Debounced install waits 150ms before re-asserting and narrowing the observer.
+            expect(obs.disconnectCalls).toBe(1);
+            jest.advanceTimersByTime(150);
+
+            expect(obs.disconnectCalls).toBe(2);
+            expect(obs.observeCalls.slice(1)).toEqual([
+                { target: panel, options: { childList: true, subtree: true } },
+                { target: hostShell, options: { childList: true } },
+            ]);
+            expect(document.getElementById('sbca_drawer_button')).not.toBeNull();
+        } finally {
+            await env.restore();
+        }
+    });
 });
 
 describe('Data Maid Chat Archive integration', () => {

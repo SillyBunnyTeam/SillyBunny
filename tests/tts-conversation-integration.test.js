@@ -1,41 +1,20 @@
+/** @jest-environment jsdom */
 /* global globalThis */
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
+import { getExtensionCapability } from '../public/scripts/sillybunny-conversation/extension-capabilities.js';
+import { SimpleMutex } from '../public/scripts/util/SimpleMutex.js';
+import { loadTtsModule } from './util/tts-module-harness.js';
 
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
-const ttsSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/tts/index.js', import.meta.url)), 'utf8');
 
-function getFunctionSource(name) {
-    const asyncStart = ttsSource.indexOf(`async function ${name}(`);
-    const exportedAsyncStart = ttsSource.indexOf(`export async function ${name}(`);
-    const exportedStart = ttsSource.indexOf(`export function ${name}(`);
-    let start = asyncStart >= 0 ? asyncStart : ttsSource.indexOf(`function ${name}(`);
-    if (exportedAsyncStart >= 0) start = ttsSource.indexOf('async function', exportedAsyncStart);
-    else if (exportedStart >= 0 && (start < 0 || exportedStart < start)) start = ttsSource.indexOf('function', exportedStart);
-    expect(start).toBeGreaterThanOrEqual(0);
-    const bodyStart = ttsSource.indexOf('{', ttsSource.indexOf(')', ttsSource.indexOf('(', start)));
-    let depth = 0;
-    for (let index = bodyStart; index < ttsSource.length; index++) {
-        if (ttsSource[index] === '{') depth++;
-        if (ttsSource[index] === '}' && --depth === 0) return ttsSource.slice(start, index + 1);
+let activeHarness = null;
+
+async function drainMacrotasks(rounds = 5) {
+    for (let i = 0; i < rounds; i++) {
+        await new Promise(resolve => setTimeout(resolve, 0));
     }
-    throw new Error(`Unable to extract ${name}`);
-}
-
-function createTtsContext(values = {}) {
-    return vm.createContext({ ...values });
-}
-
-function evaluateInContext(name, context) {
-    const fn = vm.runInContext(`(${getFunctionSource(name)})`, context);
-    context[name] = fn;
-    return fn;
-}
-
-function evaluateFunction(name, values = {}) {
-    return evaluateInContext(name, createTtsContext(values));
 }
 
 function installCapabilityRegistry(entries) {
@@ -45,25 +24,18 @@ function installCapabilityRegistry(entries) {
     });
 }
 
-function createEpochAwareAddAudioJob(context, audioJobQueue) {
-    // Mirrors the shipped addAudioJob epoch guard: stale-epoch chunks are dropped.
-    return async function addAudioJob(response, char, epoch) {
-        const current = context.isTtsEpochCurrent(epoch);
-        current && audioJobQueue.push({ response, char, epoch });
-        return current ? { audioBlob: response, mimeType: '' } : null;
-    };
-}
-
 async function importConversationTts() {
     jest.resetModules();
-    await jest.unstable_mockModule('../public/script.js', () => ({ name1: 'User' }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store-utils.js', () => ({
+    await jest.unstable_mockModule(pub('script.js'), () => ({ name1: 'User' }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-store-utils.js'), () => ({
         getConversationAttachmentSummary: jest.fn(() => '[Attachment]'),
     }));
-    return import('../public/scripts/sillybunny-conversation/tts.js');
+    return import(pub('scripts/sillybunny-conversation/tts.js'));
 }
 
 afterEach(() => {
+    activeHarness?.cleanup();
+    activeHarness = null;
     delete globalThis[capabilityRegistryKey];
     delete globalThis.toastr;
     jest.restoreAllMocks();
@@ -126,7 +98,7 @@ describe('TTS Conversation integration', () => {
             && chatId === 'branch-a'
             && personaId === 'persona-a'
         ));
-        // The conversation is named by its persona and group, and each chat holds the messages that were written to it.
+        // The conversation is named by its persona and group, and each chat holds the messages written to it.
         const getConversationAddress = jest.fn((_avatar, { chatId = '', groupId = '', personaId = '' } = {}) => ({ conversationId: `${personaId}|${groupId}`, chatId: chatId || 'main' }));
         const commitChat = jest.fn((address, edit) => {
             const key = `${address.conversationId}|${address.chatId}`;
@@ -136,13 +108,13 @@ describe('TTS Conversation integration', () => {
             edit(chats.get(key));
         });
 
-        await jest.unstable_mockModule('../public/scripts/RossAscends-mods.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/RossAscends-mods.js'), () => ({
             getMessageTimeStamp: jest.fn(() => 'now'),
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/constants.js'), () => ({
             SAFE_TOAST_OPTIONS: {},
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/context.js'), () => ({
             getActiveConversationChat: jest.fn(() => null),
             getConversationAddress,
             getConversationGroupIdForAvatar: jest.fn(() => 'group-a'),
@@ -151,25 +123,25 @@ describe('TTS Conversation integration', () => {
             getCurrentCharName: jest.fn(() => 'Speaker'),
             parsePositiveInt: jest.fn(value => Number(value) || 0),
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-data-browser.js'), () => ({
             conversationData: { commitChat, chat: jest.fn(() => null) },
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/notifications.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/notifications.js'), () => ({
             isConversationActive,
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/render-scheduler.js'), () => ({
             scheduleTimelineRender,
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/settings-store.js'), () => ({
             getConversationSessionMarker: jest.fn(() => 0),
             resetFollowupCount: jest.fn(),
             setConversationSessionMarker: jest.fn(),
             setLastUserActivity: jest.fn(),
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/typing.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/typing.js'), () => ({
             stripPreviewText: jest.fn(value => String(value || '').trim()),
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store-utils.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-store-utils.js'), () => ({
             getConversationAttachmentLabels: jest.fn(() => []),
             getConversationAttachmentSummary: jest.fn(() => ''),
             getConversationFileAttachments: jest.fn(() => []),
@@ -182,11 +154,11 @@ describe('TTS Conversation integration', () => {
             resolveConversationReminderChatId: jest.fn(() => 'branch-a'),
             safeParseMessages: jest.fn(messages => messages),
         }));
-        await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/tts.js', () => ({
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/tts.js'), () => ({
             narrateConversationMessage,
         }));
 
-        const { appendConversationChatMessage } = await import('../public/scripts/sillybunny-conversation/conversation-store.js');
+        const { appendConversationChatMessage } = await import(pub('scripts/sillybunny-conversation/conversation-store.js'));
         appendConversationChatMessage('speaker.png', { mes: 'other persona', role: 'character' }, {
             chatId: 'branch-a',
             groupId: 'group-a',
@@ -208,14 +180,12 @@ describe('TTS Conversation integration', () => {
             groupId: 'group-a',
             personaId: 'persona-a',
         });
-        // Every message is written to the chat it names; only the visible one is narrated.
         expect([...chats.keys()].sort()).toEqual(['persona-a|group-a|branch-a', 'persona-a|group-a|branch-b', 'persona-a|group-b|branch-a', 'persona-b|group-a|branch-a']);
         expect(chats.get('persona-a|group-a|branch-a').messages).toEqual([visibleMessage]);
         expect(narrateConversationMessage).toHaveBeenCalledTimes(1);
         expect(narrateConversationMessage).toHaveBeenCalledWith(visibleMessage, { isStillVisible: expect.any(Function) });
         expect(scheduleTimelineRender).toHaveBeenCalledTimes(1);
 
-        // The revalidation callback tracks live thread identity, not a stale value.
         const { isStillVisible } = narrateConversationMessage.mock.calls[0][1];
         expect(isStillVisible()).toBe(true);
         isConversationActive.mockReturnValue(false);
@@ -223,44 +193,76 @@ describe('TTS Conversation integration', () => {
     });
 
     test('narrate revalidates visibility immediately before enqueue; manual Speak is unaffected', async () => {
-        const context = createTtsContext({
-            DEFAULT_VOICE_MARKER: '[Default Voice]',
-            console: { warn: jest.fn() },
-            ensureTtsProviderLoaded: jest.fn(async () => {}),
-            extension_settings: { tts: { enabled: true, auto_generation: true, narrate_user: true } },
-            hasVoiceMapForSpeaker: jest.fn(() => true),
-            initVoiceMap: jest.fn(async () => {}),
-            processAndQueueTtsMessage: jest.fn(),
-            resetTtsPlayback: jest.fn(),
-            toastr: { info: jest.fn(), warning: jest.fn() },
-            ttsShellInitializationPromise: Promise.resolve(),
-            window: { _ttsExtensionInitialized: true },
-            wrapper: { update: jest.fn(async () => {}) },
+        let visible = true;
+        let flipVisibilityOnFetch = false;
+        let loadAttempts = 0;
+        const generateTts = jest.fn(async () => 'data:audio/wav;base64,');
+
+        class VisibilityProvider {
+            constructor() {
+                this.settings = {};
+                this.settingsHtml = '';
+            }
+            async loadSettings(settings) {
+                loadAttempts += 1;
+                if (loadAttempts === 1) throw new Error('initial load offline');
+                this.settings = settings || {};
+            }
+            async checkReady() {}
+            async fetchTtsVoiceObjects() {
+                if (flipVisibilityOnFetch) {
+                    flipVisibilityOnFetch = false;
+                    visible = false;
+                }
+                return [{ name: 'Voice One', voice_id: 'voice-1', lang: 'en-US' }];
+            }
+            async getVoice(name) { return { name, voice_id: 'voice-1' }; }
+            async generateTts(text, voiceId, key, signal) { return generateTts(text, voiceId, key, signal); }
+        }
+
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        activeHarness = await loadTtsModule({
+            ttsSettings: {
+                enabled: true,
+                auto_generation: true,
+                narrate_user: true,
+                currentProvider: 'VisTest',
+                VisTest: { voiceMap: { '[Default Voice]': 'Voice One', Mona: 'Voice One' } },
+            },
         });
-        const narrateTtsMessage = evaluateInContext('narrateTtsMessage', context);
+        activeHarness.ttsModule.registerTtsProvider('VisTest', VisibilityProvider);
+        await activeHarness.ttsModule.init();
+        await drainMacrotasks();
+        expect(loadAttempts).toBe(1);
+        expect(warnSpy).toHaveBeenCalled();
+
         const message = { name: 'Mona', mes: 'Hello' };
 
-        let visible = true;
-        context.initVoiceMap.mockImplementationOnce(async () => { visible = false; });
-        await expect(narrateTtsMessage(message, { isStillVisible: () => visible })).resolves.toBe(false);
-        expect(context.processAndQueueTtsMessage).not.toHaveBeenCalled();
+        // Visibility turns false while initVoiceMap awaits provider voices; auto narration cancels.
+        flipVisibilityOnFetch = true;
+        await expect(activeHarness.ttsModule.narrateTtsMessage(message, { isStillVisible: () => visible })).resolves.toBe(false);
+        await drainMacrotasks();
+        expect(generateTts).not.toHaveBeenCalled();
+        // Provider readiness retried on demand after the initial init failure.
+        expect(loadAttempts).toBe(2);
 
-        // Manual Speak ignores visibility revalidation entirely.
-        await expect(narrateTtsMessage(message, { manual: true, isStillVisible: () => false })).resolves.toBe(true);
-        expect(context.resetTtsPlayback).toHaveBeenCalledTimes(1);
-        expect(context.processAndQueueTtsMessage).toHaveBeenCalledTimes(1);
+        // Manual Speak ignores visibility revalidation and resets active playback.
+        await expect(activeHarness.ttsModule.narrateTtsMessage(message, { manual: true, isStillVisible: () => false })).resolves.toBe(true);
+        await drainMacrotasks();
+        expect(activeHarness.cancelTtsPlay).toHaveBeenCalledTimes(1);
+        expect(generateTts).toHaveBeenCalledTimes(1);
 
-        await expect(narrateTtsMessage(message, { isStillVisible: () => true })).resolves.toBe(true);
-        expect(context.processAndQueueTtsMessage).toHaveBeenCalledTimes(2);
-        // Auto narration retried provider readiness on each call instead of failing permanently.
-        expect(context.ensureTtsProviderLoaded).toHaveBeenCalledTimes(3);
+        // Visible automatic narration succeeds once the thread stays visible.
+        await expect(activeHarness.ttsModule.narrateTtsMessage(message, { isStillVisible: () => true })).resolves.toBe(true);
+        await drainMacrotasks();
+        expect(generateTts).toHaveBeenCalledTimes(2);
     });
 
     test('provider loads run in order and A -> B -> A ends on A without reusing the stale A promise', async () => {
-        const createQueue = evaluateFunction('createTtsProviderLoadQueue');
+        activeHarness = await loadTtsModule();
         const releases = [];
         const events = [];
-        const queue = createQueue(async provider => {
+        const queue = activeHarness.ttsModule.createTtsProviderLoadQueue(async provider => {
             events.push(`start:${provider}`);
             await new Promise(resolve => releases.push(resolve));
             events.push(`end:${provider}`);
@@ -288,8 +290,8 @@ describe('TTS Conversation integration', () => {
     });
 
     test('serialized provider queue continues after a failed load', async () => {
-        const createQueue = evaluateFunction('createTtsProviderLoadQueue');
-        const queue = createQueue(async provider => {
+        activeHarness = await loadTtsModule();
+        const queue = activeHarness.ttsModule.createTtsProviderLoadQueue(async provider => {
             if (provider === 'broken') throw new Error('broken');
             return provider;
         });
@@ -299,11 +301,11 @@ describe('TTS Conversation integration', () => {
     });
 
     test('voice-map requests coalesce unrestricted and speaker flags without dropping either', async () => {
-        const createInitializer = evaluateFunction('createTtsVoiceMapInitializer', { Set, Array, String, Boolean });
+        activeHarness = await loadTtsModule();
         let releaseFirst;
         const firstGate = new Promise(resolve => { releaseFirst = resolve; });
         const calls = [];
-        const request = createInitializer(async (unrestricted, speakers) => {
+        const request = activeHarness.ttsModule.createTtsVoiceMapInitializer(async (unrestricted, speakers) => {
             calls.push([unrestricted, [...speakers].sort()]);
             if (calls.length === 1) await firstGate;
         });
@@ -316,209 +318,321 @@ describe('TTS Conversation integration', () => {
         await restricted;
         expect(calls).toEqual([[false, ['Mona']], [true, ['Rin']]]);
 
-        const failingRequest = createInitializer(async () => { throw new Error('voices failed'); });
+        const failingRequest = activeHarness.ttsModule.createTtsVoiceMapInitializer(async () => { throw new Error('voices failed'); });
         await expect(failingRequest(false)).rejects.toThrow('voices failed');
     });
 
-    test('unrestricted voice maps include the persona and requested speakers with multivoice expansion', () => {
-        const context = createTtsContext({
-            DEFAULT_VOICE_MARKER: '[Default Voice]',
-            extension_settings: { tts: { multi_voice_enabled: true } },
-            getContext: () => ({
-                characters: [{ name: 'Roleplay' }],
-                groupId: null,
-                name1: 'Traveler',
-                name2: 'Roleplay',
-            }),
-            onlyUnique: (value, index, array) => array.indexOf(value) === index,
+    test('unrestricted voice maps include the persona and requested speakers with multivoice expansion', async () => {
+        activeHarness = await loadTtsModule({
+            characters: [{ name: 'Roleplay' }],
+            groupId: null,
+            name1: 'Traveler',
+            name2: 'Roleplay',
+            ttsSettings: { multi_voice_enabled: true },
         });
-        evaluateInContext('expandCharactersForMultiVoice', context);
-        const getCharacters = evaluateInContext('getCharacters', context);
 
-        const names = getCharacters(true, ['Mona']);
+        const names = activeHarness.ttsModule.getCharacters(true, ['Mona']);
         expect(names).toContain('[Default Voice]');
         expect(names).toContain('Traveler ("Quotes")');
         expect(names).toContain('Mona ("Quotes")');
         expect(names).toContain('Mona (*Text inside asterisks*)');
         expect(names).toContain('Mona (Other text)');
 
-        context.extension_settings.tts.multi_voice_enabled = false;
-        const plain = getCharacters(true, ['Mona']);
+        activeHarness.extension_settings.tts.multi_voice_enabled = false;
+        const plain = activeHarness.ttsModule.getCharacters(true, ['Mona']);
         expect(plain).toEqual(expect.arrayContaining(['[Default Voice]', 'Roleplay', 'Traveler', 'Mona']));
     });
 
-    test('speaker mapping resolves expanded multivoice keys and gates enqueue', () => {
-        const context = createTtsContext({
-            DEFAULT_VOICE_MARKER: '[Default Voice]',
-            DISABLED_VOICE_MARKER: 'disabled',
-            extension_settings: { tts: { multi_voice_enabled: false } },
-            voiceMap: {},
+    test('speaker mapping resolves expanded multivoice keys and gates enqueue', async () => {
+        const generateTts = jest.fn(async () => 'data:audio/wav;base64,');
+        class VoiceMapProvider {
+            constructor() {
+                this.settings = {};
+                this.settingsHtml = '';
+            }
+            async loadSettings(settings) { this.settings = settings || {}; }
+            async checkReady() {}
+            async fetchTtsVoiceObjects() {
+                return [
+                    { name: 'voice-default', voice_id: 'id-default', lang: 'en-US' },
+                    { name: 'voice-dialogue', voice_id: 'id-dialogue', lang: 'en-US' },
+                    { name: 'voice-action', voice_id: 'id-action', lang: 'en-US' },
+                    { name: 'voice-other', voice_id: 'id-other', lang: 'en-US' },
+                ];
+            }
+            async getVoice(voiceName) { return { name: voiceName, voice_id: `id-${voiceName}` }; }
+            async generateTts(text, voiceId, key, signal) { return generateTts(text, voiceId, key, signal); }
+        }
+
+        activeHarness = await loadTtsModule({
+            characters: [{ name: 'Mona' }, { name: 'Rin' }],
+            chat: [{ name: 'Rin', mes: 'hi' }],
+            ttsSettings: {
+                enabled: true,
+                auto_generation: true,
+                multi_voice_enabled: false,
+                currentProvider: 'MapTest',
+                MapTest: {
+                    voiceMap: {
+                        '[Default Voice]': '',
+                        Mona: '[Default Voice]',
+                    },
+                },
+            },
         });
-        evaluateInContext('resolveSpeakerVoiceMapEntry', context);
-        const hasVoiceMapForSpeaker = evaluateInContext('hasVoiceMapForSpeaker', context);
+        activeHarness.ttsModule.registerTtsProvider('MapTest', VoiceMapProvider);
+        await activeHarness.ttsModule.init();
+        await drainMacrotasks();
 
-        expect(hasVoiceMapForSpeaker('Mona')).toBe(false);
-        context.voiceMap.Mona = '[Default Voice]';
-        expect(hasVoiceMapForSpeaker('Mona')).toBe(false);
-        context.voiceMap['[Default Voice]'] = 'voice-default';
-        expect(hasVoiceMapForSpeaker('Mona')).toBe(true);
+        // Unmapped default voice blocks Mona even though Mona points to [Default Voice].
+        await expect(activeHarness.ttsModule.narrateTtsMessage({ name: 'Mona', mes: 'Hello' }, { unrestrictedVoiceMap: true }))
+            .resolves.toBe(false);
+        expect(generateTts).not.toHaveBeenCalled();
 
-        context.extension_settings.tts.multi_voice_enabled = true;
-        expect(hasVoiceMapForSpeaker('Rin')).toBe(false);
-        context.voiceMap['Rin ("Quotes")'] = 'voice-dialogue';
-        context.voiceMap['Rin (*Text inside asterisks*)'] = 'voice-action';
-        context.voiceMap['Rin (Other text)'] = 'voice-other';
-        expect(hasVoiceMapForSpeaker('Rin')).toBe(true);
-        // Plain-name lookups (e.g. /speak) resolve through the expanded key.
-        expect(context.resolveSpeakerVoiceMapEntry('Rin')).toBe('voice-other');
+        // Once [Default Voice] resolves to a concrete voice, Mona passes the voice-map gate.
+        activeHarness.extension_settings.tts.MapTest.voiceMap['[Default Voice]'] = 'voice-default';
+        await expect(activeHarness.ttsModule.narrateTtsMessage({ name: 'Mona', mes: 'Hello' }, { unrestrictedVoiceMap: true }))
+            .resolves.toBe(true);
+        await drainMacrotasks();
+        expect(generateTts).toHaveBeenCalledWith('Hello', 'id-voice-default', 'Mona', expect.any(AbortSignal));
+
+        // Multi-voice requires expanded speaker keys; missing keys block narration.
+        generateTts.mockClear();
+        activeHarness.extension_settings.tts.multi_voice_enabled = true;
+        activeHarness.extension_settings.tts.MapTest.voiceMap['[Default Voice]'] = '';
+        await expect(activeHarness.ttsModule.narrateTtsMessage({ name: 'Rin', mes: 'Hey' }, { unrestrictedVoiceMap: true }))
+            .resolves.toBe(false);
+        expect(generateTts).not.toHaveBeenCalled();
+
+        // Mapping all expanded multi-voice keys allows both narration and plain-name /speak lookup.
+        Object.assign(activeHarness.extension_settings.tts.MapTest.voiceMap, {
+            'Rin ("Quotes")': 'voice-dialogue',
+            'Rin (*Text inside asterisks*)': 'voice-action',
+            'Rin (Other text)': 'voice-other',
+        });
+        await expect(activeHarness.ttsModule.narrateTtsMessage({ name: 'Rin', mes: 'Plain line' }, { unrestrictedVoiceMap: true }))
+            .resolves.toBe(true);
+        await drainMacrotasks();
+        expect(generateTts).toHaveBeenCalledWith('Plain line', 'id-voice-other', 'Rin (Other text)', expect.any(AbortSignal));
+
+        // Plain-name /speak resolves through the expanded "(Other text)" voice map entry.
+        generateTts.mockClear();
+        activeHarness.state.name2 = 'Rin';
+        const speakCommand = activeHarness.slashCommands.get('speak');
+        await speakCommand.callback({ voice: 'Rin' }, 'Slash speech');
+        await drainMacrotasks();
+        expect(generateTts).toHaveBeenCalledWith('Slash speech', 'id-voice-other', 'Rin (Other text)', expect.any(AbortSignal));
     });
 
-    function createMutexQueueScenario(SimpleMutex) {
-        // Mirrors processTtsQueue(): each worker pass drains one job, then must
-        // wake itself up again while SimpleMutex is still marked busy.
-        return async function runScenario(scheduleWakeupFactory) {
-            const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-            const processed = [];
-            const ttsJobQueue = ['job1', 'job2'];
-            let scheduleWakeup;
-            const wrapper = new SimpleMutex(async () => {
-                const job = ttsJobQueue.shift();
-                await Promise.resolve();
-                job && processed.push(job);
-                ttsJobQueue.length > 0 && scheduleWakeup();
-            });
-            scheduleWakeup = scheduleWakeupFactory(wrapper);
-            await wrapper.update();
-            await delay(15);
-            return processed;
-        };
-    }
-
     test('queue wakeup survives real SimpleMutex release timing where a microtask is swallowed', async () => {
-        const { SimpleMutex } = await import('../public/scripts/util/SimpleMutex.js');
-        const runScenario = createMutexQueueScenario(SimpleMutex);
-
-        // A microtask wakeup runs before SimpleMutex clears isBusy and is dropped.
-        const microtaskResult = await runScenario(wrapper => () => queueMicrotask(() => void wrapper.update()));
-        expect(microtaskResult).toEqual(['job1']);
-
-        // The shipped macrotask wakeup observes the released mutex and drains the queue.
-        const macrotaskResult = await runScenario(wrapper => {
-            const context = createTtsContext({ setTimeout, wrapper });
-            return evaluateInContext('scheduleTtsQueueWakeup', context);
+        // Demonstrate that a microtask wakeup runs before SimpleMutex clears isBusy and is dropped.
+        const microtaskProcessed = [];
+        const microtaskQueue = ['job1', 'job2'];
+        const microtaskWrapper = new SimpleMutex(async () => {
+            const job = microtaskQueue.shift();
+            await Promise.resolve();
+            if (job) microtaskProcessed.push(job);
+            if (microtaskQueue.length > 0) queueMicrotask(() => void microtaskWrapper.update());
         });
-        expect(macrotaskResult).toEqual(['job1', 'job2']);
+        await microtaskWrapper.update();
+        await new Promise(resolve => setTimeout(resolve, 15));
+        expect(microtaskProcessed).toEqual(['job1']);
+
+        // The real TTS queue uses real SimpleMutex + macrotask wakeup to drain multi-paragraph jobs completely.
+        const spoken = [];
+        class MultiJobProvider {
+            constructor() {
+                this.settings = {};
+                this.settingsHtml = '';
+            }
+            async loadSettings(settings) { this.settings = settings || {}; }
+            async checkReady() {}
+            async fetchTtsVoiceObjects() { return [{ name: 'Voice One', voice_id: 'v1', lang: 'en-US' }]; }
+            async getVoice(name) { return { name, voice_id: 'v1' }; }
+            async generateTts(text) {
+                spoken.push(text);
+                return 'data:audio/wav;base64,';
+            }
+        }
+
+        activeHarness = await loadTtsModule({
+            ttsSettings: {
+                enabled: true,
+                auto_generation: true,
+                narrate_by_paragraphs: true,
+                currentProvider: 'WakeupTest',
+                WakeupTest: { voiceMap: { '[Default Voice]': 'Voice One', Mona: 'Voice One' } },
+            },
+        });
+        activeHarness.ttsModule.registerTtsProvider('WakeupTest', MultiJobProvider);
+        await activeHarness.ttsModule.init();
+        await drainMacrotasks();
+
+        await activeHarness.ttsModule.narrateTtsMessage({ name: 'Mona', mes: 'First paragraph\nSecond paragraph' }, { manual: true });
+        await drainMacrotasks(8);
+        expect(spoken).toEqual(['First paragraph', 'Second paragraph']);
     });
 
     test('epoch guards discard late chunks and every started job gets one terminal event', async () => {
-        const emitted = [];
-        const audioJobQueue = [];
-        const context = createTtsContext({
-            AbortController,
-            AbortSignal,
-            Promise,
-            Symbol,
-            addAudioJob: undefined,
-            audioJobQueue,
-            completeTtsJob: jest.fn(),
-            currentTtsJob: { id: 7 },
-            eventSource: { emit: jest.fn(async (event, payload) => { emitted.push([event, payload]); }) },
-            event_types: { TTS_JOB_STARTED: 'started', TTS_AUDIO_READY: 'ready', TTS_JOB_COMPLETE: 'complete' },
-            extension_settings: { rvc: { enabled: false } },
-            isTtsProcessing: () => false,
-            processAudioJobQueue: jest.fn(async () => {}),
-            ttsGenerationAbortController: null,
-            ttsPlaybackEpoch: 1,
-            ttsProvider: null,
-        });
-        context.globalThis = context;
-        evaluateInContext('isTtsEpochCurrent', context);
-        context.addAudioJob = createEpochAwareAddAudioJob(context, audioJobQueue);
-        evaluateInContext('pumpAsyncTtsResponses', context);
-        const tts = evaluateInContext('tts', context);
+        let generateImpl = async () => 'chunk-single';
+        let capturedSignal = null;
 
-        // Success path: single response, terminal success, provider got an abort signal.
-        let providerSignal = null;
-        context.ttsProvider = {
-            generateTts: jest.fn(async (_text, _voice, _key, signal) => {
-                providerSignal = signal;
-                return 'chunk';
-            }),
-        };
-        await tts('hello', 'voice-1', 'Mona');
-        expect(providerSignal).toBeInstanceOf(AbortSignal);
-        expect(audioJobQueue).toHaveLength(1);
-        expect(context.completeTtsJob).toHaveBeenCalledTimes(1);
-        expect(emitted.filter(([event]) => event === 'complete')).toEqual([
-            ['complete', expect.objectContaining({ status: 'success' })],
+        class StreamingProvider {
+            constructor() {
+                this.settings = {};
+                this.settingsHtml = '';
+            }
+            async loadSettings(settings) { this.settings = settings || {}; }
+            async checkReady() {}
+            async fetchTtsVoiceObjects() { return [{ name: 'Voice One', voice_id: 'voice-1', lang: 'en-US' }]; }
+            async getVoice(name) { return { name, voice_id: 'voice-1' }; }
+            async generateTts(text, voiceId, key, signal) {
+                capturedSignal = signal;
+                return generateImpl(text, voiceId, key, signal);
+            }
+        }
+
+        activeHarness = await loadTtsModule({
+            ttsSettings: {
+                enabled: true,
+                auto_generation: true,
+                currentProvider: 'EpochTest',
+                EpochTest: { voiceMap: { '[Default Voice]': 'Voice One', Mona: 'Voice One' } },
+            },
+        });
+        activeHarness.ttsModule.registerTtsProvider('EpochTest', StreamingProvider);
+        await activeHarness.ttsModule.init();
+        await drainMacrotasks();
+
+        const emitted = [];
+        activeHarness.eventSource.emit.mockImplementation(async (event, payload) => {
+            emitted.push([event, payload]);
+            const handlers = [...(activeHarness.eventSource.listeners.get(event) || [])];
+            for (const handler of handlers) {
+                await handler(payload);
+            }
+        });
+
+        // Success path: single response, provider gets an AbortSignal, one terminal success event.
+        await activeHarness.ttsModule.narrateTtsMessage({ name: 'Mona', mes: 'hello' }, { messageId: 7, manual: true });
+        await drainMacrotasks();
+
+        expect(capturedSignal).toBeInstanceOf(AbortSignal);
+        expect(emitted.filter(([event]) => event === activeHarness.event_types.TTS_AUDIO_READY)).toHaveLength(1);
+        expect(emitted.filter(([event]) => event === activeHarness.event_types.TTS_JOB_COMPLETE)).toEqual([
+            [activeHarness.event_types.TTS_JOB_COMPLETE, expect.objectContaining({ messageId: 7, status: 'success' })],
         ]);
 
-        // Cancellation path: reset (epoch bump) between generator chunks.
+        // Cancellation path: MESSAGE_SWIPED triggers resetTtsPlayback between generator chunks.
         emitted.length = 0;
-        audioJobQueue.length = 0;
-        context.completeTtsJob.mockClear();
         let releaseSecond;
         const secondGate = new Promise(resolve => { releaseSecond = resolve; });
-        async function* chunks() {
+        generateImpl = async () => (async function* chunks() {
             yield 'first';
             await secondGate;
             yield 'second';
-        }
-        context.ttsProvider = { generateTts: jest.fn(async () => chunks()) };
-        const cancelled = tts('hello again', 'voice-1', 'Mona');
-        await new Promise(resolve => setTimeout(resolve, 0));
-        expect(audioJobQueue).toHaveLength(1);
-        context.ttsPlaybackEpoch = 2;
-        context.ttsGenerationAbortController?.abort();
-        releaseSecond();
-        await cancelled;
+        })();
 
-        expect(audioJobQueue).toHaveLength(1);
-        expect(context.completeTtsJob).not.toHaveBeenCalled();
-        expect(emitted.filter(([event]) => event === 'complete')).toEqual([
-            ['complete', expect.objectContaining({ status: 'cancelled' })],
+        await activeHarness.ttsModule.narrateTtsMessage({ name: 'Mona', mes: 'hello again' }, { messageId: 8, manual: true });
+        await drainMacrotasks(3);
+        expect(emitted.filter(([event]) => event === activeHarness.event_types.TTS_AUDIO_READY)).toHaveLength(1);
+        expect(capturedSignal.aborted).toBe(false);
+
+        await activeHarness.eventSource.emit(activeHarness.event_types.MESSAGE_SWIPED);
+        expect(capturedSignal.aborted).toBe(true);
+        releaseSecond();
+        await drainMacrotasks(4);
+
+        expect(emitted.filter(([event]) => event === activeHarness.event_types.TTS_AUDIO_READY)).toHaveLength(1);
+        expect(emitted.filter(([event]) => event === activeHarness.event_types.TTS_JOB_COMPLETE)).toEqual([
+            [activeHarness.event_types.TTS_JOB_COMPLETE, expect.objectContaining({ messageId: 8, status: 'cancelled' })],
         ]);
     });
 
     test('a failed provider job still emits exactly one terminal failure event', async () => {
-        const emitted = [];
-        const context = createTtsContext({
-            AbortController,
-            AbortSignal,
-            Promise,
-            Symbol,
-            addAudioJob: async () => null,
-            completeTtsJob: jest.fn(),
-            currentTtsJob: { id: 3 },
-            eventSource: { emit: jest.fn(async (event, payload) => { emitted.push([event, payload]); }) },
-            event_types: { TTS_JOB_STARTED: 'started', TTS_AUDIO_READY: 'ready', TTS_JOB_COMPLETE: 'complete' },
-            extension_settings: { rvc: { enabled: false } },
-            ttsGenerationAbortController: null,
-            ttsPlaybackEpoch: 1,
-            ttsProvider: { generateTts: jest.fn(async () => { throw new Error('provider exploded'); }) },
-        });
-        context.globalThis = context;
-        evaluateInContext('isTtsEpochCurrent', context);
-        evaluateInContext('pumpAsyncTtsResponses', context);
-        const tts = evaluateInContext('tts', context);
+        class ExplodingProvider {
+            constructor() {
+                this.settings = {};
+                this.settingsHtml = '';
+            }
+            async loadSettings(settings) { this.settings = settings || {}; }
+            async checkReady() {}
+            async fetchTtsVoiceObjects() { return [{ name: 'Voice One', voice_id: 'voice-1', lang: 'en-US' }]; }
+            async getVoice(name) { return { name, voice_id: 'voice-1' }; }
+            async generateTts() { throw new Error('provider exploded'); }
+        }
 
-        await expect(tts('text', 'voice', 'Mona')).rejects.toThrow('provider exploded');
-        expect(emitted.filter(([event]) => event === 'complete')).toEqual([
-            ['complete', expect.objectContaining({ status: 'error' })],
+        jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        activeHarness = await loadTtsModule({
+            ttsSettings: {
+                enabled: true,
+                auto_generation: true,
+                currentProvider: 'FailTest',
+                FailTest: { voiceMap: { '[Default Voice]': 'Voice One', Mona: 'Voice One' } },
+            },
+        });
+        activeHarness.ttsModule.registerTtsProvider('FailTest', ExplodingProvider);
+        await activeHarness.ttsModule.init();
+        await drainMacrotasks();
+
+        const emitted = [];
+        activeHarness.eventSource.emit.mockImplementation(async (event, payload) => {
+            emitted.push([event, payload]);
+        });
+
+        await activeHarness.ttsModule.narrateTtsMessage({ name: 'Mona', mes: 'text' }, { messageId: 3, manual: true });
+        await drainMacrotasks();
+
+        expect(emitted.filter(([event]) => event === activeHarness.event_types.TTS_JOB_COMPLETE)).toEqual([
+            [activeHarness.event_types.TTS_JOB_COMPLETE, expect.objectContaining({ messageId: 3, status: 'error' })],
         ]);
-        expect(context.completeTtsJob).not.toHaveBeenCalled();
+        expect(activeHarness.toastr.error).toHaveBeenCalledWith(expect.stringContaining('provider exploded'));
     });
 
-    test('capability registration happens at activation start, before shell/provider work finishes', () => {
-        const initStart = ttsSource.indexOf('export function init()');
-        const registerCallIndex = ttsSource.indexOf('registerTtsCapability();', initStart);
-        const shellAssignIndex = ttsSource.indexOf('ttsShellInitializationPromise = initializeTtsExtension()', initStart);
-        expect(registerCallIndex).toBeGreaterThan(initStart);
-        expect(shellAssignIndex).toBeGreaterThan(registerCallIndex);
-        // Provider load failures are non-fatal for shell initialization.
-        expect(ttsSource).toContain('ttsProviderReadinessPromise = loadTtsProvider(extension_settings.tts.currentProvider);');
-        expect(ttsSource).toContain('void ttsProviderReadinessPromise.catch(');
-        // Direct import of the QIG entrypoint stays banned in the shared registry world.
-        expect(ttsSource).toContain('registerExtensionCapability(\'tts\'');
+    test('capability registration happens at activation start, before shell/provider work finishes', async () => {
+        let resolveTemplate;
+        const templatePromise = new Promise(resolve => { resolveTemplate = resolve; });
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        class FailingInitProvider {
+            constructor() {
+                this.settings = {};
+                this.settingsHtml = '';
+            }
+            async loadSettings() { throw new Error('provider boot failed'); }
+            async checkReady() {}
+            async fetchTtsVoiceObjects() { return []; }
+        }
+
+        activeHarness = await loadTtsModule({
+            renderExtensionTemplateAsync: jest.fn(() => templatePromise),
+            ttsSettings: {
+                enabled: false,
+                currentProvider: 'BootFail',
+            },
+        });
+        activeHarness.ttsModule.registerTtsProvider('BootFail', FailingInitProvider);
+
+        expect(getExtensionCapability('tts')).toBeNull();
+        const initPromise = activeHarness.ttsModule.init();
+
+        // Capability is already registered synchronously before template/provider work completes.
+        const capability = getExtensionCapability('tts');
+        expect(capability).toEqual(expect.objectContaining({
+            ensureReady: expect.any(Function),
+            narrateTtsMessage: expect.any(Function),
+        }));
+
+        resolveTemplate('<div id="tts_settings"><select id="tts_provider"></select><input type="checkbox" id="tts_enabled"><div id="tts_voicemap_block"></div><form id="tts_provider_settings"></form><input id="tts_voices"></div>');
+        // Provider failure is non-fatal for shell initialization.
+        await expect(initPromise).resolves.toBeUndefined();
+        await drainMacrotasks();
+        expect(warnSpy).toHaveBeenCalledWith(
+            expect.stringContaining('TTS provider initialization failed'),
+            expect.any(Error),
+        );
+
+        activeHarness.ttsModule.deactivate();
+        expect(getExtensionCapability('tts')).toBeNull();
     });
 });

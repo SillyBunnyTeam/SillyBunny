@@ -1,29 +1,148 @@
+/** @jest-environment jsdom */
 /* global globalThis */
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { fileURLToPath } from 'node:url';
 import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globals';
+import { importScriptModule } from './util/script-harness.js';
 
-const slashSource = readFileSync(new URL('../public/scripts/slash-commands.js', import.meta.url), 'utf8');
-const utilsSource = readFileSync(new URL('../public/scripts/utils.js', import.meta.url), 'utf8');
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 
-function loadImpersonateCommand(textarea) {
-    const state = {
-        is_send_press: true,
-        is_group_generating: false,
-        isTrueBoolean: value => value === 'true',
-        delay: ms => new Promise(resolve => setTimeout(resolve, ms)),
-        Generate: jest.fn(async () => { textarea.value = 'Generated reply'; }),
-        $: () => ({ val: value => { textarea.value = value; return [textarea]; } }),
-        Event: globalThis.Event,
-        toastr: { warning: jest.fn() },
-        t: strings => strings.join(''),
-        setTimeout, clearTimeout, setInterval, clearInterval, console,
+/**
+ * Shared peer mocks allowing real `public/scripts/utils.js` and `public/scripts/slash-commands.js`
+ * to link against real `public/script.js` inside jsdom.
+ */
+function createSlashCommandMocks(commands) {
+    return {
+        'scripts/variables.js': {
+            registerVariableCommands: jest.fn(),
+            resolveVariable: jest.fn(),
+        },
+        'scripts/action-loader-slashcommands.js': {
+            registerActionLoaderSlashCommands: jest.fn(),
+        },
+        'scripts/sillybunny-version-map.js': {
+            mapSillyBunnyVersionToStEquivalent: value => value,
+        },
+        'scripts/sillybunny-editor/adapters/utility-dialogs.js': {
+            iconPickerOptions: () => ({}),
+        },
+        'scripts/autocomplete/AutoComplete.js': {
+            AutoComplete: class {},
+            AUTOCOMPLETE_STATE: {},
+        },
+        'scripts/slash-commands/SlashCommandParser.js': {
+            SlashCommandParser: class SlashCommandParser {
+                static commands = {};
+                static addCommand = jest.fn();
+                static addCommandObject = jest.fn(cmd => {
+                    commands.set(cmd.name, cmd);
+                    SlashCommandParser.commands[cmd.name] = cmd;
+                });
+                getHelpString() { return ''; }
+            },
+        },
+        'scripts/slash-commands/SlashCommand.js': {
+            SlashCommand: { fromProps: props => props },
+        },
+        'scripts/slash-commands/SlashCommandArgument.js': {
+            ARGUMENT_TYPE: { STRING: 'string', BOOLEAN: 'boolean', NUMBER: 'number', LIST: 'list', DICTIONARY: 'dictionary', CLOSURE: 'closure', SUBCOMMAND: 'subcommand', RANGE: 'range' },
+            SlashCommandArgument: class SlashCommandArgument {
+                constructor(...args) { this.args = args; }
+                static fromProps(props) { return props; }
+            },
+            SlashCommandNamedArgument: class SlashCommandNamedArgument {
+                constructor(...args) { this.args = args; }
+                static fromProps(props) { return props; }
+            },
+        },
+        'scripts/slash-commands/SlashCommandEnumValue.js': {
+            SlashCommandEnumValue: class SlashCommandEnumValue {
+                constructor(...args) { this.args = args; }
+            },
+            enumTypes: { enum: 'enum', name: 'name', command: 'command', getBasedOnIndex: () => 'enum' },
+        },
+        'scripts/slash-commands/SlashCommandCommonEnumsProvider.js': {
+            commonEnumProviders: new Proxy({}, { get: () => () => () => [] }),
+            commonEnumMatchProviders: new Proxy({}, { get: () => () => [] }),
+            enumIcons: new Proxy({}, { get: () => '' }),
+        },
+        'scripts/slash-commands/SlashCommandReturnHelper.js': {
+            slashCommandReturnHelper: {
+                enumList: () => [],
+                doReturn: jest.fn(async v => v),
+            },
+        },
+        'scripts/slash-commands/SlashCommandClosure.js': { SlashCommandClosure: class {} },
+        'scripts/slash-commands/SlashCommandClosureResult.js': { SlashCommandClosureResult: class {} },
+        'scripts/slash-commands/SlashCommandAbortController.js': { SlashCommandAbortController: class {} },
+        'scripts/slash-commands/SlashCommandNamedArgumentAssignment.js': { SlashCommandNamedArgumentAssignment: class {} },
+        'scripts/slash-commands/SlashCommandBreakController.js': { SlashCommandBreakController: class {} },
+        'scripts/slash-commands/SlashCommandExecutionError.js': { SlashCommandExecutionError: class extends Error {} },
+        'scripts/slash-commands/SlashCommandDebugController.js': { SlashCommandDebugController: class {} },
+        'scripts/slash-commands/SlashCommandScope.js': { SlashCommandScope: class {} },
+        'scripts/slash-commands/SlashCommandParserError.js': { SlashCommandParserError: class extends Error {} },
     };
-    const start = slashSource.indexOf('callback:', slashSource.indexOf('name: \'impersonate\''));
-    const callback = slashSource.slice(start + 'callback:'.length, slashSource.indexOf('aliases: [\'imp\']', start)).trim().replace(/,\s*$/, '');
-    const waitStart = utilsSource.indexOf('export async function waitUntilCondition(');
-    const waitSource = utilsSource.slice(waitStart, utilsSource.indexOf('\n/**', waitStart)).replace('export ', '');
-    return { state, command: runInNewContext(`${waitSource}\n(${callback})`, state) };
+}
+
+/**
+ * Loads the real `/impersonate` command from `public/scripts/slash-commands.js`
+ * wired to the real `public/script.js` live `is_send_press` binding and `Generate` pipeline.
+ */
+async function loadRealImpersonateHarness({ extensionSettings, context, restore }) {
+    const commands = new Map();
+    const sendOpenAIRequest = jest.fn(async () => ({
+        choices: [{ message: { content: 'Generated reply' } }],
+    }));
+
+    const loaded = await importScriptModule({
+        keepReal: ['scripts/utils.js', 'scripts/slash-commands.js'],
+        fetch: jest.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({}),
+            text: async () => '',
+        })),
+        mocks: {
+            ...createSlashCommandMocks(commands),
+            'scripts/extensions.js': {
+                extension_settings: extensionSettings,
+                getContext: jest.fn(() => context),
+            },
+            'scripts/openai.js': base => ({
+                ...base,
+                sendOpenAIRequest,
+                prepareOpenAIMessages: jest.fn(async () => [[{ role: 'user', content: 'Guide' }], 10]),
+            }),
+            'scripts/extensions/guided-generations/scripts/presetUtils.js': {
+                getCurrentProfile: jest.fn(async () => ''),
+                getCurrentProfileId: jest.fn(async () => ''),
+                getPresetsForApiType: jest.fn(async () => []),
+                getProfileApiType: jest.fn(async () => ''),
+                getProfileById: jest.fn(() => null),
+                getProfileList: jest.fn(async () => []),
+                handleSwitching: jest.fn(async () => ({ switch: jest.fn(), restore })),
+                resolveStoredProfile: jest.fn(() => null),
+            },
+        },
+    });
+
+    loaded.script.changeMainAPI('openai');
+    loaded.script.setOnlineStatus('connected');
+    loaded.script.characters.push({ name: 'Bot', avatar: 'bot.png', description: '', personality: '', scenario: '', first_mes: 'Hi' });
+    loaded.script.setCharacterId('0');
+    loaded.script.chat.push({ name: 'Bot', is_user: false, mes: 'Previous reply' });
+    loaded.script.setSendButtonState(true);
+
+    const { initDefaultSlashCommands } = await import(pub('scripts/slash-commands.js'));
+    initDefaultSlashCommands();
+    const impersonateCommand = commands.get('impersonate');
+    expect(impersonateCommand).toBeDefined();
+
+    return {
+        script: loaded.script,
+        toastr: loaded.toastr,
+        sendOpenAIRequest,
+        command: impersonateCommand.callback,
+    };
 }
 
 function createEventSource() {
@@ -46,6 +165,7 @@ function createEventSource() {
                 await handler(...args);
             }
         }),
+        emitAndWait: jest.fn(async () => {}),
     };
 }
 
@@ -62,29 +182,9 @@ describe('Guided Generations steering commands', () => {
     });
 
     beforeEach(async () => {
-        jest.resetModules();
         jest.useRealTimers();
 
-        class TestTextAreaElement {}
-        globalThis.HTMLTextAreaElement = TestTextAreaElement;
-        globalThis.Event = class Event {
-            constructor(type, options = {}) {
-                this.type = type;
-                this.options = options;
-            }
-        };
-
-        textarea = new TestTextAreaElement();
-        textarea.value = 'aim for a colder, suspicious reply';
-        textarea.dispatchEvent = jest.fn();
-
-        eventTypes = {
-            GENERATION_ENDED: 'generation_ended',
-            GENERATION_STOPPED: 'generation_stopped',
-            MESSAGE_SWIPED: 'message_swiped',
-        };
         eventSource = createEventSource();
-
         context = {
             chatId: 'test-chat',
             chat: [{ name: 'Bot', mes: 'Previous reply', swipes: ['Previous reply'], swipe_id: 0 }],
@@ -111,6 +211,7 @@ describe('Guided Generations steering commands', () => {
             },
         };
         extensionSettings = {
+            note: { allowWIScan: false },
             'guided-generations': {
                 injectionEndRole: 'assistant',
                 depthPromptGuidedResponse: 2,
@@ -120,37 +221,32 @@ describe('Guided Generations steering commands', () => {
             },
         };
 
-        globalThis.document = {
-            createElement: jest.fn(tagName => ({
-                tagName,
-                children: [],
-                dataset: {},
-                style: {},
-                append(...children) { this.children.push(...children); },
-            })),
-            getElementById: jest.fn(id => id === 'send_textarea' ? textarea : null),
-            querySelector: jest.fn(() => null),
-        };
-        globalThis.toastr = { error: jest.fn() };
-
-        await jest.unstable_mockModule('../public/script.js', () => ({
+        const loaded = await importScriptModule({
             eventSource,
-            event_types: eventTypes,
-        }));
-        await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({
-            extension_settings: extensionSettings,
-            getContext: jest.fn(() => context),
-        }));
-        await jest.unstable_mockModule('../public/scripts/extensions/guided-generations/scripts/presetUtils.js', () => ({
-            getCurrentProfile: jest.fn(async () => ''),
-            getCurrentProfileId: jest.fn(async () => ''),
-            getPresetsForApiType: jest.fn(async () => []),
-            getProfileApiType: jest.fn(async () => ''),
-            getProfileById: jest.fn(() => null),
-            getProfileList: jest.fn(async () => []),
-            handleSwitching: jest.fn(async () => ({ switch: jest.fn(), restore: jest.fn() })),
-            resolveStoredProfile: jest.fn(() => null),
-        }));
+            keepReal: ['scripts/utils.js', 'scripts/slash-commands.js'],
+            mocks: {
+                ...createSlashCommandMocks(new Map()),
+                'scripts/extensions.js': {
+                    extension_settings: extensionSettings,
+                    getContext: jest.fn(() => context),
+                },
+                'scripts/extensions/guided-generations/scripts/presetUtils.js': {
+                    getCurrentProfile: jest.fn(async () => ''),
+                    getCurrentProfileId: jest.fn(async () => ''),
+                    getPresetsForApiType: jest.fn(async () => []),
+                    getProfileApiType: jest.fn(async () => ''),
+                    getProfileById: jest.fn(() => null),
+                    getProfileList: jest.fn(async () => []),
+                    handleSwitching: jest.fn(async () => ({ switch: jest.fn(), restore: jest.fn() })),
+                    resolveStoredProfile: jest.fn(() => null),
+                },
+            },
+        });
+        eventTypes = loaded.script.event_types;
+
+        textarea = document.getElementById('send_textarea');
+        textarea.value = 'aim for a colder, suspicious reply';
+        jest.spyOn(textarea, 'dispatchEvent');
     });
 
     test('guided response injects guidance only for the awaited generation', async () => {
@@ -195,7 +291,7 @@ describe('Guided Generations steering commands', () => {
     });
 
     test('reports a missing swipe textarea through a toast', async () => {
-        globalThis.document.getElementById.mockReturnValueOnce(null);
+        textarea.remove();
         const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
 
         await guidedSwipe();
@@ -230,8 +326,8 @@ describe('Guided Generations steering commands', () => {
         await guidedResponse();
 
         const content = context.callGenericPopup.mock.calls[0][0];
-        expect(content.textContent).toBe('Select Member to Respond As');
-        expect(content.children[0].children.map(button => ({ text: button.textContent, result: button.dataset.result }))).toEqual([
+        expect(content.firstChild.textContent).toBe('Select Member to Respond As');
+        expect(Array.from(content.querySelectorAll('button')).map(button => ({ text: button.textContent, result: button.dataset.result }))).toEqual([
             { text: '2B | "Alias"', result: '3' },
             { text: '2B | "Alias"', result: '4' },
         ]);
@@ -346,10 +442,11 @@ describe('Guided Generations steering commands', () => {
     });
 
     test.each(['missing input', 'injection', 'verification', 'cleanup', 'input event'])('swipe can retry after %s failure', async failure => {
-        jest.useFakeTimers();
         jest.spyOn(console, 'error').mockImplementation(() => {});
         jest.spyOn(console, 'warn').mockImplementation(() => {});
-        if (failure === 'missing input') globalThis.document.getElementById.mockReturnValueOnce(null);
+        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
+        jest.useFakeTimers();
+        if (failure === 'missing input') jest.spyOn(document, 'getElementById').mockReturnValueOnce(null);
         if (failure === 'injection') context.executeSlashCommandsWithOptions.mockRejectedValueOnce(new Error('Injection failed'));
         if (failure === 'verification') context.executeSlashCommandsWithOptions.mockResolvedValueOnce(undefined);
         if (failure === 'cleanup') {
@@ -357,7 +454,6 @@ describe('Guided Generations steering commands', () => {
             context.executeSlashCommandsWithOptions.mockImplementationOnce(execute).mockRejectedValueOnce(new Error('Cleanup failed'));
         }
         if (failure === 'input event') textarea.dispatchEvent.mockImplementationOnce(() => { throw new Error('Input failed'); });
-        const { guidedSwipe } = await import('../public/scripts/extensions/guided-generations/scripts/guidedSwipe.js');
         const first = guidedSwipe().catch(() => {});
         await jest.advanceTimersByTimeAsync(800);
         await first;
@@ -424,50 +520,59 @@ I | begin`;
     });
 
     test('real core busy timeout settles guided impersonation, restores and permits a retry', async () => {
-        jest.useFakeTimers();
         jest.spyOn(console, 'warn').mockImplementation(() => {});
         jest.spyOn(console, 'error').mockImplementation(() => {});
-        const { state, command } = loadImpersonateCommand(textarea);
-        const execute = context.executeSlashCommandsWithOptions.getMockImplementation();
-        context.executeSlashCommandsWithOptions.mockImplementation(async script => {
-            await execute(script);
-            if (script.includes('/impersonate await=true')) await command({ await: 'true' }, 'Guide');
-        });
-        const { handleSwitching } = await import('../public/scripts/extensions/guided-generations/scripts/presetUtils.js');
         const restore = jest.fn();
-        handleSwitching.mockResolvedValue({ switch: jest.fn(), restore });
-        const { guidedImpersonate } = await import('../public/scripts/extensions/guided-generations/scripts/guidedImpersonate.js');
+        const { script, sendOpenAIRequest, command } = await loadRealImpersonateHarness({ extensionSettings, context, restore });
+        textarea = document.getElementById('send_textarea');
+        textarea.value = 'aim for a colder, suspicious reply';
+
+        const execute = context.executeSlashCommandsWithOptions.getMockImplementation();
+        context.executeSlashCommandsWithOptions.mockImplementation(async scriptText => {
+            await execute(scriptText);
+            if (scriptText.includes('/impersonate await=true')) await command({ await: 'true' }, 'Guide');
+        });
+        const { guidedImpersonate } = await import(pub('scripts/extensions/guided-generations/scripts/guidedImpersonate.js'));
+        jest.useFakeTimers();
+
         let settled = false;
         const pending = guidedImpersonate().then(() => { settled = true; });
         await jest.advanceTimersByTimeAsync(10100);
         expect(settled).toBe(true);
         await pending;
-        expect(state.Generate).not.toHaveBeenCalled();
+        expect(sendOpenAIRequest).not.toHaveBeenCalled();
         expect(textarea.value).toBe('aim for a colder, suspicious reply');
         expect(context.chatMetadata.script_injects['gg-impersonate-voice']).toBeUndefined();
         expect(restore).toHaveBeenCalledTimes(1);
-        state.is_send_press = false;
+
+        script.setSendButtonState(false);
         const retry = guidedImpersonate();
         await jest.advanceTimersByTimeAsync(200);
         await retry;
-        expect(state.Generate).toHaveBeenCalledTimes(1);
+        expect(sendOpenAIRequest).toHaveBeenCalledTimes(1);
         expect(textarea.value).toBe('Generated reply');
         expect(restore).toHaveBeenCalledTimes(2);
     });
 
     test('non-awaited core impersonation returns immediately and handles busy timeout and generation rejection', async () => {
-        jest.useFakeTimers();
         jest.spyOn(console, 'warn').mockImplementation(() => {});
         jest.spyOn(console, 'error').mockImplementation(() => {});
-        const { state, command } = loadImpersonateCommand(textarea);
+        const { script, toastr, sendOpenAIRequest, command } = await loadRealImpersonateHarness({
+            extensionSettings,
+            context,
+            restore: jest.fn(),
+        });
+        jest.useFakeTimers();
+
         await expect(command({}, 'Guide')).resolves.toBe('');
         await jest.advanceTimersByTimeAsync(10100);
-        expect(state.toastr.warning).toHaveBeenCalledTimes(1);
-        expect(state.Generate).not.toHaveBeenCalled();
-        state.is_send_press = false;
-        state.Generate.mockRejectedValueOnce(new Error('Generation failed'));
+        expect(toastr.warning).toHaveBeenCalledTimes(1);
+        expect(sendOpenAIRequest).not.toHaveBeenCalled();
+
+        script.setSendButtonState(false);
+        sendOpenAIRequest.mockRejectedValueOnce(new Error('Generation failed'));
         await expect(command({}, 'Guide')).resolves.toBe('');
         await jest.advanceTimersByTimeAsync(200);
-        expect(state.Generate).toHaveBeenCalledTimes(1);
+        expect(sendOpenAIRequest).toHaveBeenCalledTimes(1);
     });
 });
