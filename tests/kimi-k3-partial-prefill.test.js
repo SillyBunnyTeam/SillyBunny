@@ -66,7 +66,10 @@ describe('effective prompt bias', () => {
     // whatever was sent has to be prepended back. Reading the global value in one place and the
     // K3 field in the other would paste a prefill onto a reply that never contained it.
     test('is the single source for every prefill consumer in script.js', () => {
-        expect(scriptSource.match(/getEffectivePromptBias\(\)/g)).toHaveLength(3);
+        // The fourth reader decides whether a streamed message can be formatted block by block: a prefill
+        // that is stripped for display makes the whole-message format the only correct one.
+        expect(scriptSource.match(/getEffectivePromptBias\(\)/g)).toHaveLength(4);
+        expect(scriptSource).toContain('if (!power_user.show_user_prompt_bias && getEffectivePromptBias()) {');
 
         const getBiasStrings = scriptSource.match(/export function getBiasStrings\(textareaText, type\) \{([\s\S]*?)\n\}/);
         expect(getBiasStrings).not.toBeNull();

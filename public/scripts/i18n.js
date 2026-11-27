@@ -55,6 +55,11 @@ function safeRemoveLocalStorageItem(key) {
  * reason.
  */
 var trackMissingDynamicTranslate = null;
+var localesInitialized = false;
+var isObservingLocale = false;
+
+// SillyBunny: .mes_text and .mes_reasoning hold message prose only; the reasoning header sits outside them.
+var CHAT_PROSE_SELECTOR = '.mes_text, .mes_reasoning';
 
 export const getCurrentLocale = () => localeFile;
 
@@ -74,12 +79,32 @@ export function addLocaleData(localeId, data) {
         return;
     }
 
+    let added = false;
     for (const [key, value] of Object.entries(data)) {
         // Overrides for default locale data are not allowed
         if (!Object.hasOwn(localeData, key)) {
             localeData[key] = value;
+            added = true;
         }
     }
+
+    if (added && localesInitialized && !isObservingLocale) {
+        startLocaleObserver();
+    }
+}
+
+/**
+ * Starts observing the document for data-i18n elements when a translation map is loaded.
+ */
+function startLocaleObserver() {
+    if (isObservingLocale) return;
+    isObservingLocale = true;
+    observer.observe(document, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-i18n'],
+    });
 }
 
 /**
@@ -87,9 +112,14 @@ export function addLocaleData(localeId, data) {
  * @type {MutationObserver}
  */
 const observer = new MutationObserver(mutations => {
+    // SillyBunny: skip scanning entirely when no translation map is active (e.g. default en-us).
+    if (!localeData || isEmptyLocaleData()) return;
     mutations.forEach(mutation => {
+        // SillyBunny: message prose never carries data-i18n, and streaming rewrites it many times a second.
+        if (isInsideChatProse(mutation.target)) return;
         mutation.addedNodes.forEach(node => {
             if (node.nodeType === Node.ELEMENT_NODE && node instanceof Element) {
+                if (node.matches(CHAT_PROSE_SELECTOR) || isInsideChatProse(node)) return;
                 if (node.hasAttribute('data-i18n')) {
                     translateElement(node);
                 }
@@ -103,6 +133,14 @@ const observer = new MutationObserver(mutations => {
         }
     });
 });
+
+/**
+ * @param {Node} node Mutation target
+ * @returns {boolean} True when the node is message prose or sits inside it
+ */
+function isInsideChatProse(node) {
+    return node instanceof Element && node.closest(CHAT_PROSE_SELECTOR) !== null;
+}
 
 /**
  * Translates a template string with named arguments
@@ -198,6 +236,29 @@ function translateElement(element) {
     // SillyBunny: an attribute can be removed before its queued mutation is delivered.
     const translationKeys = element.getAttribute('data-i18n');
     if (translationKeys === null) return;
+    // SillyBunny: with no translation map (default English) no key can resolve, so skip parsing them.
+    if (localeData && !isEmptyLocaleData()) {
+        translateElementKeys(element, translationKeys);
+    }
+    // SillyBunny: restore code styling after translation writes subtitle text.
+    formatSettingsMacroExamples(element);
+}
+
+/**
+ * @returns {boolean} True when the loaded locale map holds no entries
+ */
+function isEmptyLocaleData() {
+    for (const key in localeData) {
+        if (Object.hasOwn(localeData, key)) return false;
+    }
+    return true;
+}
+
+/**
+ * @param {Element} element The element to translate
+ * @param {string} translationKeys Value of its data-i18n attribute
+ */
+function translateElementKeys(element, translationKeys) {
     const keys = translationKeys.split(';'); // Multi-key entries are ; delimited
     for (const key of keys) {
         const attributeMatch = key.match(/\[(\S+)\](.+)/); // [attribute]key
@@ -214,8 +275,6 @@ function translateElement(element) {
             }
         }
     }
-    // SillyBunny: restore code styling after translation writes subtitle text.
-    formatSettingsMacroExamples(element);
 }
 
 /**
@@ -355,12 +414,11 @@ export async function initLocales() {
     addLanguagesToDropdown();
     updateSecretDisplay();
 
-    observer.observe(document, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['data-i18n'],
-    });
+    localesInitialized = true;
+    // SillyBunny: default English has no translation map; attach the observer only when translations exist.
+    if (localeData && !isEmptyLocaleData()) {
+        startLocaleObserver();
+    }
 
     if (safeGetLocalStorageItem('trackDynamicTranslate') === 'true' && isSupportedNonEnglish()) {
         trackMissingDynamicTranslate = new Set();

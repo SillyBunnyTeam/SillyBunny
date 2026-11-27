@@ -24,6 +24,9 @@ import { animation_duration, messageFormatting } from '/script.js';
 
 /** CSS class prefix */
 const CSS_PREFIX = 'streaming-display';
+// SillyBunny: coalesce streaming display updates onto rAF with a 66 ms (~15 fps) interval floor.
+/** Minimum interval between live StreamingDisplay DOM/scroll updates (~15 fps). */
+const STREAMING_DISPLAY_MIN_INTERVAL_MS = 66;
 
 /**
  * @typedef {Object} StreamingDisplayOptions
@@ -67,6 +70,16 @@ export class StreamingDisplay {
     #isStopped = false;
     /** @type {ReturnType<typeof setTimeout> | null} */
     #hideTimeoutId = null;
+    /** @type {string | null} */
+    #pendingReasoning = null;
+    /** @type {string | null} */
+    #pendingContent = null;
+    /** @type {number | null} */
+    #renderFrameId = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    #renderTimerId = null;
+    /** @type {number} */
+    #lastRenderAt = 0;
 
     /**
      * Shows the streaming display panel.
@@ -262,8 +275,8 @@ export class StreamingDisplay {
         if (!this.#reasoningContent || !this.#reasoningSection || !text) return this;
 
         this.#reasoningSection.style.display = '';
-        this.#reasoningContent.innerHTML = messageFormatting(text, '', false, false, -1, {}, true);
-        this.#reasoningContent.scrollTop = this.#reasoningContent.scrollHeight;
+        this.#pendingReasoning = text;
+        this.#scheduleFlush();
         return this;
     }
 
@@ -278,9 +291,93 @@ export class StreamingDisplay {
 
         this.#hasContent = true;
         this.#textSection.style.display = '';
-        this.#textContent.innerHTML = messageFormatting(text, '', false, false, -1, {}, false);
-        this.#textContent.scrollTop = this.#textContent.scrollHeight;
+        this.#pendingContent = text;
+        this.#scheduleFlush();
         return this;
+    }
+
+    /**
+     * Coalesces reasoning and content updates into a single rAF with a >= 66 ms interval floor.
+     */
+    #scheduleFlush() {
+        if (this.#renderFrameId !== null || this.#renderTimerId !== null) {
+            return;
+        }
+
+        const elapsed = Date.now() - this.#lastRenderAt;
+        const remaining = STREAMING_DISPLAY_MIN_INTERVAL_MS - elapsed;
+        if (remaining > 0) {
+            this.#renderTimerId = setTimeout(() => {
+                this.#renderTimerId = null;
+                this.#queueAnimationFrame();
+            }, remaining);
+            return;
+        }
+
+        this.#queueAnimationFrame();
+    }
+
+    #queueAnimationFrame() {
+        if (this.#renderFrameId !== null) {
+            return;
+        }
+
+        if (typeof requestAnimationFrame === 'function') {
+            this.#renderFrameId = requestAnimationFrame(() => {
+                this.#renderFrameId = null;
+                this.#flushPendingUpdates();
+            });
+        } else {
+            this.#renderTimerId = setTimeout(() => {
+                this.#renderTimerId = null;
+                this.#flushPendingUpdates();
+            }, 0);
+        }
+    }
+
+    #cancelScheduledFlush() {
+        if (this.#renderTimerId !== null) {
+            clearTimeout(this.#renderTimerId);
+            this.#renderTimerId = null;
+        }
+        if (this.#renderFrameId !== null && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(this.#renderFrameId);
+        }
+        this.#renderFrameId = null;
+    }
+
+    #flushPendingUpdates() {
+        if (!this.#element) {
+            this.#pendingReasoning = null;
+            this.#pendingContent = null;
+            return;
+        }
+
+        const reasoning = this.#pendingReasoning;
+        const content = this.#pendingContent;
+        this.#pendingReasoning = null;
+        this.#pendingContent = null;
+
+        if (reasoning === null && content === null) {
+            return;
+        }
+
+        // Batch DOM writes before scrollHeight reads to avoid interleaved layout thrash.
+        if (reasoning !== null && this.#reasoningContent) {
+            this.#reasoningContent.innerHTML = messageFormatting(reasoning, '', false, false, -1, {}, true);
+        }
+        if (content !== null && this.#textContent) {
+            this.#textContent.innerHTML = messageFormatting(content, '', false, false, -1, {}, false);
+        }
+
+        if (reasoning !== null && this.#reasoningContent) {
+            this.#reasoningContent.scrollTop = this.#reasoningContent.scrollHeight;
+        }
+        if (content !== null && this.#textContent) {
+            this.#textContent.scrollTop = this.#textContent.scrollHeight;
+        }
+
+        this.#lastRenderAt = Date.now();
     }
 
     /** @returns {boolean} Whether any content text has been displayed via streaming */
@@ -301,6 +398,8 @@ export class StreamingDisplay {
     markStopped({ label = null } = {}) {
         if (!this.#element || this.#isStopped || this.#isComplete) return this;
 
+        this.#cancelScheduledFlush();
+        this.#flushPendingUpdates();
         this.#isStopped = true;
         this.#clearHideTimeout();
         this.#element.classList.add(`${CSS_PREFIX}-stopped`);
@@ -334,6 +433,8 @@ export class StreamingDisplay {
     complete({ label = null, delay = 3000 } = {}) {
         if (!this.#element || this.#isComplete) return this;
 
+        this.#cancelScheduledFlush();
+        this.#flushPendingUpdates();
         this.#isComplete = true;
         this.#element.classList.add(`${CSS_PREFIX}-complete`);
 
@@ -391,6 +492,7 @@ export class StreamingDisplay {
      * @param {boolean} [options.instant=false]
      */
     #performHide({ instant = false } = {}) {
+        this.#cancelScheduledFlush();
         if (!this.#element) return;
 
         const el = this.#element;
@@ -413,6 +515,9 @@ export class StreamingDisplay {
         this.#isComplete = false;
         this.#isStopped = false;
         this.#hideTimeoutId = null;
+        this.#pendingReasoning = null;
+        this.#pendingContent = null;
+        this.#lastRenderAt = 0;
 
         if (instant) {
             el.remove();

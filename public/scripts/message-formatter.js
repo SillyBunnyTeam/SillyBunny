@@ -189,6 +189,18 @@ class MessageFormatter {
         this.#hooks.get(stage).push({ fn, order });
     }
 
+    // SillyBunny: the streaming renderer formats settled blocks on their own only while no hook can read the whole message.
+    /**
+     * Tells whether any extension registered a hook at any stage.
+     * @returns {boolean}
+     */
+    hasHooks() {
+        for (const bucket of this.#hooks.values()) {
+            if (bucket.length > 0) return true;
+        }
+        return false;
+    }
+
     /**
      * Runs all hooks registered for the given stage in order.
      * Called internally by {@link messageFormatting} at each pipeline point.

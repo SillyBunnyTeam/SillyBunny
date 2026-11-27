@@ -515,7 +515,7 @@ test.describe('SseStream', () => {
                     ]);
                 });
 
-                test('does not wait for reasoning characters when the no think setting is on', async ({ page }) => {
+                test('sends reasoning whole and without a wait when the no think setting is on', async ({ page }) => {
                     const result = await page.evaluate(runStreams, {
                         streams,
                         settings: { smooth_streaming_no_think: true },
@@ -524,14 +524,13 @@ test.describe('SseStream', () => {
                     });
 
                     expect(parsed(result.streams[0].events)).toEqual([
-                        { type: 'message', data: { type: 'content_block_delta', index: 0, delta: { thinking: 'a' } } },
-                        { type: 'message', data: { type: 'content_block_delta', index: 0, delta: { thinking: 'b' } } },
+                        { type: 'message', data: { type: 'content_block_delta', index: 0, delta: { thinking: 'ab' } } },
                         { type: 'message', data: { type: 'content_block_delta', index: 1, delta: { text: 'c' } } },
                         { type: 'message', data: { type: 'content_block_delta', index: 1, delta: { text: '.' } } },
                     ]);
                     expect(result.streams[0].pauses).toEqual([
+                        { pause: FAST.letter, after: 1 },
                         { pause: FAST.letter, after: 2 },
-                        { pause: FAST.letter, after: 3 },
                     ]);
                 });
             });

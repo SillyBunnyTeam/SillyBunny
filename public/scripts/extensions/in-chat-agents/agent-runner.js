@@ -131,6 +131,7 @@ let missedGenerationEndRecoveryTimeout = null;
 let agentRunnerInitialized = false;
 let postGenerationRecoveryHooksInitialized = false;
 let postGenerationRecoveryObserver = null;
+let postGenerationRecoveryObserverArmed = false;
 const activePromptTransformToasts = new Set();
 const agentGenerationStateListeners = new Set();
 const manualAgentRunQueue = [];
@@ -1778,6 +1779,7 @@ function recoverMissedGenerationEnd(reason = 'fallback') {
     clearInitialGenerationToast();
     queueLatestAssistantPostProcessingFromSnapshot();
     scheduleDeferredPostProcessingFlush();
+    observePostGenerationRecoveryTargets();
     schedulePostGenerationRecoveryCheck();
     latestAssistantPostProcessingFallbackDeadline = Date.now() + LATEST_ASSISTANT_POST_PROCESSING_FALLBACK_WINDOW_MS;
     scheduleLatestAssistantPostProcessingFallback();
@@ -1806,12 +1808,29 @@ function scheduleMissedGenerationEndRecoveryCheck(delayMs = MISSED_GENERATION_EN
     }, delayMs);
 }
 
+function isStreamingActiveForRecoveryObserver() {
+    const liveStreamingProcessor = streamingProcessor;
+    if (!liveStreamingProcessor) {
+        return false;
+    }
+
+    return Boolean(
+        !liveStreamingProcessor.isFinished &&
+        !liveStreamingProcessor.isStopped &&
+        !liveStreamingProcessor.abortController?.signal?.aborted,
+    );
+}
+
 function observePostGenerationRecoveryTargets() {
     if (!postGenerationRecoveryObserver) {
         return;
     }
 
+    // SillyBunny: disarm only #chat while streaming tokens; keep document.body[data-generating]
+    // observed so missed-end recovery still triggers if streaming ends abnormally.
+    const streamingActive = isStreamingActiveForRecoveryObserver();
     try {
+        postGenerationRecoveryObserver.disconnect();
         if (document.body) {
             postGenerationRecoveryObserver.observe(document.body, {
                 attributes: true,
@@ -1819,13 +1838,16 @@ function observePostGenerationRecoveryTargets() {
             });
         }
 
-        const chatElement = document.getElementById?.('chat') ?? document.querySelector?.('#chat');
-        if (chatElement) {
-            postGenerationRecoveryObserver.observe(chatElement, {
-                childList: true,
-                subtree: true,
-            });
+        if (!streamingActive) {
+            const chatElement = document.getElementById?.('chat') ?? document.querySelector?.('#chat');
+            if (chatElement) {
+                postGenerationRecoveryObserver.observe(chatElement, {
+                    childList: true,
+                    subtree: false,
+                });
+            }
         }
+        postGenerationRecoveryObserverArmed = !streamingActive;
     } catch (error) {
         console.warn('[InChatAgents] Could not start post-generation recovery observer:', error);
     }
@@ -3822,6 +3844,7 @@ function onGenerationEnded(_chatLength, generationContext) {
         clearMissedGenerationEndRecoveryCheck();
         clearDeferredPostProcessing();
         clearAllPromptTransformRunningToasts();
+        observePostGenerationRecoveryTargets();
         return;
     }
 
@@ -3829,6 +3852,7 @@ function onGenerationEnded(_chatLength, generationContext) {
         isGenerationInProgress = false;
         generationStopRequested = false;
         clearPendingPostProcessingForChatChange();
+        observePostGenerationRecoveryTargets();
         return;
     }
 
@@ -3840,6 +3864,7 @@ function onGenerationEnded(_chatLength, generationContext) {
     clearAllPromptTransformRunningToasts();
     queueLatestAssistantPostProcessingFromSnapshot();
     scheduleDeferredPostProcessingFlush();
+    observePostGenerationRecoveryTargets();
     schedulePostGenerationRecoveryCheck();
     latestAssistantPostProcessingFallbackDeadline = Date.now() + LATEST_ASSISTANT_POST_PROCESSING_FALLBACK_WINDOW_MS;
     scheduleLatestAssistantPostProcessingFallback();
@@ -3876,6 +3901,7 @@ function onGenerationStopped(generationContext) {
     takePendingPreGenerationInterceptRuns();
     abortActivePathfinderRetrieval('Pathfinder retrieval cancelled because generation stopped.');
     clearPathfinderExtensionPrompts();
+    observePostGenerationRecoveryTargets();
     notifyAgentGenerationStateChanged();
 }
 
@@ -4287,6 +4313,10 @@ async function onMessageReceived(messageIndex, generationType) {
 }
 
 function onStreamTokenReceived() {
+    if (postGenerationRecoveryObserverArmed && isStreamingActiveForRecoveryObserver()) {
+        observePostGenerationRecoveryTargets();
+    }
+
     if (internalPromptTransformDepth > 0 || !areAgentsGloballyEnabled()) {
         return;
     }
@@ -4314,6 +4344,10 @@ function onStreamTokenReceived() {
 }
 
 async function onCharacterMessageRendered(messageIndex, generationType) {
+    if (!postGenerationRecoveryObserverArmed) {
+        observePostGenerationRecoveryTargets();
+    }
+
     const numericMessageIndex = Number(messageIndex);
     const message = chat[numericMessageIndex];
 
@@ -5425,6 +5459,7 @@ export function initAgentRunner() {
     if (event_types.CHAT_CHANGED) {
         eventSource.on(event_types.CHAT_CHANGED, migrateLegacyRegexSnapshotsForCurrentChat);
         eventSource.on(event_types.CHAT_CHANGED, onChatChangedToolSync);
+        eventSource.on(event_types.CHAT_CHANGED, observePostGenerationRecoveryTargets);
     }
 
     if (event_types.WORLDINFO_UPDATED) {

@@ -121,7 +121,22 @@ const a11yRules = {
 };
 const a11yRuleEntries = Object.entries(a11yRules);
 const a11ySelector = a11yRuleEntries.map(([selector]) => selector).join(', ');
+// SillyBunny: streaming rewrites message prose many times a second. The other rules are anchored to the app's own
+// markup (an id or an ancestor class) and do not match inside prose, so a node that enters prose takes the rules only
+// when it matches one of the class selectors of the button rule, or holds a node that does. That costs one `matches`
+// and at most one `querySelector` for each added node. A tag does not decide it, because a model, a regex script or an
+// extension can put a real control inside any element of message text.
+const PROSE_SELECTOR = '.mes_text, .mes_reasoning';
+const PROSE_BUTTON_SELECTOR = ['.menu_button', '.right_menu_button', '.mes_button', '.drawer-icon', '.swipe_left', '.swipe_right', '.character_select'].join(', ');
 let accessibilityObserver = null;
+
+/**
+ * @param {Element} element An element that was added to message prose
+ * @returns {boolean} Whether the element is a button of the generic classes, or holds one
+ */
+function isOrHoldsProseButton(element) {
+    return element.matches(PROSE_BUTTON_SELECTOR) || (element.childElementCount > 0 && element.querySelector(PROSE_BUTTON_SELECTOR) !== null);
+}
 
 /**
  * Apply accessibility rules to an element.
@@ -130,7 +145,9 @@ let accessibilityObserver = null;
 function applyA11yRules(element) {
     try {
         // SillyBunny: scan each added subtree once, including controls supplied by extensions.
-        for (const candidate of [element, ...element.querySelectorAll(a11ySelector)]) {
+        const descendants = element.querySelectorAll(a11ySelector);
+        const candidates = element.matches(a11ySelector) ? [element, ...descendants] : descendants;
+        for (const candidate of candidates) {
             for (const [selector, rule] of a11yRuleEntries) {
                 if (candidate.matches(selector)) {
                     rule(candidate);
@@ -152,8 +169,10 @@ function setAccessibilityObserver() {
         const addedElements = new Set();
         for (const mutation of mutationsList) {
             if (mutation.type === 'childList') {
+                const inProse = mutation.target instanceof Element && mutation.target.closest(PROSE_SELECTOR) !== null;
                 for (const addedNode of mutation.addedNodes) {
                     if (addedNode instanceof Element && addedNode.nodeType === Node.ELEMENT_NODE) {
+                        if ((inProse || addedNode.matches(PROSE_SELECTOR)) && !isOrHoldsProseButton(addedNode)) continue;
                         addedElements.add(addedNode);
                     }
                 }

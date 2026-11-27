@@ -539,6 +539,42 @@ export async function appendFileContent(message, messageText) {
     return messageText;
 }
 
+// SillyBunny: hoist style sanitization regexes and LRU-cache sanitized <style> blocks across streaming ticks.
+const STYLE_ENCODE_REGEX = /<style>(.+?)<\/style>/gims;
+const STYLE_DECODE_REGEX = /<custom-style>(.+?)<\/custom-style>/gms;
+const PSEUDO_SELECTOR_REGEX = /:(has|not|where|is|matches|any)\(([^)]+)\)/g;
+const CLASS_SELECTOR_REGEX = /\.([\w-]+)/g;
+const SANITIZED_STYLE_CACHE_LIMIT = 128;
+/** @type {Map<string, string>} */
+const sanitizedStyleCache = new Map();
+const EXTERNAL_MEDIA_TAG_NAMES = new Set(['AUDIO', 'VIDEO', 'SOURCE', 'TRACK', 'EMBED', 'OBJECT', 'IMG']);
+
+function sanitizeSimpleSelector(selector) {
+    // Split by spaces but preserve complex selectors
+    return selector.split(/\s+/).map((part) => {
+        // Handle class selectors, but preserve pseudo-classes and other complex parts
+        return part.replace(CLASS_SELECTOR_REGEX, (match, className) => {
+            // Don't modify if it's already prefixed with 'custom-'
+            if (className.startsWith('custom-')) {
+                return match;
+            }
+            return `.custom-${className}`;
+        });
+    }).join(' ');
+}
+
+function sanitizeSelector(selector) {
+    // First, sanitize any nested selectors within pseudo-classes
+    selector = selector.replace(PSEUDO_SELECTOR_REGEX, (match, pseudoClass, content) => {
+        // Recursively sanitize the content within the pseudo-class
+        const sanitizedContent = sanitizeSimpleSelector(content);
+        return `:${pseudoClass}(${sanitizedContent})`;
+    });
+
+    // Then sanitize the main selector parts
+    return sanitizeSimpleSelector(selector);
+}
+
 /**
  * Replaces style tags in the message text with custom tags with encoded content.
  * @param {string} text
@@ -546,8 +582,12 @@ export async function appendFileContent(message, messageText) {
  * @copyright https://github.com/kwaroran/risuAI
  */
 export function encodeStyleTags(text) {
-    const styleRegex = /<style>(.+?)<\/style>/gims;
-    return text.replaceAll(styleRegex, (_, match) => {
+    // SillyBunny: fast-path messages without any <style> tag (case-insensitive) to avoid full-text regex scanning.
+    if (!text || !text.includes('<') || !/<style/i.test(text)) {
+        return text;
+    }
+
+    return text.replaceAll(STYLE_ENCODE_REGEX, (_, match) => {
         return `<custom-style>${encodeURIComponent(match)}</custom-style>`;
     });
 }
@@ -561,7 +601,11 @@ export function encodeStyleTags(text) {
  * @copyright https://github.com/kwaroran/risuAI
  */
 export function decodeStyleTags(text, { prefix } = { prefix: '.mes_text ' }) {
-    const styleDecodeRegex = /<custom-style>(.+?)<\/custom-style>/gms;
+    // SillyBunny: fast-path messages without encoded <custom-style> tags.
+    if (!text || !text.includes('<custom-style>')) {
+        return text;
+    }
+
     const mediaAllowed = isExternalMediaAllowed();
 
     function sanitizeRule(rule) {
@@ -578,36 +622,6 @@ export function decodeStyleTags(text, { prefix } = { prefix: '.mes_text ' }) {
         }
     }
 
-    function sanitizeSelector(selector) {
-        // Handle pseudo-classes that can contain nested selectors
-        const pseudoClasses = ['has', 'not', 'where', 'is', 'matches', 'any'];
-        const pseudoRegex = new RegExp(`:(${pseudoClasses.join('|')})\\(([^)]+)\\)`, 'g');
-
-        // First, sanitize any nested selectors within pseudo-classes
-        selector = selector.replace(pseudoRegex, (match, pseudoClass, content) => {
-            // Recursively sanitize the content within the pseudo-class
-            const sanitizedContent = sanitizeSimpleSelector(content);
-            return `:${pseudoClass}(${sanitizedContent})`;
-        });
-
-        // Then sanitize the main selector parts
-        return sanitizeSimpleSelector(selector);
-    }
-
-    function sanitizeSimpleSelector(selector) {
-        // Split by spaces but preserve complex selectors
-        return selector.split(/\s+/).map((part) => {
-            // Handle class selectors, but preserve pseudo-classes and other complex parts
-            return part.replace(/\.([\w-]+)/g, (match, className) => {
-                // Don't modify if it's already prefixed with 'custom-'
-                if (className.startsWith('custom-')) {
-                    return match;
-                }
-                return `.custom-${className}`;
-            });
-        }).join(' ');
-    }
-
     function sanitizeRuleSet(ruleSet) {
         if (Array.isArray(ruleSet.selectors) || Array.isArray(ruleSet.declarations)) {
             sanitizeRule(ruleSet);
@@ -622,7 +636,15 @@ export function decodeStyleTags(text, { prefix } = { prefix: '.mes_text ' }) {
         }
     }
 
-    return text.replaceAll(styleDecodeRegex, (_, style) => {
+    return text.replaceAll(STYLE_DECODE_REGEX, (_, style) => {
+        const cacheKey = `${prefix}\0${mediaAllowed ? 1 : 0}\0${style}`;
+        const cached = sanitizedStyleCache.get(cacheKey);
+        if (cached !== undefined) {
+            sanitizedStyleCache.delete(cacheKey);
+            sanitizedStyleCache.set(cacheKey, cached);
+            return cached;
+        }
+
         try {
             let styleCleaned = decodeURIComponent(style).replaceAll(/<br\/>/g, '');
             const ast = css.parse(styleCleaned);
@@ -634,7 +656,13 @@ export function decodeStyleTags(text, { prefix } = { prefix: '.mes_text ' }) {
             }
             // The CSS is placed into HTML as text, so it must not be able to end the style element
             const styleText = css.stringify(ast).replace(/<\//g, '<\\/');
-            return `<style>${styleText}</style>`;
+            const rendered = `<style>${styleText}</style>`;
+            if (sanitizedStyleCache.size >= SANITIZED_STYLE_CACHE_LIMIT) {
+                const oldestKey = sanitizedStyleCache.keys().next().value;
+                sanitizedStyleCache.delete(oldestKey);
+            }
+            sanitizedStyleCache.set(cacheKey, rendered);
+            return rendered;
         } catch (error) {
             return `CSS ERROR: ${error}`;
         }
@@ -1973,6 +2001,12 @@ export function registerFileConverter(mimeType, converter) {
 }
 
 export function addDOMPurifyHooks() {
+    // SillyBunny: cache external-media policy once per detached DOMPurify document (never via mutable depth counters).
+    /** @type {WeakMap<Document, boolean>} */
+    const sanitizeMediaAllowedByDoc = new WeakMap();
+    /** @type {WeakMap<object, boolean>} */
+    const sanitizeMediaAllowedByConfig = new WeakMap();
+
     // Allow target="_blank" in links
     DOMPurify.addHook('afterSanitizeAttributes', function (node) {
         if ('target' in node) {
@@ -2045,12 +2079,29 @@ export function addDOMPurifyHooks() {
             }
         }
 
-        const isMediaAllowed = isExternalMediaAllowed();
-        if (isMediaAllowed) {
+        // SillyBunny: filter to external-media tags before querying policy, and cache once per detached sanitize document.
+        if (!(node instanceof Element) || !EXTERNAL_MEDIA_TAG_NAMES.has(node.tagName)) {
             return;
         }
 
-        if (!(node instanceof Element)) {
+        const ownerDoc = node.ownerDocument;
+        let isMediaAllowed;
+        if (ownerDoc && ownerDoc !== globalThis.document) {
+            isMediaAllowed = sanitizeMediaAllowedByDoc.get(ownerDoc);
+            if (isMediaAllowed === undefined) {
+                isMediaAllowed = isExternalMediaAllowed();
+                sanitizeMediaAllowedByDoc.set(ownerDoc, isMediaAllowed);
+            }
+        } else if (config && typeof config === 'object' && !ownerDoc) {
+            isMediaAllowed = sanitizeMediaAllowedByConfig.get(config);
+            if (isMediaAllowed === undefined) {
+                isMediaAllowed = isExternalMediaAllowed();
+                sanitizeMediaAllowedByConfig.set(config, isMediaAllowed);
+            }
+        } else {
+            isMediaAllowed = isExternalMediaAllowed();
+        }
+        if (isMediaAllowed) {
             return;
         }
 

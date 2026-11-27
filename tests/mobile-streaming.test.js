@@ -321,7 +321,7 @@ describe('mobile streaming helpers', () => {
         })).toBe('auto');
     });
 
-    test('skips repeated hidden live reasoning renders on reduced DOM platforms', () => {
+    test('skips closed live reasoning renders on all platforms while thinking', () => {
         expect(shouldRenderLiveReasoningContent({
             isReducedDomWork: true,
             state: 'thinking',
@@ -330,13 +330,31 @@ describe('mobile streaming helpers', () => {
             lastRenderAt: 1000,
             now: 2000,
         })).toBe(false);
-    });
 
-    test('renders the first and finished reasoning bodies', () => {
+        expect(shouldRenderLiveReasoningContent({
+            isReducedDomWork: false,
+            state: 'thinking',
+            detailsOpen: false,
+            hasRenderedContent: false,
+            lastRenderAt: 0,
+            now: 1000,
+        })).toBe(false);
+
         expect(shouldRenderLiveReasoningContent({
             isReducedDomWork: true,
             state: 'thinking',
             detailsOpen: false,
+            hasRenderedContent: false,
+            lastRenderAt: 0,
+            now: 1000,
+        })).toBe(false);
+    });
+
+    test('renders open first ticks and finished reasoning bodies', () => {
+        expect(shouldRenderLiveReasoningContent({
+            isReducedDomWork: true,
+            state: 'thinking',
+            detailsOpen: true,
             hasRenderedContent: false,
             lastRenderAt: 0,
             now: 1000,
@@ -370,5 +388,31 @@ describe('mobile streaming helpers', () => {
             lastRenderAt: 1000,
             now: 1000 + IOS_REASONING_RENDER_INTERVAL_MS,
         })).toBe(true);
+    });
+
+    describe('iOS WebKit adaptive rules follow the settings', () => {
+        const iosNavigator = { platform: 'iPhone', maxTouchPoints: 5 };
+
+        test('does not reduce streaming work or fade-in on iOS while the setting is off, however slow the frames are', () => {
+            expect(shouldReduceStreamingDomWork(iosNavigator, { iosEnabled: false, androidEnabled: true, renderDurationMs: 500 })).toBe(false);
+            expect(shouldReduceStreamingDomWork(iosNavigator, { iosEnabled: true, renderDurationMs: 0 })).toBe(true);
+        });
+
+        test('applies neither the platform floor nor the raised render-cost cap while the conservative setting is off', () => {
+            expect(getStreamingUpdateInterval(33, { navigatorRef: iosNavigator, iosEnabled: false, renderDurationMs: 140 })).toBe(250);
+            expect(getStreamingUpdateInterval(33, { navigatorRef: iosNavigator, iosEnabled: false, renderDurationMs: 0 })).toBe(33);
+            expect(getStreamingUpdateInterval(33, { navigatorRef: iosNavigator, iosEnabled: true, renderDurationMs: 0 })).toBe(IOS_STREAMING_UPDATE_INTERVAL_MS);
+            expect(getStreamingUpdateInterval(33, { navigatorRef: iosNavigator, iosEnabled: true, renderDurationMs: 140 })).toBe(420);
+        });
+
+        test('gives a slow frame the plain-text preview only where reduced streaming work is on', () => {
+            const slowFrame = (iosEnabled) => shouldUsePlainTextStreamingPreview({
+                isReducedDomWork: shouldReduceStreamingDomWork(iosNavigator, { iosEnabled, renderDurationMs: 50 }),
+                isIOSWebKit: true,
+                renderDurationMs: 50,
+            });
+            expect(slowFrame(false)).toBe(false);
+            expect(slowFrame(true)).toBe(true);
+        });
     });
 });

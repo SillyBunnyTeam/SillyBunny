@@ -143,16 +143,32 @@ const observer = new MutationObserver(function (mutations) {
         } else if (mutation.target.parentNode === SelectedCharacterTab) {
             countTokensShortDebounced();
         } else if (mutation.target.classList.contains('mes_text')) {
-            for (const element of mutation.target.getElementsByTagName('math')) {
-                element.childNodes.forEach(function (child) {
-                    if (child.nodeType === Node.TEXT_NODE) {
-                        child.textContent = '';
+            // SillyBunny: math already in the message was cleared when it arrived; only added nodes that are/contain math need scanning.
+            for (const node of mutation.addedNodes) {
+                if (!(node instanceof Element)) continue;
+                if (node.localName === 'math') {
+                    clearMathTextNodes(node);
+                }
+                if (node.firstElementChild && node.querySelector('math')) {
+                    for (const element of node.getElementsByTagName('math')) {
+                        clearMathTextNodes(element);
                     }
-                });
+                }
             }
         }
     });
 });
+
+/**
+ * @param {Element} element A math element
+ */
+function clearMathTextNodes(element) {
+    element.childNodes.forEach(function (child) {
+        if (child.nodeType === Node.TEXT_NODE) {
+            child.textContent = '';
+        }
+    });
+}
 
 observer.observe(document.documentElement, observerConfig);
 
