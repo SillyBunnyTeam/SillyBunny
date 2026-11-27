@@ -451,6 +451,7 @@ This is the largest class by a wide margin.
 - **Not every data folder has hard links:** exFAT and some Android storage refuse `linkSync`. `publishNewFile()` (`src/sillybunny-publish-file.js`) publishes a new file through an exclusive hard link and falls back to an exclusive copy on `EPERM`, `ENOTSUP`, `EXDEV` or `ENOSYS`, removing a half-written copy; `/api/themes/create` and the Bundled Extras theme route use it. Test: `tests/unit/sillybunny-publish-file.test.js`.
 
 ### Character import and upload files
+- Replacing a character from JSON or YAML must reuse the existing `<characters>/<preservedFileName>.png` via `getImportAvatarPath()` instead of passing `DEFAULT_AVATAR_PATH` unconditionally (`src/endpoints/characters.js`, early port of upstream ST #6168; guarded by `tests/character-replace-import.test.js`).
 
 - **Breaks:** data in an imported card or archive, in an uploaded sprite or sprite pack, or in a create request decides which folder the server writes to, which file type it stores, or how long the card parser runs.
 - **Cause:** the import and upload code takes names, extensions and chunk lengths from the data it receives. A name that sanitizes to nothing makes the parent folder the target folder, an archive or uploaded file keeps its own extension, `sanitize-filename` keeps only the first 255 bytes of a name and so can cut off an extension at its end, and `png-chunks-extract` allocates, copies and checksums the length that a chunk declares before it finds that the file is shorter.

@@ -859,6 +859,25 @@ function convertWorldInfoToCharacterBook(name, entries, extensions = {}) {
     return result;
 }
 
+// SillyBunny: reuse the existing character avatar when replacing a card from JSON or YAML (ST #6168).
+/**
+ * Gets the avatar image for a character imported from a file without an embedded image.
+ * Keeps the current avatar if an existing character is being replaced.
+ * @param {import('../users.js').UserDirectoryList} directories User directories
+ * @param {string|undefined} preservedFileName Preserved file name
+ * @returns {string} Path to the avatar image
+ */
+function getImportAvatarPath(directories, preservedFileName) {
+    if (preservedFileName) {
+        const avatarPath = path.join(directories.characters, `${preservedFileName}.png`);
+        if (fs.existsSync(avatarPath)) {
+            return avatarPath;
+        }
+    }
+
+    return DEFAULT_AVATAR_PATH;
+}
+
 /**
  * Import a character from a YAML file.
  * @param {string} uploadPath Path to the uploaded file
@@ -890,7 +909,8 @@ async function importFromYaml(uploadPath, context, preservedFileName) {
     }, context.request.user.directories);
     // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
     await localizeCharacterExternalMedia(char, { request: context.request, fileName });
-    const result = await writeCharacterData(DEFAULT_AVATAR_PATH, JSON.stringify(char), fileName, context.request);
+    const avatarPath = getImportAvatarPath(context.request.user.directories, preservedFileName);
+    const result = await writeCharacterData(avatarPath, JSON.stringify(char), fileName, context.request);
     return result ? fileName : '';
 }
 
@@ -1054,6 +1074,7 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
     fs.unlinkSync(uploadPath);
 
     let jsonData = JSON.parse(data);
+    const avatarPath = getImportAvatarPath(request.user.directories, preservedFileName);
 
     if (jsonData.spec !== undefined) {
         console.info(`Importing from ${jsonData.spec} json`);
@@ -1069,7 +1090,7 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
         // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
         await localizeCharacterExternalMedia(jsonData, { request, fileName: pngName });
         const char = JSON.stringify(jsonData);
-        const result = await writeCharacterData(DEFAULT_AVATAR_PATH, char, pngName, request);
+        const result = await writeCharacterData(avatarPath, char, pngName, request);
         return result ? pngName : '';
     } else if (jsonData.name !== undefined) {
         console.info('Importing from v1 json');
@@ -1097,7 +1118,7 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
         // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
         await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         let charJSON = JSON.stringify(char);
-        const result = await writeCharacterData(DEFAULT_AVATAR_PATH, charJSON, pngName, request);
+        const result = await writeCharacterData(avatarPath, charJSON, pngName, request);
         return result ? pngName : '';
     } else if (jsonData.char_name !== undefined) {
         //json Pygmalion notepad
@@ -1126,7 +1147,7 @@ async function importFromJson(uploadPath, { request }, preservedFileName) {
         // SillyBunny: optionally download external media on import and rewrite URLs to local paths.
         await localizeCharacterExternalMedia(char, { request, fileName: pngName });
         const charJSON = JSON.stringify(char);
-        const result = await writeCharacterData(DEFAULT_AVATAR_PATH, charJSON, pngName, request);
+        const result = await writeCharacterData(avatarPath, charJSON, pngName, request);
         return result ? pngName : '';
     }
 

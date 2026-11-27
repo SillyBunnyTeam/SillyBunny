@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `src/endpoints/characters.js` - preserve avatar when replacing from JSON or YAML
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/characters.js` (`getImportAvatarPath`, `importFromYaml`, `importFromJson`). |
+| Area | Character card replacement from image-less JSON and YAML uploads. |
+| Divergence reason | Early port of upstream SillyTavern PR #6168 before the next full upstream sync, so replacing an existing character via JSON or YAML import keeps its existing avatar PNG instead of overwriting it with the default avatar. |
+| Target seam | `getImportAvatarPath()` in `src/endpoints/characters.js` (early port of upstream SillyTavern PR #6168, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Resolve the existing `<characters>/<preservedFileName>.png` when replacing an existing character from YAML, V2 JSON, V1 JSON or Gradio JSON, falling back to `DEFAULT_AVATAR_PATH` for new imports. |
+| Protecting tests | `tests/character-replace-import.test.js`, `tests/character-card-metadata-preservation.test.js`, `tests/character-disk-cache.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- character-replace-import.test.js character-card-metadata-preservation.test.js character-disk-cache.test.js`. |
+| Rollback path | Remove `getImportAvatarPath()` and restore `DEFAULT_AVATAR_PATH` in the four `writeCharacterData()` calls in `src/endpoints/characters.js`, then delete `tests/character-replace-import.test.js`. Existing character files and thumbnails are untouched. Drop this entry on the upstream sync that brings ST #6168. |
+| Last reviewed | 2026-11-27 (early port of ST #6168). |
+| Owner | Server and data compatibility integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
