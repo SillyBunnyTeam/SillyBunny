@@ -333,12 +333,14 @@ function takeRecycledCell(recyclePool, file, signature) {
  */
 export function reconcileBackgroundGrid(grid, files, { cache, imageMap, createCell = makeCell, recyclePool = null }) {
     const nextKeys = new Set();
-    let cursor = grid.firstElementChild;
-    while (cursor && !cursor.classList.contains('bg_example')) {
-        const stray = cursor;
-        cursor = cursor.nextElementSibling;
-        stray.remove();
+    // The gallery takes over a container that backgrounds.js has already drawn its own flat list into, and that list's cells are not in
+    // this cache. A redraw has to replace every child, as the base did, or the same background shows twice.
+    const owned = new Set();
+    for (const entry of cache.values()) owned.add(entry.cell);
+    for (const child of [...grid.children]) {
+        if (!owned.has(child)) child.remove();
     }
+    let cursor = grid.firstElementChild;
     let fragment = null;
     const flushFragment = () => {
         if (!fragment) return;

@@ -1367,5 +1367,23 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             expect(avatar.getAttribute('loading')).toBe('lazy');
             expect(avatar.getAttribute('decoding')).toBe('async');
         });
+
+        test('a grid that another renderer filled first shows each background once', () => {
+            const makeCell = file => {
+                const cell = document.createElement('div');
+                cell.className = 'bg_example';
+                cell.setAttribute('bgfile', file);
+                return cell;
+            };
+            const grid = document.createElement('div');
+            // backgrounds.js draws the flat list into the same container before the gallery loads, with a cache of its own.
+            grid.append(makeCell('a.png'), makeCell('b.png'), makeCell('c.png'));
+            const earlier = [...grid.children];
+
+            reconcileBackgroundGrid(grid, ['a.png', 'b.png'], { cache: new Map(), createCell: makeCell });
+
+            expect([...grid.children].map(cell => cell.getAttribute('bgfile'))).toEqual(['a.png', 'b.png']);
+            expect([...grid.children].some(cell => earlier.includes(cell))).toBe(false);
+        });
     });
 });
