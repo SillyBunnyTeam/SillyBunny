@@ -176,12 +176,12 @@ describe('launcher parity', () => {
         expect(startBatSource).toMatch(/node scripts\\dependency-state\.js check !_dependency_profile!/);
         expect(startBatSource).toMatch(/call npm ci --no-audit --no-fund --omit=dev --loglevel=error/);
         expect(startBatSource).toMatch(/call bun install !_bun_install_args!/);
-        expect(startBatSource).toMatch(/call npm run init/);
-        expect(startBatSource).toMatch(/call bun run init/);
+        expect(startBatSource).toMatch(/node "%~dp0src\\server-init\.js"/);
+        expect(startBatSource).toMatch(/bun "%~dp0src\\server-init\.js"/);
     });
 
     test('Start-Node initializes before entering its restart loop', () => {
-        const initIndex = startNodeBatSource.indexOf('call npm run init');
+        const initIndex = startNodeBatSource.indexOf('node "%~dp0src\\server-init.js"');
         const serverIndex = startNodeBatSource.indexOf('node --no-warnings server.js %*');
 
         expect(initIndex).toBeGreaterThanOrEqual(0);

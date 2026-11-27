@@ -24,33 +24,46 @@ finish_early() {
 }
 
 restore_lone_bun_lock_change() {
-    if ! git ls-files --error-unmatch bun.lock >/dev/null 2>&1; then
-        return
-    fi
+    local status_output="$1"
+    local first_line="${status_output%%$'\n'*}"
 
-    local status_output first_line
-    if ! status_output="$(git status --porcelain --untracked-files=normal)"; then
-        finish_early "could not read the repository status."
-    fi
-
-    if [[ -z "$status_output" ]]; then
-        return
-    fi
-
-    first_line="${status_output%%$'\n'*}"
     if [[ "$status_output" != "$first_line" || "${first_line:3}" != "bun.lock" ]]; then
-        return
+        return 1
+    fi
+
+    if ! git ls-files --error-unmatch bun.lock >/dev/null 2>&1; then
+        return 1
     fi
 
     echo "Restoring tracked bun.lock before self-update..."
     if git restore --staged --worktree -- bun.lock >/dev/null 2>&1; then
-        return
+        return 0
     fi
 
     git reset HEAD -- bun.lock >/dev/null 2>&1 || true
     if ! git checkout -- bun.lock >/dev/null 2>&1; then
         finish_early "could not restore generated bun.lock."
     fi
+
+    return 0
+}
+
+read_loose_ref_sha() {
+    local ref_file="$1"
+    local value=""
+
+    if [[ ! -f "$ref_file" ]]; then
+        return 1
+    fi
+
+    IFS= read -r value < "$ref_file" || value=""
+    value="${value%$'\r'}"
+    if [[ "$value" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
+        printf '%s\n' "$value"
+        return 0
+    fi
+
+    return 1
 }
 
 cd "$REPO_DIR"
@@ -59,13 +72,58 @@ if ! command -v git >/dev/null 2>&1; then
     finish_early "Git is not installed."
 fi
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    finish_early "this checkout is not a Git repository."
+git_dir=""
+common_dir=""
+if [[ -z "${GIT_DIR:-}" && -z "${GIT_WORK_TREE:-}" ]]; then
+    if [[ -d "$REPO_DIR/.git" ]]; then
+        git_dir="$REPO_DIR/.git"
+    elif [[ -f "$REPO_DIR/.git" ]]; then
+        IFS= read -r git_dir_line < "$REPO_DIR/.git" || git_dir_line=""
+        git_dir_line="${git_dir_line%$'\r'}"
+        if [[ "$git_dir_line" == gitdir:\ * ]]; then
+            git_dir="${git_dir_line#gitdir: }"
+            if [[ "$git_dir" != /* ]]; then
+                git_dir="$REPO_DIR/$git_dir"
+            fi
+        fi
+    fi
+
+    if [[ -n "$git_dir" ]]; then
+        common_dir="$git_dir"
+        if [[ -f "$git_dir/commondir" ]]; then
+            IFS= read -r common_rel < "$git_dir/commondir" || common_rel=""
+            common_rel="${common_rel%$'\r'}"
+            if [[ -n "$common_rel" ]]; then
+                if [[ "$common_rel" == /* ]]; then
+                    common_dir="$common_rel"
+                else
+                    common_dir="$git_dir/$common_rel"
+                fi
+            fi
+        fi
+    fi
 fi
 
-current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+current_branch=""
+if [[ -n "$git_dir" && -f "$git_dir/HEAD" ]]; then
+    IFS= read -r head_line < "$git_dir/HEAD" || head_line=""
+    head_line="${head_line%$'\r'}"
+    if [[ "$head_line" == "ref: refs/heads/"* && "$head_line" != "ref: refs/heads/.invalid" ]]; then
+        current_branch="${head_line#ref: refs/heads/}"
+    elif [[ "$head_line" =~ ^[0-9a-fA-F]{40,64}$ ]]; then
+        finish_early "detached HEAD checkouts cannot be updated automatically."
+    fi
+fi
+
 if [[ -z "$current_branch" ]]; then
-    finish_early "detached HEAD checkouts cannot be updated automatically."
+    if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        finish_early "this checkout is not a Git repository."
+    fi
+
+    current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    if [[ -z "$current_branch" ]]; then
+        finish_early "detached HEAD checkouts cannot be updated automatically."
+    fi
 fi
 
 upstream_ref="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
@@ -73,20 +131,113 @@ if [[ -z "$upstream_ref" ]]; then
     finish_early "branch '$current_branch' does not have an upstream configured."
 fi
 
-restore_lone_bun_lock_change
+if ! status_output="$(git status --porcelain --untracked-files=normal)"; then
+    finish_early "could not read the repository status."
+fi
 
-if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then
+if [[ -n "$status_output" ]] && ! restore_lone_bun_lock_change "$status_output"; then
     finish_early "the working tree is not clean. Commit, stash, or remove local changes first."
 fi
 
 upstream_remote="${upstream_ref%%/*}"
-
-echo "Checking for updates on $upstream_ref..."
-if ! git fetch --quiet "$upstream_remote"; then
-    finish_early "could not fetch from '$upstream_remote'."
+if [[ -z "$upstream_remote" || "$upstream_remote" == -* ]]; then
+    finish_early "branch '$current_branch' does not have a valid upstream remote."
 fi
 
-read -r ahead behind < <(git rev-list --left-right --count HEAD...@{upstream})
+echo "Checking for updates on $upstream_ref..."
+low_speed_time="${SILLYBUNNY_GIT_LOW_SPEED_TIME:-10}"
+if [[ ! "$low_speed_time" =~ ^[1-9][0-9]*$ ]]; then
+    low_speed_time=10
+fi
+
+if (( OPTIONAL )); then
+    if ! git \
+        -c "remote.$upstream_remote.tagOpt=--no-tags" \
+        -c "http.lowSpeedLimit=1000" \
+        -c "http.lowSpeedTime=$low_speed_time" \
+        fetch --quiet --no-tags -- "$upstream_remote"; then
+        finish_early "could not fetch from '$upstream_remote'."
+    fi
+else
+    if ! git fetch --quiet -- "$upstream_remote"; then
+        finish_early "could not fetch from '$upstream_remote'."
+    fi
+fi
+
+maybe_seed_release_assets() {
+    local force_seed="${1:-}"
+    local current_head_sha="${2:-}"
+
+    case "$(printf '%s' "${SILLYBUNNY_SKIP_RELEASE_ASSETS:-}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) return 0 ;;
+    esac
+
+    local seed_script="$REPO_DIR/scripts/seed-release-assets.js"
+    [[ -f "$seed_script" ]] || return 0
+    if [[ "$force_seed" != "force" && -f "$REPO_DIR/dist/lib/lib.manifest.json" && -f "$REPO_DIR/dist/frontend/asset-manifest.json" ]]; then
+        if [[ -n "$current_head_sha" && -f "$REPO_DIR/dist/.release-assets-head" ]]; then
+            local stamped_head=""
+            IFS= read -r stamped_head < "$REPO_DIR/dist/.release-assets-head" || true
+            stamped_head="${stamped_head%$'\r'}"
+            if [[ "$stamped_head" == "$current_head_sha" ]]; then
+                return 0
+            fi
+        elif [[ -z "$current_head_sha" ]]; then
+            return 0
+        fi
+    fi
+
+    local runtime_bin=""
+    if command -v bun >/dev/null 2>&1; then
+        runtime_bin="bun"
+    elif command -v node >/dev/null 2>&1; then
+        runtime_bin="node"
+    else
+        return 0
+    fi
+
+    local release_tag=""
+    release_tag="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+    if [[ ! "$release_tag" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+        release_tag=""
+        if [[ "$current_branch" == "release" && -f "$REPO_DIR/package.json" ]]; then
+            local pkg_version=""
+            pkg_version="$("$runtime_bin" -e 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).version||"";if(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v))process.stdout.write("v"+v);}catch{}' "$REPO_DIR/package.json" 2>/dev/null || true)"
+            if [[ "$pkg_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+                release_tag="$pkg_version"
+            fi
+        fi
+    fi
+    [[ -n "$release_tag" ]] || return 0
+
+    # seed-release-assets.js writes this file when the release publishes no tarballs.
+    local no_assets_tag=""
+    if [[ -f "$REPO_DIR/dist/.release-assets-none" ]]; then
+        IFS= read -r no_assets_tag < "$REPO_DIR/dist/.release-assets-none" || true
+        no_assets_tag="${no_assets_tag%$'\r'}"
+        [[ "$no_assets_tag" != "$release_tag" ]] || return 0
+    fi
+
+    "$runtime_bin" "$seed_script" --optional --repo "$REPO_DIR" --tag "$release_tag" || true
+}
+
+if [[ -n "$common_dir" && "$current_branch" != *..* && "$upstream_ref" != *..* ]]; then
+    local_sha="$(read_loose_ref_sha "$common_dir/refs/heads/$current_branch" || true)"
+    remote_sha="$(read_loose_ref_sha "$common_dir/refs/remotes/$upstream_ref" || true)"
+    if [[ -n "$local_sha" && "$local_sha" == "$remote_sha" ]]; then
+        echo "SillyBunny is already up to date."
+        maybe_seed_release_assets "" "$local_sha"
+        exit 0
+    fi
+fi
+
+if ! counts_output="$(git rev-list --left-right --count 'HEAD...@{upstream}')"; then
+    finish_early "could not compare the local branch with its upstream."
+fi
+read -r ahead behind <<< "$counts_output"
+if [[ ! "${ahead:-}" =~ ^[0-9]+$ || ! "${behind:-}" =~ ^[0-9]+$ ]]; then
+    finish_early "received an unexpected response while comparing revisions."
+fi
 
 if (( ahead > 0 && behind > 0 )); then
     finish_early "branch '$current_branch' has diverged from '$upstream_ref'. Resolve it manually before using self-update."
@@ -99,15 +250,27 @@ fi
 
 if (( behind == 0 )); then
     echo "SillyBunny is already up to date."
+    maybe_seed_release_assets
     exit 0
 fi
 
 before_rev="$(git rev-parse --short HEAD)"
 
 echo "Updating SillyBunny..."
-if ! git pull --ff-only; then
-    finish_early "git pull --ff-only failed."
+if (( OPTIONAL )); then
+    if ! git \
+        -c "remote.$upstream_remote.tagOpt=--no-tags" \
+        -c "http.lowSpeedLimit=1000" \
+        -c "http.lowSpeedTime=$low_speed_time" \
+        pull --ff-only; then
+        finish_early "git pull --ff-only failed."
+    fi
+else
+    if ! git pull --ff-only; then
+        finish_early "git pull --ff-only failed."
+    fi
 fi
 
 after_rev="$(git rev-parse --short HEAD)"
 echo "Updated SillyBunny from $before_rev to $after_rev."
+maybe_seed_release_assets force

@@ -16,12 +16,15 @@ ENV NODE_ENV=production
 # SillyBunny: lets the Server panel show the Docker install state even when /.dockerenv is absent (e.g. Podman).
 ENV SILLYBUNNY_DOCKER=1
 
-# Bundle app source and set ownership
-COPY --chown=bun:bun . ./
+# SillyBunny: install dependencies in a dedicated layer before copying app source so code edits reuse the cached layer.
+COPY --chown=bun:bun package.json bun.lock .npmrc ./
 
 RUN \
   echo "*** Install Bun packages ***" && \
   bun install --frozen-lockfile --production
+
+# Bundle app source and set ownership
+COPY --chown=bun:bun . ./
 
 # Create config directory and link config.yaml. Added hardcoded dirs(constants.js?)
 # that must be present for Non-Root Mode and volumeless docker runs.
@@ -31,10 +34,16 @@ RUN \
   chown -R bun:bun config data plugins public/scripts/extensions/third-party backups && \
   ln -s "./config/config.yaml" "config.yaml"
 
-# Pre-compile public libraries
+# SillyBunny: pre-compile Node-minified public libraries (falling back to docker/build-lib.js) and hashed dist/frontend assets when available.
+# A failed frontend build does not fail the image: dist/frontend is removed so that the server serves public/, and one line names the exit code.
 RUN \
-  echo "*** Run Webpack ***" && \
-  bun "./docker/build-lib.js"
+  echo "*** Build prebuilt lib.js and dist/frontend assets ***" && \
+  if [ -f "./scripts/build-prebuilt-lib.js" ]; then node "./scripts/build-prebuilt-lib.js"; else bun "./docker/build-lib.js"; fi && \
+  if [ -f "./scripts/build-frontend-assets.js" ]; then \
+    node "./scripts/build-frontend-assets.js" || { rc=$?; rm -rf dist/frontend; echo "*** Frontend asset build (node ./scripts/build-frontend-assets.js) failed with exit code ${rc}; dist/frontend was removed and the server will serve public/. ***"; }; \
+  fi && \
+  mkdir -p dist && \
+  chown -R bun:bun dist
 
 # Set the entrypoint script and cleanup
 RUN \

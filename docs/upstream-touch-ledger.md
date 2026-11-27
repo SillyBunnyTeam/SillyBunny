@@ -1602,10 +1602,10 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Divergence reason | SillyBunny carries fork branch policy, branding, Bun-first and Node-compatible launch paths, constrained installs, release automation, and container defaults. Its shipped pixel art and icons are derived from masters by `scripts/art`, so `pr-checks.yml` has a job (`run-art-tests`) that derives them again and compares them byte for byte. |
 | Target seam | `.github/workflows/`, launcher scripts, `scripts/dependency-state.js`, `src/runtime.js`, and Docker entrypoints. |
 | Adapter shape | Keep upstream-compatible commands and package contracts; isolate fork runtime selection, metadata, branding, and release gates in the named infrastructure files. |
-| Protecting tests | `tests/sillybunny-launcher-smol.test.js`, `tests/server-supervisor.test.js`, `tests/frontend-assets.test.js`, root lint, frontend build, README mirror check, and workflow static validation. |
-| Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. 2026-11-14 (art derive job): `pr-checks.yml` parses as YAML, and the job's two commands, `npm ci --ignore-scripts --prefix scripts/art` and `npm test --prefix scripts/art`, pass on linux-x64 (WSL, Node 24.22.0, npm 11.19.1; 74 tests, byte proof included). 2026-11-14 (card tests): the job runs `npm ci --ignore-scripts` at the root first, because the card tests load the app's card parser, whose packages come from the root `node_modules`; the three commands pass on linux-x64 (WSL, Node 24.22.0; 88 tests, none skipped), and without the root packages the six parser tests fail with `card-parser-missing`. |
+| Protecting tests | `tests/sillybunny-launcher-smol.test.js`, `tests/perf-cross-platform-launchers.test.js`, `tests/dependency-state.test.js`, `tests/server-supervisor.test.js`, `tests/frontend-assets.test.js`, root lint, frontend build, README mirror check, and workflow static validation. |
+| Validation | `npm ci --dry-run`, launcher unit tests, shell/JSON/YAML syntax checks, `npm run lint`, `npm run build:frontend`, and release workflow smoke. 2026-11-14 (art derive job): `pr-checks.yml` parses as YAML, and the job's two commands, `npm ci --ignore-scripts --prefix scripts/art` and `npm test --prefix scripts/art`, pass on linux-x64 (WSL, Node 24.22.0, npm 11.19.1; 74 tests, byte proof included). 2026-11-14 (card tests): the job runs `npm ci --ignore-scripts` at the root first, because the card tests load the app's card parser, whose packages come from the root `node_modules`; the three commands pass on linux-x64 (WSL, Node 24.22.0; 88 tests, none skipped), and without the root packages the six parser tests fail with `card-parser-missing`. 2026-11-26 (PR #1041): `npm run lint`, `npx eslint scripts/self-update.js`, `npm run lint --prefix tests`, `bash -n start.sh scripts/self-update.sh`, strict CRLF/LF and `100755` mode checks, and `tests/perf-cross-platform-launchers.test.js`, `tests/dependency-state.test.js`, and `tests/sillybunny-launcher-smol.test.js` under Node 24.22.1 and Bun 1.4.4. |
 | Rollback path | Revert each launcher, workflow, or packaging adapter independently while retaining user data and upstream application formats. |
-| Last reviewed | 2026-11-14, art derive module (PR checks job, root install for the card tests). |
+| Last reviewed | 2026-11-26, PR #1041 (cross-platform launchers and `scripts/self-update.js`). |
 | Owner | Release integrator. |
 
 ### Bundled defaults and install-time content
@@ -2938,6 +2938,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Rollback path | `TODO(copy)` |
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
+
+### `Dockerfile` and `docker/docker-entrypoint.sh` - cached layer install, prebuilt dist assets, and direct init
+| Field | Value |
+| --- | --- |
+| File | `Dockerfile`; `docker/docker-entrypoint.sh`. |
+| Area | Docker image build caching, prebuilt vendor/frontend asset baking, and container startup initialization. |
+| Divergence reason | Upstream copies the entire repository before `bun install` (invalidating the dependency layer on every commit), builds an unminified Bun `/lib.js` without prebuilt `dist/frontend/` assets, and spawns `bun run init` package-manager wrapper overhead on every container start. Copying manifests first, baking Node-minified `dist/` assets when available, and invoking `bun src/server-init.js` directly cut rebuild and container boot times. |
+| Target seam | `scripts/build-prebuilt-lib.js`, `scripts/build-frontend-assets.js`, and `src/server-init.js`. |
+| Adapter shape | `Dockerfile`: copies `package.json`, `bun.lock`, and `.npmrc` before `bun install --frozen-lockfile --production`, copies app source after, and conditionally runs `node ./scripts/build-prebuilt-lib.js` (falling back to `bun ./docker/build-lib.js`) plus `node ./scripts/build-frontend-assets.js` when present with `chown -R bun:bun dist`. A failed prebuilt-library build fails the image; a failed frontend build removes `dist/frontend`, prints one line with its exit code, and does not fail the image; `docker/docker-entrypoint.sh`: invokes `bun src/server-init.js` directly in place of `bun run init`. Marked with `# SillyBunny:` comments. |
+| Protecting tests | `tests/sillybunny-launcher-smol.test.js`; `tests/perf-seed-release-assets.test.js`. |
+| Validation | 2026-11-26 (fresh install, container startup): `bash -n scripts/self-update.sh docker/docker-entrypoint.sh`, root and `tests/` ESLint, Jest unit suites (`perf-cross-platform-launchers.test.js`, `sillybunny-launcher-smol.test.js`, `perf-seed-release-assets.test.js`). 2026-11-27 (no Docker daemon): the `RUN` step run with `/bin/sh -c` in a scratch copy of the tree, as it is (exit status 0, 2,730 files in `dist/frontend`) and with the frontend build replaced by `false` (exit status 0, one line naming exit code 1, no `dist/frontend`). |
+| Rollback path | Restore `COPY --chown=bun:bun . ./` before `bun install` and `bun "./docker/build-lib.js"` in `Dockerfile`, and restore `$PREFIX bun run init` in `docker/docker-entrypoint.sh`. No persisted user volume or config format changes. |
+| Last reviewed | 2026-11-26, PR `#1041`. |
+| Owner | Runtime and release integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
