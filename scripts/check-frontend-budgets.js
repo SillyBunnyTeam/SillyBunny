@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(__dirname, '..');
 
-// Ratchet budgets match the measured frontend state. Lower them when assets shrink.
+// Ratchet budgets: ceilings match the measured state of staging when they were set. Lower them as cleanup PRs land;
+// never raise them without a review note explaining the regression. A fork CSS rule that declares both
+// `backdrop-filter` and its `-webkit-` companion counts as two, so the backdrop-filter budget is twice the number of
+// blurred surfaces.
 export const FRONTEND_BUDGETS = Object.freeze({
     blockingStylesheetCount: 16,
     blockingStylesheetBytes: 1024 * 1024,
@@ -194,42 +197,51 @@ export function collectFrontendAssetSnapshot(repoRoot = defaultRepoRoot) {
     };
 }
 
+// Appended to every budget failure so that a contributor who meets one knows what the options are.
+const BUDGET_RULE = 'To change a budget, edit FRONTEND_BUDGETS in scripts/check-frontend-budgets.js: lower budgets as cleanup PRs land, and never raise one without a review note explaining the regression.';
+
+function listHazardFiles(forkCssHazards, key) {
+    const carriers = (forkCssHazards?.files ?? []).filter(entry => entry[key] > 0);
+    return carriers.length > 0 ? ` Found in: ${carriers.map(entry => `${entry.file} (${entry[key]})`).join(', ')}.` : '';
+}
+
 export function evaluateFrontendBudgets(snapshot, budgets = FRONTEND_BUDGETS) {
     const failures = [...(snapshot.errors ?? [])];
+    const over = message => failures.push(`${message} ${BUDGET_RULE}`);
 
     if (snapshot.blockingStylesheets.length > budgets.blockingStylesheetCount) {
-        failures.push(`Blocking stylesheet count ${snapshot.blockingStylesheets.length} exceeds budget ${budgets.blockingStylesheetCount}.`);
+        over(`Blocking stylesheet count ${snapshot.blockingStylesheets.length} exceeds budget ${budgets.blockingStylesheetCount}.`);
     }
     if (snapshot.blockingStylesheetBytes > budgets.blockingStylesheetBytes) {
-        failures.push(`Blocking stylesheet bytes ${formatBytes(snapshot.blockingStylesheetBytes)} exceed budget ${formatBytes(budgets.blockingStylesheetBytes)}.`);
+        over(`Blocking stylesheet bytes ${formatBytes(snapshot.blockingStylesheetBytes)} exceed budget ${formatBytes(budgets.blockingStylesheetBytes)}.`);
     }
     if (snapshot.widthMediaStylesheets.length > budgets.widthMediaStylesheetCount) {
-        failures.push(`Width-media stylesheet count ${snapshot.widthMediaStylesheets.length} exceeds budget ${budgets.widthMediaStylesheetCount}.`);
+        over(`Width-media stylesheet count ${snapshot.widthMediaStylesheets.length} exceeds budget ${budgets.widthMediaStylesheetCount}.`);
     }
     if (snapshot.widthMediaStylesheetBytes > budgets.widthMediaStylesheetBytes) {
-        failures.push(`Width-media stylesheet bytes ${formatBytes(snapshot.widthMediaStylesheetBytes)} exceed budget ${formatBytes(budgets.widthMediaStylesheetBytes)}.`);
+        over(`Width-media stylesheet bytes ${formatBytes(snapshot.widthMediaStylesheetBytes)} exceed budget ${formatBytes(budgets.widthMediaStylesheetBytes)}.`);
     }
     if (snapshot.importedStylesheets.length > budgets.importedStylesheetCount) {
-        failures.push(`Imported stylesheet count ${snapshot.importedStylesheets.length} exceeds budget ${budgets.importedStylesheetCount}.`);
+        over(`Imported stylesheet count ${snapshot.importedStylesheets.length} exceeds budget ${budgets.importedStylesheetCount}.`);
     }
     if (snapshot.importedStylesheetBytes > budgets.importedStylesheetBytes) {
-        failures.push(`Imported stylesheet bytes ${formatBytes(snapshot.importedStylesheetBytes)} exceed budget ${formatBytes(budgets.importedStylesheetBytes)}.`);
+        over(`Imported stylesheet bytes ${formatBytes(snapshot.importedStylesheetBytes)} exceed budget ${formatBytes(budgets.importedStylesheetBytes)}.`);
     }
     if (snapshot.startupScripts.length > budgets.startupScriptCount) {
-        failures.push(`Startup script count ${snapshot.startupScripts.length} exceeds budget ${budgets.startupScriptCount}.`);
+        over(`Startup script count ${snapshot.startupScripts.length} exceeds budget ${budgets.startupScriptCount}.`);
     }
     if (snapshot.startupScriptBytes > budgets.startupScriptBytes) {
-        failures.push(`Startup script bytes ${formatBytes(snapshot.startupScriptBytes)} exceed budget ${formatBytes(budgets.startupScriptBytes)}.`);
+        over(`Startup script bytes ${formatBytes(snapshot.startupScriptBytes)} exceed budget ${formatBytes(budgets.startupScriptBytes)}.`);
     }
     if ((snapshot.forkCssHazards?.willChange ?? 0) > budgets.forkWillChangeCount) {
-        failures.push(`Fork CSS will-change declarations ${snapshot.forkCssHazards.willChange} exceed budget ${budgets.forkWillChangeCount}.`);
+        over(`Fork CSS will-change declarations ${snapshot.forkCssHazards.willChange} exceed budget ${budgets.forkWillChangeCount}; every declaration counts, including \`auto\`.${listHazardFiles(snapshot.forkCssHazards, 'willChange')}`);
     }
     if ((snapshot.forkCssHazards?.backdropFilter ?? 0) > budgets.forkBackdropFilterCount) {
-        failures.push(`Fork CSS backdrop-filter declarations ${snapshot.forkCssHazards.backdropFilter} exceed budget ${budgets.forkBackdropFilterCount}.`);
+        over(`Fork CSS backdrop-filter declarations ${snapshot.forkCssHazards.backdropFilter} exceed budget ${budgets.forkBackdropFilterCount}; a rule that declares backdrop-filter and its -webkit- companion counts as two, and a \`none\` reset counts like any other declaration.${listHazardFiles(snapshot.forkCssHazards, 'backdropFilter')}`);
     }
     for (const { asset, size } of snapshot.largeExtensionAssets ?? []) {
         if (size > budgets.extensionLargeAssetBytes) {
-            failures.push(`${asset} is ${formatBytes(size)}, above budget ${formatBytes(budgets.extensionLargeAssetBytes)}.`);
+            over(`${asset} is ${formatBytes(size)}, above budget ${formatBytes(budgets.extensionLargeAssetBytes)}.`);
         }
     }
 

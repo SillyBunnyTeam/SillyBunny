@@ -75,6 +75,88 @@ describe('frontend static asset and CSS hazard budgets', () => {
         ]));
     });
 
+    test('every budget failure names the measured value, the budget and the rule for changing a budget', () => {
+        const KiB = 1024;
+        const sheets = count => Array.from({ length: count }, (_, i) => ({ href: `s${i}.css`, size: 1 }));
+        const snapshot = {
+            errors: ['Referenced asset is missing: gone.css'],
+            blockingStylesheets: sheets(17),
+            blockingStylesheetBytes: 2048 * KiB,
+            widthMediaStylesheets: sheets(5),
+            widthMediaStylesheetBytes: 130 * KiB,
+            importedStylesheets: sheets(20),
+            importedStylesheetBytes: 170 * KiB,
+            startupScripts: sheets(27),
+            startupScriptBytes: 4000 * KiB,
+            largeExtensionAssets: [{ asset: 'big.js', size: 3000 * KiB }],
+            forkCssHazards: {
+                willChange: 4,
+                backdropFilter: 39,
+                files: [
+                    { file: 'sillybunny-a.css', willChange: 1, backdropFilter: 2 },
+                    { file: 'sillybunny-b.css', willChange: 3, backdropFilter: 37 },
+                    { file: 'sillybunny-c.css', willChange: 0, backdropFilter: 0 },
+                ],
+            },
+        };
+
+        const failures = evaluateFrontendBudgets(snapshot, FRONTEND_BUDGETS);
+        const budgetFailures = failures.filter(failure => !failure.startsWith('Referenced asset'));
+
+        expect(failures).toContain('Referenced asset is missing: gone.css');
+        expect(budgetFailures).toHaveLength(11);
+        for (const failure of budgetFailures) {
+            expect(failure).toContain('edit FRONTEND_BUDGETS in scripts/check-frontend-budgets.js');
+            expect(failure).toContain('never raise one without a review note explaining the regression');
+        }
+        expect(budgetFailures).toEqual(expect.arrayContaining([
+            expect.stringContaining(`Blocking stylesheet count 17 exceeds budget ${FRONTEND_BUDGETS.blockingStylesheetCount}.`),
+            expect.stringContaining('Blocking stylesheet bytes 2048.0 KiB exceed budget 1024.0 KiB.'),
+            expect.stringContaining(`Width-media stylesheet count 5 exceeds budget ${FRONTEND_BUDGETS.widthMediaStylesheetCount}.`),
+            expect.stringContaining('Width-media stylesheet bytes 130.0 KiB exceed budget 125.0 KiB.'),
+            expect.stringContaining(`Imported stylesheet count 20 exceeds budget ${FRONTEND_BUDGETS.importedStylesheetCount}.`),
+            expect.stringContaining('Imported stylesheet bytes 170.0 KiB exceed budget 160.0 KiB.'),
+            expect.stringContaining(`Startup script count 27 exceeds budget ${FRONTEND_BUDGETS.startupScriptCount}.`),
+            expect.stringContaining('Startup script bytes 4000.0 KiB exceed budget 3600.0 KiB.'),
+            expect.stringContaining('big.js is 3000.0 KiB, above budget 2250.0 KiB.'),
+        ]));
+    });
+
+    test('the hazard failures list the files that carry the declaration, and the backdrop-filter one explains how declarations are counted', () => {
+        const snapshot = {
+            errors: [],
+            blockingStylesheets: [],
+            blockingStylesheetBytes: 0,
+            widthMediaStylesheets: [],
+            widthMediaStylesheetBytes: 0,
+            importedStylesheets: [],
+            importedStylesheetBytes: 0,
+            startupScripts: [],
+            startupScriptBytes: 0,
+            largeExtensionAssets: [],
+            forkCssHazards: {
+                willChange: FRONTEND_BUDGETS.forkWillChangeCount + 1,
+                backdropFilter: FRONTEND_BUDGETS.forkBackdropFilterCount + 1,
+                files: [
+                    { file: 'sillybunny-a.css', willChange: 1, backdropFilter: 0 },
+                    { file: 'sillybunny-b.css', willChange: 0, backdropFilter: 39 },
+                ],
+            },
+        };
+
+        const [willChangeFailure, backdropFailure] = evaluateFrontendBudgets(snapshot, FRONTEND_BUDGETS);
+
+        expect(willChangeFailure).toContain(`Fork CSS will-change declarations ${FRONTEND_BUDGETS.forkWillChangeCount + 1} exceed budget ${FRONTEND_BUDGETS.forkWillChangeCount};`);
+        expect(willChangeFailure).toContain('Found in: sillybunny-a.css (1).');
+        expect(willChangeFailure).not.toContain('sillybunny-b.css');
+        expect(backdropFailure).toContain(`Fork CSS backdrop-filter declarations ${FRONTEND_BUDGETS.forkBackdropFilterCount + 1} exceed budget ${FRONTEND_BUDGETS.forkBackdropFilterCount}`);
+        expect(backdropFailure).toContain('-webkit- companion counts as two');
+        expect(backdropFailure).toContain('a `none` reset counts like any other declaration');
+        expect(willChangeFailure).toContain('every declaration counts, including `auto`');
+        expect(backdropFailure).toContain('Found in: sillybunny-b.css (39).');
+        expect(backdropFailure).not.toContain('sillybunny-a.css');
+    });
+
     test('allows four width-media sheets of 108.4 KiB and rejects a fifth sheet or a set over the byte budget', () => {
         const widthMediaSnapshot = (count, bytes) => ({
             errors: [],
