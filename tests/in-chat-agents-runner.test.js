@@ -1,6 +1,8 @@
 /* eslint-disable playwright/no-duplicate-hooks, playwright/no-standalone-expect */
 /* global globalThis */
 import { describe, test, expect, jest, beforeEach, afterEach } from '@jest/globals';
+import vm from 'node:vm';
+import { loadDeclarations } from './util/load-declarations.js';
 
 function createEventSource() {
     const handlers = new Map();
@@ -6764,5 +6766,346 @@ Helper context.`;
         expect(chat[0].mes).toBe('Very late iOS reply\n[post processed]');
         expect(saveChatDebounced).toHaveBeenCalledTimes(1);
         jest.useRealTimers();
+    });
+
+    test('aborts an in-flight profile prompt-transform request on cancel without retrying fallback (#385)', async () => {
+        let capturedSignal = null;
+        connectionManagerRequestService = {
+            sendRequest: jest.fn((_profileId, _messages, _maxTokens, options = {}) => {
+                capturedSignal = options.signal ?? null;
+                return new Promise((_resolve, reject) => {
+                    if (capturedSignal) {
+                        capturedSignal.addEventListener('abort', () => {
+                            const error = new Error('Aborted');
+                            error.name = 'AbortError';
+                            reject(error);
+                        }, { once: true });
+                    }
+                });
+            }),
+            constructPrompt: jest.fn(() => 'fallback prompt'),
+        };
+        const transformAgent = {
+            id: 'agent-profile-abort',
+            name: 'Profile Abort Agent',
+            phase: 'post',
+            prompt: 'Polish the reply.',
+            connectionProfile: 'sidecar-profile',
+            injection: { order: 100 },
+            postProcess: {
+                enabled: false,
+                promptTransformEnabled: true,
+                promptTransformMode: 'rewrite',
+                promptTransformMaxTokens: 256,
+                promptTransformShowNotifications: false,
+            },
+            conditions: {
+                triggerKeywords: [],
+                triggerProbability: 100,
+                generationTypes: ['normal'],
+            },
+        };
+        enabledAgents = [transformAgent];
+
+        const { cancelAgentGeneration, requestPromptTransform } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const pending = requestPromptTransform(transformAgent, [{ role: 'user', content: 'Draft prose.' }], 256);
+
+        await waitFor(() => connectionManagerRequestService.sendRequest.mock.calls.length === 1);
+        expect(capturedSignal).toBeInstanceOf(AbortSignal);
+        expect(capturedSignal.aborted).toBe(false);
+
+        cancelAgentGeneration();
+
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+        expect(capturedSignal.aborted).toBe(true);
+        expect(connectionManagerRequestService.sendRequest).toHaveBeenCalledTimes(1);
+    });
+
+    test('aborts an in-flight main chat-completion prompt-transform request on cancel (#385)', async () => {
+        mainApi = 'openai';
+        let capturedSignal = null;
+        generateRaw.mockImplementationOnce((options = {}) => {
+            capturedSignal = options.signal ?? null;
+            return new Promise((_resolve, reject) => {
+                if (capturedSignal) {
+                    capturedSignal.addEventListener('abort', () => {
+                        const error = new Error('Aborted');
+                        error.name = 'AbortError';
+                        reject(error);
+                    }, { once: true });
+                }
+            });
+        });
+        const transformAgent = {
+            id: 'agent-openai-abort',
+            name: 'OpenAI Abort Agent',
+            phase: 'post',
+            prompt: 'Polish the reply.',
+            injection: { order: 100 },
+            postProcess: {
+                enabled: false,
+                promptTransformEnabled: true,
+                promptTransformMode: 'rewrite',
+                promptTransformMaxTokens: 256,
+                promptTransformShowNotifications: false,
+            },
+            conditions: {
+                triggerKeywords: [],
+                triggerProbability: 100,
+                generationTypes: ['normal'],
+            },
+        };
+        enabledAgents = [transformAgent];
+
+        const { cancelAgentGeneration, requestPromptTransform } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        const pending = requestPromptTransform(transformAgent, [{ role: 'user', content: 'Draft prose.' }], 256);
+
+        await waitFor(() => generateRaw.mock.calls.length === 1);
+        expect(capturedSignal).toBeInstanceOf(AbortSignal);
+        expect(capturedSignal.aborted).toBe(false);
+
+        cancelAgentGeneration();
+
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+        expect(capturedSignal.aborted).toBe(true);
+    });
+
+    test('aborts an in-flight quiet-prompt request on cancel for prompt-transform and pre-generation intercept agents (#385)', async () => {
+        mainApi = 'kobold';
+        let capturedTransformSignal = null;
+        let capturedInterceptSignal = null;
+
+        const transformAgent = {
+            id: 'agent-quiet-transform-abort',
+            name: 'Quiet Transform Abort',
+            phase: 'post',
+            prompt: 'Polish the reply.',
+            injection: { order: 100 },
+            postProcess: {
+                enabled: false,
+                promptTransformEnabled: true,
+                promptTransformMode: 'rewrite',
+                promptTransformMaxTokens: 256,
+                promptTransformShowNotifications: false,
+            },
+            conditions: {
+                triggerKeywords: [],
+                triggerProbability: 100,
+                generationTypes: ['normal'],
+            },
+        };
+        enabledAgents = [transformAgent];
+
+        generateQuietPrompt.mockImplementationOnce((options = {}) => {
+            capturedTransformSignal = options.signal ?? null;
+            return new Promise((_resolve, reject) => {
+                if (capturedTransformSignal) {
+                    capturedTransformSignal.addEventListener('abort', () => {
+                        const error = new Error('Aborted');
+                        error.name = 'AbortError';
+                        reject(error);
+                    }, { once: true });
+                }
+            });
+        });
+
+        const { cancelAgentGeneration, initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+        chat.push({
+            name: 'Assistant',
+            mes: 'Original assistant reply.',
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        const transformRun = Promise.all([
+            eventSource.emit(eventTypes.MESSAGE_RECEIVED, 0, 'normal'),
+            eventSource.emit(eventTypes.GENERATION_ENDED, chat.length),
+        ]);
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 1);
+        expect(capturedTransformSignal).toBeInstanceOf(AbortSignal);
+        expect(capturedTransformSignal.aborted).toBe(false);
+
+        cancelAgentGeneration();
+        await transformRun;
+
+        expect(capturedTransformSignal.aborted).toBe(true);
+        expect(chat[0].mes).toBe('Original assistant reply.');
+
+        enabledAgents = [createPreInterceptAgent({ id: 'agent-quiet-intercept-abort' })];
+        generateQuietPrompt.mockImplementationOnce((options = {}) => {
+            capturedInterceptSignal = options.signal ?? null;
+            return new Promise((_resolve, reject) => {
+                if (capturedInterceptSignal) {
+                    capturedInterceptSignal.addEventListener('abort', () => {
+                        const error = new Error('Aborted');
+                        error.name = 'AbortError';
+                        reject(error);
+                    }, { once: true });
+                }
+            });
+        });
+
+        await eventSource.emit(eventTypes.GENERATION_STARTED, 'normal', {}, false);
+        await eventSource.emit(eventTypes.GENERATION_AFTER_COMMANDS, 'normal', {}, false);
+
+        const eventData = { prompt: 'Original outgoing prompt', dryRun: false };
+        const interceptRun = eventSource.emit(eventTypes.GENERATE_AFTER_COMBINE_PROMPTS, eventData);
+        await waitFor(() => generateQuietPrompt.mock.calls.length === 2);
+        expect(capturedInterceptSignal).toBeInstanceOf(AbortSignal);
+        expect(capturedInterceptSignal.aborted).toBe(false);
+
+        cancelAgentGeneration();
+        await interceptRun;
+
+        expect(capturedInterceptSignal.aborted).toBe(true);
+        expect(eventData.prompt).toBe('Original outgoing prompt');
+    });
+
+    test('does not rerun post-processing or prompt-transform agents when browsing swipes via MESSAGE_SWIPED (20353df60)', async () => {
+        enabledAgents = [
+            {
+                id: 'agent-swipe-polish',
+                name: 'Prose Polisher',
+                phase: 'post',
+                prompt: 'Polish the prose.',
+                injection: { order: 100 },
+                postProcess: {
+                    enabled: false,
+                    promptTransformEnabled: true,
+                    promptTransformMode: 'rewrite',
+                    promptTransformMaxTokens: 256,
+                    promptTransformShowNotifications: false,
+                },
+                conditions: {
+                    triggerKeywords: [],
+                    triggerProbability: 100,
+                    generationTypes: ['normal'],
+                },
+            },
+            {
+                id: 'agent-swipe-append',
+                name: 'Post Append',
+                phase: 'post',
+                prompt: '',
+                injection: { order: 110 },
+                postProcess: {
+                    enabled: true,
+                    type: 'append',
+                    appendText: '\n[appended]',
+                    promptTransformEnabled: false,
+                },
+                conditions: {
+                    triggerKeywords: [],
+                    triggerProbability: 100,
+                    generationTypes: ['normal'],
+                },
+            },
+        ];
+
+        const { initAgentRunner } = await import('../public/scripts/extensions/in-chat-agents/agent-runner.js');
+        initAgentRunner();
+
+        chat.push({
+            name: 'Assistant',
+            mes: 'Second existing swipe',
+            swipes: ['First existing swipe', 'Second existing swipe'],
+            swipe_id: 1,
+            swipe_info: [{ extra: {} }, { extra: {} }],
+            is_user: false,
+            is_system: false,
+            extra: {},
+        });
+
+        await eventSource.emit(eventTypes.MESSAGE_SWIPED, { messageId: 0 });
+        await eventSource.emit(eventTypes.MESSAGE_SWIPED, 0);
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(generateQuietPrompt).not.toHaveBeenCalled();
+        expect(generateRaw).not.toHaveBeenCalled();
+        expect(chat[0].mes).toBe('Second existing swipe');
+        expect(saveChatDebounced).not.toHaveBeenCalled();
+    });
+});
+
+describe('generateQuietPrompt external abort signal (#385)', () => {
+    function createQuietPromptRuntime(generateImpl) {
+        const context = vm.createContext({
+            AbortController,
+            AbortSignal,
+            Error,
+            console: { trace: jest.fn(), warn: jest.fn(), error: jest.fn() },
+            main_api: 'openai',
+            abortController: null,
+            activeGenerationRun: null,
+            activateSendButtons: jest.fn(),
+            TempResponseLength: {
+                save: jest.fn(() => ({ id: 'override' })),
+                setupEventHook: jest.fn(() => () => {}),
+                isCustomized: jest.fn(() => false),
+                restore: jest.fn(),
+                removeEventHook: jest.fn(),
+            },
+            Generate: jest.fn(generateImpl),
+            trimToEndSentence: text => text,
+            removeReasoningFromString: text => text,
+        });
+        loadDeclarations(context, 'script.js', ['generateQuietPrompt']);
+        return context;
+    }
+
+    test('forwards an external AbortSignal to Generate and aborts the quiet controller on cancel (#385)', async () => {
+        let capturedOptions = null;
+        let resolveGenerate;
+        const context = createQuietPromptRuntime((_type, options) => {
+            capturedOptions = options;
+            return new Promise(resolve => {
+                resolveGenerate = resolve;
+            });
+        });
+        const externalController = new AbortController();
+        const removeSpy = jest.spyOn(externalController.signal, 'removeEventListener');
+
+        const pending = context.generateQuietPrompt({
+            quietPrompt: 'Transform this.',
+            signal: externalController.signal,
+        });
+
+        expect(capturedOptions.signal).toBeInstanceOf(AbortSignal);
+        expect(capturedOptions.signal.aborted).toBe(false);
+        expect(context.abortController).toBeInstanceOf(AbortController);
+        expect(context.abortController.signal).toBe(capturedOptions.signal);
+
+        const cancelReason = new Error('User pressed stop');
+        externalController.abort(cancelReason);
+
+        expect(capturedOptions.signal.aborted).toBe(true);
+        expect(capturedOptions.signal.reason).toBe(cancelReason);
+
+        resolveGenerate('done');
+        await expect(pending).resolves.toBe('done');
+        expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+    });
+
+    test('aborts immediately when generateQuietPrompt receives an already-aborted signal (#385)', async () => {
+        let capturedOptions = null;
+        const context = createQuietPromptRuntime(async (_type, options) => {
+            capturedOptions = options;
+            return '';
+        });
+        const externalController = new AbortController();
+        externalController.abort(new Error('Already cancelled'));
+
+        await context.generateQuietPrompt({
+            quietPrompt: 'Transform this.',
+            signal: externalController.signal,
+        });
+
+        expect(capturedOptions.signal).toBeInstanceOf(AbortSignal);
+        expect(capturedOptions.signal.aborted).toBe(true);
+        expect(capturedOptions.signal.reason).toEqual(new Error('Already cancelled'));
     });
 });
