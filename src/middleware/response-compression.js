@@ -157,32 +157,6 @@ export function shouldBypassLoopbackCompression(request, { loopbackBypass, env =
     return isDirectLoopbackRequest(request);
 }
 
-function stripBrotliWhenGzipAccepted(acceptEncoding) {
-    const raw = Array.isArray(acceptEncoding) ? acceptEncoding.join(', ') : String(acceptEncoding || '');
-    if (!raw || !/\bgzip\b/i.test(raw) || !/\bbr\b/i.test(raw)) {
-        return null;
-    }
-    if (parseEncodingQuality(raw, 'gzip') <= 0 || parseEncodingQuality(raw, 'br') <= 0) {
-        return null;
-    }
-
-    const filtered = raw
-        .split(',')
-        .map(part => part.trim())
-        .filter((part) => {
-            if (!part) {
-                return false;
-            }
-            const token = part.split(';', 1)[0].trim().toLowerCase();
-            if (token !== 'br') {
-                return true;
-            }
-            return /;\s*q\s*=\s*0(?:\.0+)?\s*$/i.test(part);
-        });
-
-    return filtered.length > 0 ? filtered.join(', ') : null;
-}
-
 function parseEncodingQuality(rawHeader, encodingName) {
     const parts = String(rawHeader || '').split(',');
     let wildcardQuality = null;
@@ -657,52 +631,28 @@ export function shouldCompressResponse(request, response) {
 }
 
 /**
- * Creates dynamic response compression middleware with direct-loopback bypass,
- * 2048-byte threshold, Brotli Q1 on Node.js, and Gzip L1 on Bun.
+ * Creates dynamic response compression middleware with a direct-loopback bypass and a
+ * 2048-byte threshold. Gzip level and Brotli quality stay at the `compression` package
+ * defaults on every runtime, so remote clients receive the same bytes as before.
  * @param {object} [options]
  * @param {unknown} [options.loopbackBypass] Override `performance.compression.loopbackBypass`
  * @param {number} [options.threshold] Minimum payload byte length to compress
- * @param {boolean} [options.preferGzip] Prefer Gzip L1 over Brotli (defaults to true on Bun)
  * @param {NodeJS.ProcessEnv} [options.env] Environment variables
  * @returns {import('express').RequestHandler}
  */
 export default function getResponseCompressionMiddleware({
     loopbackBypass,
     threshold = DEFAULT_COMPRESSION_THRESHOLD_BYTES,
-    preferGzip = isBunRuntime(),
     env = process.env,
 } = {}) {
     const dynamicCompression = compression({
         filter: shouldCompressResponse,
         threshold,
-        level: zlib.constants.Z_BEST_SPEED,
-        brotli: {
-            params: {
-                [zlib.constants.BROTLI_PARAM_QUALITY]: 1,
-            },
-        },
     });
 
     return function responseCompressionMiddleware(request, response, next) {
         if (shouldBypassLoopbackCompression(request, { loopbackBypass, env })) {
             return next();
-        }
-
-        if (preferGzip) {
-            const strippedAcceptEncoding = stripBrotliWhenGzipAccepted(request.headers?.['accept-encoding']);
-            if (strippedAcceptEncoding) {
-                // Present a view without `br` to `compression` without mutating `request.headers`
-                // for downstream routes such as `/proxy/*`.
-                const negotiatorRequest = Object.create(request, {
-                    headers: {
-                        value: {
-                            ...request.headers,
-                            'accept-encoding': strippedAcceptEncoding,
-                        },
-                    },
-                });
-                return dynamicCompression(negotiatorRequest, response, () => next());
-            }
         }
 
         return dynamicCompression(request, response, next);

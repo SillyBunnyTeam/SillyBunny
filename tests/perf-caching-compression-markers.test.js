@@ -8,7 +8,7 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { brotliDecompressSync, gunzipSync } from 'node:zlib';
+import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants, gunzipSync, gzipSync } from 'node:zlib';
 
 import { afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
@@ -403,7 +403,7 @@ describe('2. Service Worker disk-thrash & loopback SWR fixes (public/sw.js)', ()
     });
 });
 
-describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded static LRU', () => {
+describe('3. Loopback compression bypass and bounded static LRU', () => {
     test('bypasses loopback ONLY when no proxy headers are present', () => {
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '127.0.0.1' }, headers: {} })).toBe(true);
         expect(isDirectLoopbackRequest({ socket: { remoteAddress: '127.0.0.2' }, headers: {} })).toBe(true);
@@ -428,66 +428,68 @@ describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded stat
         expect(shouldBypassLoopbackCompression(directLoopback, { loopbackBypass: 'auto', env: { SILLYBUNNY_TEST_COMPRESSION: '1' } })).toBe(false);
     });
 
-    test('uses Brotli Q1 on Node, Gzip L1 on Bun without mutating req.headers, and 2048-byte threshold', async () => {
+    test('compresses proxied dynamic responses at the compression package defaults and keeps the 2048-byte threshold', async () => {
         const largePayload = { text: 'sillybunny-perf-payload-'.repeat(200) };
         const smallPayload = { text: 'tiny' };
         let observedAcceptEncoding = null;
 
-        const createTestServer = async (options) => {
-            const app = express();
-            app.use(getResponseCompressionMiddleware(options));
-            app.get('/large', (req, res) => {
-                observedAcceptEncoding = req.headers['accept-encoding'];
-                res.json(largePayload);
-            });
-            app.get('/small', (_req, res) => res.json(smallPayload));
-            const server = await new Promise(resolve => {
-                const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
-            });
-            return server;
-        };
-
-        const nodeServer = await createTestServer({ preferGzip: false, env: {} });
-        const bunServer = await createTestServer({ preferGzip: true, env: {} });
+        const app = express();
+        app.use(getResponseCompressionMiddleware({ env: {} }));
+        app.get('/large', (req, res) => {
+            observedAcceptEncoding = req.headers['accept-encoding'];
+            res.json(largePayload);
+        });
+        app.get('/small', (_req, res) => res.json(smallPayload));
+        const server = await new Promise(resolve => {
+            const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
+        });
 
         try {
-            const nodeUrl = `http://127.0.0.1:${nodeServer.address().port}`;
-            const bunUrl = `http://127.0.0.1:${bunServer.address().port}`;
+            const url = `http://127.0.0.1:${server.address().port}`;
+            const largeJson = Buffer.from(JSON.stringify(largePayload));
+            const brotliDefault = brotliCompressSync(largeJson, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } });
+            const gzipDefault = gzipSync(largeJson, { level: 6 });
 
-            const directRes = await getRawHttp(`${nodeUrl}/large`, { 'Accept-Encoding': 'gzip, deflate, br' });
+            const directRes = await getRawHttp(`${url}/large`, { 'Accept-Encoding': 'gzip, deflate, br' });
             expect(directRes.headers['content-encoding']).toBeUndefined();
 
-            const proxiedNodeRes = await getRawHttp(`${nodeUrl}/large`, {
+            const proxiedBrotli = await getRawHttp(`${url}/large`, {
                 'Accept-Encoding': 'gzip, deflate, br',
                 'X-Real-IP': '198.51.100.42',
             });
-            expect(proxiedNodeRes.headers['content-encoding']).toBe('br');
-            expect(JSON.parse(brotliDecompressSync(proxiedNodeRes.body).toString('utf8'))).toEqual(largePayload);
+            expect(proxiedBrotli.headers['content-encoding']).toBe('br');
+            expect(proxiedBrotli.body.equals(brotliDefault)).toBe(true);
 
-            const proxiedSmallRes = await getRawHttp(`${nodeUrl}/small`, {
-                'Accept-Encoding': 'gzip, deflate, br',
+            const proxiedGzip = await getRawHttp(`${url}/large`, {
+                'Accept-Encoding': 'gzip',
                 'X-Real-IP': '198.51.100.42',
             });
-            expect(proxiedSmallRes.headers['content-encoding']).toBeUndefined();
+            expect(proxiedGzip.headers['content-encoding']).toBe('gzip');
+            expect(proxiedGzip.body.length).toBe(gzipDefault.length);
+            expect(gunzipSync(proxiedGzip.body).equals(largeJson)).toBe(true);
 
-            const proxiedBunRes = await getRawHttp(`${bunUrl}/large`, {
+            // A client that accepts brotli keeps getting brotli whatever the runtime, and the request headers reach routes untouched.
+            const proxiedZstdClient = await getRawHttp(`${url}/large`, {
                 'Accept-Encoding': 'gzip, deflate, br, zstd',
                 'Forwarded': 'for=198.51.100.42',
             });
-            expect(proxiedBunRes.headers['content-encoding']).toBe('gzip');
+            expect(proxiedZstdClient.headers['content-encoding']).toBe('br');
             expect(observedAcceptEncoding).toBe('gzip, deflate, br, zstd');
-            expect(JSON.parse(gunzipSync(proxiedBunRes.body).toString('utf8'))).toEqual(largePayload);
+            expect(JSON.parse(brotliDecompressSync(proxiedZstdClient.body).toString('utf8'))).toEqual(largePayload);
 
-            // When gzip is explicitly rejected (`gzip;q=0`), Bun preferGzip must preserve `br` instead of dropping compression.
-            const proxiedBunBrOnly = await getRawHttp(`${bunUrl}/large`, {
+            const proxiedBrOnly = await getRawHttp(`${url}/large`, {
                 'Accept-Encoding': 'br, gzip;q=0',
                 'Via': '1.1 reverse-proxy',
             });
-            expect(proxiedBunBrOnly.headers['content-encoding']).toBe('br');
-            expect(JSON.parse(brotliDecompressSync(proxiedBunBrOnly.body).toString('utf8'))).toEqual(largePayload);
+            expect(proxiedBrOnly.headers['content-encoding']).toBe('br');
+
+            const proxiedSmall = await getRawHttp(`${url}/small`, {
+                'Accept-Encoding': 'gzip, deflate, br',
+                'X-Real-IP': '198.51.100.42',
+            });
+            expect(proxiedSmall.headers['content-encoding']).toBeUndefined();
         } finally {
-            await new Promise(resolve => nodeServer.close(resolve));
-            await new Promise(resolve => bunServer.close(resolve));
+            await new Promise(resolve => server.close(resolve));
         }
     });
 
@@ -600,7 +602,7 @@ describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded stat
         };
 
         const app = express();
-        app.use(getResponseCompressionMiddleware({ preferGzip: true, env: {} }));
+        app.use(getResponseCompressionMiddleware({ env: {} }));
         app.use(createCompressedStaticMiddleware(staticRoot, {
             cache: liveCache,
             preferGzip: true,
@@ -624,8 +626,8 @@ describe('3. Loopback compression bypass, Q1/L1 dynamic tuning, and bounded stat
                 'Accept-Encoding': 'gzip, br',
                 'Via': '1.1 edge',
             });
-            expect(proxiedMiss.headers['content-encoding']).toBe('gzip');
-            expect(gunzipSync(proxiedMiss.body).toString('utf8')).toBe(payloadText);
+            expect(proxiedMiss.headers['content-encoding']).toBe('br');
+            expect(brotliDecompressSync(proxiedMiss.body).toString('utf8')).toBe(payloadText);
 
             await liveCache.warm(scriptPath, fs.statSync(scriptPath), 'gzip');
             const proxiedHit = await getRawHttp(`${baseUrl}/app.js`, {
