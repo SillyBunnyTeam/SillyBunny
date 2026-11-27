@@ -1927,10 +1927,18 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
                 );
                 expect(mesText.querySelectorAll('span.text_segment')).toHaveLength(0);
 
-                // 3. On iOS WebKit with slow renderDurationMs (> 33 ms), plain-text preview fallback activates live,
-                //    and final render still uses full messageFormatting.
+                // 3. On iOS WebKit with reduced streaming work off, a slow renderDurationMs (> 33 ms) changes nothing.
                 navRef = { platform: 'iPhone', userAgent: 'iPhone AppleWebKit/605.1.15', maxTouchPoints: 5 };
                 processor.streamingRenderDurationMs = 50;
+                messageFormattingSpy.mockClear();
+                formatMobileStreamingPreviewSpy.mockClear();
+                await processor.onProgressStreaming(0, 'Slow iOS frame prose with the setting off', false);
+                expect(formatMobileStreamingPreviewSpy).not.toHaveBeenCalled();
+                expect(messageFormattingSpy).toHaveBeenCalledTimes(1);
+
+                // 4. With the setting on, a slow frame gets the plain-text preview, and the final render
+                //    still uses full messageFormatting.
+                ctx.power_user.ios_webkit_reduce_streaming_work = true;
                 messageFormattingSpy.mockClear();
                 formatMobileStreamingPreviewSpy.mockClear();
                 await processor.onProgressStreaming(0, 'Slow iOS frame prose', false);
@@ -1947,10 +1955,11 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
             }
         });
 
-        test('extends adaptive frame-budget backoff and plain-text fallback to iOS WebKit', () => {
+        test('extends adaptive frame-budget backoff and plain-text fallback to iOS WebKit only while its reduced-work settings are on', () => {
             const iosNav = { platform: 'iPhone', maxTouchPoints: 5 };
             expect(shouldReduceStreamingDomWork(iosNav, { iosEnabled: false, renderDurationMs: 10 })).toBe(false);
-            expect(shouldReduceStreamingDomWork(iosNav, { iosEnabled: false, renderDurationMs: 50 })).toBe(true);
+            expect(shouldReduceStreamingDomWork(iosNav, { iosEnabled: false, renderDurationMs: 50 })).toBe(false);
+            expect(shouldReduceStreamingDomWork(iosNav, { iosEnabled: true, renderDurationMs: 10 })).toBe(true);
 
             expect(shouldUsePlainTextStreamingPreview({
                 isFinal: false,
@@ -1962,7 +1971,7 @@ describe('PR 8 — SmoothEventSourceStream, Incremental Block Streaming, and Clo
 
             expect(getStreamingUpdateInterval(33, {
                 navigatorRef: iosNav,
-                iosEnabled: false,
+                iosEnabled: true,
                 renderDurationMs: 140,
             })).toBe(Math.min(IOS_MAX_ADAPTIVE_INTERVAL_MS, 140 * 3));
 

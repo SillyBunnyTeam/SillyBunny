@@ -6963,17 +6963,14 @@ class StreamingProcessor {
         if (!this.#isCurrent(messageId)) return;
         const isImpersonate = this.type == 'impersonate';
         const isContinue = this.type == 'continue';
-        // SillyBunny: pass measured renderDurationMs so iOS WebKit engages adaptive DOM-work reduction on slow frames.
         const shouldReduceStreamingWork = shouldReduceStreamingDomWork(globalThis.navigator, {
             iosEnabled: power_user.ios_webkit_reduce_streaming_work,
             androidEnabled: power_user.android_reduce_streaming_work,
-            renderDurationMs: this.streamingRenderDurationMs,
         });
         const shouldReduceIntermediateStreamingWork = !isFinal && shouldReduceStreamingWork;
         const shouldBypassStreamingFadeIn = shouldReduceStreamingDomWork(globalThis.navigator, {
             iosEnabled: power_user.ios_webkit_disable_stream_fade_in,
             androidEnabled: power_user.android_disable_stream_fade_in,
-            renderDurationMs: this.streamingRenderDurationMs,
         });
         const shouldUseMobileStreamingPin = !isImpersonate && shouldGuardMobileChatScroll();
         const shouldPinMobileBottom = shouldUseMobileStreamingPin && shouldPinMobileChatToBottom();
@@ -7053,7 +7050,7 @@ class StreamingProcessor {
             }
 
             const isAndroidStreamingPreview = isAndroidStreamingPlatform(globalThis.navigator);
-            // SillyBunny: wire iOS WebKit adaptive plain-text preview fallback when frame render cost exceeds budget.
+            // SillyBunny: with iOS WebKit reduced streaming work on, a frame that costs more than the budget gets the plain-text preview.
             const isIOSWebKitPreview = typeof isIOSWebKitPlatform === 'function' && isIOSWebKitPlatform(globalThis.navigator);
             const shouldUseAndroidBasicMarkdown = power_user.android_streaming_basic_markdown && isAndroidStreamingPreview;
             const shouldUsePlainTextPreview = shouldUsePlainTextStreamingPreview({

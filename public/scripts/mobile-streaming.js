@@ -48,18 +48,9 @@ export function isReducedStreamingDomWorkPlatform(navigatorRef = globalThis.navi
     return isIOSWebKitPlatform(navigatorRef) || isAndroidStreamingPlatform(navigatorRef);
 }
 
-function shouldUsePlatformStreamingReduction(navigatorRef, {
-    enabled = true,
-    iosEnabled = enabled,
-    androidEnabled = false,
-    renderDurationMs = 0,
-    frameBudgetMs = IOS_ADAPTIVE_RENDER_BUDGET_MS,
-} = {}) {
+function shouldUsePlatformStreamingReduction(navigatorRef, { enabled = true, iosEnabled = enabled, androidEnabled = false } = {}) {
     if (isIOSWebKitPlatform(navigatorRef)) {
-        if (iosEnabled) {
-            return true;
-        }
-        return Number.isFinite(renderDurationMs) && renderDurationMs > frameBudgetMs;
+        return Boolean(iosEnabled);
     }
 
     if (isAndroidStreamingPlatform(navigatorRef)) {
@@ -338,12 +329,12 @@ export function getStreamingUpdateInterval(baseIntervalMs, {
     const interval = Number(baseIntervalMs);
     const normalizedInterval = Number.isFinite(interval) && interval > 0 ? interval : 1;
 
-    const isIOS = isIOSWebKitPlatform(navigatorRef);
-    const platformFloor = shouldReduceStreamingDomWork(navigatorRef, { enabled, iosEnabled, androidEnabled, renderDurationMs, frameBudgetMs })
-        ? getStreamingUpdateIntervalFloor(navigatorRef) : 0;
+    const isReducedPlatform = shouldReduceStreamingDomWork(navigatorRef, { enabled, iosEnabled, androidEnabled });
+    const platformFloor = isReducedPlatform ? getStreamingUpdateIntervalFloor(navigatorRef) : 0;
     // Leave roughly two thirds of the main thread for input/layout, with a bounded live-preview delay.
-    // iOS WebKit backs off further when render frames exceed budget to prevent page reload loops.
-    const maxRenderCostFloor = isIOS && Number.isFinite(renderDurationMs) && renderDurationMs > frameBudgetMs
+    // iOS WebKit with its conservative setting on backs off further when render frames exceed budget to prevent page
+    // reload loops. With the setting off, the user has asked for no iOS-specific throttling.
+    const maxRenderCostFloor = isIOSWebKitPlatform(navigatorRef) && isReducedPlatform && Number.isFinite(renderDurationMs) && renderDurationMs > frameBudgetMs
         ? IOS_MAX_ADAPTIVE_INTERVAL_MS
         : 250;
     const renderCostFloor = Number.isFinite(renderDurationMs) ? Math.min(maxRenderCostFloor, Math.max(0, renderDurationMs) * 3) : 0;
