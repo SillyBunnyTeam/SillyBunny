@@ -13,6 +13,15 @@ describe('pull request checks workflow', () => {
         expect(commands).toContain('npm run lint --prefix tests');
     });
 
+    test('runs the server typecheck ratchet under Node 24', () => {
+        const job = workflow.jobs['server-typecheck'];
+        expect(job.name).toBe('✅ Check Server Types');
+        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+        const commands = runCommands('server-typecheck');
+        expect(commands).toContain('npm ci --ignore-scripts');
+        expect(commands).toContain('npm run check:server-types');
+    });
+
     test('checks agent template versions against the merge ref inside the required unit test job', () => {
         expect(workflow.jobs['run-tests'].name).toBe('✅ Run Unit Tests on PR');
         const step = workflow.jobs['run-tests'].steps.find(candidate => candidate.name === 'Check agent template versions');
