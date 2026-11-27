@@ -1,7 +1,7 @@
 /* global globalThis */
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import {
     CHAT_RENDER_LIFECYCLE_ROLLOUT_KEY,
     resolveChatRenderLifecycleRollout,
@@ -490,6 +490,84 @@ describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimoda
             '/api/tokenizers/llama3/encode',
             '/api/tokenizers/llama3/encode',
         ]);
+    });
+
+    describe('a failed tokenizer request answers with an estimate that is not cached as an exact count', () => {
+        const sessionStore = new Map();
+        let consoleErrorSpy;
+
+        beforeEach(() => {
+            mockPowerUser.tokenizer = localTokenizers.tokenizers.LLAMA3;
+            sessionStore.clear();
+            globalThis.sessionStorage = {
+                getItem: (key) => sessionStore.get(key) ?? null,
+                setItem: (key, value) => sessionStore.set(key, String(value)),
+            };
+            consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        });
+
+        afterEach(() => {
+            consoleErrorSpy.mockRestore();
+            delete globalThis.sessionStorage;
+        });
+
+        test('a single text whose HTTP count fails is counted again on the next call', async () => {
+            const text = 'a text whose first count request fails';
+            let serverUp = false;
+            globalThis.jQuery.ajax.mockImplementation((options) => {
+                if (options.url !== '/api/tokenizers/llama3/encode') {
+                    throw new Error(`Unexpected URL: ${options.url}`);
+                }
+                if (serverUp) {
+                    options.success({ count: 7 });
+                } else {
+                    options.error({ status: 500 });
+                }
+                return undefined;
+            });
+
+            const estimate = await localTokenizers.getTokenCountAsync(text);
+            expect(estimate).toBe(localTokenizers.guesstimate(text));
+            expect(localTokenizers.isTokenCacheDirty()).toBe(false);
+            expect(localTokenizers.getTokenCacheStatsForTests().currentChatSize).toBe(0);
+
+            serverUp = true;
+            expect(await localTokenizers.getTokenCountAsync(text)).toBe(7);
+            expect(localTokenizers.getTokenCacheStatsForTests().currentChatSize).toBe(1);
+
+            // The exact count is cached: no further request.
+            globalThis.jQuery.ajax.mockClear();
+            expect(await localTokenizers.getTokenCountAsync(text)).toBe(7);
+            expect(globalThis.jQuery.ajax).not.toHaveBeenCalled();
+        });
+
+        test('texts whose batch and per-text fallback both fail are counted again on the next call', async () => {
+            let serverUp = false;
+            globalThis.jQuery.ajax.mockImplementation((options) => {
+                if (options.url === '/api/tokenizers/count-batch') {
+                    return Promise.reject({ status: 500, statusText: 'Server Error', readyState: 4 });
+                }
+                if (options.url === '/api/tokenizers/llama3/encode') {
+                    if (serverUp) {
+                        options.success({ count: 9 });
+                    } else {
+                        options.error({ status: 500 });
+                    }
+                    return undefined;
+                }
+                throw new Error(`Unexpected URL: ${options.url}`);
+            });
+
+            const texts = ['batch failure one', 'batch failure two'];
+            const estimates = await Promise.all(texts.map(text => localTokenizers.getTokenCountAsync(text)));
+            expect(estimates).toEqual(texts.map(text => localTokenizers.guesstimate(text)));
+            expect(localTokenizers.getTokenCacheStatsForTests().currentChatSize).toBe(0);
+
+            serverUp = true;
+            const exact = await Promise.all(texts.map(text => localTokenizers.getTokenCountAsync(text)));
+            expect(exact).toEqual([9, 9]);
+            expect(localTokenizers.getTokenCacheStatsForTests().currentChatSize).toBe(2);
+        });
     });
 
     test('routes OpenAI bare { content } messages through /api/tokenizers/openai/count(?per_message=1) and never mixes raw /count-batch counts', async () => {

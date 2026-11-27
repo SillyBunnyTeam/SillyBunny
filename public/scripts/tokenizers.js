@@ -199,10 +199,10 @@ let tokenCacheMutationVersion = 0;
 /** @type {boolean | null} */
 let countBatchEndpointAvailable = null;
 
-/** @type {Map<string, Promise<number>>} */
+/** @type {Map<string, Promise<number | null | TokenCountResult>>} */
 const inFlightTokenCounts = new Map();
 
-/** @type {Map<string, { model: string, tokenizerType: number, items: Array<{ text: string, cacheKey: string, chatKey: string, resolve: (value: number) => void }> }>} */
+/** @type {Map<string, { model: string, tokenizerType: number, items: Array<{ text: string, cacheKey: string, chatKey: string, resolve: (value: TokenCountResult) => void }> }>} */
 const pendingPlainTextBatches = new Map();
 let plainTextBatchScheduled = false;
 
@@ -659,31 +659,39 @@ function callTokenizer(type, str) {
 }
 
 /**
+ * @typedef {object} TokenCountResult
+ * @property {number} count Token count.
+ * @property {boolean} fallback True when `count` is an estimate that replaces a failed request. It must not be cached as an exact count.
+ */
+
+/**
  * Calls the underlying tokenizer model to the token count for a string.
  * @param {number} type Tokenizer type.
  * @param {string} str String to tokenize.
- * @returns {Promise<number>} Token count.
+ * @returns {Promise<TokenCountResult>} Token count.
  */
 function callTokenizerAsync(type, str) {
     return new Promise(resolve => {
+        const resolveCount = (count, fallback = false) => resolve({ count, fallback });
+
         if (type === tokenizers.NONE) {
-            return resolve(guesstimate(str));
+            return resolveCount(guesstimate(str));
         }
 
         switch (type) {
             case tokenizers.API_CURRENT:
                 return callTokenizerAsync(currentRemoteTokenizerAPI(), str).then(resolve);
             case tokenizers.API_KOBOLD:
-                return countTokensFromKoboldAPI(str, resolve);
+                return countTokensFromKoboldAPI(str, resolveCount);
             case tokenizers.API_TEXTGENERATIONWEBUI:
-                return countTokensFromTextgenAPI(str, resolve);
+                return countTokensFromTextgenAPI(str, resolveCount);
             default: {
                 const endpointUrl = TOKENIZER_URLS[type]?.count;
                 if (!endpointUrl) {
                     console.warn('Unknown tokenizer type', type);
-                    return resolve(apiFailureTokenCount(str));
+                    return resolveCount(apiFailureTokenCount(str), true);
                 }
-                return countTokensFromServer(endpointUrl, str, resolve);
+                return countTokensFromServer(endpointUrl, str, resolveCount);
             }
         }
     });
@@ -758,11 +766,11 @@ async function flushPlainTextBucket(bucket) {
         for (const chunk of chunks) {
             if (chunk.length === 1) {
                 const [single] = chunk;
-                const count = await callTokenizerAsync(bucket.tokenizerType, single.text);
-                if (Number.isFinite(count)) {
-                    setCachedTokenCount(single.cacheKey, count, single.chatKey);
+                const result = await callTokenizerAsync(bucket.tokenizerType, single.text);
+                if (Number.isFinite(result.count) && !result.fallback) {
+                    setCachedTokenCount(single.cacheKey, result.count, single.chatKey);
                 }
-                resolveItem(single, count);
+                resolveItem(single, result);
                 continue;
             }
 
@@ -798,13 +806,13 @@ async function flushPlainTextBucket(bucket) {
             }
 
             if (!resolvedCounts) {
-                const counts = await Promise.all(chunk.map(item => callTokenizerAsync(bucket.tokenizerType, item.text)));
+                const results = await Promise.all(chunk.map(item => callTokenizerAsync(bucket.tokenizerType, item.text)));
                 for (let i = 0; i < chunk.length; i++) {
-                    const count = counts[i];
-                    if (Number.isFinite(count)) {
-                        setCachedTokenCount(chunk[i].cacheKey, count, chunk[i].chatKey);
+                    const result = results[i];
+                    if (Number.isFinite(result.count) && !result.fallback) {
+                        setCachedTokenCount(chunk[i].cacheKey, result.count, chunk[i].chatKey);
                     }
-                    resolveItem(chunk[i], count);
+                    resolveItem(chunk[i], result);
                 }
                 continue;
             }
@@ -814,7 +822,7 @@ async function flushPlainTextBucket(bucket) {
                 if (val !== null) {
                     setCachedTokenCount(chunk[i].cacheKey, val, chunk[i].chatKey);
                 }
-                resolveItem(chunk[i], val ?? guesstimate(chunk[i].text));
+                resolveItem(chunk[i], val === null ? { count: guesstimate(chunk[i].text), fallback: true } : { count: val, fallback: false });
             }
         }
     } catch (error) {
@@ -822,7 +830,7 @@ async function flushPlainTextBucket(bucket) {
     } finally {
         for (const item of bucket.items) {
             if (!settled.has(item)) {
-                resolveItem(item, guesstimate(item.text));
+                resolveItem(item, { count: guesstimate(item.text), fallback: true });
             }
         }
     }
@@ -841,6 +849,10 @@ function flushPlainTextBatches() {
     }
 }
 
+/**
+ * @param {{ bucketKey: string, model: string, tokenizerType?: number, text: string, cacheKey: string, chatKey: string }} item
+ * @returns {Promise<TokenCountResult>}
+ */
 function enqueuePlainTextBatchCount({ bucketKey, model, tokenizerType = tokenizers.NONE, text, cacheKey, chatKey }) {
     const inFlightKey = `${chatKey}::${bucketKey}::${cacheKey}`;
     const existingPromise = inFlightTokenCounts.get(inFlightKey);
@@ -916,7 +928,8 @@ export async function getTokenCountAsync(str, padding = undefined) {
         return cached;
     }
 
-    let baseCount;
+    /** @type {TokenCountResult} */
+    let base;
     if (
         tokenizerType !== tokenizers.NONE &&
         Object.hasOwn(LOCAL_TOKENIZER_BATCH_MODELS, tokenizerType) &&
@@ -925,9 +938,9 @@ export async function getTokenCountAsync(str, padding = undefined) {
         const rawCacheKey = `${tokenizerType}-${hash}${modelHash}+0`;
         const cachedRaw = padding === 0 ? undefined : getCachedTokenCount(rawCacheKey, chatKey);
         if (typeof cachedRaw === 'number') {
-            baseCount = cachedRaw;
+            base = { count: cachedRaw, fallback: false };
         } else {
-            baseCount = await enqueuePlainTextBatchCount({
+            base = await enqueuePlainTextBatchCount({
                 bucketKey: `local:${tokenizerType}:${modelHash}`,
                 model: LOCAL_TOKENIZER_BATCH_MODELS[tokenizerType],
                 tokenizerType,
@@ -945,17 +958,20 @@ export async function getTokenCountAsync(str, padding = undefined) {
             });
             inFlightTokenCounts.set(inFlightKey, pending);
         }
-        baseCount = await pending;
+        base = /** @type {TokenCountResult} */ (await pending);
     }
 
-    const result = baseCount + padding;
+    const result = base.count + padding;
 
     if (isNaN(result)) {
         console.warn('Token count calculation returned NaN');
         return 0;
     }
 
-    setCachedTokenCount(cacheKey, result, chatKey);
+    // SillyBunny: an estimate that replaces a failed request is returned but not cached, so the next call asks the tokenizer again.
+    if (!base.fallback) {
+        setCachedTokenCount(cacheKey, result, chatKey);
+    }
     return result;
 }
 
@@ -1715,7 +1731,7 @@ export async function countChatCompletionPayloadTokensOpenAIAsync(messages) {
  * Count tokens using the server API.
  * @param {string} endpoint API endpoint.
  * @param {string} str String to tokenize.
- * @param {function} [resolve] Promise resolve function.s
+ * @param {(count: number, fallback?: boolean) => void} [resolve] Promise resolve function.
  * @returns {number} Token count.
  */
 function countTokensFromServer(endpoint, str, resolve) {
@@ -1730,16 +1746,13 @@ function countTokensFromServer(endpoint, str, resolve) {
         dataType: 'json',
         contentType: 'application/json',
         success: function (data) {
-            if (typeof data.count === 'number') {
-                tokenCount = data.count;
-            } else {
-                tokenCount = apiFailureTokenCount(str);
-            }
+            const isExact = typeof data.count === 'number';
+            tokenCount = isExact ? data.count : apiFailureTokenCount(str);
 
-            isAsync && resolve(tokenCount);
+            isAsync && resolve(tokenCount, !isExact);
         },
         error: function () {
-            isAsync && resolve(apiFailureTokenCount(str));
+            isAsync && resolve(apiFailureTokenCount(str), true);
         },
     });
 
@@ -1749,7 +1762,7 @@ function countTokensFromServer(endpoint, str, resolve) {
 /**
  * Count tokens using the AI provider's API.
  * @param {string} str String to tokenize.
- * @param {function} [resolve] Promise resolve function.
+ * @param {(count: number, fallback?: boolean) => void} [resolve] Promise resolve function.
  * @returns {number} Token count.
  */
 function countTokensFromKoboldAPI(str, resolve) {
@@ -1767,16 +1780,13 @@ function countTokensFromKoboldAPI(str, resolve) {
         dataType: 'json',
         contentType: 'application/json',
         success: function (data) {
-            if (typeof data.count === 'number') {
-                tokenCount = data.count;
-            } else {
-                tokenCount = apiFailureTokenCount(str);
-            }
+            const isExact = typeof data.count === 'number';
+            tokenCount = isExact ? data.count : apiFailureTokenCount(str);
 
-            isAsync && resolve(tokenCount);
+            isAsync && resolve(tokenCount, !isExact);
         },
         error: function () {
-            isAsync && resolve(apiFailureTokenCount(str));
+            isAsync && resolve(apiFailureTokenCount(str), true);
         },
     });
 
@@ -1795,7 +1805,7 @@ function getTextgenAPITokenizationParams(str) {
 /**
  * Count tokens using the AI provider's API.
  * @param {string} str String to tokenize.
- * @param {function} [resolve] Promise resolve function.
+ * @param {(count: number, fallback?: boolean) => void} [resolve] Promise resolve function.
  * @returns {number} Token count.
  */
 function countTokensFromTextgenAPI(str, resolve) {
@@ -1810,16 +1820,13 @@ function countTokensFromTextgenAPI(str, resolve) {
         dataType: 'json',
         contentType: 'application/json',
         success: function (data) {
-            if (typeof data.count === 'number') {
-                tokenCount = data.count;
-            } else {
-                tokenCount = apiFailureTokenCount(str);
-            }
+            const isExact = typeof data.count === 'number';
+            tokenCount = isExact ? data.count : apiFailureTokenCount(str);
 
-            isAsync && resolve(tokenCount);
+            isAsync && resolve(tokenCount, !isExact);
         },
         error: function () {
-            isAsync && resolve(apiFailureTokenCount(str));
+            isAsync && resolve(apiFailureTokenCount(str), true);
         },
     });
 
