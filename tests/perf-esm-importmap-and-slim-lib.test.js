@@ -631,7 +631,6 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expect(libEntry).toBeDefined();
 
         const webpackSource = fs.readFileSync(webpackConfigPath, 'utf8');
-        expect(webpackSource).not.toContain('terser-webpack-plugin');
         // A cache signature from the base or from the slim-bundle build must not come back, or that cached bundle would be reused.
         for (const retiredSignature of ['chevrotain-esm-alias-v1', 'bun-no-minify-v1', 'slim-hljs-moment-ui-locales-v3', 'bun-premin-vendors-v3']) {
             expect(webpackSource).not.toContain(retiredSignature);
@@ -639,6 +638,9 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
 
         const builtLibPath = path.join(tmpDistDir, libEntry.output);
         const builtLibSource = fs.readFileSync(builtLibPath, 'utf8');
+
+        // The Node build is minified by Webpack whichever minimizer package the config names: a minified bundle has very long lines.
+        expect(builtLibSource.length / builtLibSource.split('\n').length).toBeGreaterThan(10000);
 
         const mockWindow = {
             document: {
