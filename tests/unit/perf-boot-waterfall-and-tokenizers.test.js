@@ -151,6 +151,7 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 const {
     MAX_CACHED_CHATS,
     MAX_CACHE_ENTRIES_PER_CHAT,
+    MAX_PERSISTED_ENTRIES_PER_CHAT,
     countTokensOpenAIAsync,
     getOpenAIMessageHash,
     getTextTokensAsync,
@@ -333,6 +334,60 @@ describe('tokenizers O(1) Map LRU, dirty flag, microtask batching, and multimoda
         expect(stats.chatCount).toBe(MAX_CACHED_CHATS);
         expect(stats.chatKeys).toContain('chat-0');
         expect(stats.chatKeys).not.toContain('chat-1');
+    });
+
+    test.each([501, 1000, 2000])('keeps every count of a %i-message prompt cached across generations', async (messageCount) => {
+        const messages = Array.from({ length: messageCount }, (_, index) => ({
+            role: 'user',
+            content: `working-set-${messageCount}-${index}`,
+        }));
+        globalThis.jQuery.ajax.mockImplementation(async (options) => ({
+            token_counts: JSON.parse(options.data).map((_, index) => index + 1),
+        }));
+
+        await primeOpenAITokenCache(messages);
+        const requestsAfterPriming = globalThis.jQuery.ajax.mock.calls.length;
+
+        // The prompt builder walks the same messages in the same order on every generation.
+        for (let generation = 0; generation < 3; generation++) {
+            for (const message of messages) {
+                await countTokensOpenAIAsync(message, true);
+            }
+        }
+
+        expect(globalThis.jQuery.ajax).toHaveBeenCalledTimes(requestsAfterPriming);
+        expect(getTokenCacheStatsForTests().currentChatSize).toBe(messageCount);
+    });
+
+    test('writes at most MAX_PERSISTED_ENTRIES_PER_CHAT entries per chat to IndexedDB as a plain object and keeps the rest in memory', async () => {
+        const messageCount = MAX_PERSISTED_ENTRIES_PER_CHAT + 200;
+        const messages = Array.from({ length: messageCount }, (_, index) => ({
+            role: 'user',
+            content: `persisted-${index}`,
+        }));
+        globalThis.jQuery.ajax.mockImplementation(async (options) => ({
+            token_counts: JSON.parse(options.data).map((_, index) => index + 1),
+        }));
+
+        await primeOpenAITokenCache(messages);
+        await saveTokenCache();
+
+        expect(mockObjectStore.setItem).toHaveBeenCalledTimes(1);
+        const [storeKey, savedPayload] = mockObjectStore.setItem.mock.calls[0];
+        expect(storeKey).toBe('tokenCache');
+        expect(Object.getPrototypeOf(savedPayload)).toBe(Object.prototype);
+        const savedChat = savedPayload['chat-alpha'];
+        expect(Object.getPrototypeOf(savedChat)).toBe(Object.prototype);
+        expect(Object.keys(savedChat)).toHaveLength(MAX_PERSISTED_ENTRIES_PER_CHAT);
+        expect(Object.values(savedChat).every(value => typeof value === 'number')).toBe(true);
+        expect(getTokenCacheStatsForTests().currentChatSize).toBe(messageCount);
+
+        // A stored chat above the persisted bound loads trimmed to it.
+        mockObjectStore.getItem.mockResolvedValueOnce({
+            'chat-alpha': Object.fromEntries(Array.from({ length: messageCount }, (_, index) => [`stored-${index}`, index])),
+        });
+        await loadTokenCache();
+        expect(getTokenCacheStatsForTests().currentChatSize).toBe(MAX_PERSISTED_ENTRIES_PER_CHAT);
     });
 
     test('saveTokenCache is a 0-write no-op when clean and persists once when dirty', async () => {

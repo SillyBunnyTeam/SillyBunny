@@ -161,7 +161,11 @@ const objectStore = localforage.createInstance({ name: 'SillyTavern_ChatCompleti
 // SillyBunny: O(1) Map-based two-level LRU token cache (chatId -> (cacheKey -> tokenCount))
 // with dirty-flag tracking so saveTokenCache() is a 0ms no-op when no counts changed.
 export const MAX_CACHED_CHATS = 20;
-export const MAX_CACHE_ENTRIES_PER_CHAT = 500;
+// The prompt builder reads the same entries in the same order on every generation. An LRU smaller than that set misses on
+// every read, so the in-memory bound only stops unbounded growth and sits far above any prompt. An entry is a short key and a number.
+export const MAX_CACHE_ENTRIES_PER_CHAT = 20_000;
+// The IndexedDB copy is serialized and structured-cloned whole on each save, so it keeps only the most recently used entries.
+export const MAX_PERSISTED_ENTRIES_PER_CHAT = 500;
 const COUNT_BATCH_MAX_TEXTS = 500;
 const COUNT_BATCH_MAX_TEXT_LENGTH = 500_000;
 const COUNT_BATCH_MAX_TOTAL_CHARS = 2_000_000;
@@ -322,7 +326,9 @@ function serializeTokenCache() {
         if (!(chatMap instanceof Map) || chatMap.size === 0) {
             continue;
         }
-        plain[chatKey] = Object.fromEntries(chatMap);
+        plain[chatKey] = chatMap.size <= MAX_PERSISTED_ENTRIES_PER_CHAT
+            ? Object.fromEntries(chatMap)
+            : Object.fromEntries(Array.from(chatMap).slice(-MAX_PERSISTED_ENTRIES_PER_CHAT));
     }
     return plain;
 }
@@ -346,7 +352,7 @@ function hydrateTokenCache(rawCache) {
             ? Array.from(rawChatEntries.entries())
             : Object.entries(rawChatEntries);
         const chatMap = new Map();
-        const startIdx = Math.max(0, innerEntries.length - MAX_CACHE_ENTRIES_PER_CHAT);
+        const startIdx = Math.max(0, innerEntries.length - MAX_PERSISTED_ENTRIES_PER_CHAT);
         for (let i = startIdx; i < innerEntries.length; i++) {
             const [entryKey, count] = innerEntries[i];
             if (typeof count === 'number' && Number.isFinite(count)) {

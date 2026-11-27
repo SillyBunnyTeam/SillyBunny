@@ -1904,6 +1904,13 @@ This is the largest class by a wide margin.
 - **Guards:** `shouldSkipLoop()` in `public/scripts/sillybunny-splash.js` skips the animated splash loop only under `(prefers-reduced-motion: reduce)`. `public/index.html` adds `<link rel="modulepreload" href="lib.js">` right before `<link rel="modulepreload" href="script.js">`.
 - **Tests:** `tests/unit/perf-boot-waterfall-and-tokenizers.test.js`, `tests/startup-module-graph.test.js`.
 
+### Client token cache and token counts
+
+- **Files:** `public/scripts/tokenizers.js` (upstream-origin), `public/scripts/extensions/token-counter/index.js`.
+- **Breaks:** a per-chat token cache bounded at 500 entries gave no hits when a prompt read more than 500 distinct strings. The prompt builder reads the same strings in the same order on every generation, so each read missed and evicted an entry that the same pass needed later (a pass over 501 strings: 0 hits and 501 misses, in every later pass as well).
+- **Guards:** the in-memory bound `MAX_CACHE_ENTRIES_PER_CHAT` is 20,000 and only stops unbounded growth. The IndexedDB copy keeps the most recently used `MAX_PERSISTED_ENTRIES_PER_CHAT` (500) entries per chat and `hydrateTokenCache()` trims a stored chat to the same number. The stored value stays a plain object `{chatKey: {cacheKey: number}}`, which upstream SillyTavern reads from the same `SillyTavern_ChatCompletions/tokenCache` key.
+- **Tests:** `tests/unit/perf-boot-waterfall-and-tokenizers.test.js` (prompts of 501, 1,000 and 2,000 messages stay cached over three generations; the persisted copy is bounded).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
