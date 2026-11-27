@@ -7,7 +7,7 @@ const defaultRepoDir = path.dirname(path.dirname(fileURLToPath(import.meta.url))
 /**
  * Enables Node's V8 bytecode compile cache outside git-tracked paths when supported by the runtime.
  * @param {{ moduleApi?: typeof nodeModule, env?: NodeJS.ProcessEnv, versions?: NodeJS.ProcessVersions, repoDir?: string }} [options]
- * @returns {string | null} Active cache directory when enabled, or null when skipped or unsupported.
+ * @returns {string | null} Active cache directory that Node.js reports when the cache is on, or null when skipped, unsupported, disabled or failed.
  */
 export function enableNodeCompileCache({
     moduleApi = nodeModule,
@@ -22,13 +22,12 @@ export function enableNodeCompileCache({
     const cacheDir = env?.NODE_COMPILE_CACHE?.trim()
         || path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8');
 
-    try {
-        moduleApi.enableCompileCache(cacheDir);
-        return cacheDir;
-    } catch {
-        // Read-only filesystems continue without persistent bytecode caching.
-        return null;
-    }
+    // Node.js reports an unwritable directory or a disabled cache through the status and does not throw.
+    const result = moduleApi.enableCompileCache(cacheDir);
+    const statuses = moduleApi.constants?.compileCacheStatus ?? nodeModule.constants?.compileCacheStatus;
+    const isOn = result?.status !== undefined
+        && (result.status === statuses?.ENABLED || result.status === statuses?.ALREADY_ENABLED);
+    return isOn ? (result.directory ?? cacheDir) : null;
 }
 
 /**

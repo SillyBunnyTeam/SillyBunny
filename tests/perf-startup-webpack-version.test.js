@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { constants as moduleConstants } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import getPublicLibConfig, {
@@ -32,6 +33,7 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const defaultConfigPath = path.join(repoRoot, 'default', 'config.yaml');
 const originalDataRoot = global.DATA_ROOT;
+const compileCacheStatus = moduleConstants.compileCacheStatus;
 
 setConfigFilePath(defaultConfigPath);
 
@@ -688,10 +690,13 @@ describe('MemoryLimitedMap O(1) LRU eviction', () => {
 });
 
 describe('Node V8 compile cache and launcher hygiene', () => {
-    test('enableNodeCompileCache and flushNodeCompileCache honor env, fallback path, Bun guard, and read-only errors', () => {
+    test('enableNodeCompileCache and flushNodeCompileCache honor env, fallback path, and Bun guard', () => {
         const calls = [];
         const mockModule = {
-            enableCompileCache: (dir) => { calls.push(['enable', dir]); },
+            enableCompileCache: (dir) => {
+                calls.push(['enable', dir]);
+                return { status: compileCacheStatus.ENABLED, directory: dir };
+            },
             flushCompileCache: () => { calls.push(['flush']); },
         };
 
@@ -737,11 +742,58 @@ describe('Node V8 compile cache and launcher hygiene', () => {
         expect(flushNodeCompileCache).toBe(directFlushNodeCompileCache);
 
         const throwingModule = {
-            enableCompileCache: () => { throw Object.assign(new Error('EROFS'), { code: 'EROFS' }); },
             flushCompileCache: () => { throw Object.assign(new Error('EROFS'), { code: 'EROFS' }); },
         };
-        expect(enableNodeCompileCache({ moduleApi: throwingModule, env: {}, versions: { node: '24.0.0' } })).toBeNull();
         expect(flushNodeCompileCache({ moduleApi: throwingModule, versions: { node: '24.0.0' } })).toBe(false);
+    });
+
+    test('enableNodeCompileCache reports the status that Node.js returns instead of the directory it asked for', () => {
+        const versions = { node: '24.0.0' };
+        const moduleReturning = (result) => ({ enableCompileCache: () => result });
+
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning({ status: compileCacheStatus.FAILED, message: 'Cannot create cache directory: permission denied' }),
+            env: {},
+            versions,
+            repoDir: '/opt/sillybunny',
+        })).toBeNull();
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning({ status: compileCacheStatus.DISABLED, message: 'Disabled by NODE_DISABLE_COMPILE_CACHE' }),
+            env: {},
+            versions,
+            repoDir: '/opt/sillybunny',
+        })).toBeNull();
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning({ status: compileCacheStatus.ALREADY_ENABLED, directory: '/var/cache/active-v8' }),
+            env: { NODE_COMPILE_CACHE: '/tmp/requested-v8' },
+            versions,
+            repoDir: '/opt/sillybunny',
+        })).toBe('/var/cache/active-v8');
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning(undefined),
+            env: {},
+            versions,
+            repoDir: '/opt/sillybunny',
+        })).toBeNull();
+    });
+
+    test('enableNodeCompileCache returns null when the real Node.js API cannot create the directory', () => {
+        // A path below a regular file cannot be created by anyone, including root, so Node.js returns its FAILED status.
+        const blocker = path.join(os.tmpdir(), `sb-compile-cache-blocker-${process.pid}`);
+        fs.writeFileSync(blocker, 'not a directory', 'utf8');
+        try {
+            const script = [
+                `const { enableNodeCompileCache } = await import(${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src', 'node-compile-cache.js')).href)});`,
+                `console.log(JSON.stringify(enableNodeCompileCache({ env: { NODE_COMPILE_CACHE: ${JSON.stringify(path.join(blocker, 'cache'))} } })));`,
+            ].join('\n');
+            const env = { ...process.env };
+            delete env.NODE_COMPILE_CACHE;
+            delete env.NODE_DISABLE_COMPILE_CACHE;
+            const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', env }).trim();
+            expect(JSON.parse(raw.split(/\r?\n/).pop())).toBeNull();
+        } finally {
+            fs.rmSync(blocker, { force: true });
+        }
     });
 
     test('launchers, server.js, and server-main.js wire V8 compile cache and HTTP keep-alive hygiene safely', () => {
