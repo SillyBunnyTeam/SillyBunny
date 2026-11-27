@@ -327,7 +327,8 @@ export async function getFileAttachment(url) {
         const text = await result.text();
         return text;
     } catch (error) {
-        toastr.error(error, t`Could not download file`);
+        // SillyBunny: pass string error text to toastr so a failed fetch does not throw inside toastr escaping (ST #6113).
+        toastr.error(String(error?.message ?? error), t`Could not download file`);
         console.error('Could not download file', error);
     }
 }
@@ -531,6 +532,10 @@ export async function appendFileContent(message, messageText) {
             if (fileText) {
                 fileTexts.push(fileText);
             }
+        }
+        // SillyBunny: leave message text and extra.fileLength untouched when no attachment text could be read (ST #6113).
+        if (!fileTexts.length) {
+            return messageText;
         }
         const mergedFileTexts = fileTexts.join('\n\n') + '\n\n';
         message.extra.fileLength = mergedFileTexts.length;
@@ -1181,6 +1186,10 @@ export async function deleteFileFromServer(url, silent = false) {
  */
 async function openFilePopup(attachment) {
     const fileText = attachment.text || (await getFileAttachment(attachment.url));
+    // SillyBunny: getFileAttachment swallows fetch errors; do not render undefined content.
+    if (typeof fileText !== 'string') {
+        return;
+    }
 
     const modalTemplate = $('<div><pre><code></code></pre></div>');
     modalTemplate.find('code').addClass('txt').text(fileText);
@@ -1199,6 +1208,10 @@ async function openFilePopup(attachment) {
  */
 async function editAttachment(attachment, source, callback) {
     const originalFileText = attachment.text || (await getFileAttachment(attachment.url));
+    // SillyBunny: getFileAttachment swallows fetch errors; do not edit or delete when content could not be read.
+    if (typeof originalFileText !== 'string') {
+        return;
+    }
     const template = $(await renderExtensionTemplateAsync('attachments', 'notepad'));
 
     let editedFileText = originalFileText;
@@ -1236,6 +1249,10 @@ async function editAttachment(attachment, source, callback) {
  */
 async function downloadAttachment(attachment) {
     const fileText = attachment.text || (await getFileAttachment(attachment.url));
+    // SillyBunny: getFileAttachment swallows fetch errors; skip download when content could not be read.
+    if (typeof fileText !== 'string') {
+        return;
+    }
     const blob = new Blob([fileText], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1297,6 +1314,10 @@ async function moveAttachment(attachment, source, callback) {
     }
 
     const content = await getFileAttachment(attachment.url);
+    // SillyBunny: getFileAttachment swallows fetch errors; abort before deleting the original attachment.
+    if (typeof content !== 'string') {
+        return;
+    }
     const file = new File([content], attachment.name, { type: 'text/plain' });
     await deleteAttachment(attachment, source, () => { }, false);
     await uploadFileAttachmentToServer(file, selectedTarget);

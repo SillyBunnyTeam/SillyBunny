@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/chats.js` - missing attachment fetch resilience and caller guards
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/chats.js` (`getFileAttachment`, `appendFileContent`, `openFilePopup`, `editAttachment`, `downloadAttachment`, `moveAttachment`). |
+| Area | Chat and Data Bank attachment loading when an attachment file is missing or fails to download. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6113 before the next full upstream sync. Passing a string error message to `toastr.error()` and returning early in `appendFileContent()` stops missing attachment files from aborting generation, and SillyBunny additionally guards `openFilePopup()`, `editAttachment()`, `downloadAttachment()`, and `moveAttachment()` against non-string returns so a failed fetch cannot delete an attachment before it is read. |
+| Target seam | `getFileAttachment()` and its callers in `public/scripts/chats.js` (early port of upstream SillyTavern PR #6113, merged into upstream `staging` on 2026-11-15, plus SillyBunny caller guards). |
+| Adapter shape | Pass `String(error?.message ?? error)` to `toastr.error`, return `messageText` early in `appendFileContent` when `fileTexts` is empty, and guard `openFilePopup`, `editAttachment`, `downloadAttachment` and `moveAttachment` against non-string results before opening modals, downloading or deleting originals. |
+| Protecting tests | `tests/attachment-fetch-resilience.test.js`, `tests/in-chat-agents-generation-ui-wiring.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- attachment-fetch-resilience.test.js in-chat-agents-generation-ui-wiring.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Restore the original `toastr.error(error, ...)` and `appendFileContent()` body, remove the four `typeof ... !== 'string'` caller guards in `public/scripts/chats.js`, and delete `tests/attachment-fetch-resilience.test.js`. Stored chats and files in `user/files` are untouched. On the next upstream sync carrying ST #6113, drop the ported upstream lines and keep the destructive-caller guards if upstream does not adopt them. |
+| Last reviewed | 2026-11-27 (early port of ST #6113 + SillyBunny caller guards). |
+| Owner | Core frontend and chat data integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
