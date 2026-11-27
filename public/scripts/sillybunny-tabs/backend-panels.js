@@ -532,6 +532,10 @@ export function createBackendPanelsController({
             if (group.hidden !== hidden) group.hidden = hidden;
         }
         // SillyBunny: the Prompt Manager may mount late, so restore the complete Chat Completions order on every update.
+        // The check must be "is the tail already in this order", not "is this group last yet": `append` on a
+        // node that is already its parent's last child still performs a remove+insert, which is a childList
+        // mutation. This function runs from the drawer observer, so a per-group append kept re-triggering the
+        // observer every frame and re-flattening the whole Prompting panel in a loop.
         if (range instanceof HTMLElement) {
             // SillyBunny: the Presets module adds the groups for the choice sets and the dependent sets between the upstream ones.
             const openAIReadingOrder = [

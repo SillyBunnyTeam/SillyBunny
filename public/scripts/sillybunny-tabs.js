@@ -8639,6 +8639,8 @@ function buildShell(shellKey) {
         }
 
         if (shellKey === 'left' && customTab.id === 'editor') {
+            // Build eagerly so template adoption never parks text bodies in an unmounted workspace.
+            // Only the panel's content waits for the backend panels module; the panel itself is mounted here.
             const editorPanel = buildEditorPanel();
             registerShellTab(shellKey, customTab, editorPanel, editorPanel.searchRoot);
             $(document).on('change.sbEditorPanel input.sbEditorPanel', '#settings_preset_openai, #sysprompt_select, #instruct_presets, #context_presets, #sysprompt_enabled', () => {

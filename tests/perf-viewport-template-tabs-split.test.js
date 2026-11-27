@@ -495,6 +495,19 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
         });
     });
 
+    test('the backend titles of the backend panels module are the sampling module\'s backend table', () => {
+        const readTable = (file, name) => {
+            const source = readRepoFile('public', 'scripts', 'sillybunny-tabs', file);
+            const match = new RegExp(`const ${name} = Object\\.freeze\\((\\[[\\s\\S]*?\\n\\])\\);`).exec(source);
+            expect(match).not.toBeNull();
+            return vm.runInNewContext(match[1]);
+        };
+        const titles = readTable('backend-panels.js', 'SB_BACKEND_TITLES');
+        const backends = readTable('sampling-panel.js', 'SB_SAMPLING_BACKENDS');
+        expect(titles.length).toBeGreaterThan(0);
+        expect(JSON.parse(JSON.stringify(titles))).toEqual(backends.map(({ apiIds, title }) => ({ apiIds, title })));
+    });
+
     test('preserves the full globalThis.SillyBunnyShell public API surface', () => {
         const expectedShellMethods = [
             'openTab',
