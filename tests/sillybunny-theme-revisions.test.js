@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { setConfigFilePath } from '../src/util.js';
+import { importPowerUserModule } from './util/power-user-harness.js';
 import {
     THEME_COLOR_KEYS,
     THEME_REVISED_KEYS,
@@ -18,12 +19,12 @@ import {
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
 const { reconcileManagedBundledThemes } = await import('../src/endpoints/content-manager.js');
+const { powerUser } = await importPowerUserModule();
 
 const readJson = url => JSON.parse(readFileSync(url, 'utf8'));
 const bundled = name => readJson(new URL(`../default/content/themes/${name}.json`, import.meta.url));
 /** The file as it shipped before the text colors were raised. */
 const previous = name => readJson(new URL(`./fixtures/stale-bundled-themes/${name}.json`, import.meta.url));
-const powerUserSource = readFileSync(new URL('../public/scripts/power-user.js', import.meta.url), 'utf8');
 
 const bundledNames = readdirSync(new URL('../default/content/themes/', import.meta.url)).map(file => file.replace(/\.json$/, ''));
 const unrevisedNames = bundledNames.filter(name => !Object.hasOwn(REVISED_THEMES, name));
@@ -204,22 +205,74 @@ describe('revised theme text colors: the data', () => {
         expect(revision.newCss).not.toBe(revision.oldCss);
     });
 
-    test('the revision number in power-user.js is the one in the data', () => {
-        expect(powerUserSource).toContain(`const SB_THEME_TEXT_REVISION = ${THEME_TEXT_REVISION};`);
+    test('the revision number recorded by power-user.js matches THEME_TEXT_REVISION', async () => {
+        const dracula = bundled('Dracula');
+        await powerUser.loadPowerUserSettings(
+            {
+                power_user: {
+                    theme: 'Dracula',
+                    ...REVISED_THEMES.Dracula.old,
+                    custom_css: dracula.custom_css,
+                    sb_theme_text_revision: THEME_TEXT_REVISION - 1,
+                },
+            },
+            { themes: [dracula], context: [], instruct: [], sysprompt: [], reasoning: [] },
+        );
+
+        expect(powerUser.power_user.sb_theme_text_revision).toBe(THEME_TEXT_REVISION);
     });
 });
 
 describe('revised theme text colors: running once', () => {
-    test('power-user.js repairs while the saved revision is below the current one, then records the current one', () => {
-        expect(powerUserSource).toMatch(/Number\.isInteger\(savedPowerUserSettings\.sb_theme_text_revision\)\s*&&\s*savedPowerUserSettings\.sb_theme_text_revision >= SB_THEME_TEXT_REVISION/);
-        expect(powerUserSource).toContain('planThemeTextRepair(');
-        expect(powerUserSource).toContain('power_user.sb_theme_text_revision = SB_THEME_TEXT_REVISION;');
+    test('power-user.js repairs when the saved revision is below the current one, records it, and skips once current', async () => {
+        const dracula = bundled('Dracula');
+        const loadData = { themes: [dracula], context: [], instruct: [], sysprompt: [], reasoning: [] };
+
+        // Below current revision: repairs old palette to the revised bundled colors and stamps THEME_TEXT_REVISION.
+        await powerUser.loadPowerUserSettings(
+            {
+                power_user: {
+                    theme: 'Dracula',
+                    ...REVISED_THEMES.Dracula.old,
+                    custom_css: dracula.custom_css,
+                    sb_theme_text_revision: THEME_TEXT_REVISION - 1,
+                },
+            },
+            loadData,
+        );
+        expect(powerUser.power_user.main_text_color).toBe(dracula.main_text_color);
+        expect(powerUser.power_user.sb_theme_text_revision).toBe(THEME_TEXT_REVISION);
+
+        // Already at current revision: leaves the saved palette untouched even if it matches the old revision.
+        await powerUser.loadPowerUserSettings(
+            {
+                power_user: {
+                    theme: 'Dracula',
+                    ...REVISED_THEMES.Dracula.old,
+                    custom_css: dracula.custom_css,
+                    sb_theme_text_revision: THEME_TEXT_REVISION,
+                },
+            },
+            loadData,
+        );
+        expect(powerUser.power_user.main_text_color).toBe(REVISED_THEMES.Dracula.old.main_text_color);
     });
 
-    test('the Dark V 1.0 migration writes the Libadwaita Dark quote the theme ships', () => {
+    test('the Dark V 1.0 migration writes the Libadwaita Dark quote the theme ships', async () => {
         const libadwaita = bundled('Libadwaita Dark');
-        const start = powerUserSource.indexOf('if (power_user.theme === \'Dark V 1.0\') {');
+        await powerUser.loadPowerUserSettings(
+            {
+                power_user: {
+                    theme: 'Dark V 1.0',
+                    quote_text_color: 'rgba(198, 193, 151, 1)',
+                    underline_text_color: 'rgba(145, 145, 145, 1)',
+                    sb_theme_text_revision: THEME_TEXT_REVISION,
+                },
+            },
+            { themes: [libadwaita], context: [], instruct: [], sysprompt: [], reasoning: [] },
+        );
 
-        expect(powerUserSource.slice(start, powerUserSource.indexOf('saveSettingsDebounced();', start))).toContain(`power_user.quote_text_color = '${libadwaita.quote_text_color}';`);
+        expect(powerUser.power_user.theme).toBe('Libadwaita Dark');
+        expect(powerUser.power_user.quote_text_color).toBe(libadwaita.quote_text_color);
     });
 });

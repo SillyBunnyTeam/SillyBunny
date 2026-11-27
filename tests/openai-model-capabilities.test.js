@@ -17,8 +17,6 @@ import {
 import { importOpenAiModule } from './util/openai-harness.js';
 
 const indexSource = fs.readFileSync(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
-const powerUserSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/power-user.js', import.meta.url)), 'utf8');
-const presetManagerSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/preset-manager.js', import.meta.url)), 'utf8');
 const jquerySource = fs.readFileSync(fileURLToPath(new URL('../public/lib/jquery-3.5.1.min.js', import.meta.url)), 'utf8');
 
 (0, eval)(jquerySource);
@@ -372,9 +370,8 @@ describe('Kimi K3 model capabilities', () => {
         await Promise.resolve();
 
         // Only the Advanced Formatting input carries the class that keeps Start Reply With in sync.
+        // Live power-user.js and preset-manager.js sync is tested in tests/start-reply-with-sync.test.js.
         expect(indexSource.match(/class="start-reply-with-input [^"]*"/g)).toHaveLength(1);
         expect(indexSource).toContain('id="start_reply_with"');
-        expect(powerUserSource).toMatch(/\$\('\.start-reply-with-input'\)\.on\('input', function \(\) \{/);
-        expect(presetManagerSource).toMatch(/\$\('\.start-reply-with-input'\)\.val\(power_user\.user_prompt_bias\);/);
     });
 });

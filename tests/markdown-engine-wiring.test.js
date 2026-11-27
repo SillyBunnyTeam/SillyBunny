@@ -1,16 +1,30 @@
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static HTML/module-wiring contracts. */
 import { describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { MARKDOWN_ENGINES } from '../public/scripts/markdown-engine.js';
 import { SILLYBUNNY_SHOWDOWN_OPTIONS } from './util/sillybunny-showdown.js';
+import { importPowerUserModule } from './util/power-user-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (...segments) => readFileSync(path.join(repoRoot, ...segments), 'utf8').replace(/\r\n/g, '\n');
 const scriptSource = read('public', 'script.js');
-const powerUserSource = read('public', 'scripts', 'power-user.js');
 const libSource = read('public', 'lib.js');
 const indexHtml = read('public', 'index.html');
+
+document.body.innerHTML = `
+    <select id="markdown_engine">
+        <option value="markdown-it">markdown-it</option>
+        <option value="showdown">Showdown</option>
+    </select>
+`;
+
+const { powerUser, mocks, runReady } = await importPowerUserModule();
+const initialDefaults = structuredClone(powerUser.power_user);
+await runReady();
 
 function getFunctionSource(source, signature) {
     const start = source.indexOf(signature);
@@ -72,21 +86,39 @@ describe('markdown engine wiring', () => {
         }
     });
 
-    test('the setting defaults to markdown-it and loads into the select, which then announces the value with an input event', () => {
-        expect(powerUserSource).toContain('    markdown_engine: MARKDOWN_ENGINES.MARKDOWN_IT,');
-        expect(powerUserSource).toContain('    $(\'#markdown_engine\').val(normalizeMarkdownEngine(power_user.markdown_engine)).each((_, select) => select.dispatchEvent(new Event(\'input\', { bubbles: true })));');
+    test('the setting defaults to markdown-it and loads into the select, which then announces the value with an input event', async () => {
+        expect(initialDefaults.markdown_engine).toBe(MARKDOWN_ENGINES.MARKDOWN_IT);
+
+        const select = document.getElementById('markdown_engine');
+        const inputEvents = [];
+        select.addEventListener('input', () => inputEvents.push(select.value));
+
+        await powerUser.loadPowerUserSettings(
+            { power_user: { markdown_engine: 'showdown' } },
+            { themes: [], context: [], instruct: [], sysprompt: [], reasoning: [] },
+        );
+
+        expect(select.value).toBe(MARKDOWN_ENGINES.SHOWDOWN);
+        expect(inputEvents).toContain(MARKDOWN_ENGINES.SHOWDOWN);
     });
 
-    test('a change of the select stores the engine and saves it, then reloads the processor and re-renders the chat', () => {
-        const handler = [
-            '    $(\'#markdown_engine\').on(\'change\', async function () {',
-            '        power_user.markdown_engine = normalizeMarkdownEngine($(this).val());',
-            '        saveSettingsDebounced();',
-            '        reloadMarkdownProcessor();',
-            '        await reloadCurrentChat();',
-            '    });',
-        ].join('\n');
-        expect(powerUserSource).toContain(handler);
+    test('a change of the select stores the engine and saves it, then reloads the processor and re-renders the chat', async () => {
+        const order = [];
+        mocks.script.saveSettingsDebounced.mockImplementation(() => order.push('save'));
+        mocks.script.reloadMarkdownProcessor.mockImplementation(() => order.push('reloadProcessor'));
+        mocks.script.reloadCurrentChat.mockImplementation(async () => { order.push('reloadChat'); });
+
+        $('#markdown_engine').val('markdown-it').trigger('change');
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(powerUser.power_user.markdown_engine).toBe(MARKDOWN_ENGINES.MARKDOWN_IT);
+        expect(order).toEqual(['save', 'reloadProcessor', 'reloadChat']);
+
+        // Unknown values normalize back to markdown-it.
+        mocks.script.saveSettingsDebounced.mockClear();
+        $('#markdown_engine').val('showdown').trigger('change');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(powerUser.power_user.markdown_engine).toBe(MARKDOWN_ENGINES.SHOWDOWN);
     });
 
     test('the shell presents the select as a toggle row before it splits the settings', () => {

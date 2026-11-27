@@ -1,15 +1,36 @@
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static CSS/HTML contracts. */
+import { beforeEach, describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { importPowerUserModule } from './util/power-user-harness.js';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const readSource = (...parts) => readFileSync(path.join(repoRoot, ...parts), 'utf8').replace(/\r\n/g, '\n');
+
+document.body.innerHTML = `
+    <input id="background_blur" type="range" value="0" />
+    <input id="background_blur_counter" type="number" value="0" />
+    <input id="background_opacity" type="range" value="1" />
+    <input id="background_opacity_counter" type="number" value="1" />
+    <input id="sheld_blur_strength" type="range" value="0" />
+    <input id="sheld_blur_strength_counter" type="number" value="0" />
+    <input id="blur_strength" type="range" value="0" />
+    <input id="blur_strength_counter" type="number" value="0" />
+`;
+
+const { powerUser, runReady } = await importPowerUserModule();
+const initialDefaults = structuredClone(powerUser.power_user);
+await runReady();
+
+const emptyData = { themes: [], context: [], instruct: [], sysprompt: [], reasoning: [] };
 
 describe('core message transparency wiring', () => {
     const chatStylesSource = readSource('public', 'css', 'sillybunny-chat-styles.css');
     const backgroundsSource = readSource('public', 'css', 'backgrounds.css');
     const styleSource = readSource('public', 'style.css');
-    const powerUserSource = readSource('public', 'scripts', 'power-user.js');
     const indexSource = readSource('public', 'index.html');
     const toggleDependentSource = readSource('public', 'css', 'toggle-dependent.css');
     const themeBlurSources = [
@@ -24,10 +45,25 @@ describe('core message transparency wiring', () => {
         readSource('public', 'scripts', 'extensions', 'stable-diffusion', 'style.css'),
     ].join('\n');
 
-    test('loads the native chat stylesheet during chat-display setup so default chat styles get core transparency', () => {
+    beforeEach(() => {
+        Object.assign(powerUser.power_user, structuredClone(initialDefaults));
+        document.body.className = '';
+        document.documentElement.style.cssText = '';
+    });
+
+    test('loads the native chat stylesheet during chat-display setup so default chat styles get core transparency', async () => {
         expect(indexSource).not.toContain('id="sillybunny-native-chat-styles"');
-        expect(powerUserSource).toContain('const NATIVE_CHAT_STYLE_STYLESHEET_HREF = \'css/sillybunny-chat-styles.css?v=20261125a\';');
-        expect(powerUserSource).toContain('ensureNativeChatStyleStylesheet();');
+        document.getElementById('sillybunny-native-chat-styles')?.remove();
+
+        await powerUser.loadPowerUserSettings(
+            { power_user: { chat_display: powerUser.chat_styles.DEFAULT } },
+            emptyData,
+        );
+
+        const link = document.getElementById('sillybunny-native-chat-styles');
+        expect(link).not.toBeNull();
+        expect(link.tagName).toBe('LINK');
+        expect(link.getAttribute('href')).toMatch(/^css\/sillybunny-chat-styles\.css\?v=/);
     });
 
     test('paints document message blocks without double-painting bubble, native or flat styles', () => {
@@ -51,7 +87,14 @@ describe('core message transparency wiring', () => {
     });
 
     test('keeps zero-strength theme blur and Fast UI free of backdrop-filter layers', () => {
-        expect(powerUserSource).toContain('document.body.classList.toggle(\'sb-theme-blur\', Number(power_user.blur_strength) > 0);');
+        powerUser.power_user.blur_strength = 0;
+        powerUser.applyPowerUserSettings();
+        expect(document.body.classList.contains('sb-theme-blur')).toBe(false);
+
+        powerUser.power_user.blur_strength = 6;
+        powerUser.applyPowerUserSettings();
+        expect(document.body.classList.contains('sb-theme-blur')).toBe(true);
+
         expect(styleSource).toContain('--SmartThemeBackdropFilter: none;');
         expect(styleSource).toContain('body.sb-theme-blur {');
         expect(themeBlurSources).not.toMatch(/backdrop-filter:\s*blur\((?:calc\()?var\(--SmartThemeBlurStrength\)/);
@@ -68,7 +111,7 @@ describe('core message transparency wiring', () => {
         expect(htmlRule).not.toMatch(/(?:-webkit-)?backface-visibility\s*:/);
     });
 
-    test('persists and applies the three core visual sliders', () => {
+    test('persists and applies the three core visual sliders and mirrors sheld blur to the mobile CSS variable', async () => {
         expect(indexSource).toContain('id="background_blur"');
         expect(indexSource).toContain('aria-label="Background Blur"');
         expect(indexSource).toContain('aria-label="Background Blur Value"');
@@ -78,15 +121,24 @@ describe('core message transparency wiring', () => {
         expect(indexSource).toContain('id="sheld_blur_strength"');
         expect(indexSource).toContain('aria-label="Chat Field Blur"');
         expect(indexSource).toContain('aria-label="Chat Field Blur Value"');
-        expect(powerUserSource).toContain('const THEME_EFFECT_PROPERTIES = Object.freeze([');
-        expect(powerUserSource).toContain('{ key: \'customCSS-bg-blur\', selector: \'#background_blur\'');
-        expect(powerUserSource).toContain('{ key: \'customCSS-bg-opacity\', selector: \'#background_opacity\'');
-        expect(powerUserSource).toContain('{ key: \'sheldBlurStrength\', selector: \'#sheld_blur_strength\'');
-        expect(powerUserSource).toContain('linkedCssVars: [\'--mobileSheldBlurStrength\']');
-        expect(powerUserSource).not.toContain('key: \'mobileSheldBlurStrength\'');
-        expect(powerUserSource).toContain('function applyThemeEffects()');
-        expect(powerUserSource).toContain('for (const cssVar of property.linkedCssVars || [])');
-        expect(powerUserSource).toContain('theme[key] = power_user[key];');
-        expect(powerUserSource).toContain('applyThemeEffects();');
+
+        $('#background_blur').val('8').trigger('input');
+        $('#background_opacity').val('0.75').trigger('input');
+        $('#sheld_blur_strength').val('7').trigger('input');
+
+        expect(powerUser.power_user['customCSS-bg-blur']).toBe(8);
+        expect(powerUser.power_user['customCSS-bg-opacity']).toBe(0.75);
+        expect(powerUser.power_user.sheldBlurStrength).toBe(7);
+
+        expect(document.documentElement.style.getPropertyValue('--customCSS-bg-blur')).toBe('8');
+        expect(document.documentElement.style.getPropertyValue('--customCSS-bg-opacity')).toBe('0.75');
+        expect(document.documentElement.style.getPropertyValue('--sheldBlurStrength')).toBe('7');
+        expect(document.documentElement.style.getPropertyValue('--mobileSheldBlurStrength')).toBe('7');
+
+        const snapshot = powerUser.getThemeObject('VisualTest');
+        expect(snapshot['customCSS-bg-blur']).toBe(8);
+        expect(snapshot['customCSS-bg-opacity']).toBe(0.75);
+        expect(snapshot.sheldBlurStrength).toBe(7);
+        expect(snapshot).not.toHaveProperty('mobileSheldBlurStrength');
     });
 });

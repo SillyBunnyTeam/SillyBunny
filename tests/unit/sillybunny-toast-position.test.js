@@ -1,8 +1,11 @@
 /**
  * @jest-environment jsdom
  */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static HTML contracts. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
+
+import { importPowerUserModule } from '../util/power-user-harness.js';
 
 const motion = await import('../../public/scripts/sillybunny-toast-motion.js');
 const {
@@ -25,7 +28,9 @@ const POSITIONS = [
 
 const readSource = path => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const indexHtml = readSource('public/index.html');
-const powerUserSource = readSource('public/scripts/power-user.js');
+
+const { powerUser, mocks } = await importPowerUserModule({ mockToastPosition: true });
+const initialDefaults = structuredClone(powerUser.power_user);
 
 /** A stand-in for the overlay that holds toasts; the real motion module moves it when the position changes. */
 function addOverlay(positionClass = 'toast-bottom-center') {
@@ -48,6 +53,9 @@ function addSelect() {
 
 beforeEach(() => {
     document.body.replaceChildren();
+    Object.assign(powerUser.power_user, structuredClone(initialDefaults));
+    mocks.toastPosition.applyPositionsEarly.mockClear();
+    mocks.toastPosition.applyToastPosition.mockClear();
 });
 
 afterEach(() => {
@@ -97,17 +105,36 @@ describe('the positions at start-up', () => {
 });
 
 describe('the wiring in loadPowerUserSettings', () => {
-    test('moves both positions as soon as power_user holds the saved values, before the first await, and the later calls stay', () => {
-        const load = powerUserSource.slice(powerUserSource.indexOf('export async function loadPowerUserSettings('));
-        const assigned = load.indexOf('Object.assign(power_user, settings.power_user);');
-        const early = load.indexOf('applyPositionsEarly(power_user, toastPositionClasses, defaultToastPosition)');
-        const firstAwait = load.indexOf('await ');
-        expect(assigned).toBeGreaterThan(-1);
-        expect(early).toBeGreaterThan(assigned);
-        // Before the first await, so that an early toast does not show at the default.
-        expect(early).toBeLessThan(firstAwait);
-        expect(powerUserSource).toContain('applyToastPosition(power_user, toastPositionClasses);');
-        expect(powerUserSource.match(/applyToastrPosition\(\);/g).length).toBeGreaterThanOrEqual(2);
+    test('moves both positions synchronously as soon as power_user holds the saved values, before the first await, and applies controls afterward', async () => {
+        const overlay = addOverlay('toast-bottom-center');
+        const container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-top-center';
+        document.body.append(container);
+        const select = addSelect();
+
+        const loadPromise = powerUser.loadPowerUserSettings(
+            {
+                power_user: {
+                    toast_position: 'toast-top-right',
+                    toastr_position: 'toast-bottom-left',
+                },
+            },
+            { themes: [], context: [], instruct: [], sysprompt: [], reasoning: [] },
+        );
+
+        // Immediately after synchronous entry — before any await resolves — applyPositionsEarly has already moved both positions.
+        expect(mocks.toastPosition.applyPositionsEarly).toHaveBeenCalledTimes(1);
+        expect(overlay.className).toBe('toast-top-right');
+        expect(container.className).toBe('toast-bottom-left');
+        expect(motion.getNotificationPosition()).toBe('toast-bottom-left');
+
+        await loadPromise;
+
+        // After load finishes, applyToastPosition has synced the page select and toastr.options has the notification position.
+        expect(mocks.toastPosition.applyToastPosition).toHaveBeenCalledWith(powerUser.power_user, powerUser.toastPositionClasses);
+        expect(select.value).toBe('toast-top-right');
+        expect(global.toastr.options.positionClass).toBe('toast-bottom-left');
     });
 });
 
@@ -268,20 +295,16 @@ describe('the Customize row and the saved key', () => {
     };
 
     test('power_user holds the toast position, seeded with the default', () => {
-        expect(powerUserSource).toMatch(/^\s{4}toast_position: DEFAULT_TOAST_POSITION,/m);
+        expect(initialDefaults.toast_position).toBe(DEFAULT_TOAST_POSITION);
     });
 
     test('the notification position keeps its own key and default', () => {
-        expect(powerUserSource).toMatch(/^\s{4}toastr_position: defaultToastPosition,/m);
-        expect(powerUserSource).toContain('const defaultToastPosition = \'toast-top-center\';');
+        expect(initialDefaults.toastr_position).toBe('toast-top-center');
     });
 
     test('the toast select has the six positions of toastPositionClasses, with the labels of the notification select', () => {
-        const declared = /export const toastPositionClasses = \[([\s\S]*?)\];/.exec(powerUserSource)?.[1] ?? '';
-        const classes = [...declared.matchAll(/'([^']+)'/g)].map(match => match[1]);
-
-        expect(classes).toEqual(POSITIONS);
-        expect(optionValues('toast_position').map(option => option.value)).toEqual(classes);
+        expect(powerUser.toastPositionClasses).toEqual(POSITIONS);
+        expect(optionValues('toast_position').map(option => option.value)).toEqual(powerUser.toastPositionClasses);
         expect(optionValues('toast_position')).toEqual(optionValues('toastr_position'));
     });
 
