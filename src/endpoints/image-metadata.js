@@ -9,10 +9,14 @@ import crypto from 'node:crypto';
 import { imageSize } from 'image-size';
 import writeFileAtomic from 'write-file-atomic';
 import express from 'express';
+// SillyBunny: use ResizeStrategy for fast nearest-neighbor pre-downscale before average color sampling.
+import { ResizeStrategy } from '@jimp/plugin-resize';
 import { Jimp } from '../jimp.js';
 import { getConfigValue, isPathUnderParent, uuidv4 } from '../util.js';
 
 export const METADATA_FILE = 'image-metadata.json';
+// SillyBunny: cap intermediate bitmap size before average color sampling to avoid holding 4K RGBA buffers.
+export const AVERAGE_COLOR_MAX_DIMENSION = 256;
 
 /**
  * @typedef {Object} ImageMetadata
@@ -146,13 +150,23 @@ export function isAnimatedWebP(buffer) {
 
 /**
  * Calculate average color using Jimp.
- * Resizes the image to 1x1 to efficiently get the average color.
+ * Downscales large bitmaps to <= 256px before 1x1 reduction so 4K buffers are released promptly.
  * @param {Buffer} buffer The image buffer.
  * @returns {Promise<string>} The average color as a hex string (e.g., '#RRGGBB').
  */
-async function getAverageColorWithJimp(buffer) {
+export async function getAverageColorWithJimp(buffer) {
     try {
         const image = await Jimp.read(buffer);
+        // SillyBunny: downscale large (>256px) decoded bitmaps first to drop multi-MB RGBA buffers promptly.
+        const maxDimension = Math.max(image.bitmap.width, image.bitmap.height);
+        if (maxDimension > AVERAGE_COLOR_MAX_DIMENSION) {
+            const scale = AVERAGE_COLOR_MAX_DIMENSION / maxDimension;
+            image.resize({
+                w: Math.max(1, Math.round(image.bitmap.width * scale)),
+                h: Math.max(1, Math.round(image.bitmap.height * scale)),
+                mode: ResizeStrategy.NEAREST_NEIGHBOR,
+            });
+        }
         image.resize({ w: 1, h: 1 });
 
         const colorInt = image.getPixelColor(0, 0);

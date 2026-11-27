@@ -438,6 +438,112 @@ function calculateTotalGenTimeAndWordCount(
 
 export const router = express.Router();
 
+// SillyBunny: support incremental stat deltas (POST /api/stats/increment) so turns do not download and re-upload all character stats.
+const DEFAULT_FIRST_CHAT_TIMESTAMP = new Date('9999-12-31T23:59:59.999Z').getTime();
+const FORBIDDEN_STAT_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'timestamp']);
+const ADDITIVE_STAT_FIELDS = [
+    'total_gen_time',
+    'user_word_count',
+    'non_user_word_count',
+    'user_msg_count',
+    'non_user_msg_count',
+    'total_swipe_count',
+];
+
+function createEmptyCharacterStat() {
+    return {
+        total_gen_time: 0,
+        user_word_count: 0,
+        non_user_word_count: 0,
+        user_msg_count: 0,
+        non_user_msg_count: 0,
+        total_swipe_count: 0,
+        chat_size: 0,
+        date_last_chat: 0,
+        date_first_chat: DEFAULT_FIRST_CHAT_TIMESTAMP,
+    };
+}
+
+function normalizeFiniteNumber(value, fallback = 0) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+/**
+ * Applies one or more per-character incremental stat deltas to the user's in-memory stats map.
+ * @param {string} handle User handle
+ * @param {object} payload `{ avatar, delta }` or `{ increments: Record<string, object> }`
+ * @returns {boolean} True if at least one valid increment was applied
+ */
+export function applyStatIncrements(handle, payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return false;
+    }
+
+    /** @type {Array<[string, object]>} */
+    const entries = [];
+    if (typeof payload.avatar === 'string' && payload.delta && typeof payload.delta === 'object' && !Array.isArray(payload.delta)) {
+        entries.push([payload.avatar, payload.delta]);
+    } else if (payload.increments && typeof payload.increments === 'object' && !Array.isArray(payload.increments)) {
+        for (const [avatar, delta] of Object.entries(payload.increments)) {
+            if (typeof avatar === 'string' && delta && typeof delta === 'object' && !Array.isArray(delta)) {
+                entries.push([avatar, delta]);
+            }
+        }
+    } else {
+        return false;
+    }
+
+    if (entries.length === 0) {
+        return false;
+    }
+
+    const userStats = STATS.get(handle) || {};
+    let appliedCount = 0;
+
+    for (const [avatar, delta] of entries) {
+        if (!avatar || FORBIDDEN_STAT_KEYS.has(avatar)) {
+            continue;
+        }
+        const existing = Object.hasOwn(userStats, avatar) && userStats[avatar] && typeof userStats[avatar] === 'object'
+            ? userStats[avatar]
+            : createEmptyCharacterStat();
+
+        for (const field of ADDITIVE_STAT_FIELDS) {
+            if (Object.hasOwn(delta, field)) {
+                const current = normalizeFiniteNumber(existing[field], 0);
+                existing[field] = current + normalizeFiniteNumber(delta[field], 0);
+            }
+        }
+
+        if (Object.hasOwn(delta, 'date_last_chat')) {
+            const nextLast = normalizeFiniteNumber(delta.date_last_chat, 0);
+            if (nextLast > 0) {
+                existing.date_last_chat = Math.max(normalizeFiniteNumber(existing.date_last_chat, 0), nextLast);
+            }
+        }
+
+        if (Object.hasOwn(delta, 'date_first_chat')) {
+            const nextFirst = normalizeFiniteNumber(delta.date_first_chat, 0);
+            if (nextFirst > 0) {
+                const currentFirst = normalizeFiniteNumber(existing.date_first_chat, DEFAULT_FIRST_CHAT_TIMESTAMP);
+                existing.date_first_chat = Math.min(currentFirst > 0 ? currentFirst : DEFAULT_FIRST_CHAT_TIMESTAMP, nextFirst);
+            }
+        }
+
+        userStats[avatar] = existing;
+        appliedCount++;
+    }
+
+    if (appliedCount === 0) {
+        return false;
+    }
+
+    userStats.timestamp = Date.now();
+    STATS.set(handle, userStats);
+    return true;
+}
+
 /**
  * Handle a POST request to get the stats object
  */
@@ -466,4 +572,12 @@ router.post('/update', function (request, response) {
     if (!request.body) return response.sendStatus(400);
     setCharStats(request.user.profile.handle, request.body);
     return response.sendStatus(200);
+});
+
+// SillyBunny: apply batched per-character stat deltas without transferring the entire stats map.
+router.post('/increment', function (request, response) {
+    if (!request.body || !applyStatIncrements(request.user.profile.handle, request.body)) {
+        return response.sendStatus(400);
+    }
+    return response.send({ ok: true });
 });

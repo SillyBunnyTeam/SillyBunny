@@ -8,7 +8,70 @@ const STORE_VERSION = 1;
 const ENTITY_TYPES = new Set(['characters', 'groups']);
 const LOCK_FILENAME = `${ENTITY_DATE_ADDED_FILE}.lock`;
 const LOCK_RETRY_DELAY_MS = 25;
-const LOCK_RETRY_LIMIT = 200;
+const ASYNC_LOCK_RETRY_LIMIT = 200;
+const SYNC_LOCK_MAX_WAIT_MS = 1500;
+const STORE_CACHE_MAX_ENTRIES = 64;
+const storeCache = new Map();
+const inProcessMutexQueues = new Map();
+const syncWaitArray = new Int32Array(new SharedArrayBuffer(4));
+
+function sleepAsync(delayMs) {
+    return new Promise(resolve => {
+        const timer = setTimeout(resolve, delayMs);
+        timer.unref?.();
+    });
+}
+
+function acquireInProcessMutex(key) {
+    const previous = inProcessMutexQueues.get(key) ?? Promise.resolve();
+    let releaseCurrent;
+    const current = new Promise(resolve => {
+        releaseCurrent = resolve;
+    });
+    const tail = previous.then(() => current, () => current);
+    inProcessMutexQueues.set(key, tail);
+
+    return previous.then(() => {
+        let released = false;
+        return () => {
+            if (released) {
+                return;
+            }
+            released = true;
+            if (inProcessMutexQueues.get(key) === tail) {
+                inProcessMutexQueues.delete(key);
+            }
+            releaseCurrent();
+        };
+    });
+}
+
+function getFileStamp(stat) {
+    return `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}:${stat.ino}`;
+}
+
+function setCachedStore(filePath, stamp, store) {
+    if (storeCache.has(filePath)) {
+        storeCache.delete(filePath);
+    } else if (storeCache.size >= STORE_CACHE_MAX_ENTRIES) {
+        const oldestKey = storeCache.keys().next().value;
+        storeCache.delete(oldestKey);
+    }
+    storeCache.set(filePath, { stamp, store });
+}
+
+function refreshCachedStoreAfterWrite(filePath, store) {
+    try {
+        const stat = fs.statSync(filePath);
+        setCachedStore(filePath, getFileStamp(stat), structuredClone(store));
+    } catch {
+        storeCache.delete(filePath);
+    }
+}
+
+export function clearEntityDateAddedCache() {
+    storeCache.clear();
+}
 
 function createScope() {
     return {
@@ -88,33 +151,78 @@ function readStore(userRoot) {
     }
 
     const filePath = path.join(userRoot, ENTITY_DATE_ADDED_FILE);
-    if (!fs.existsSync(filePath)) {
-        return { filePath, store: createStore(), writable: true };
+    let stat;
+    try {
+        stat = fs.statSync(filePath);
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            storeCache.delete(filePath);
+            return { filePath, store: createStore(), writable: true, existed: false };
+        }
+        throw error;
+    }
+
+    const stamp = getFileStamp(stat);
+    const cached = storeCache.get(filePath);
+    if (cached && cached.stamp === stamp) {
+        storeCache.delete(filePath);
+        storeCache.set(filePath, cached);
+        return { filePath, store: structuredClone(cached.store), writable: true, existed: true };
     }
 
     try {
         const store = normalizeStore(JSON.parse(fs.readFileSync(filePath, 'utf8')));
-        return { filePath, store, writable: true };
+        setCachedStore(filePath, stamp, structuredClone(store));
+        return { filePath, store, writable: true, existed: true };
     } catch (error) {
+        storeCache.delete(filePath);
         const corruptPath = `${filePath}.corrupt-${Date.now()}-${process.pid}`;
         try {
             fs.renameSync(filePath, corruptPath);
             console.error(`Could not read entity date-added metadata at ${filePath}. The corrupt file was moved to ${corruptPath}.`, error);
-            return { filePath, store: createStore(), writable: true };
+            return { filePath, store: createStore(), writable: true, existed: false };
         } catch (backupError) {
             throw new Error(`Could not preserve corrupt entity date-added metadata at ${filePath}.`, { cause: backupError });
         }
     }
 }
 
+function readCachedStoreIfExists(userRoot) {
+    if (typeof userRoot !== 'string' || !userRoot) {
+        throw new TypeError('A user root is required for entity date-added metadata.');
+    }
+    const filePath = path.join(userRoot, ENTITY_DATE_ADDED_FILE);
+    let stat;
+    try {
+        stat = fs.statSync(filePath);
+    } catch {
+        return null;
+    }
+    const stamp = getFileStamp(stat);
+    const cached = storeCache.get(filePath);
+    if (cached && cached.stamp === stamp) {
+        return cached.store;
+    }
+    try {
+        const store = normalizeStore(JSON.parse(fs.readFileSync(filePath, 'utf8')));
+        setCachedStore(filePath, stamp, store);
+        return store;
+    } catch {
+        return null;
+    }
+}
+
 function withStoreLock(userRoot, callback) {
     fs.mkdirSync(userRoot, { recursive: true });
+    const filePath = path.join(userRoot, ENTITY_DATE_ADDED_FILE);
     const lockPath = path.join(userRoot, LOCK_FILENAME);
     let release;
+    let waitedMs = 0;
+    let nextDelayMs = 5;
 
-    for (let attempt = 0; attempt <= LOCK_RETRY_LIMIT; attempt++) {
+    for (;;) {
         try {
-            release = lockfile.lockSync(userRoot, {
+            release = lockfile.lockSync(filePath, {
                 lockfilePath: lockPath,
                 realpath: false,
                 stale: 30_000,
@@ -122,10 +230,13 @@ function withStoreLock(userRoot, callback) {
             });
             break;
         } catch (error) {
-            if (error?.code !== 'ELOCKED' || attempt === LOCK_RETRY_LIMIT) {
+            if (error?.code !== 'ELOCKED' || waitedMs >= SYNC_LOCK_MAX_WAIT_MS) {
                 throw error;
             }
-            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_RETRY_DELAY_MS);
+            const delayMs = Math.min(nextDelayMs, SYNC_LOCK_MAX_WAIT_MS - waitedMs);
+            Atomics.wait(syncWaitArray, 0, 0, delayMs);
+            waitedMs += delayMs;
+            nextDelayMs = Math.min(LOCK_RETRY_DELAY_MS, nextDelayMs + 5);
         }
     }
 
@@ -133,6 +244,49 @@ function withStoreLock(userRoot, callback) {
         return callback();
     } finally {
         release?.();
+    }
+}
+
+/**
+ * Runs a callback under an in-process async FIFO mutex and non-blocking cross-process lock
+ * without ever blocking the event loop with Atomics.wait.
+ * @template T
+ * @param {string} userRoot User data root
+ * @param {() => Promise<T> | T} callback Work to execute while locked
+ * @returns {Promise<T>}
+ */
+export async function withEntityDateAddedLockAsync(userRoot, callback) {
+    await fs.promises.mkdir(userRoot, { recursive: true });
+    const filePath = path.join(userRoot, ENTITY_DATE_ADDED_FILE);
+    const lockPath = path.join(userRoot, LOCK_FILENAME);
+    const mutexKey = path.resolve(lockPath);
+    const releaseInProcess = await acquireInProcessMutex(mutexKey);
+    let releaseFileLock;
+
+    try {
+        for (let attempt = 0; attempt <= ASYNC_LOCK_RETRY_LIMIT; attempt++) {
+            try {
+                releaseFileLock = await lockfile.lock(filePath, {
+                    lockfilePath: lockPath,
+                    realpath: false,
+                    stale: 30_000,
+                    update: 10_000,
+                });
+                break;
+            } catch (error) {
+                if (error?.code !== 'ELOCKED' || attempt === ASYNC_LOCK_RETRY_LIMIT) {
+                    throw error;
+                }
+                await sleepAsync(LOCK_RETRY_DELAY_MS);
+            }
+        }
+        return await callback();
+    } finally {
+        try {
+            await releaseFileLock?.();
+        } finally {
+            releaseInProcess();
+        }
     }
 }
 
@@ -145,6 +299,23 @@ function updateStore(userRoot, entityType, callback) {
 
         if (state.writable && before !== JSON.stringify(state.store)) {
             tryWriteFileSync(state.filePath, `${JSON.stringify(state.store, null, 4)}\n`, 'utf8', { durable: true });
+            refreshCachedStoreAfterWrite(state.filePath, state.store);
+        }
+
+        return result;
+    });
+}
+
+async function updateStoreAsync(userRoot, entityType, callback) {
+    return withEntityDateAddedLockAsync(userRoot, () => {
+        const state = readStore(userRoot);
+        const scope = getScope(state.store, entityType);
+        const before = JSON.stringify(state.store);
+        const result = callback(scope);
+
+        if (state.writable && before !== JSON.stringify(state.store)) {
+            tryWriteFileSync(state.filePath, `${JSON.stringify(state.store, null, 4)}\n`, 'utf8', { durable: true });
+            refreshCachedStoreAfterWrite(state.filePath, state.store);
         }
 
         return result;
@@ -165,8 +336,107 @@ export function reconcileEntityDateAdded(userRoot, entityType, entities, now = D
         throw new TypeError('Entity date-added reconciliation requires an entity array.');
     }
 
+    // Lock-free fast path when the stat-validated cache already holds every entity and needs no mutation.
+    const cachedStore = readCachedStoreIfExists(userRoot);
+    if (cachedStore) {
+        const scope = getScope(cachedStore, entityType);
+        if (scope.initialized) {
+            let needsWrite = false;
+            const fastResult = new Map();
+            for (const entity of entities) {
+                if (!entity || typeof entity.id !== 'string' || !entity.id) {
+                    throw new TypeError('Entity date-added reconciliation requires non-empty string IDs.');
+                }
+                const timestamp = scope.entries[entity.id];
+                if (isValidTimestamp(timestamp)) {
+                    fastResult.set(entity.id, timestamp);
+                } else {
+                    const deletedAt = scope.deleted[entity.id];
+                    const fallback = normalizeTimestamp(entity.fallback, 0);
+                    if (isValidTimestamp(deletedAt) && fallback <= deletedAt) {
+                        continue;
+                    }
+                    needsWrite = true;
+                    break;
+                }
+            }
+            if (!needsWrite) {
+                return fastResult;
+            }
+        }
+    }
+
     const discoveredAt = normalizeTimestamp(now, Date.now());
     return updateStore(userRoot, entityType, (scope) => {
+        const result = new Map();
+        const isMigration = !scope.initialized;
+
+        for (const entity of entities) {
+            if (!entity || typeof entity.id !== 'string' || !entity.id) {
+                throw new TypeError('Entity date-added reconciliation requires non-empty string IDs.');
+            }
+
+            let timestamp = scope.entries[entity.id];
+            if (!isValidTimestamp(timestamp)) {
+                const deletedAt = scope.deleted[entity.id];
+                const fallback = normalizeTimestamp(entity.fallback, 0);
+                if (isValidTimestamp(deletedAt) && fallback <= deletedAt) {
+                    continue;
+                }
+
+                delete scope.deleted[entity.id];
+                timestamp = isMigration
+                    ? normalizeTimestamp(fallback, discoveredAt)
+                    : discoveredAt;
+                scope.entries[entity.id] = timestamp;
+            }
+            result.set(entity.id, timestamp);
+        }
+
+        scope.initialized = true;
+        return result;
+    });
+}
+
+/**
+ * Non-blocking async counterpart to reconcileEntityDateAdded using the in-process mutex queue.
+ */
+export async function reconcileEntityDateAddedAsync(userRoot, entityType, entities, now = Date.now()) {
+    if (!Array.isArray(entities)) {
+        throw new TypeError('Entity date-added reconciliation requires an entity array.');
+    }
+
+    const cachedStore = readCachedStoreIfExists(userRoot);
+    if (cachedStore) {
+        const scope = getScope(cachedStore, entityType);
+        if (scope.initialized) {
+            let needsWrite = false;
+            const fastResult = new Map();
+            for (const entity of entities) {
+                if (!entity || typeof entity.id !== 'string' || !entity.id) {
+                    throw new TypeError('Entity date-added reconciliation requires non-empty string IDs.');
+                }
+                const timestamp = scope.entries[entity.id];
+                if (isValidTimestamp(timestamp)) {
+                    fastResult.set(entity.id, timestamp);
+                } else {
+                    const deletedAt = scope.deleted[entity.id];
+                    const fallback = normalizeTimestamp(entity.fallback, 0);
+                    if (isValidTimestamp(deletedAt) && fallback <= deletedAt) {
+                        continue;
+                    }
+                    needsWrite = true;
+                    break;
+                }
+            }
+            if (!needsWrite) {
+                return fastResult;
+            }
+        }
+    }
+
+    const discoveredAt = normalizeTimestamp(now, Date.now());
+    return updateStoreAsync(userRoot, entityType, (scope) => {
         const result = new Map();
         const isMigration = !scope.initialized;
 
@@ -211,8 +481,48 @@ export function ensureEntityDateAdded(userRoot, entityType, id, fallback, now = 
         throw new TypeError('Entity date-added metadata requires a non-empty string ID.');
     }
 
+    const cachedStore = readCachedStoreIfExists(userRoot);
+    if (cachedStore) {
+        const scope = getScope(cachedStore, entityType);
+        const existing = scope.entries[id];
+        if (isValidTimestamp(existing) && !Object.hasOwn(scope.deleted, id)) {
+            return existing;
+        }
+    }
+
     const discoveredAt = normalizeTimestamp(now, Date.now());
     return updateStore(userRoot, entityType, (scope) => {
+        let timestamp = scope.entries[id];
+        if (!isValidTimestamp(timestamp)) {
+            timestamp = scope.initialized
+                ? discoveredAt
+                : normalizeTimestamp(fallback, discoveredAt);
+            scope.entries[id] = timestamp;
+        }
+        delete scope.deleted[id];
+        return timestamp;
+    });
+}
+
+/**
+ * Non-blocking async counterpart to ensureEntityDateAdded.
+ */
+export async function ensureEntityDateAddedAsync(userRoot, entityType, id, fallback, now = Date.now()) {
+    if (typeof id !== 'string' || !id) {
+        throw new TypeError('Entity date-added metadata requires a non-empty string ID.');
+    }
+
+    const cachedStore = readCachedStoreIfExists(userRoot);
+    if (cachedStore) {
+        const scope = getScope(cachedStore, entityType);
+        const existing = scope.entries[id];
+        if (isValidTimestamp(existing) && !Object.hasOwn(scope.deleted, id)) {
+            return existing;
+        }
+    }
+
+    const discoveredAt = normalizeTimestamp(now, Date.now());
+    return updateStoreAsync(userRoot, entityType, (scope) => {
         let timestamp = scope.entries[id];
         if (!isValidTimestamp(timestamp)) {
             timestamp = scope.initialized
@@ -327,5 +637,6 @@ export function importEntityDateAdded(userRoot, value) {
         }
 
         tryWriteFileSync(state.filePath, `${JSON.stringify(importedStore, null, 4)}\n`, 'utf8', { durable: true });
+        refreshCachedStoreAfterWrite(state.filePath, importedStore);
     });
 }

@@ -56,10 +56,13 @@ export function validateAssetFileName(inputFilename) {
  * Recursive function to get files
  * @param {string} dir - The directory to search for files
  * @param {string[]} files - The array of files to return
+ * @param {string[]|null} [visitedDirs] - Optional array collecting traversed directory paths
  * @returns {string[]} - The array of files
  */
-function getFiles(dir, files = []) {
+function getFiles(dir, files = [], visitedDirs = null) {
     if (!fs.existsSync(dir)) return files;
+    // SillyBunny: record traversed directories for (mtimeMs, size) cache validation.
+    visitedDirs?.push(dir);
 
     // Get an array of all files and directories in the passed directory using fs.readdirSync
     const fileList = fs.readdirSync(dir, { withFileTypes: true });
@@ -69,7 +72,7 @@ function getFiles(dir, files = []) {
         // Check if the current file/directory is a directory using fs.statSync
         if (file.isDirectory()) {
             // If it is a directory, recursively call the getFiles function with the directory path and the files array
-            getFiles(name, files);
+            getFiles(name, files, visitedDirs);
         } else {
             // If it is a file, push the full path to the files array
             files.push(name);
@@ -98,6 +101,86 @@ function ensureFoldersExist(directories) {
 
 export const router = express.Router();
 
+// SillyBunny: bounded (mtimeMs, size) directory listing cache for /api/assets/get and /api/assets/character with write/delete invalidation.
+const MAX_ASSETS_CACHE_ENTRIES = 128;
+const assetsListingCache = new Map();
+
+function captureDirStamps(dirPaths) {
+    const stamps = [];
+    for (const dirPath of dirPaths) {
+        try {
+            const stat = fs.statSync(dirPath);
+            stamps.push([dirPath, stat.mtimeMs, stat.size]);
+        } catch {
+            stamps.push([dirPath, -1, -1]);
+        }
+    }
+    return stamps;
+}
+
+function areDirStampsFresh(stamps) {
+    for (const [dirPath, expectedMtimeMs, expectedSize] of stamps) {
+        try {
+            const stat = fs.statSync(dirPath);
+            if (stat.mtimeMs !== expectedMtimeMs || stat.size !== expectedSize) {
+                return false;
+            }
+        } catch {
+            if (expectedMtimeMs !== -1 || expectedSize !== -1) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+function getCachedAssetsListing(cacheKey) {
+    const cached = assetsListingCache.get(cacheKey);
+    if (!cached) {
+        return null;
+    }
+    if (!areDirStampsFresh(cached.stamps)) {
+        assetsListingCache.delete(cacheKey);
+        return null;
+    }
+    assetsListingCache.delete(cacheKey);
+    assetsListingCache.set(cacheKey, cached);
+    return structuredClone(cached.value);
+}
+
+function setCachedAssetsListing(cacheKey, dirPaths, value) {
+    if (assetsListingCache.has(cacheKey)) {
+        assetsListingCache.delete(cacheKey);
+    } else if (assetsListingCache.size >= MAX_ASSETS_CACHE_ENTRIES) {
+        const oldestKey = assetsListingCache.keys().next().value;
+        assetsListingCache.delete(oldestKey);
+    }
+    assetsListingCache.set(cacheKey, {
+        stamps: captureDirStamps(dirPaths),
+        value: structuredClone(value),
+    });
+}
+
+function invalidateAssetsCacheForRoot(assetsRoot) {
+    if (!assetsRoot) {
+        return;
+    }
+    const resolvedRoot = path.resolve(assetsRoot);
+    for (const key of [...assetsListingCache.keys()]) {
+        if (key === `assets:${resolvedRoot}` || key.startsWith(`char:${resolvedRoot}\0`)) {
+            assetsListingCache.delete(key);
+        }
+    }
+}
+
+export function clearAssetsCache() {
+    assetsListingCache.clear();
+}
+
+export function getAssetsCacheStats() {
+    return { size: assetsListingCache.size, maxEntries: MAX_ASSETS_CACHE_ENTRIES };
+}
+
 /**
  * HTTP POST handler function to retrieve name of all files of a given folder path.
  *
@@ -112,7 +195,15 @@ router.post('/get', async (request, response) => {
 
     try {
         if (fs.existsSync(folderPath) && fs.statSync(folderPath).isDirectory()) {
+            // SillyBunny: serve cached asset inventory when all watched directory (mtimeMs, size) stamps match.
+            const cacheKey = `assets:${path.resolve(folderPath)}`;
+            const cachedOutput = getCachedAssetsListing(cacheKey);
+            if (cachedOutput !== null) {
+                return response.send(cachedOutput);
+            }
+
             ensureFoldersExist(request.user.directories);
+            const watchedDirs = [folderPath];
 
             const folders = fs.readdirSync(folderPath, { withFileTypes: true })
                 .filter(file => file.isDirectory());
@@ -125,7 +216,7 @@ router.post('/get', async (request, response) => {
                 if (folder == 'live2d') {
                     output[folder] = [];
                     const live2d_folder = path.normalize(path.join(folderPath, folder));
-                    const files = getFiles(live2d_folder);
+                    const files = getFiles(live2d_folder, [], watchedDirs);
                     //console.debug("FILE FOUND:",files)
                     for (let file of files) {
                         if (file.includes('model') && file.endsWith('.json')) {
@@ -139,9 +230,10 @@ router.post('/get', async (request, response) => {
                 // VRM assets
                 if (folder == 'vrm') {
                     output[folder] = { 'model': [], 'animation': [] };
+                    watchedDirs.push(path.join(folderPath, 'vrm'));
                     // Extract models
                     const vrm_model_folder = path.normalize(path.join(folderPath, 'vrm', 'model'));
-                    let files = getFiles(vrm_model_folder);
+                    let files = getFiles(vrm_model_folder, [], watchedDirs);
                     //console.debug("FILE FOUND:",files)
                     for (let file of files) {
                         if (!file.endsWith('.placeholder')) {
@@ -152,7 +244,7 @@ router.post('/get', async (request, response) => {
 
                     // Extract models
                     const vrm_animation_folder = path.normalize(path.join(folderPath, 'vrm', 'animation'));
-                    files = getFiles(vrm_animation_folder);
+                    files = getFiles(vrm_animation_folder, [], watchedDirs);
                     //console.debug("FILE FOUND:",files)
                     for (let file of files) {
                         if (!file.endsWith('.placeholder')) {
@@ -164,7 +256,9 @@ router.post('/get', async (request, response) => {
                 }
 
                 // Other assets (bgm/ambient/blip)
-                const files = fs.readdirSync(path.join(folderPath, folder))
+                const subFolderPath = path.join(folderPath, folder);
+                watchedDirs.push(subFolderPath);
+                const files = fs.readdirSync(subFolderPath)
                     .filter(filename => {
                         return filename != '.placeholder';
                     });
@@ -173,6 +267,9 @@ router.post('/get', async (request, response) => {
                     output[folder].push(`assets/${folder}/${file}`);
                 }
             }
+
+            // SillyBunny: populate bounded (mtimeMs, size) cache with all scanned subdirectories.
+            setCachedAssetsListing(cacheKey, watchedDirs, output);
         }
     } catch (err) {
         console.error(err);
@@ -254,6 +351,8 @@ router.post('/download', async (request, response) => {
         console.info('Download finished, moving file from', temp_path, 'to', file_path);
         fs.copyFileSync(temp_path, file_path);
         fs.unlinkSync(temp_path);
+        // SillyBunny: invalidate cached asset directory listing after download.
+        invalidateAssetsCacheForRoot(request.user.directories.assets);
         response.sendStatus(200);
     } catch (error) {
         console.error(error);
@@ -302,6 +401,8 @@ router.post('/delete', async (request, response) => {
         }
 
         await fs.promises.unlink(file_path);
+        // SillyBunny: invalidate cached asset directory listing after delete.
+        invalidateAssetsCacheForRoot(request.user.directories.assets);
         console.info('Asset deleted.');
         return response.sendStatus(200);
     } catch (error) {
@@ -344,6 +445,15 @@ router.post('/character', async (request, response) => {
     let output = [];
     try {
         if (fs.existsSync(folderPath) && fs.statSync(folderPath).isDirectory()) {
+            // SillyBunny: serve cached character asset listing when directory (mtimeMs, size) stamps match.
+            const cacheKey = `char:${path.resolve(folderPath)}\0${name}\0${category}`;
+            const cachedOutput = getCachedAssetsListing(cacheKey);
+            if (cachedOutput !== null) {
+                return response.send(cachedOutput);
+            }
+
+            const watchedDirs = [folderPath];
+
             // Live2d assets
             if (category == 'live2d') {
                 const folders = fs.readdirSync(folderPath, { withFileTypes: true });
@@ -352,12 +462,15 @@ router.post('/character', async (request, response) => {
 
                     const modelFolder = folderInfo.name;
                     const live2dModelPath = path.join(folderPath, modelFolder);
+                    watchedDirs.push(live2dModelPath);
                     for (let file of fs.readdirSync(live2dModelPath)) {
                         //console.debug("Character live2d model found:", file)
                         if (file.includes('model') && file.endsWith('.json'))
                             output.push(path.join('characters', name, category, modelFolder, file));
                     }
                 }
+                // SillyBunny: populate bounded (mtimeMs, size) cache with all scanned subdirectories.
+                setCachedAssetsListing(cacheKey, watchedDirs, output);
                 return response.send(output);
             }
 
@@ -369,6 +482,9 @@ router.post('/character', async (request, response) => {
 
             for (let i of files)
                 output.push(`/characters/${name}/${category}/${i}`);
+
+            // SillyBunny: populate bounded (mtimeMs, size) cache with all scanned subdirectories.
+            setCachedAssetsListing(cacheKey, watchedDirs, output);
         }
         return response.send(output);
     } catch (err) {

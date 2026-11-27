@@ -25,16 +25,100 @@ export const apiRouter = express.Router();
 export const SKIPPED_EXTENSIONS = new Set(['.apng', '.mp4', '.webm', '.avi', '.mkv', '.flv', '.gif']);
 export const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tif', '.tiff', '.apng']);
 
+// SillyBunny: header read limits avoid reading multi-MB thumbnails into RAM just for dimension or animation sniffing.
+const THUMBNAIL_HEADER_INITIAL_BYTES = 4096;
+const THUMBNAIL_HEADER_FALLBACK_BYTES = 65536;
+const ANIMATION_HEADER_BYTES = 512;
+
+/**
+ * Normalizes a configured thumbnail format to one of 'png', 'webp', or 'jpg'.
+ * @param {unknown} value Configured format value
+ * @param {'png'|'jpg'|'webp'} [fallback='jpg'] Fallback format when value is nullish
+ * @returns {'png'|'jpg'|'webp'}
+ */
+// SillyBunny: support 'webp' alongside 'png' and 'jpg' in thumbnail format validation and coercion.
+export function normalizeThumbnailFormat(value, fallback = 'jpg') {
+    const normalized = String(value ?? fallback).toLowerCase().trim();
+    if (normalized === 'png' || normalized === 'webp') {
+        return normalized;
+    }
+    return 'jpg';
+}
+
+/**
+ * Reads up to maxBytes from the start of a file without loading the entire file into RAM.
+ * @param {string} filePath Path to file
+ * @param {number} maxBytes Maximum bytes to read
+ * @returns {Promise<Buffer>}
+ */
+// SillyBunny: async bounded header reader for warm thumbnail dimension checks and animation sniffing.
+export async function readFileHeader(filePath, maxBytes) {
+    const size = Math.max(1, Math.trunc(maxBytes));
+    const buffer = Buffer.allocUnsafe(size);
+    const fileHandle = await fs.promises.open(filePath, 'r');
+    try {
+        const { bytesRead } = await fileHandle.read(buffer, 0, size, 0);
+        return buffer.subarray(0, bytesRead);
+    } finally {
+        await fileHandle.close();
+    }
+}
+
+/**
+ * Reads image dimensions from a small leading header chunk first, falling back cleanly only if needed.
+ * @param {string} filePath Path to image file
+ * @param {number} [knownSize] Optional file size from an earlier stat
+ * @returns {Promise<ReturnType<typeof sizeOf>>}
+ */
+// SillyBunny: avoid full-file reads on warm thumbnail dimension checks.
+export async function readImageDimensionsHeaderFirst(filePath, knownSize) {
+    const initialSize = knownSize !== undefined && knownSize > 0
+        ? Math.min(knownSize, THUMBNAIL_HEADER_INITIAL_BYTES)
+        : THUMBNAIL_HEADER_INITIAL_BYTES;
+    const initialHeader = await readFileHeader(filePath, initialSize);
+
+    try {
+        return sizeOf(initialHeader);
+    } catch (initialError) {
+        const hasMoreBytes = knownSize === undefined
+            ? initialHeader.length >= initialSize
+            : knownSize > initialHeader.length;
+        if (!hasMoreBytes) {
+            throw initialError;
+        }
+    }
+
+    const fallbackSize = knownSize !== undefined && knownSize > 0
+        ? Math.min(knownSize, THUMBNAIL_HEADER_FALLBACK_BYTES)
+        : THUMBNAIL_HEADER_FALLBACK_BYTES;
+    const expandedHeader = await readFileHeader(filePath, fallbackSize);
+
+    try {
+        return sizeOf(expandedHeader);
+    } catch (expandedError) {
+        const hasRemainingBytes = knownSize === undefined
+            ? expandedHeader.length >= fallbackSize
+            : knownSize > expandedHeader.length;
+        if (!hasRemainingBytes) {
+            throw expandedError;
+        }
+    }
+
+    return sizeOf(await fs.promises.readFile(filePath));
+}
+
 const thumbnailRuntimeSettings = {
     enabled: !!getConfigValue('thumbnails.enabled', true, 'boolean'),
     quality: Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.quality', 100, 'number')))),
-    format: String(getConfigValue('thumbnails.format', 'png')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
+    // SillyBunny: normalize configured thumbnail format including 'webp'.
+    format: normalizeThumbnailFormat(getConfigValue('thumbnails.format', 'png'), 'png'),
 };
 
 const thumbnailMobileRuntimeSettings = {
     enabled: !!getConfigValue('thumbnails.mobile.enabled', true, 'boolean'),
     quality: Math.min(100, Math.max(1, parseInt(getConfigValue('thumbnails.mobile.quality', 82, 'number')))),
-    format: String(getConfigValue('thumbnails.mobile.format', 'jpg')).toLowerCase().trim() === 'png' ? 'png' : 'jpg',
+    // SillyBunny: normalize configured mobile thumbnail format including 'webp'.
+    format: normalizeThumbnailFormat(getConfigValue('thumbnails.mobile.format', 'jpg'), 'jpg'),
 };
 
 async function setCachedThumbnailContentType(response, filePath) {
@@ -48,6 +132,9 @@ async function setCachedThumbnailContentType(response, filePath) {
             response.type('jpg');
         } else if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
             response.type('png');
+        } else if (header.subarray(0, 4).equals(Buffer.from('RIFF', 'ascii')) && header.subarray(8, 12).equals(Buffer.from('WEBP', 'ascii'))) {
+            // SillyBunny: sniff cached WebP thumbnails served under original extensions.
+            response.type('webp');
         }
     } catch {
         // Fall back to Express' extension-based content type.
@@ -186,7 +273,8 @@ export function invalidateThumbnail(directories, type, file) {
 export function setThumbnailRuntimeSettings(settings = {}) {
     thumbnailRuntimeSettings.enabled = Boolean(settings.enabled);
     thumbnailRuntimeSettings.quality = Math.min(100, Math.max(1, parseInt(settings.quality, 10) || 100));
-    thumbnailRuntimeSettings.format = String(settings.format ?? 'png').toLowerCase().trim() === 'png' ? 'png' : 'jpg';
+    // SillyBunny: support 'webp' alongside 'png' and 'jpg'.
+    thumbnailRuntimeSettings.format = normalizeThumbnailFormat(settings.format, 'png');
 }
 
 export function getThumbnailRuntimeSettings() {
@@ -196,7 +284,8 @@ export function getThumbnailRuntimeSettings() {
 export function setThumbnailMobileRuntimeSettings(settings = {}) {
     thumbnailMobileRuntimeSettings.enabled = Boolean(settings.enabled);
     thumbnailMobileRuntimeSettings.quality = Math.min(100, Math.max(1, parseInt(settings.quality, 10) || 82));
-    thumbnailMobileRuntimeSettings.format = String(settings.format ?? 'jpg').toLowerCase().trim() === 'png' ? 'png' : 'jpg';
+    // SillyBunny: support 'webp' alongside 'png' and 'jpg'.
+    thumbnailMobileRuntimeSettings.format = normalizeThumbnailFormat(settings.format, 'jpg');
 }
 
 export function getThumbnailMobileRuntimeSettings() {
@@ -242,11 +331,13 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
         // Check if thumbnail already exists and return it if not forcing regeneration
         if (!forceGenerate && fs.existsSync(pathToCachedFile)) {
             try {
+                // SillyBunny: capture cachedStat so readImageDimensionsHeaderFirst knows the cached file size.
+                let cachedStat = null;
                 // Check if original image was updated after thumbnail creation
                 const originalFileExists = fs.existsSync(pathToOriginalFile);
                 if (originalFileExists) {
                     const originalStat = fs.statSync(pathToOriginalFile);
-                    const cachedStat = fs.statSync(pathToCachedFile);
+                    cachedStat = fs.statSync(pathToCachedFile);
 
                     if (originalStat.mtimeMs > cachedStat.ctimeMs) {
                         // Original file changed, regenerate thumbnail
@@ -255,8 +346,8 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
                 }
 
                 if (!forceGenerate) {
-                    const buffer = fs.readFileSync(pathToCachedFile);
-                    const fileDimensions = sizeOf(buffer);
+                    // SillyBunny: read only the leading header bytes for image-size instead of full-file reads.
+                    const fileDimensions = await readImageDimensionsHeaderFirst(pathToCachedFile, cachedStat?.size);
                     const ratio = (fileDimensions.height > 0) ? (fileDimensions.width / fileDimensions.height) : 1.0;
                     // When a thumbnail exists, return the current resolution from config so the JSON can be updated.
                     const resolution = isMobile ? getThumbnailMobileResolution(type) : getThumbnailResolution(type);
@@ -276,8 +367,9 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
         // For WebP files, we must check if they are animated, as Jimp cannot process them.
         // If isKnownAnimated is false, we assume the caller knows it is static and skip this check.
         if (fileExtension === '.webp' && isKnownAnimated !== false) {
-            const buffer = fs.readFileSync(pathToOriginalFile);
-            const isAnimated = isAnimatedWebP(buffer);
+            // SillyBunny: sniff only the header bytes for animation chunks instead of reading the full file.
+            const header = await readFileHeader(pathToOriginalFile, ANIMATION_HEADER_BYTES);
+            const isAnimated = isAnimatedWebP(header);
             if (isAnimated) {
                 // The client is expected to handle it.
                 return { path: null, aspectRatio: null, resolution: null };
@@ -286,8 +378,9 @@ export async function generateThumbnail(directories, type, file, forceGenerate =
 
         // For PNG files, check if they are actually APNGs.
         if (fileExtension === '.png' && isKnownAnimated !== false) {
-            const buffer = fs.readFileSync(pathToOriginalFile);
-            const isAnimated = isAnimatedApng(buffer);
+            // SillyBunny: sniff only the header bytes for acTL chunks instead of reading the full file.
+            const header = await readFileHeader(pathToOriginalFile, ANIMATION_HEADER_BYTES);
+            const isAnimated = isAnimatedApng(header);
             if (isAnimated) {
                 // The client is expected to handle it.
                 return { path: null, aspectRatio: null, resolution: null };
@@ -354,12 +447,19 @@ async function processSingleImage(file, originalFolder, thumbnailFolder, type, p
         } else if (type === 'avatar' || type === 'persona') {
             // Crop and resize to fixed dimensions
             const [configWidth, configHeight] = dimensionSource[type];
-            safeCover(thumbImage, { w: configWidth, h: configHeight, mode: ResizeStrategy.BILINEAR });
+            // SillyBunny: a thumbnail is a preview, so a small source is cropped to the box ratio but never enlarged.
+            safeCover(thumbImage, { w: configWidth, h: configHeight, mode: ResizeStrategy.BILINEAR, withoutEnlargement: true });
         }
 
-        const buffer = settings.format === 'png'
-            ? await thumbImage.getBuffer(JimpMime.png)
-            : await thumbImage.getBuffer(JimpMime.jpeg, { quality: settings.quality, jpegColorSpace: 'ycbcr' });
+        // SillyBunny: support WebP encoding via @jimp/wasm-webp alongside PNG and JPEG.
+        let buffer;
+        if (settings.format === 'png') {
+            buffer = await thumbImage.getBuffer(JimpMime.png);
+        } else if (settings.format === 'webp') {
+            buffer = await thumbImage.getBuffer(JimpMime.webp, { quality: settings.quality });
+        } else {
+            buffer = await thumbImage.getBuffer(JimpMime.jpeg, { quality: settings.quality, jpegColorSpace: 'ycbcr' });
+        }
 
         writeFileAtomicSync(pathToCachedFile, buffer);
 

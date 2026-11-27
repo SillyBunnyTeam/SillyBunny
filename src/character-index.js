@@ -2,7 +2,26 @@ import fs from 'node:fs';
 import { promises as fsPromises } from 'node:fs';
 import path from 'node:path';
 
-import { SqliteCache, getCacheDirectory, getFileKey, getFileStamp, hasNulCharacter } from './sqlite-cache.js';
+import {
+    ANDROID_SQLITE_MMAP_SIZE,
+    DESKTOP_SQLITE_MMAP_SIZE,
+    SQLITE_CACHE_SIZE_KIB,
+    SQLITE_INCREMENTAL_VACUUM_PAGES,
+    SqliteCache,
+    getCacheDirectory,
+    getFileKey,
+    getFileStamp,
+    getSqliteCachePragmas,
+    hasNulCharacter,
+} from './sqlite-cache.js';
+
+export {
+    ANDROID_SQLITE_MMAP_SIZE,
+    DESKTOP_SQLITE_MMAP_SIZE,
+    SQLITE_CACHE_SIZE_KIB,
+    SQLITE_INCREMENTAL_VACUUM_PAGES,
+    getSqliteCachePragmas as getCharacterIndexPragmas,
+};
 
 // Raise the version when the stored data for an unchanged card file changes, for example after a parser fix.
 // An index file with another version is deleted and built again.
@@ -113,12 +132,29 @@ export class CharacterIndex {
      * @param {string[]} fileNames Names of the card files in the directory
      */
     pruneDirectory(directory, fileNames) {
-        this.#cache.use(statements => {
+        this.#cache.use((statements, run) => {
             const resolvedDirectory = path.resolve(directory);
             const existingFiles = new Set(fileNames);
+            const toDelete = [];
             for (const { file_name: fileName } of statements.listDirectory.all(resolvedDirectory)) {
                 if (!existingFiles.has(fileName)) {
-                    statements.delete.run(resolvedDirectory, fileName);
+                    toDelete.push(fileName);
+                }
+            }
+            if (toDelete.length > 0) {
+                run('BEGIN IMMEDIATE');
+                try {
+                    for (const fileName of toDelete) {
+                        statements.delete.run(resolvedDirectory, fileName);
+                    }
+                    run('COMMIT');
+                } catch (transactionError) {
+                    try {
+                        run('ROLLBACK');
+                    } catch {
+                        // Ignore rollback failures after a transaction error.
+                    }
+                    throw transactionError;
                 }
             }
         });
@@ -142,12 +178,29 @@ export class CharacterIndex {
                 const directory = path.resolve(directories.characters);
                 return [directory, listCardFiles(directory)];
             }));
+            const toDelete = [];
             for (const { directory, file_name: fileName } of statements.listAll.all()) {
                 if (!cardFiles.get(directory)?.has(fileName)) {
-                    statements.delete.run(directory, fileName);
+                    toDelete.push([directory, fileName]);
                 }
             }
-            run('PRAGMA incremental_vacuum');
+            if (toDelete.length > 0) {
+                run('BEGIN IMMEDIATE');
+                try {
+                    for (const [directory, fileName] of toDelete) {
+                        statements.delete.run(directory, fileName);
+                    }
+                    run('COMMIT');
+                } catch (transactionError) {
+                    try {
+                        run('ROLLBACK');
+                    } catch {
+                        // Ignore rollback failures after a transaction error.
+                    }
+                    throw transactionError;
+                }
+            }
+            run(`PRAGMA incremental_vacuum(${SQLITE_INCREMENTAL_VACUUM_PAGES})`);
         });
     }
 

@@ -557,6 +557,8 @@ async function synchronizeChat(batchSize = 5) {
 /**
  * @type {Map<string, number>} Cache object for storing hash values
  */
+// SillyBunny: bound hashCache as a 2,000-entry LRU so vectorized chats do not retain unbounded strings.
+const HASH_CACHE_MAX_ENTRIES = 2000;
 const hashCache = new Map();
 
 /**
@@ -567,11 +569,21 @@ const hashCache = new Map();
 function getStringHash(str) {
     // Check if the hash is already in the cache
     if (hashCache.has(str)) {
-        return hashCache.get(str);
+        const cached = hashCache.get(str);
+        // SillyBunny: refresh LRU position on cache hit.
+        hashCache.delete(str);
+        hashCache.set(str, cached);
+        return cached;
     }
 
     // Calculate the hash value
     const hash = calculateHash(str);
+
+    // SillyBunny: evict least-recently-used entry when cache is at capacity.
+    if (hashCache.size >= HASH_CACHE_MAX_ENTRIES) {
+        const oldestKey = hashCache.keys().next().value;
+        hashCache.delete(oldestKey);
+    }
 
     // Store the hash in the cache
     hashCache.set(str, hash);

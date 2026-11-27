@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Buffer } from 'node:buffer';
@@ -18,6 +19,8 @@ import { convertClaudePrompt } from '../prompt-converters.js';
 import { TEXTGEN_TYPES } from '../constants.js';
 import { setAdditionalHeaders } from '../additional-headers.js';
 import { getConfigValue, isValidUrl, trimV1 } from '../util.js';
+// SillyBunny: detect Termux/Android low-RAM hosts to bound resident WASM tokenizers.
+import { isNativeTermuxEnvironment } from '../runtime.js';
 
 const require = createRequire(import.meta.url);
 const { getTokenizer: getClaudeTokenizer } = require('@anthropic-ai/tokenizer');
@@ -31,6 +34,282 @@ const WEB_TOKENIZERS_MODULE_URL = pathToFileURL(require.resolve('@agnai/web-toke
  * @type {{[key: string]: import('tiktoken').Tiktoken}} Tokenizers cache
  */
 const tokenizersCache = {};
+
+// SillyBunny: bound active off-heap WASM tokenizer instances (1 on Android/Termux, 2 on desktop)
+// and dispose idle instances via an unref'd timer while keeping lightweight JS count caches warm.
+export const DESKTOP_MAX_ACTIVE_TOKENIZERS = 2;
+export const ANDROID_MAX_ACTIVE_TOKENIZERS = 1;
+export const DESKTOP_TOKENIZER_IDLE_TTL_MS = 300_000;
+export const ANDROID_TOKENIZER_IDLE_TTL_MS = 90_000;
+const TOKEN_COUNT_CACHE_MAX_ENTRIES = 2048;
+const TOKEN_COUNT_CACHE_MAX_TEXT_LENGTH = 8192;
+
+/**
+ * Detects whether the current host is an Android/Termux low-memory environment.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {boolean}
+ */
+export function isLowMemoryTokenizerHost(env = process.env) {
+    if (env === process.env && isNativeTermuxEnvironment()) {
+        return true;
+    }
+
+    return Boolean(env?.TERMUX_VERSION)
+        || env?.PREFIX === '/data/data/com.termux/files/usr'
+        || Boolean(env?.ANDROID_ROOT)
+        || env?.SILLYBUNNY_ANDROID_APP === '1'
+        || env?.SILLYBUNNY_LOW_RAM === '1'
+        || process.platform === 'android';
+}
+
+/**
+ * Manages LRU residency and idle TTL disposal for heavy WASM tokenizer instances.
+ */
+export class TokenizerResidencyManager {
+    /** @type {number} */
+    #maxActive;
+    /** @type {number} */
+    #idleTtlMs;
+    /** @type {() => number} */
+    #now;
+    /** @type {typeof setTimeout} */
+    #setTimeoutFn;
+    /** @type {typeof clearTimeout} */
+    #clearTimeoutFn;
+    /** @type {Map<string, { dispose: () => void, lastUsedAt: number, timer: any }>} */
+    #entries = new Map();
+
+    /**
+     * @param {object} [options]
+     * @param {number} [options.maxActive]
+     * @param {number} [options.idleTtlMs]
+     * @param {() => number} [options.now]
+     * @param {typeof setTimeout} [options.setTimeoutFn]
+     * @param {typeof clearTimeout} [options.clearTimeoutFn]
+     */
+    constructor({
+        maxActive = isLowMemoryTokenizerHost() ? ANDROID_MAX_ACTIVE_TOKENIZERS : DESKTOP_MAX_ACTIVE_TOKENIZERS,
+        idleTtlMs = isLowMemoryTokenizerHost() ? ANDROID_TOKENIZER_IDLE_TTL_MS : DESKTOP_TOKENIZER_IDLE_TTL_MS,
+        now = () => Date.now(),
+        setTimeoutFn = setTimeout,
+        clearTimeoutFn = clearTimeout,
+    } = {}) {
+        this.#maxActive = Math.max(1, Math.trunc(Number(maxActive) || 1));
+        this.#idleTtlMs = Math.max(0, Math.trunc(Number(idleTtlMs) || 0));
+        this.#now = now;
+        this.#setTimeoutFn = setTimeoutFn;
+        this.#clearTimeoutFn = clearTimeoutFn;
+    }
+
+    get size() {
+        return this.#entries.size;
+    }
+
+    getActiveKeys() {
+        return [...this.#entries.keys()];
+    }
+
+    getConfig() {
+        return {
+            maxActive: this.#maxActive,
+            idleTtlMs: this.#idleTtlMs,
+        };
+    }
+
+    /**
+     * Updates residency limits and immediately enforces maxActive.
+     * @param {{ maxActive?: number, idleTtlMs?: number }} [options]
+     */
+    configure({ maxActive, idleTtlMs } = {}) {
+        if (maxActive !== undefined) {
+            this.#maxActive = Math.max(1, Math.trunc(Number(maxActive) || 1));
+        }
+        if (idleTtlMs !== undefined) {
+            this.#idleTtlMs = Math.max(0, Math.trunc(Number(idleTtlMs) || 0));
+            for (const [key, entry] of this.#entries.entries()) {
+                this.#scheduleIdleTimer(key, entry);
+            }
+        }
+        this.#evictOverflow();
+    }
+
+    /**
+     * Registers or refreshes an active heavy tokenizer instance.
+     * @param {string} key Unique residency key
+     * @param {() => void} dispose Disposal callback freeing off-heap WASM resources
+     */
+    touch(key, dispose) {
+        const existing = this.#entries.get(key);
+        if (existing) {
+            if (existing.timer) {
+                this.#clearTimeoutFn(existing.timer);
+                existing.timer = null;
+            }
+            this.#entries.delete(key);
+        }
+
+        const entry = {
+            dispose: typeof dispose === 'function' ? dispose : (existing?.dispose ?? (() => {})),
+            lastUsedAt: this.#now(),
+            timer: null,
+        };
+        this.#entries.set(key, entry);
+        this.#scheduleIdleTimer(key, entry);
+        this.#evictOverflow(key);
+    }
+
+    /**
+     * Evicts a specific tokenizer key and invokes its dispose callback once.
+     * @param {string} key
+     * @returns {boolean} True if an active entry was evicted
+     */
+    evict(key) {
+        const entry = this.#entries.get(key);
+        if (!entry) {
+            return false;
+        }
+        this.#entries.delete(key);
+        if (entry.timer) {
+            this.#clearTimeoutFn(entry.timer);
+            entry.timer = null;
+        }
+        try {
+            entry.dispose();
+        } catch (error) {
+            console.warn(`Failed to dispose tokenizer '${key}':`, error);
+        }
+        return true;
+    }
+
+    /**
+     * Evicts all entries whose idle duration has reached idleTtlMs.
+     * @param {number} [currentTime]
+     * @returns {string[]} Evicted keys
+     */
+    evictIdle(currentTime = this.#now()) {
+        if (this.#idleTtlMs <= 0) {
+            return [];
+        }
+        const evicted = [];
+        for (const [key, entry] of [...this.#entries.entries()]) {
+            if (currentTime - entry.lastUsedAt >= this.#idleTtlMs) {
+                if (this.evict(key)) {
+                    evicted.push(key);
+                }
+            }
+        }
+        return evicted;
+    }
+
+    /**
+     * Evicts all resident tokenizers and cancels all idle timers.
+     * @returns {string[]} Evicted keys
+     */
+    evictAll() {
+        const evicted = [];
+        for (const key of [...this.#entries.keys()]) {
+            if (this.evict(key)) {
+                evicted.push(key);
+            }
+        }
+        return evicted;
+    }
+
+    #scheduleIdleTimer(key, entry) {
+        if (entry.timer) {
+            this.#clearTimeoutFn(entry.timer);
+            entry.timer = null;
+        }
+        if (this.#idleTtlMs <= 0) {
+            return;
+        }
+        const timer = this.#setTimeoutFn(() => {
+            entry.timer = null;
+            this.evict(key);
+        }, this.#idleTtlMs);
+        timer?.unref?.();
+        entry.timer = timer;
+    }
+
+    #evictOverflow(protectedKey = null) {
+        while (this.#entries.size > this.#maxActive) {
+            let victimKey = null;
+            for (const candidateKey of this.#entries.keys()) {
+                if (candidateKey !== protectedKey) {
+                    victimKey = candidateKey;
+                    break;
+                }
+            }
+            if (victimKey === null) {
+                break;
+            }
+            this.evict(victimKey);
+        }
+    }
+}
+
+export const tokenizerResidencyManager = new TokenizerResidencyManager();
+
+/** @type {Map<string, number>} Lightweight JS token count LRU preserved across WASM evictions. */
+const tokenCountCache = new Map();
+
+/**
+ * Builds a count cache key from a namespace and a digest of the text. The cache is shared by
+ * every user, so it must keep the digest and the count but never the prompt or message itself.
+ * @param {string} namespace Tokenizer or model the count belongs to
+ * @param {string} text Text that was counted
+ * @returns {string} Cache key
+ */
+function buildTokenCountCacheKey(namespace, text) {
+    return `${namespace}\0${crypto.createHash('sha256').update(text).digest('base64')}`;
+}
+
+function getCachedTokenCount(cacheKey) {
+    if (!tokenCountCache.has(cacheKey)) {
+        return undefined;
+    }
+    const count = tokenCountCache.get(cacheKey);
+    tokenCountCache.delete(cacheKey);
+    tokenCountCache.set(cacheKey, count);
+    return count;
+}
+
+function setCachedTokenCount(cacheKey, count) {
+    if (tokenCountCache.has(cacheKey)) {
+        tokenCountCache.delete(cacheKey);
+    } else if (tokenCountCache.size >= TOKEN_COUNT_CACHE_MAX_ENTRIES) {
+        const oldestKey = tokenCountCache.keys().next().value;
+        tokenCountCache.delete(oldestKey);
+    }
+    tokenCountCache.set(cacheKey, count);
+}
+
+/**
+ * Returns a snapshot of active WASM tokenizer residency and JS count cache state.
+ */
+export function getTokenizerResidencyStatus() {
+    return {
+        ...tokenizerResidencyManager.getConfig(),
+        activeCount: tokenizerResidencyManager.size,
+        activeKeys: tokenizerResidencyManager.getActiveKeys(),
+        countCacheSize: tokenCountCache.size,
+    };
+}
+
+/**
+ * Disposes all resident WASM tokenizers while preserving lightweight JS count caches.
+ * @returns {string[]} Evicted residency keys
+ */
+export function disposeAllTokenizers() {
+    return tokenizerResidencyManager.evictAll();
+}
+
+/**
+ * Clears the lightweight JS token count cache.
+ */
+export function clearTokenCountCache() {
+    tokenCountCache.clear();
+}
 
 /**
  * @type {string[]}
@@ -161,10 +440,15 @@ async function getPathToTokenizer(model, fallbackModel) {
  * Sentencepiece tokenizer for tokenizing text.
  */
 class SentencePieceTokenizer {
+    // SillyBunny: track loading state, residency key, and piece cache for bounded WASM eviction and lazy reload.
     /**
-     * @type {import('@agnai/sentencepiece-js').SentencePieceProcessor} Sentencepiece tokenizer instance
+     * @type {import('@agnai/sentencepiece-js').SentencePieceProcessor|null} Sentencepiece tokenizer instance
      */
-    #instance;
+    #instance = null;
+    /**
+     * @type {Promise<import('@agnai/sentencepiece-js').SentencePieceProcessor|null>|null}
+     */
+    #loadingPromise = null;
     /**
      * @type {string} Path to the tokenizer model
      */
@@ -173,6 +457,14 @@ class SentencePieceTokenizer {
      * @type {string|undefined} Path to the fallback model
      */
     #fallbackModel;
+    /**
+     * @type {string} Residency key for LRU and idle eviction
+     */
+    #residencyKey;
+    /**
+     * @type {Map<string, number>} Piece cache cleared on WASM disposal
+     */
+    #pieceIdCache = new Map();
 
     /**
      * Creates a new Sentencepiece tokenizer.
@@ -182,6 +474,33 @@ class SentencePieceTokenizer {
     constructor(model, fallbackModel) {
         this.#model = model;
         this.#fallbackModel = fallbackModel;
+        this.#residencyKey = `sp:${path.parse(model).name || model}`;
+    }
+
+    get residencyKey() {
+        return this.#residencyKey;
+    }
+
+    // SillyBunny: dispose Emscripten SentencePiece WASM heap and piece caches on residency eviction or idle TTL.
+    dispose() {
+        const instance = this.#instance;
+        this.#instance = null;
+        this.#pieceIdCache.clear();
+        if (!instance) {
+            return;
+        }
+        try {
+            instance.processor?.delete?.();
+        } catch {
+            // Ignore cleanup errors during disposal.
+        }
+        try {
+            instance.sentencepiece?.FS?.unlink?.('sentencepiece.model');
+        } catch {
+            // Ignore missing virtual FS entry.
+        }
+        instance.processor = null;
+        instance.sentencepiece = null;
     }
 
     /**
@@ -190,19 +509,34 @@ class SentencePieceTokenizer {
      */
     async get() {
         if (this.#instance) {
+            // SillyBunny: refresh residency timestamp on reuse.
+            tokenizerResidencyManager.touch(this.#residencyKey, () => this.dispose());
             return this.#instance;
         }
 
-        try {
-            const pathToModel = await getPathToTokenizer(this.#model, this.#fallbackModel);
-            this.#instance = new SentencePieceProcessor();
-            await this.#instance.load(pathToModel);
-            console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
-            return this.#instance;
-        } catch (error) {
-            console.error('Sentencepiece tokenizer failed to load: ' + this.#model, error);
-            return null;
+        if (this.#loadingPromise) {
+            return this.#loadingPromise;
         }
+
+        this.#loadingPromise = (async () => {
+            try {
+                const pathToModel = await getPathToTokenizer(this.#model, this.#fallbackModel);
+                const instance = new SentencePieceProcessor();
+                await instance.load(pathToModel);
+                this.#instance = instance;
+                // SillyBunny: track resident WASM instance for LRU and idle TTL eviction.
+                tokenizerResidencyManager.touch(this.#residencyKey, () => this.dispose());
+                console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
+                return this.#instance;
+            } catch (error) {
+                console.error('Sentencepiece tokenizer failed to load: ' + this.#model, error);
+                return null;
+            } finally {
+                this.#loadingPromise = null;
+            }
+        })();
+
+        return this.#loadingPromise;
     }
 }
 
@@ -266,10 +600,15 @@ async function withWebTokenizerRuntimeLocation(callback) {
  * Web tokenizer for tokenizing text.
  */
 class WebTokenizer {
+    // SillyBunny: track loading state and residency key for bounded WASM eviction and lazy reload.
     /**
-     * @type {Tokenizer} Web tokenizer instance
+     * @type {Tokenizer|null} Web tokenizer instance
      */
-    #instance;
+    #instance = null;
+    /**
+     * @type {Promise<Tokenizer|null>|null}
+     */
+    #loadingPromise = null;
     /**
      * @type {string} Path to the tokenizer model
      */
@@ -278,6 +617,10 @@ class WebTokenizer {
      * @type {string|undefined} Path to the fallback model
      */
     #fallbackModel;
+    /**
+     * @type {string} Residency key for LRU and idle eviction
+     */
+    #residencyKey;
 
     /**
      * Creates a new Web tokenizer.
@@ -287,6 +630,31 @@ class WebTokenizer {
     constructor(model, fallbackModel) {
         this.#model = model;
         this.#fallbackModel = fallbackModel;
+        const modelLeaf = model.split('/').pop() || model;
+        this.#residencyKey = `web:${modelLeaf.replace(/\.(json|gz)+$/gi, '')}`;
+    }
+
+    get residencyKey() {
+        return this.#residencyKey;
+    }
+
+    // SillyBunny: free off-heap WebTokenizer WASM memory on residency eviction or idle TTL.
+    dispose() {
+        const instance = this.#instance;
+        this.#instance = null;
+        if (!instance) {
+            return;
+        }
+        try {
+            instance.dispose?.();
+        } catch {
+            // Ignore disposal errors.
+        }
+        try {
+            instance.free?.();
+        } catch {
+            // Ignore disposal errors.
+        }
     }
 
     /**
@@ -295,20 +663,35 @@ class WebTokenizer {
      */
     async get() {
         if (this.#instance) {
+            // SillyBunny: refresh residency timestamp on reuse.
+            tokenizerResidencyManager.touch(this.#residencyKey, () => this.dispose());
             return this.#instance;
         }
 
-        let pathToModel = '';
-        try {
-            pathToModel = await getPathToTokenizer(this.#model, this.#fallbackModel);
-            const fileBuffer = await fs.promises.readFile(pathToModel);
-            this.#instance = await withWebTokenizerRuntimeLocation(() => Tokenizer.fromJSON(fileBuffer.toString('utf-8')));
-            console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
-            return this.#instance;
-        } catch (error) {
-            console.error(`Web tokenizer failed to load model '${this.#model}' from path '${pathToModel}':`, error);
-            return null;
+        if (this.#loadingPromise) {
+            return this.#loadingPromise;
         }
+
+        this.#loadingPromise = (async () => {
+            let pathToModel = '';
+            try {
+                pathToModel = await getPathToTokenizer(this.#model, this.#fallbackModel);
+                const fileBuffer = await fs.promises.readFile(pathToModel);
+                const instance = await withWebTokenizerRuntimeLocation(() => Tokenizer.fromJSON(fileBuffer.toString('utf-8')));
+                this.#instance = instance;
+                // SillyBunny: track resident WASM instance for LRU and idle TTL eviction.
+                tokenizerResidencyManager.touch(this.#residencyKey, () => this.dispose());
+                console.info('Instantiated the tokenizer for', path.parse(pathToModel).name);
+                return this.#instance;
+            } catch (error) {
+                console.error(`Web tokenizer failed to load model '${this.#model}' from path '${pathToModel}':`, error);
+                return null;
+            } finally {
+                this.#loadingPromise = null;
+            }
+        })();
+
+        return this.#loadingPromise;
     }
 }
 
@@ -329,6 +712,10 @@ function toUint32Array(ids) {
  * Claude-compatible tokenizer wrapper backed by @anthropic-ai/tokenizer.
  */
 class ClaudeTokenizerInstance {
+    // SillyBunny: guard single .free() disposal when evicted by TokenizerResidencyManager.
+    /** @type {boolean} */
+    #disposed = false;
+
     /**
      * @param {ReturnType<typeof getClaudeTokenizer>} tokenizer
      */
@@ -353,6 +740,20 @@ class ClaudeTokenizerInstance {
         const textBytes = this.tokenizer.decode(toUint32Array(ids));
         return this.decoder.decode(textBytes);
     }
+
+    // SillyBunny: free underlying tiktoken WASM encoder once without double-free risk.
+    dispose() {
+        if (this.#disposed) {
+            return;
+        }
+        this.#disposed = true;
+        try {
+            this.tokenizer?.free?.();
+        } catch {
+            // Ignore disposal errors.
+        }
+        this.tokenizer = null;
+    }
 }
 
 /**
@@ -362,7 +763,18 @@ class ClaudeTokenizer {
     /**
      * @type {ClaudeTokenizerInstance | null}
      */
-    #instance;
+    #instance = null;
+
+    get residencyKey() {
+        return 'web:claude';
+    }
+
+    // SillyBunny: dispose Claude WASM tokenizer on residency eviction or idle TTL.
+    dispose() {
+        const instance = this.#instance;
+        this.#instance = null;
+        instance?.dispose?.();
+    }
 
     /**
      * Gets the Claude tokenizer instance.
@@ -370,11 +782,15 @@ class ClaudeTokenizer {
      */
     async get() {
         if (this.#instance) {
+            // SillyBunny: refresh residency timestamp on reuse.
+            tokenizerResidencyManager.touch(this.residencyKey, () => this.dispose());
             return this.#instance;
         }
 
         try {
             this.#instance = new ClaudeTokenizerInstance(getClaudeTokenizer());
+            // SillyBunny: track resident WASM instance for LRU and idle TTL eviction.
+            tokenizerResidencyManager.touch(this.residencyKey, () => this.dispose());
             console.info('Instantiated the tokenizer for claude');
             return this.#instance;
         } catch (error) {
@@ -531,7 +947,20 @@ async function countSentencepieceArrayTokens(tokenizer, array) {
     // including metadata (role, name, tool_calls) and adding separators between every value.
     // This caused false "Pre-generation intercepts exceed context" errors at large context sizes.
     const convertedPrompt = convertClaudePrompt(array, false, '', false, false, '', false);
+    // SillyBunny: serve repeat counts from the lightweight JS count cache even after WASM eviction.
+    const cacheKey = tokenizer?.residencyKey && convertedPrompt.length <= TOKEN_COUNT_CACHE_MAX_TEXT_LENGTH
+        ? buildTokenCountCacheKey(tokenizer.residencyKey, convertedPrompt)
+        : null;
+    if (cacheKey) {
+        const cached = getCachedTokenCount(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+    }
     const result = await countSentencepieceTokens(tokenizer, convertedPrompt);
+    if (cacheKey && result.ids.length === result.count && (convertedPrompt.length === 0 || result.ids.length > 0)) {
+        setCachedTokenCount(cacheKey, result.count);
+    }
     return result.count;
 }
 
@@ -666,14 +1095,33 @@ export function getTokenizerModel(requestModel) {
 }
 
 export function getTiktokenTokenizer(model) {
+    const residencyKey = `tiktoken:${model}`;
     if (tokenizersCache[model]) {
+        // SillyBunny: refresh residency timestamp on reuse.
+        tokenizerResidencyManager.touch(residencyKey, () => disposeTiktokenModel(model));
         return tokenizersCache[model];
     }
 
     const tokenizer = tiktoken.encoding_for_model(model);
     console.info('Instantiated the tokenizer for', model);
     tokenizersCache[model] = tokenizer;
+    // SillyBunny: track resident Tiktoken WASM instance so eviction/idle TTL calls .free().
+    tokenizerResidencyManager.touch(residencyKey, () => disposeTiktokenModel(model));
     return tokenizer;
+}
+
+// SillyBunny: release Tiktoken WASM encoder memory cleanly when evicted from residency.
+function disposeTiktokenModel(model) {
+    const tokenizer = tokenizersCache[model];
+    if (!tokenizer) {
+        return;
+    }
+    delete tokenizersCache[model];
+    try {
+        tokenizer.free?.();
+    } catch {
+        // Ignore disposal errors.
+    }
 }
 
 /**
@@ -1060,17 +1508,35 @@ router.post('/openai/decode', async function (req, res) {
  * @param {object[]} messages Messages to count
  * @returns {Promise<number>} Token count
  */
+// SillyBunny: reuse lightweight JS token count cache for WebTokenizer chat counts across WASM evictions.
+async function countCachedWebTokenizerMessages(tokenizerWrapper, label, messages) {
+    const jsonBody = messages.flatMap(x => Object.values(x)).join('\n\n');
+    const cacheKey = jsonBody.length <= TOKEN_COUNT_CACHE_MAX_TEXT_LENGTH
+        ? buildTokenCountCacheKey(tokenizerWrapper.residencyKey, jsonBody)
+        : null;
+    if (cacheKey) {
+        const cached = getCachedTokenCount(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+    }
+    const instance = await tokenizerWrapper.get();
+    if (!instance) throw new Error(`Failed to load the ${label} tokenizer`);
+    const count = instance.encode(jsonBody).length;
+    if (cacheKey) {
+        setCachedTokenCount(cacheKey, count);
+    }
+    return count;
+}
+
 async function countOpenAIChatTokens(model, queryModel, messages) {
+    // SillyBunny: route web tokenizers through the lightweight JS count cache so evicted WASM stays cold on cache hits.
     if (model === 'claude') {
-        const instance = await claude_tokenizer.get();
-        if (!instance) throw new Error('Failed to load the Claude tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return await countCachedWebTokenizerMessages(claude_tokenizer, 'Claude', messages);
     }
 
     if (model === 'llama3' || model === 'llama-3') {
-        const instance = await llama3_tokenizer.get();
-        if (!instance) throw new Error('Failed to load the Llama3 tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return await countCachedWebTokenizerMessages(llama3_tokenizer, 'Llama3', messages);
     }
 
     if (model === 'llama') {
@@ -1094,40 +1560,31 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
     }
 
     if (model === 'qwen2') {
-        const instance = await qwen2Tokenizer.get();
-        if (!instance) throw new Error('Failed to load the Qwen2 tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return await countCachedWebTokenizerMessages(qwen2Tokenizer, 'Qwen2', messages);
     }
 
     if (model === 'command-r') {
-        const instance = await commandRTokenizer.get();
-        if (!instance) throw new Error('Failed to load the Command-R tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return await countCachedWebTokenizerMessages(commandRTokenizer, 'Command-R', messages);
     }
 
     if (model === 'command-a') {
-        const instance = await commandATokenizer.get();
-        if (!instance) throw new Error('Failed to load the Command-A tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return await countCachedWebTokenizerMessages(commandATokenizer, 'Command-A', messages);
     }
 
     if (model === 'nemo') {
-        const instance = await nemoTokenizer.get();
-        if (!instance) throw new Error('Failed to load the Nemo tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return await countCachedWebTokenizerMessages(nemoTokenizer, 'Nemo', messages);
     }
 
     if (model === 'deepseek') {
-        const instance = await deepseekTokenizer.get();
-        if (!instance) throw new Error('Failed to load the DeepSeek tokenizer');
-        return countWebTokenizerTokens(instance, messages);
+        return await countCachedWebTokenizerMessages(deepseekTokenizer, 'DeepSeek', messages);
     }
 
     const tokensPerName = queryModel.includes('gpt-3.5-turbo-0301') ? -1 : 1;
     const tokensPerMessage = queryModel.includes('gpt-3.5-turbo-0301') ? 4 : 3;
     const tokensPadding = 3;
 
-    const tokenizer = getTiktokenTokenizer(model);
+    // SillyBunny: defer instantiating Tiktoken WASM until a string misses the lightweight JS count cache.
+    let tokenizer = null;
 
     let num_tokens = 0;
 
@@ -1135,7 +1592,21 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
         try {
             num_tokens += tokensPerMessage;
             for (const [key, value] of Object.entries(msg)) {
-                num_tokens += tokenizer.encode(value).length;
+                if (typeof value === 'string' && value.length <= TOKEN_COUNT_CACHE_MAX_TEXT_LENGTH) {
+                    const cacheKey = buildTokenCountCacheKey(`tiktoken:${model}`, value);
+                    const cached = getCachedTokenCount(cacheKey);
+                    if (cached !== undefined) {
+                        num_tokens += cached;
+                    } else {
+                        tokenizer ??= getTiktokenTokenizer(model);
+                        const encodedLength = tokenizer.encode(value).length;
+                        setCachedTokenCount(cacheKey, encodedLength);
+                        num_tokens += encodedLength;
+                    }
+                } else {
+                    tokenizer ??= getTiktokenTokenizer(model);
+                    num_tokens += tokenizer.encode(value).length;
+                }
                 if (key == 'name') {
                     num_tokens += tokensPerName;
                 }
@@ -1151,9 +1622,6 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
     if (queryModel.includes('gpt-3.5-turbo-0301')) {
         num_tokens += 9;
     }
-
-    // not needed for cached tokenizers
-    //tokenizer.free();
 
     return num_tokens;
 }

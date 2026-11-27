@@ -2939,6 +2939,76 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `src/endpoints/tokenizers.js` - bounded WASM tokenizer residency and idle disposal
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/tokenizers.js` |
+| Area | Server tokenizers (`SentencePieceTokenizer`, `WebTokenizer`, `ClaudeTokenizerInstance`, and Tiktoken encoders). |
+| Divergence reason | Upstream keeps every loaded WASM tokenizer pinned in off-heap linear memory permanently (`+100–225+ MB` RSS across Llama3, Gemma, Claude, and Tiktoken encoders), invisible to V8/JSC heap flags and causing Android low-memory kills when users switch model families. Bounding active WASMs and freeing idle instances reclaims off-heap RSS while keeping the lightweight JS token-count cache warm. |
+| Target seam | `TokenizerResidencyManager`, `tokenizerResidencyManager`, `isLowMemoryTokenizerHost()`, `getTokenizerResidencyStatus()`, `disposeAllTokenizers()`, `clearTokenCountCache()` in `src/endpoints/tokenizers.js`. |
+| Adapter shape | Tracks resident heavy WASM tokenizer instances in an LRU bounded at `1` active instance on Android/Termux (`90_000 ms` `unref()`ed idle TTL) and `2` on desktop (`300_000 ms` `unref()`ed idle TTL). Eviction and TTL expiry call `.free()` on Tiktoken/Claude encoders, `.dispose()` on `@agnai/web-tokenizers`, and `processor.delete()` plus `sentencepiece.FS.unlink('sentencepiece.model')` and `#pieceIdCache.clear()` on `SentencePieceProcessor`, while retaining a 2,048-entry JS token-count LRU and lazily reloading on the next cache miss. The LRU keys are a tokenizer or model namespace plus a SHA-256 digest of the counted text (`buildTokenCountCacheKey()`), so the shared cache holds no prompt or message text. |
+| Protecting tests | `tests/perf-memory-media-platform.test.js` (`1. Tokenizer WASM Residency Manager`), `tests/tokenizers-runtime.test.js`, `tests/tokenizers-openai-count-fallback.test.js`, `tests/tokenizer-cache-priming.test.js`. |
+| Validation | 2026-11-26: root and `tests/` ESLint (0 errors), focused Jest suites, `tests/perf-memory-media-platform.test.js` (22 passed), Bun 1.4.4 and Node.js 24.22.1 boot smokes. |
+| Rollback path | Remove `TokenizerResidencyManager`, the disposal hooks, and the JS count LRU in `src/endpoints/tokenizers.js` so loaded WASM encoders remain resident for the lifetime of the process. All state is in-memory and no saved user data changes. |
+| Last reviewed | 2026-11-26, Wave-2 Track B (`perf/pr16-memory-media-platform`). |
+| Owner | Server runtime and memory integrator. |
+
+### `src/jimp.js`, `src/endpoints/thumbnails.js`, `src/endpoints/image-metadata.js`, and `default/config.yaml` - thumbnail and image pipeline efficiency
+| Field | Value |
+| --- | --- |
+| File | `src/jimp.js`, `src/endpoints/thumbnails.js`, `src/endpoints/image-metadata.js`, `default/config.yaml`. |
+| Area | Thumbnail generation, format support, warm cache dimension checks, Jimp plugin surface, and average color sampling. |
+| Divergence reason | Upstream loads 13 unused Jimp plugins at startup, upscales small cards past their natural dimensions, blocks WebP thumbnail encoding even though `@jimp/wasm-webp` is already installed, reads entire multi-megabyte cached thumbnails synchronously just to inspect image dimensions, and samples average color over full 4K RGBA bitmaps. |
+| Target seam | `safeCover()` in `src/jimp-safe.js` (`withoutEnlargement` defaults to `false`, as for the avatar crop in `src/endpoints/characters.js`; only `processSingleImage()` in `src/endpoints/thumbnails.js` passes `true`); `normalizeThumbnailFormat()`, `readFileHeader()`, and `readImageDimensionsHeaderFirst()` in `src/endpoints/thumbnails.js`; `AVERAGE_COLOR_MAX_DIMENSION` and `getAverageColorWithJimp()` in `src/endpoints/image-metadata.js`. |
+| Adapter shape | `src/jimp.js` removes 13 unused Jimp plugins (retaining `@jimp/plugin-resize`) and exposes `JimpMime.webp`. `src/endpoints/thumbnails.js` accepts `'webp'` in format coercion, encodes WebP buffers, sniffs `RIFF....WEBP` cached headers in `setCachedThumbnailContentType()`, and replaces full-file sync reads on warm dimension and animation checks with async bounded `fs.promises.open` header reads (`4 KiB` -> `64 KiB` -> full fallback). `src/endpoints/image-metadata.js` pre-downscales bitmaps larger than 256px using `ResizeStrategy.NEAREST_NEIGHBOR` before 1x1 reduction. `default/config.yaml` documents `"webp"` while preserving the `"png"` desktop and `"jpg"` mobile defaults. |
+| Protecting tests | `tests/perf-memory-media-platform.test.js` (`2. Image & Thumbnail Pipeline Modernization`), `tests/thumbnails-endpoint.test.js`, `tests/mobile-thumbnail-preset.test.js`, `tests/android-avatar-resource-budget.test.js`. |
+| Validation | 2026-11-26: root and `tests/` ESLint (0 errors), focused Jest thumbnail/media/budget suites, `tests/perf-memory-media-platform.test.js` (22 passed). |
+| Rollback path | Revert the marked `SillyBunny:` hunks in `src/jimp.js`, `src/jimp-safe.js`, `src/endpoints/thumbnails.js`, `src/endpoints/image-metadata.js`, and `default/config.yaml`. Existing PNG/JPG thumbnails remain fully compatible and no user media files change. |
+| Last reviewed | 2026-11-26, Wave-2 Track B (`perf/pr16-memory-media-platform`). |
+| Owner | Server runtime and media pipeline integrator. |
+
+### `src/server-startup.js` and `src/plugin-loader.js` - lazy router mounting and deferred plugin update imports
+| Field | Value |
+| --- | --- |
+| File | `src/server-startup.js`, `src/plugin-loader.js`. |
+| Area | Server startup memory footprint and router initialization. |
+| Divergence reason | Upstream eagerly imports all non-boot Express routers at cold start, adding permanent idle RSS and cold-start latency on low-memory devices. |
+| Target seam | `createLazyRouter()` in `src/server-startup.js`; deferred `simple-git` and `command-exists` imports inside `updatePlugins()` in `src/plugin-loader.js`. |
+| Adapter shape | `src/server-startup.js` keeps boot-hot routers eager, mounts 21 optional integration routers (`novelai`, `chat-archive`, `stable-diffusion`, `horde`, `vectors`, `translate`, `classify`, `caption`, `search`, `openrouter`, `nanogpt`, `backends/kobold`, `backends/text-completions`, `speech`, `azure`, `minimax`, `data-maid`, `volcengine` and the three `sillybunny-*` routers) through `createLazyRouter()`, which imports and caches each module on first request and passes a synchronous throw of the first dispatch to `next(error)`. The core routers, including `users-admin`, `openai`, `google`, `anthropic`, `backends/chat-completions`, `backups` and `server-admin`, keep their static imports as in upstream. The `app.use()` mount lines are unchanged. `src/plugin-loader.js` inlines its three reserved marker constants and defers `simple-git` and `command-exists` imports to `updatePlugins()`. Plugin loading itself is not deferred: `src/server-main.js` still imports `src/plugin-loader.js` statically and calls `loadPlugins()` at the same point, which also prints the warning about plugins in the folder while server plugins are disabled. `src/util.js` imports `simple-git` and `command-exists` at the top, so the deferred imports in `updatePlugins()` do not change what loads at startup. |
+| Protecting tests | `tests/perf-memory-media-platform.test.js` (`createLazyRouter defers module loading until the first request`, `createLazyRouter answers through next(error) when the cold router throws synchronously or fails to load`), `tests/plugin-loader.test.js`, `tests/conversation-mode-scoped-profile.test.js`. |
+| Validation | 2026-11-26: root and `tests/` ESLint (0 errors), focused Jest suites, Bun 1.4.4 and Node.js 24.22.1 direct and supervised boot smokes (`/version` 200, `/` 200, `/style.css` 200 over `zstd`). |
+| Rollback path | Restore static top-level imports for the 21 lazy routers in `src/server-startup.js` and top-level `simple-git`/`command-exists` imports in `src/plugin-loader.js`. All route mount paths and plugin contracts remain identical. |
+| Last reviewed | 2026-11-26, Wave-2 Track B (`perf/pr16-memory-media-platform`). |
+| Owner | Server runtime integrator. |
+
+### `src/endpoints/groups.js`, `src/endpoints/sprites.js`, and `src/endpoints/assets.js` - bounded `(mtimeMs, size)` read caches
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/groups.js`, `src/endpoints/sprites.js`, `src/endpoints/assets.js`. |
+| Area | Synchronous JSON and directory listing reads for groups, character sprites, and assets. |
+| Divergence reason | Upstream performs uncached synchronous disk reads and `JSON.parse()`/`readdirSync()` scans across all group definitions, character sprite directories, and asset directories on every request. Bounded `(mtimeMs, size)` caches with write invalidation eliminate repeated filesystem I/O while remaining immediately consistent on mutations. |
+| Target seam | Bounded `(mtimeMs, size)` LRU caches with exported test helpers (`clearGroupsCache`/`getGroupsCacheStats`, `clearSpritesCache`/`getSpritesCacheStats`, `clearAssetsCache`/`getAssetsCacheStats`) inside each endpoint module. |
+| Adapter shape | Caches parsed group JSON files (cap 512), sprite directory listings (cap 256), and global/character asset directory listings (cap 128) validated against `(mtimeMs, size)` stat stamps, invalidating affected entries on every create, edit, upload, migration, and delete route. |
+| Protecting tests | `tests/perf-memory-media-platform.test.js` (`groups, sprites, and assets endpoints cache reads by (mtimeMs, size) and invalidate on writes/deletes`), `tests/entity-date-added-endpoints.test.js`, `tests/entity-last-chat-endpoints.test.js`. |
+| Validation | 2026-11-26: root and `tests/` ESLint (0 errors), focused Jest suites, `tests/perf-memory-media-platform.test.js` (22 passed). |
+| Rollback path | Remove the marked bounded cache maps and invalidation hooks in `src/endpoints/groups.js`, `src/endpoints/sprites.js`, and `src/endpoints/assets.js`. All caches are strictly in-memory and no on-disk file formats change. |
+| Last reviewed | 2026-11-26, Wave-2 Track B (`perf/pr16-memory-media-platform`). |
+| Owner | Server runtime integrator. |
+
+### `src/endpoints/stats.js`, `public/scripts/stats.js`, `public/scripts/request-compression.js`, `public/scripts/utils.js`, and `public/scripts/extensions/vectors/index.js` - incremental stats, native gzip compression, zero-copy PNG scan, and bounded caches
+| Field | Value |
+| --- | --- |
+| File | `src/endpoints/stats.js`, `public/scripts/stats.js`, `public/scripts/request-compression.js`, `public/scripts/utils.js`, `public/scripts/extensions/vectors/index.js`. |
+| Area | Per-turn character stats persistence, client request compression, PNG card chunk extraction, and long-session browser caches. |
+| Divergence reason | Upstream downloads and re-uploads the entire multi-character `stats.json` map on every message and swipe, runs `fflate.gzip` synchronously on the browser main thread, copies every `IDAT` pixel byte in JS during PNG card metadata extraction, and retains unbounded `dateCache` and `vectors` `hashCache` maps across long sessions. |
+| Target seam | `applyStatIncrements()` and `POST /api/stats/increment` in `src/endpoints/stats.js`; debounced delta queue (`flushPendingStatIncrements`) in `public/scripts/stats.js`; `CompressionStream('gzip')` fast path in `public/scripts/request-compression.js`; zero-copy `DataView` scanner and bounded `dateCache` in `public/scripts/utils.js`; bounded `hashCache` in `public/scripts/extensions/vectors/index.js`. |
+| Adapter shape | `src/endpoints/stats.js` adds `POST /api/stats/increment` for single or batched deltas (rejecting prototype-pollution keys) while leaving `/get`, `/update`, and `/recreate` unchanged. `public/scripts/stats.js` batches `statMesProcess()` updates over a 1,500 ms debounce window to `/api/stats/increment` (flushing before `getStats()` and on `pagehide`, falling back to legacy `/get` + `/update` on 404). `public/scripts/request-compression.js` uses native `CompressionStream('gzip')` when available and falls back to `fflate`. `public/scripts/utils.js` scans PNG chunk headers via `DataView` without copying `IDAT` bytes and caps `dateCache` at 500 LRU entries. `public/scripts/extensions/vectors/index.js` caps `hashCache` at 2,000 LRU entries. |
+| Protecting tests | `tests/perf-memory-media-platform.test.js` (`4. Per-Turn charStats Delta & Browser Memory / Off-Thread Helpers`), `tests/stats-temporary-chat.test.js`, `tests/png-chunk-bounds.test.js`, `tests/png-chunk-fuzz.test.js`. |
+| Validation | 2026-11-26: root and `tests/` ESLint (0 errors), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, focused Jest suites, `tests/perf-memory-media-platform.test.js` (22 passed). |
+| Rollback path | Revert the marked `SillyBunny:` hunks in the 5 listed files (and remove the `/api/stats/increment` route). Legacy `/api/stats/get` and `/api/stats/update` remain intact, and `stats.json` / PNG card formats do not change. |
+| Last reviewed | 2026-11-26, Wave-2 Track B (`perf/pr16-memory-media-platform`). |
+| Owner | Runtime and memory integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

@@ -2,12 +2,39 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { isBunRuntime } from './runtime.js';
+import { isBunRuntime, isNativeTermuxEnvironment } from './runtime.js';
 
 const require = createRequire(import.meta.url);
 
 const SQLITE_CORRUPT = 11;
 const SQLITE_NOTADB = 26;
+export const DESKTOP_SQLITE_MMAP_SIZE = 64 * 1024 * 1024;
+export const ANDROID_SQLITE_MMAP_SIZE = 16 * 1024 * 1024;
+export const SQLITE_CACHE_SIZE_KIB = -8192;
+export const SQLITE_INCREMENTAL_VACUUM_PAGES = 200;
+
+/**
+ * Builds the SQLite connection PRAGMA list tuned for Android/Termux vs desktop hosts.
+ * @param {{ isAndroid?: boolean }} [options]
+ * @returns {string}
+ */
+export function getSqliteCachePragmas({
+    isAndroid = isNativeTermuxEnvironment()
+        || process.platform === 'android'
+        || Boolean(process.env.ANDROID_ROOT)
+        || process.env.SILLYBUNNY_ANDROID_APP === '1',
+} = {}) {
+    const mmapSize = isAndroid ? ANDROID_SQLITE_MMAP_SIZE : DESKTOP_SQLITE_MMAP_SIZE;
+    return [
+        'PRAGMA busy_timeout = 1000',
+        'PRAGMA auto_vacuum = INCREMENTAL',
+        'PRAGMA journal_mode = WAL',
+        'PRAGMA synchronous = NORMAL',
+        'PRAGMA temp_store = MEMORY',
+        `PRAGMA cache_size = ${SQLITE_CACHE_SIZE_KIB}`,
+        `PRAGMA mmap_size = ${mmapSize}`,
+    ].join('; ');
+}
 
 /**
  * @typedef {object} SqliteCacheOptions
@@ -257,7 +284,7 @@ export class SqliteCache {
         this.#database = openDatabase(this.filePath);
         // WAL with synchronous=NORMAL does not flush the file on every write. A power loss can drop the newest
         // entries, but cannot corrupt the database. auto_vacuum works only if it is set before the table is created.
-        runSql(this.#database, 'PRAGMA busy_timeout = 1000; PRAGMA auto_vacuum = INCREMENTAL; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL');
+        runSql(this.#database, getSqliteCachePragmas());
     }
 
     /**

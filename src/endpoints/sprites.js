@@ -111,12 +111,64 @@ export function importRisuSprites(directories, data) {
         // Remove additionalAssets and emotions from data (they are now in the sprites folder)
         delete data.data.extensions.risuai.additionalAssets;
         delete data.data.extensions.risuai.emotions;
+        // SillyBunny: invalidate cached sprite listing after importing RisuAI sprites.
+        invalidateSpritesCache(spritesPath);
     } catch (error) {
         console.error(error);
     }
 }
 
 export const router = express.Router();
+
+// SillyBunny: bounded (mtimeMs, size) directory cache for GET /api/sprites/get with write/delete invalidation.
+const MAX_SPRITES_CACHE_ENTRIES = 256;
+const spritesDirCache = new Map();
+
+function invalidateSpritesCache(spritesPath) {
+    if (!spritesPath) {
+        return;
+    }
+    const resolvedPrefix = `${path.resolve(spritesPath)}\0`;
+    for (const key of [...spritesDirCache.keys()]) {
+        if (key.startsWith(resolvedPrefix)) {
+            spritesDirCache.delete(key);
+        }
+    }
+}
+
+export function clearSpritesCache() {
+    spritesDirCache.clear();
+}
+
+export function getSpritesCacheStats() {
+    return { size: spritesDirCache.size, maxEntries: MAX_SPRITES_CACHE_ENTRIES };
+}
+
+function getCachedSprites(spritesPath, name, dirStat) {
+    const cacheKey = `${path.resolve(spritesPath)}\0${name}`;
+    const cached = spritesDirCache.get(cacheKey);
+    if (cached && cached.mtimeMs === dirStat.mtimeMs && cached.size === dirStat.size) {
+        spritesDirCache.delete(cacheKey);
+        spritesDirCache.set(cacheKey, cached);
+        return cached.sprites.map(entry => ({ ...entry }));
+    }
+    return null;
+}
+
+function setCachedSprites(spritesPath, name, dirStat, sprites) {
+    const cacheKey = `${path.resolve(spritesPath)}\0${name}`;
+    if (spritesDirCache.has(cacheKey)) {
+        spritesDirCache.delete(cacheKey);
+    } else if (spritesDirCache.size >= MAX_SPRITES_CACHE_ENTRIES) {
+        const oldestKey = spritesDirCache.keys().next().value;
+        spritesDirCache.delete(oldestKey);
+    }
+    spritesDirCache.set(cacheKey, {
+        mtimeMs: dirStat.mtimeMs,
+        size: dirStat.size,
+        sprites: sprites.map(entry => ({ ...entry })),
+    });
+}
 
 router.get('/get', function (request, response) {
     const name = String(request.query.name);
@@ -125,26 +177,37 @@ router.get('/get', function (request, response) {
     let sprites = [];
 
     try {
-        if (spritesPath && fs.existsSync(spritesPath) && fs.statSync(spritesPath).isDirectory()) {
-            sprites = fs.readdirSync(spritesPath)
-                .filter(file => {
-                    const mimeType = mime.lookup(file);
-                    return mimeType && mimeType.startsWith('image/');
-                })
-                .map((file) => {
-                    const pathToSprite = path.join(spritesPath, file);
-                    const mtime = fs.statSync(pathToSprite).mtime?.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+        if (spritesPath && fs.existsSync(spritesPath)) {
+            const dirStat = fs.statSync(spritesPath);
+            if (dirStat.isDirectory()) {
+                // SillyBunny: serve cached sprite listing when directory (mtimeMs, size) is unchanged.
+                const cached = getCachedSprites(spritesPath, name, dirStat);
+                if (cached) {
+                    return response.send(cached);
+                }
 
-                    const fileName = path.parse(pathToSprite).name.toLowerCase();
-                    // Extract the label from the filename via regex, which can be suffixed with a sub-name, either connected with a dash or a dot.
-                    // Examples: joy.png, joy-1.png, joy.expressive.png
-                    const label = fileName.match(/^(.+?)(?:[-\\.].*?)?$/)?.[1] ?? fileName;
+                sprites = fs.readdirSync(spritesPath)
+                    .filter(file => {
+                        const mimeType = mime.lookup(file);
+                        return mimeType && mimeType.startsWith('image/');
+                    })
+                    .map((file) => {
+                        const pathToSprite = path.join(spritesPath, file);
+                        const mtime = fs.statSync(pathToSprite).mtime?.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
 
-                    return {
-                        label: label,
-                        path: `/characters/${name}/${file}` + (mtime ? `?t=${mtime}` : ''),
-                    };
-                });
+                        const fileName = path.parse(pathToSprite).name.toLowerCase();
+                        // Extract the label from the filename via regex, which can be suffixed with a sub-name, either connected with a dash or a dot.
+                        // Examples: joy.png, joy-1.png, joy.expressive.png
+                        const label = fileName.match(/^(.+?)(?:[-\\.].*?)?$/)?.[1] ?? fileName;
+
+                        return {
+                            label: label,
+                            path: `/characters/${name}/${file}` + (mtime ? `?t=${mtime}` : ''),
+                        };
+                    });
+
+                setCachedSprites(spritesPath, name, dirStat, sprites);
+            }
         }
     } catch (err) {
         console.error(err);
@@ -179,6 +242,8 @@ router.post('/delete', async (request, response) => {
             }
         }
 
+        // SillyBunny: invalidate cached sprite listing after delete.
+        invalidateSpritesCache(spritesPath);
         return response.sendStatus(200);
     } catch (error) {
         console.error(error);
@@ -233,6 +298,8 @@ router.post('/upload-zip', async (request, response) => {
 
         // Remove uploaded ZIP file
         fs.unlinkSync(spritePackPath);
+        // SillyBunny: invalidate cached sprite listing after zip upload.
+        invalidateSpritesCache(spritesPath);
         return response.send({ ok: true, count: sprites.length });
     } catch (error) {
         console.error(error);
@@ -294,6 +361,8 @@ router.post('/upload', async (request, response) => {
         fs.cpSync(spritePath, pathToFile);
         // Remove uploaded file
         fs.unlinkSync(spritePath);
+        // SillyBunny: invalidate cached sprite listing after upload.
+        invalidateSpritesCache(spritesPath);
         return response.send({ ok: true });
     } catch (error) {
         console.error(error);

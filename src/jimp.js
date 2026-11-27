@@ -11,37 +11,11 @@ import bmp, { msBmp } from '@jimp/js-bmp';
 import gif from '@jimp/js-gif';
 import tiff from '@jimp/js-tiff';
 
-// Plugins
-import * as blit from '@jimp/plugin-blit';
-import * as circle from '@jimp/plugin-circle';
-import * as color from '@jimp/plugin-color';
-import * as contain from '@jimp/plugin-contain';
-import * as cover from '@jimp/plugin-cover';
-import * as crop from '@jimp/plugin-crop';
-import * as displace from '@jimp/plugin-displace';
-import * as fisheye from '@jimp/plugin-fisheye';
-import * as flip from '@jimp/plugin-flip';
-import * as mask from '@jimp/plugin-mask';
+// SillyBunny: keep only plugins called by the server (resize) to trim boot time and module memory.
 import * as resize from '@jimp/plugin-resize';
-import * as rotate from '@jimp/plugin-rotate';
-import * as threshold from '@jimp/plugin-threshold';
-import * as quantize from '@jimp/plugin-quantize';
 
 const defaultPlugins = [
-    blit.methods,
-    circle.methods,
-    color.methods,
-    contain.methods,
-    cover.methods,
-    crop.methods,
-    displace.methods,
-    fisheye.methods,
-    flip.methods,
-    mask.methods,
     resize.methods,
-    rotate.methods,
-    threshold.methods,
-    quantize.methods,
 ];
 
 // A custom jimp that uses WASM for optimized formats and JS for the rest
@@ -56,6 +30,8 @@ const JimpMime = {
     jpeg: jpeg().mime,
     png: png().mime,
     tiff: tiff().mime,
+    // SillyBunny: expose WebP MIME so thumbnail encoding can write WebP via @jimp/wasm-webp.
+    webp: webp().mime,
 };
 
 export default Jimp;
