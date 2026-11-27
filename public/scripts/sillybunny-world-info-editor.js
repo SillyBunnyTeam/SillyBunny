@@ -805,8 +805,10 @@ export function mountWorldInfoEditor(container) {
             start = Math.max(0, Math.min(start, bottomViewStart - WI_VIRTUAL_OVERSCAN));
         }
         if (end - start > WI_MAX_VIRTUAL_WINDOW) {
-            start = Math.max(0, Math.min(firstVisible, pageLength - WI_MAX_VIRTUAL_WINDOW));
-            end = Math.min(pageLength, start + WI_MAX_VIRTUAL_WINDOW);
+            // The cap trims the overscan. Rows on screen stay mounted, so a viewport taller than the cap shows no blank spacer.
+            const windowSize = Math.max(WI_MAX_VIRTUAL_WINDOW, lastVisible - firstVisible + 1);
+            start = Math.max(0, Math.min(firstVisible, pageLength - windowSize));
+            end = Math.min(pageLength, start + windowSize);
         }
         return {
             start,

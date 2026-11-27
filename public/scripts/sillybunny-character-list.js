@@ -933,8 +933,10 @@ function createCharacterListController(container, dependencies, restoreDOM) {
             start = Math.max(0, Math.min(start, bottomViewStart - CHARACTER_LIST_OVERSCAN));
         }
         if (end - start > CHARACTER_LIST_WINDOW_SIZE) {
-            start = Math.max(0, Math.min(firstVisible, pageLength - CHARACTER_LIST_WINDOW_SIZE));
-            end = Math.min(pageLength, start + CHARACTER_LIST_WINDOW_SIZE);
+            // The cap trims the overscan. Rows on screen stay mounted, so a viewport taller than the cap shows no blank spacer.
+            const windowSize = Math.max(CHARACTER_LIST_WINDOW_SIZE, lastVisible - firstVisible + 1);
+            start = Math.max(0, Math.min(firstVisible, pageLength - windowSize));
+            end = Math.min(pageLength, start + windowSize);
         }
         const includeHidden = Boolean(currentHiddenEntry) && end >= pageLength;
         const hiddenHeight = currentHiddenEntry && !includeHidden ? CHARACTER_LIST_ROW_HEIGHT : 0;

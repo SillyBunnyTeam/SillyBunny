@@ -637,6 +637,24 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             });
         });
 
+        test('mounts every row that a very tall viewport shows, not only the capped window', async () => {
+            const container = setupWorldInfoDom();
+            wiPageSize = '500';
+            wiLiveState = { name: 'Perf Lorebook', data: makeLargeBook(500, 64) };
+            wiMounted = mountWorldInfoEditor(container);
+            await settle();
+            const listBody = container.querySelector('.sb-wi-list-body');
+            // 8000px of 56px rows: 143 rows are on screen, more than the cap of the usual window.
+            Object.defineProperty(listBody, 'clientHeight', { configurable: true, value: 8000 });
+            await wiAdapter.render({ ...wiLiveState, navigation: -1000 });
+            await settle();
+
+            const mounted = [...container.querySelectorAll('.sb-wi-row')].map(row => Number(row.dataset.uid));
+            expect(mounted.length).toBeGreaterThanOrEqual(Math.ceil(8000 / 56));
+            expect(mounted.length).toBeLessThan(500);
+            expect(mounted[0]).toBe(0);
+        });
+
         test('keeps identical full-page rendering without virtual padding on small lists (<= 100 entries)', async () => {
             wiPageSize = '100';
             const container = setupWorldInfoDom();
@@ -799,6 +817,34 @@ describe('PR 14 Large-Lists Virtualization & Performance Benchmarks', () => {
             expect(document.activeElement).toBe(row998);
             expect(row998.tabIndex).toBe(0);
             expect(row998.getAttribute('aria-posinset')).toBe('999');
+        });
+
+        test('mounts every row that a very tall viewport shows, not only the capped window', async () => {
+            setupCharacterListDom();
+            const entities = seedCharacters(1000);
+            charModel = {
+                view: 'characters',
+                entities,
+                sourceCount: 1000,
+                hasAnyFilter: false,
+                folderOpen: false,
+                fullRefresh: false,
+                pageLoaded: jest.fn(),
+            };
+            charSizes.characters = 1000;
+            jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+                return this.hasAttribute?.('data-sb-list-key') ? 56 : 0;
+            });
+            charMounted = await mountCharacterList(undefined, { render: false });
+            jest.spyOn(charMounted.section, 'getClientRects').mockReturnValue([{}]);
+            const box = charMounted.section.querySelector('.sb-character-list__box');
+            // 8000px of 56px rows: 143 rows are on screen, more than the cap of the usual window.
+            Object.defineProperty(box, 'clientHeight', { configurable: true, value: 8000 });
+            await charRenderer.render(charModel);
+
+            const mounted = document.querySelectorAll('#rm_print_characters_block > .ds-entity-row').length;
+            expect(mounted).toBeGreaterThanOrEqual(Math.ceil(8000 / 56));
+            expect(mounted).toBeLessThan(1000);
         });
 
         test('compact primitive presentation keys avoid JSON.stringify(creatorNotes) and omit empty group subtitles', () => {
