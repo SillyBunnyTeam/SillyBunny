@@ -1170,6 +1170,35 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
         expect(unzipped['b-vanish.tmp']).toBeUndefined();
     });
 
+    test.each([
+        ['streaming path', undefined],
+        ['ZIP64 fallback path', { zip64Thresholds: { maxTotalBytes: 1 } }],
+    ])('keeps empty folders as directory entries in the %s', async (_label, options) => {
+        const handle = `zip-empty-dirs-${options ? 'zip64' : 'stream'}-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        writeFiles(userRoot, {
+            'settings.json': '{"dirs":true}',
+            'chats/chat.jsonl': 'line\n',
+        });
+        fs.mkdirSync(path.join(userRoot, 'empty-dir'));
+        fs.mkdirSync(path.join(userRoot, 'a', 'b', 'c'), { recursive: true });
+        fs.mkdirSync(path.join(userRoot, 'with space', 'empty child'), { recursive: true });
+
+        const chunks = [];
+        const output = new PassThrough();
+        output.on('data', chunk => chunks.push(chunk));
+        await createBackupArchive(handle, output, options);
+        const zipBuffer = Buffer.concat(chunks);
+
+        const yauzlEntries = await inspectZipWithYauzl(zipBuffer);
+        const names = [...yauzlEntries.keys()].sort();
+        expect(names).toEqual(['a/b/c/', 'chats/chat.jsonl', 'empty-dir/', 'settings.json', 'with space/empty child/']);
+        for (const directoryName of ['a/b/c/', 'empty-dir/', 'with space/empty child/']) {
+            expect(yauzlEntries.get(directoryName)?.content.byteLength).toBe(0);
+        }
+        expect(yauzlEntries.get('settings.json')?.content.toString('utf8')).toBe('{"dirs":true}');
+    });
+
     test('the ZIP64 decision is taken as soon as a limit is crossed, without walking or listing the rest of the account', async () => {
         const handle = `zip-zip64-early-${Date.now()}`;
         const userRoot = path.join(global.DATA_ROOT, handle);

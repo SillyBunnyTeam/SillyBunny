@@ -1318,18 +1318,31 @@ async function resolveBackupRoot(rootDir) {
 
 /**
  * Walks a resolved user root directory without following symlinks and yields its regular files in a stable order.
+ * A folder with nothing in it is yielded as a directory entry (`directory: true`, name ending in `/`), because no file would otherwise recreate it.
  * @param {string} resolvedRoot Real path of the user root directory
- * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number }>} Files to archive
+ * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }>} Entries to archive
  */
 async function* walkBackupFiles(resolvedRoot) {
     /**
      * @param {string} currentDir
      * @param {string} relativePrefix
-     * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number }>}
+     * @returns {AsyncGenerator<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }>}
      */
     async function* walk(currentDir, relativePrefix) {
         const dirents = await fs.promises.readdir(currentDir, { withFileTypes: true });
         dirents.sort((a, b) => a.name.localeCompare(b.name));
+
+        if (dirents.length === 0 && relativePrefix) {
+            try {
+                const directoryStat = await fs.promises.lstat(currentDir);
+                yield { absolutePath: currentDir, entryName: `${relativePrefix}/`, size: 0, directory: true, mtime: directoryStat.mtime };
+            } catch (error) {
+                if (error?.code !== 'ENOENT') {
+                    throw error;
+                }
+            }
+            return;
+        }
 
         for (const dirent of dirents) {
             if (dirent.isSymbolicLink()) {
@@ -1391,10 +1404,10 @@ function needsZip64Fallback(summary, thresholds = DEFAULT_ZIP64_THRESHOLDS) {
  * being held in memory.
  * @param {string} resolvedRoot Real path of the user root directory
  * @param {{ maxEntries?: number, maxFileBytes?: number, maxTotalBytes?: number }} [thresholds] Optional threshold overrides
- * @returns {Promise<{ needsZip64: boolean, files: Array<{ absolutePath: string, entryName: string, size: number }> }>} The files, or an empty list when ZIP64 is needed
+ * @returns {Promise<{ needsZip64: boolean, files: Array<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }> }>} The entries, or an empty list when ZIP64 is needed
  */
 async function collectBackupFiles(resolvedRoot, thresholds = undefined) {
-    /** @type {Array<{ absolutePath: string, entryName: string, size: number }>} */
+    /** @type {Array<{ absolutePath: string, entryName: string, size: number, directory?: boolean, mtime?: Date }>} */
     const files = [];
     const summary = { entryCount: 0, totalUncompressedBytes: 0, maxFileBytes: 0 };
 
@@ -1415,7 +1428,7 @@ async function collectBackupFiles(resolvedRoot, thresholds = undefined) {
 /**
  * Streams a ZIP64 backup archive using lazy-loaded `archiver` when an account exceeds ZIP32 limits.
  * @param {object} options Archive options
- * @param {AsyncIterable<{ absolutePath: string, entryName: string }>} options.files Files to archive, walked lazily
+ * @param {AsyncIterable<{ absolutePath: string, entryName: string, directory?: boolean, mtime?: Date }>} options.files Entries to archive, walked lazily
  * @param {string} options.handle User handle
  * @param {import('express').Response} options.response Express response or writable stream
  * @param {() => Promise<typeof import('archiver').default>} [options.loadArchiver] Optional archiver loader override
@@ -1518,6 +1531,15 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
             for await (const file of files) {
                 if (aborted || response.destroyed) {
                     return;
+                }
+
+                if (file.directory) {
+                    const directoryProcessed = new Promise((resolve) => {
+                        releaseEntryWait = resolve;
+                    });
+                    archive.append(Buffer.alloc(0), { name: file.entryName, date: clampZipEntryMtime(file.mtime) });
+                    await directoryProcessed;
+                    continue;
                 }
 
                 // archive.file() would open the path itself, after the walk, and follow a symlink that replaced the file.
@@ -1795,6 +1817,17 @@ export async function createBackupArchive(handle, response, { zip64Thresholds = 
         for (const file of files) {
             if (isAborted()) {
                 break;
+            }
+
+            if (file.directory) {
+                const directoryEntry = new ZipPassThrough(file.entryName);
+                directoryEntry.mtime = clampZipEntryMtime(file.mtime);
+                zip.add(directoryEntry);
+                directoryEntry.push(EMPTY_ZIP_CHUNK, true);
+                if (consumeDrainFlag()) {
+                    await waitForWritableDrain(response, isAborted);
+                }
+                continue;
             }
 
             const opened = await openBackupFile(file.absolutePath);
