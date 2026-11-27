@@ -102,6 +102,8 @@ const V1_HTML_REPLACEMENT_PATHS = Object.freeze([
     'webfonts/NotoSansMono/stylesheet.css',
 ]);
 
+const LINK_URL_ATTRIBUTES = Object.freeze(['href', 'data-sb-href']);
+
 const REWRITABLE_LINK_EXTENSIONS = new Set([
     '.css',
     '.woff2',
@@ -551,14 +553,16 @@ function serializeImportMapScript(importMap) {
     return `<script type="importmap">${safeJson}</script>`;
 }
 
+// An attribute name starts after whitespace. A word boundary would also match the tail of a longer name:
+// `href` inside `data-sb-href` or `xlink:href`, and `src` inside `data-src`.
 function getTagAttribute(tag, attrName) {
-    const match = tag.match(new RegExp(`\\b${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'));
+    const match = tag.match(new RegExp(`(?<=\\s)${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i'));
     return match ? (match[1] ?? match[2] ?? '') : '';
 }
 
 function replaceTagAttribute(tag, attrName, newValue) {
     return tag.replace(
-        new RegExp(`(\\b${attrName}\\s*=\\s*)(?:"[^"]*"|'[^']*')`, 'i'),
+        new RegExp(`((?<=\\s)${attrName}\\s*=\\s*)(?:"[^"]*"|'[^']*')`, 'i'),
         (match, prefix) => {
             const quote = match[prefix.length];
             return `${prefix}${quote}${newValue}${quote}`;
@@ -567,7 +571,7 @@ function replaceTagAttribute(tag, attrName, newValue) {
 }
 
 function hasTagAttribute(tag, attrName) {
-    return new RegExp(`\\b${attrName}(?:\\s*=|[\\s/>])`, 'i').test(tag);
+    return new RegExp(`(?<=\\s)${attrName}(?:\\s*=|[\\s/>])`, 'i').test(tag);
 }
 
 function appendTagAttribute(tag, attrText) {
@@ -634,36 +638,47 @@ function rewriteHtmlWithImportMapV2(html, manifest) {
     const imports = manifest.importMap.imports;
 
     let rewritten = html.replace(/<link\b[^>]*>/gi, (tag) => {
-        const href = getTagAttribute(tag, 'href');
-        if (!href || isExternalAssetUrl(href)) {
-            return tag;
-        }
-
-        const cleanPath = stripAssetQuery(href).replace(/^\/+/, '');
-        if (!cleanPath || cleanPath === 'css/user.css') {
-            return tag;
-        }
-
         const relTokens = getTagAttribute(tag, 'rel').toLowerCase().split(/\s+/).filter(Boolean);
+        const isModulePreload = relTokens.includes('modulepreload');
 
-        if (relTokens.includes('modulepreload')) {
-            const mapped = imports[`/${cleanPath}`];
-            return mapped ? replaceTagAttribute(tag, 'href', mapped) : tag;
+        let updatedTag = tag;
+        let sourcePath = '';
+
+        // `data-sb-href` carries the URL of a deferred stylesheet placeholder that has no `href`, and the page script
+        // turns it into a real link later; it is hashed like `href` so that the placeholder loads the immutable file.
+        for (const attrName of LINK_URL_ATTRIBUTES) {
+            const attrValue = getTagAttribute(tag, attrName);
+            if (!attrValue || isExternalAssetUrl(attrValue)) {
+                continue;
+            }
+
+            const cleanPath = stripAssetQuery(attrValue).replace(/^\/+/, '');
+            if (!cleanPath || cleanPath === 'css/user.css') {
+                continue;
+            }
+
+            let target = null;
+            if (isModulePreload) {
+                target = imports[`/${cleanPath}`] ?? null;
+            } else if (REWRITABLE_LINK_EXTENSIONS.has(path.posix.extname(cleanPath).toLowerCase())) {
+                target = resolveFrontendAssetPath(cleanPath, manifest);
+            }
+
+            if (!target) {
+                continue;
+            }
+
+            updatedTag = replaceTagAttribute(updatedTag, attrName, target);
+            sourcePath ||= cleanPath;
         }
 
-        const ext = path.posix.extname(cleanPath).toLowerCase();
-        if (!REWRITABLE_LINK_EXTENSIONS.has(ext)) {
-            return tag;
-        }
-
-        const target = resolveFrontendAssetPath(cleanPath, manifest);
-        if (!target) {
-            return tag;
-        }
-
-        let updatedTag = replaceTagAttribute(tag, 'href', target);
-        if (hasTagAttribute(updatedTag, 'data-sb-deferred-style') && !hasTagAttribute(updatedTag, 'data-sb-source-href')) {
-            updatedTag = appendTagAttribute(updatedTag, `data-sb-source-href="${cleanPath}"`);
+        if (
+            sourcePath
+            && !isModulePreload
+            && hasTagAttribute(updatedTag, 'data-sb-deferred-style')
+            && !hasTagAttribute(updatedTag, 'data-sb-source-href')
+        ) {
+            updatedTag = appendTagAttribute(updatedTag, `data-sb-source-href="${sourcePath}"`);
         }
 
         return updatedTag;
@@ -743,10 +758,11 @@ export function rewriteFrontendHtml(html, { enabled = getFrontendAssetsEnabled()
 
 /**
  * Reads an HTML file and returns its RAM-cached rewritten contents, avoiding repeated disk reads and regex passes on GET /.
+ * Returns null when the file cannot be read, so that the caller answers through its normal error path and never sends an empty page.
  * @param {string} filePath Absolute path to the HTML file
  * @param {object} [options]
  * @param {boolean} [options.enabled]
- * @returns {string}
+ * @returns {string|null}
  */
 export function readRewrittenFrontendHtml(filePath, { enabled = getFrontendAssetsEnabled(), ...manifestPaths } = {}) {
     const manifest = enabled && !isFrontendDevMode() ? loadFrontendManifest(manifestPaths) : null;
@@ -779,7 +795,7 @@ export function readRewrittenFrontendHtml(filePath, { enabled = getFrontendAsset
         return resultHtml;
     } catch (error) {
         console.warn(`Failed to read frontend HTML file at ${filePath}.`, error);
-        return '';
+        return null;
     }
 }
 

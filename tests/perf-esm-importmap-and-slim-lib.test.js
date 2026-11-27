@@ -31,6 +31,7 @@ import {
     isExcludedFrontendPublicPath,
     isManifestFresh,
     loadFrontendManifest,
+    readRewrittenFrontendHtml,
     rewriteFrontendHtml,
     writeFrontendInputsStamp,
 } from '../src/frontend-assets.js';
@@ -840,6 +841,51 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         } finally {
             fs.rmSync(stampFixtureRoot, { recursive: true, force: true });
         }
+    });
+
+    test('(j) the HTML rewriter matches attribute names exactly and hashes data-sb-href placeholders on purpose', () => {
+        setSbDev(undefined);
+        const solid = `${FRONTEND_ASSET_PREFIX}${manifest.assets['css/solid.min.css'].output}`;
+        const brands = `${FRONTEND_ASSET_PREFIX}${manifest.assets['css/brands.min.css'].output}`;
+        const scriptHashed = manifest.importMap.imports['/script.js'];
+        // The rewriter adds the import map to any document, so compare the tags without it.
+        const rewrite = html => rewriteFrontendHtml(html, { enabled: true, distRoot: tmpDistDir })
+            .replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, '')
+            .trim();
+
+        // A link with href.
+        expect(rewrite('<link rel="stylesheet" href="css/solid.min.css?v=1">'))
+            .toBe(`<link rel="stylesheet" href="${solid}">`);
+
+        // A deferred placeholder has data-sb-href and no href: the value is hashed and the source path is kept for the page script.
+        expect(rewrite('<link data-sb-deferred-style data-sb-href="css/solid.min.css?v=1" data-sb-media="all">'))
+            .toBe(`<link data-sb-deferred-style data-sb-href="${solid}" data-sb-media="all" data-sb-source-href="css/solid.min.css">`);
+
+        // A link with both: each attribute is hashed on its own, whichever comes first, and the source path is the one of href.
+        expect(rewrite('<link rel="stylesheet" href="css/solid.min.css" data-sb-deferred-style data-sb-href="css/brands.min.css">'))
+            .toBe(`<link rel="stylesheet" href="${solid}" data-sb-deferred-style data-sb-href="${brands}" data-sb-source-href="css/solid.min.css">`);
+        expect(rewrite('<link data-sb-deferred-style data-sb-href="css/brands.min.css" rel="stylesheet" href="css/solid.min.css">'))
+            .toBe(`<link data-sb-deferred-style data-sb-href="${brands}" rel="stylesheet" href="${solid}" data-sb-source-href="css/solid.min.css">`);
+
+        // Names that merely end in href or src are not those attributes.
+        const foreignHref = '<link rel="stylesheet" xlink:href="css/solid.min.css">';
+        expect(rewrite(foreignHref)).toBe(foreignHref);
+        expect(rewrite('<script type="module" data-src="script.js" src="script.js"></script>'))
+            .toBe(`<script type="module" data-src="script.js" src="${scriptHashed}"></script>`);
+        const foreignSrc = '<script type="module" data-src="script.js"></script>';
+        expect(rewrite(foreignSrc)).toBe(foreignSrc);
+    });
+
+    test('(k) an unreadable index.html is reported to the caller instead of becoming an empty page', () => {
+        setSbDev(undefined);
+        const missingPath = path.join(tmpWorkDir, 'missing-index.html');
+        expect(readRewrittenFrontendHtml(missingPath, { enabled: true, distRoot: tmpDistDir })).toBeNull();
+        expect(readRewrittenFrontendHtml(missingPath, { enabled: false })).toBeNull();
+
+        const presentPath = path.join(tmpWorkDir, 'present-index.html');
+        fs.writeFileSync(presentPath, '<html><head><link rel="stylesheet" href="css/solid.min.css"></head></html>', 'utf8');
+        expect(readRewrittenFrontendHtml(presentPath, { enabled: true, distRoot: tmpDistDir })).toContain(manifest.assets['css/solid.min.css'].output);
+        expect(readRewrittenFrontendHtml(presentPath, { enabled: false })).toContain('href="css/solid.min.css"');
     });
 
     test('(i) no case reads or writes the repository\'s own dist/frontend', () => {

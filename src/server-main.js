@@ -374,11 +374,15 @@ app.get('/', restartCacheClear, cacheBuster.middleware, (request, response) => {
     }
 
     // SillyBunny: return RAM-cached rewritten index.html (with importmap and hashed asset URLs) when active.
+    // An unreadable file falls through to sendFile() below, which answers with the usual error status.
     if (shouldServeFrontendAssets()) {
         const indexPath = path.join(serverDirectory, 'public', 'index.html');
-        response.type('html');
-        response.set('Cache-Control', 'no-cache');
-        return response.send(readRewrittenFrontendHtml(indexPath));
+        const indexHtml = readRewrittenFrontendHtml(indexPath);
+        if (indexHtml !== null) {
+            response.type('html');
+            response.set('Cache-Control', 'no-cache');
+            return response.send(indexHtml);
+        }
     }
 
     response.set('Cache-Control', 'no-cache');
