@@ -5,14 +5,18 @@ import { APP_NAME } from './runtime.js';
 import { BUN_SOCKET_INHERIT_ISSUE_URL, hasBunSocketInheritBug, isAddressInUseError, reportPortHolders, retryOnAddressInUse, trackListeningServer, diagnosePortConflict, formatPortConflictBanner } from './server-listen.js';
 import { color, urlHostnameToIPv6, getHasIP } from './util.js';
 
-// SillyBunny: boot-hot routers stay eager while non-boot routers lazy-load on demand.
+// SillyBunny: core routers stay eager; optional integration routers lazy-load on demand (see createLazyRouter below).
 import { router as userDataRouter } from './users.js';
 import { router as usersPrivateRouter } from './endpoints/users-private.js';
+import { router as usersAdminRouter } from './endpoints/users-admin.js';
 import { router as movingUIRouter } from './endpoints/moving-ui.js';
 import { router as imagesRouter } from './endpoints/images.js';
 import { router as quickRepliesRouter } from './endpoints/quick-replies.js';
 import { router as avatarsRouter } from './endpoints/avatars.js';
 import { router as themesRouter } from './endpoints/themes.js';
+import { router as openAiRouter } from './endpoints/openai.js';
+import { router as googleRouter } from './endpoints/google.js';
+import { router as anthropicRouter } from './endpoints/anthropic.js';
 import { router as tokenizersRouter } from './endpoints/tokenizers.js';
 import { router as presetsRouter } from './endpoints/presets.js';
 import { router as secretsRouter } from './endpoints/secrets.js';
@@ -29,7 +33,10 @@ import { router as contentManagerRouter } from './endpoints/content-manager.js';
 import { router as settingsRouter } from './endpoints/settings.js';
 import { router as backgroundsRouter } from './endpoints/backgrounds.js';
 import { router as spritesRouter } from './endpoints/sprites.js';
+import { router as chatCompletionsRouter } from './endpoints/backends/chat-completions.js';
+import { router as backupsRouter } from './endpoints/backups.js';
 import { router as imageMetadataRouter } from './endpoints/image-metadata.js';
+import { router as serverAdminRouter } from './endpoints/server-admin.js';
 import { router as inChatAgentsRouter } from './endpoints/in-chat-agents.js';
 import { resumableGenerationMiddleware, router as resumableGenerationsRouter } from './resumable-generations.js';
 
@@ -64,15 +71,19 @@ export function createLazyRouter(loader) {
                 throw error;
             });
 
-        return pendingLoad.then(router => router(req, res, next), next);
+        // The first dispatch runs inside a promise callback, where Express cannot catch a
+        // synchronous throw. Without this the request gets no answer.
+        return pendingLoad.then(router => {
+            try {
+                return router(req, res, next);
+            } catch (error) {
+                return next(error);
+            }
+        }, next);
     };
 }
 
 // SillyBunny: lazy-mounted non-boot endpoint routers (loaded on first request).
-const usersAdminRouter = createLazyRouter(() => import('./endpoints/users-admin.js'));
-const openAiRouter = createLazyRouter(() => import('./endpoints/openai.js'));
-const googleRouter = createLazyRouter(() => import('./endpoints/google.js'));
-const anthropicRouter = createLazyRouter(() => import('./endpoints/anthropic.js'));
 const novelAiRouter = createLazyRouter(() => import('./endpoints/novelai.js'));
 // SillyBunny divergence: keep archive inventory and read-only orphan access isolated from upstream chat and Data Maid routes.
 const chatArchiveRouter = createLazyRouter(() => import('./endpoints/chat-archive.js'));
@@ -85,16 +96,13 @@ const captionRouter = createLazyRouter(() => import('./endpoints/caption.js'));
 const searchRouter = createLazyRouter(() => import('./endpoints/search.js'));
 const openRouterRouter = createLazyRouter(() => import('./endpoints/openrouter.js'));
 const nanogptRouter = createLazyRouter(() => import('./endpoints/nanogpt.js'));
-const chatCompletionsRouter = createLazyRouter(() => import('./endpoints/backends/chat-completions.js'));
 const koboldRouter = createLazyRouter(() => import('./endpoints/backends/kobold.js'));
 const textCompletionsRouter = createLazyRouter(() => import('./endpoints/backends/text-completions.js'));
 const speechRouter = createLazyRouter(() => import('./endpoints/speech.js'));
 const azureRouter = createLazyRouter(() => import('./endpoints/azure.js'));
 const minimaxRouter = createLazyRouter(() => import('./endpoints/minimax.js'));
 const dataMaidRouter = createLazyRouter(() => import('./endpoints/data-maid.js'));
-const backupsRouter = createLazyRouter(() => import('./endpoints/backups.js'));
 const volcengineRouter = createLazyRouter(() => import('./endpoints/volcengine.js'));
-const serverAdminRouter = createLazyRouter(() => import('./endpoints/server-admin.js'));
 // SillyBunny: storage routes of conversation mode; the router and everything behind it are fork-owned.
 const sillyBunnyConversationRouter = createLazyRouter(() => import('./endpoints/sillybunny-conversation.js'));
 // SillyBunny: pinned third-party CSS themes for Bundled Extras; the router is fork-owned.

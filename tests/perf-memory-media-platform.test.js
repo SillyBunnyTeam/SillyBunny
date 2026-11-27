@@ -182,7 +182,7 @@ function createMinimalPng(width, height, { extraChunks = [], idatPaddingBytes = 
     return Buffer.concat([signature, ...chunks]);
 }
 
-function openRawHttpRequest(url, { method = 'GET', headers = {}, body = null } = {}) {
+function openRawHttpRequest(url, { method = 'GET', headers = {}, body = null, timeoutMs = 0 } = {}) {
     return new Promise((resolve, reject) => {
         const parsed = new URL(url);
         const req = http.request({
@@ -202,6 +202,9 @@ function openRawHttpRequest(url, { method = 'GET', headers = {}, body = null } =
             response.on('error', reject);
         });
         req.on('error', reject);
+        if (timeoutMs > 0) {
+            req.setTimeout(timeoutMs, () => req.destroy(new Error(`No answer within ${timeoutMs} ms`)));
+        }
         if (body !== null) {
             req.write(body);
         }
@@ -664,6 +667,47 @@ describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', 
             expect(second.statusCode).toBe(200);
             expect(routerLoader).toHaveBeenCalledTimes(1);
         } finally {
+            await new Promise(resolve => server.close(resolve));
+        }
+    });
+
+    test('createLazyRouter answers through next(error) when the cold router throws synchronously or fails to load', async () => {
+        const unhandledRejections = [];
+        const recordRejection = reason => unhandledRejections.push(reason);
+        process.on('unhandledRejection', recordRejection);
+
+        const app = express();
+        const throwingLoader = jest.fn(async () => ({
+            router: () => {
+                throw new Error('router threw on dispatch');
+            },
+        }));
+        const failingLoader = jest.fn(async () => {
+            throw new Error('router failed to load');
+        });
+        app.use('/throws', createLazyRouter(throwingLoader));
+        app.use('/fails', createLazyRouter(failingLoader));
+        app.use((error, _req, res, _next) => {
+            res.status(500).json({ message: error.message });
+        });
+
+        const server = await new Promise(resolve => {
+            const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
+        });
+        const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+        try {
+            const thrown = await openRawHttpRequest(`${baseUrl}/throws/any`, { timeoutMs: 3000 });
+            expect(thrown.statusCode).toBe(500);
+            expect(JSON.parse(thrown.body.toString('utf8'))).toEqual({ message: 'router threw on dispatch' });
+
+            const failed = await openRawHttpRequest(`${baseUrl}/fails/any`, { timeoutMs: 3000 });
+            expect(failed.statusCode).toBe(500);
+            expect(JSON.parse(failed.body.toString('utf8'))).toEqual({ message: 'router failed to load' });
+
+            expect(unhandledRejections).toEqual([]);
+        } finally {
+            process.off('unhandledRejection', recordRejection);
             await new Promise(resolve => server.close(resolve));
         }
     });
