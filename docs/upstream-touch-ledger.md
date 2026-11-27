@@ -3014,14 +3014,14 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | --- | --- |
 | File | `public/script.js` |
 | Area | Settings boot fingerprinting and debounced settings save unchanged-skip fast path. |
-| Divergence reason | `TODO(copy)` |
+| Divergence reason | Passing serialized JSON strings to `settingsSync.getFingerprint()` forced a redundant `JSON.parse()` on every boot and debounced save alongside `JSON.stringify()`, causing ~50 ms desktop (~200–350 ms Android) main-thread stalls on large settings files. Hashing live objects directly before serialization lets unchanged saves skip both `JSON.parse()` and `JSON.stringify()`. |
 | Target seam | `public/scripts/sillybunny-settings-sync.js` (`getFingerprint()` accepting live objects directly without re-running `JSON.parse`). |
 | Adapter shape | Two marked call-site updates in `public/script.js`: `getSettings()` hashes the parsed `settings` object before UI mutations, and `saveSettingsInner()` computes `settingsSync.getFingerprint(payload)` before `JSON.stringify(payload)` so unchanged saves skip both `JSON.parse` and `JSON.stringify`. |
 | Protecting tests | `tests/sillybunny-settings-sync.test.js`, `tests/unit/sillybunny-memory-engine-hotfixes.test.js`. |
 | Validation | 2026-11-26 (settings save, boot): root and `tests/` lint, `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites (`sillybunny-settings-sync.test.js`, `unit/sillybunny-memory-engine-hotfixes.test.js`). |
-| Rollback path | `TODO(copy)` |
+| Rollback path | Revert the two marked call sites in `public/script.js` to pass serialized JSON strings (`data.settings` and `body`) after `JSON.stringify(payload)`, and revert `sillybunny-settings-sync.js` if desired. No stored settings format or sync contract changes. |
 | Last reviewed | 2026-11-26, PR #1019 live-object settings-sync follow-up. |
-| Owner | `TODO(copy)` |
+| Owner | Frontend performance integrator. |
 
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
