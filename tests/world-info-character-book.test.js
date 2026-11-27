@@ -1,8 +1,19 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
+/* global globalThis */
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import express from 'express';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import extract from 'png-chunks-extract';
+import PNGtext from 'png-chunk-text';
 
+import '../src/fetch-patch.js';
 import { escapeCharacterBookRegex, getFreeCharacterBookEntryId, normalizeCharacterBookPosition, normalizeWorldInfoPosition, serializeCharacterBookKeys, serializeWorldInfoEntry } from '../public/scripts/world-info-character-book.js';
+import { importWorldInfoModule } from './util/world-info-module-harness.js';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const positions = {
     before: 0,
@@ -361,61 +372,191 @@ describe('serializeWorldInfoEntry', () => {
 });
 
 describe('convertCharacterBook', () => {
-    const worldInfoSource = readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
-    const charactersSource = readFileSync(new URL('../src/endpoints/characters.js', import.meta.url), 'utf8');
-    const functions = [
-        'convertCharacterBook', 'getFreeWorldEntryUid', 'parseRegexFromString', 'convertWorldInfoToCharacterBook',
-        'getWIOriginalDataIndex', 'syncWIOriginalDataEntry', 'appendWIOriginalDataEntry', 'createWorldInfoEntry', 'duplicateWorldInfoEntry',
-    ];
-    const context = vm.createContext({
-        structuredClone, escapeCharacterBookRegex, normalizeCharacterBookPosition, serializeWorldInfoEntry, getFreeCharacterBookEntryId,
-        worldInfoDataSnapshots: new WeakMap(), worldInfoCache: new Map(),
-        newWorldInfoEntryTemplate: {}, world_info_position: positions,
-        world_info_logic: { AND_ANY: 0 }, extension_prompt_roles: { SYSTEM: 0 }, DEFAULT_DEPTH: 4, DEFAULT_WEIGHT: 100,
+    const originalWorkingDirectory = process.cwd();
+    const diskCacheEnvironmentKey = 'SILLYTAVERN_PERFORMANCE_USEDISKCACHE';
+    const originalDiskCacheSetting = process.env[diskCacheEnvironmentKey];
+    let worldInfo;
+    let baseUrl;
+    let directories;
+    let server;
+    let tempRoot;
+
+    beforeAll(async () => {
+        const loaded = await importWorldInfoModule();
+        worldInfo = loaded.worldInfo;
+
+        process.env[diskCacheEnvironmentKey] = 'false';
+        process.chdir(repoRoot);
+        const { setConfigFilePath } = await import('../src/util.js');
+        setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
+        const { router: charactersRouter } = await import('../src/endpoints/characters.js');
+
+        const app = express();
+        app.use(express.json({ limit: '10mb' }));
+        app.use((request, _response, next) => {
+            request.user = {
+                profile: { handle: 'wi-character-book-test' },
+                directories,
+            };
+            next();
+        });
+        app.use('/api/characters', charactersRouter);
+
+        await new Promise(resolve => {
+            server = app.listen(0, '127.0.0.1', resolve);
+        });
+        baseUrl = `http://127.0.0.1:${server.address().port}`;
     });
-    for (const name of functions) {
-        const source = name === 'convertWorldInfoToCharacterBook' ? charactersSource : worldInfoSource;
-        const match = source.match(new RegExp(`^(?:export )?(function ${name}\\([\\s\\S]*?^})`, 'm'));
-        if (!match) throw new Error(`Missing function ${name}`);
-        vm.runInContext(match[1], context);
+
+    beforeEach(() => {
+        tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-wi-charbook-'));
+        directories = {
+            root: tempRoot,
+            backups: path.join(tempRoot, 'backups'),
+            chats: path.join(tempRoot, 'chats'),
+            characters: path.join(tempRoot, 'characters'),
+            groupChats: path.join(tempRoot, 'group chats'),
+            groups: path.join(tempRoot, 'groups'),
+            thumbnailsAvatar: path.join(tempRoot, 'thumbnails', 'avatar'),
+            thumbnailsAvatarMobile: path.join(tempRoot, 'thumbnails', 'avatar', 'mobile'),
+            worlds: path.join(tempRoot, 'worlds'),
+        };
+        for (const directory of Object.values(directories)) {
+            fs.mkdirSync(directory, { recursive: true });
+        }
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    afterAll(async () => {
+        if (server) {
+            await new Promise((resolve, reject) => server.close(error => (error ? reject(error) : resolve())));
+        }
+        if (originalDiskCacheSetting === undefined) {
+            delete process.env[diskCacheEnvironmentKey];
+        } else {
+            process.env[diskCacheEnvironmentKey] = originalDiskCacheSetting;
+        }
+        process.chdir(originalWorkingDirectory);
+    });
+
+    async function embedNativeBookInCard(bookName, bookData) {
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'info').mockImplementation(() => {});
+        fs.writeFileSync(path.join(directories.worlds, `${bookName}.json`), JSON.stringify(bookData));
+        const createRes = await fetch(`${baseUrl}/api/characters/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ch_name: 'Alice', file_name: 'Alice' }),
+        });
+        expect(createRes.status).toBe(200);
+        const getRes = await fetch(`${baseUrl}/api/characters/get`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ avatar_url: 'Alice.png' }),
+        });
+        const character = await getRes.json();
+        const editRes = await fetch(`${baseUrl}/api/characters/edit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                avatar_url: 'Alice.png',
+                ch_name: character.name,
+                description: character.description,
+                personality: character.personality,
+                scenario: character.scenario,
+                first_mes: character.first_mes,
+                mes_example: character.mes_example,
+                creator_notes: character.data.creator_notes,
+                system_prompt: character.data.system_prompt,
+                post_history_instructions: character.data.post_history_instructions,
+                creator: character.data.creator,
+                character_version: character.data.character_version,
+                alternate_greetings: character.data.alternate_greetings,
+                tags: character.tags.join(','),
+                talkativeness: character.talkativeness,
+                fav: String(character.fav),
+                world: bookName,
+                depth_prompt_prompt: character.data.extensions.depth_prompt.prompt,
+                depth_prompt_depth: character.data.extensions.depth_prompt.depth,
+                depth_prompt_role: character.data.extensions.depth_prompt.role,
+                chat: character.chat,
+                create_date: character.create_date,
+                json_data: character.json_data,
+            }),
+        });
+        expect(editRes.status).toBe(200);
+        const png = fs.readFileSync(path.join(directories.characters, 'Alice.png'));
+        const ccv3Chunk = extract(new Uint8Array(png))
+            .filter(chunk => chunk.name === 'tEXt')
+            .map(chunk => PNGtext.decode(chunk.data))
+            .find(chunk => chunk.keyword.toLowerCase() === 'ccv3');
+        const decoded = JSON.parse(Buffer.from(ccv3Chunk.text, 'base64').toString('utf8'));
+        return decoded.data.character_book;
     }
 
     test('maps CharacterBook filters to native entries', () => {
         const characterFilter = { isExclude: true, names: ['Alice'], tags: ['tag'] };
-        const result = context.convertCharacterBook({ entries: [{ id: 74, content: 'Entry', character_filter: characterFilter }] });
+        const result = worldInfo.convertCharacterBook({ entries: [{ id: 74, content: 'Entry', character_filter: characterFilter }] });
         expect(result.entries[0].characterFilter).toEqual(characterFilter);
     });
 
-    test('real import, resync, create, duplicate and cross-book append keep distinct original card IDs', () => {
-        const native = context.convertCharacterBook({ entries: [
+    test('real import, resync, create, duplicate and cross-book append keep distinct original card IDs', async () => {
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        const native = worldInfo.convertCharacterBook({ entries: [
             { id: 74, content: 'First', foreign: 'kept', extensions: { foreign: { retained: true } } },
             { id: 0, content: 'Second', extensions: {} },
         ] });
         native.entries[0].content = 'Edited';
-        context.syncWIOriginalDataEntry(native, 0);
-        context.syncWIOriginalDataEntry(native, 1);
+        worldInfo.syncWIOriginalDataEntry(native, 0);
+        worldInfo.syncWIOriginalDataEntry(native, 1);
         expect(native.originalData.entries.map(entry => entry.id)).toEqual([74, 0]);
         expect(native.originalData.entries[0]).toMatchObject({ content: 'Edited', foreign: 'kept' });
 
-        const created = context.createWorldInfoEntry('Book', native);
-        const duplicated = context.duplicateWorldInfoEntry(native, 0);
-        context.syncWIOriginalDataEntry(native, duplicated.uid);
+        const created = worldInfo.createWorldInfoEntry('Book', native);
+        const duplicated = worldInfo.duplicateWorldInfoEntry(native, 0);
+        worldInfo.syncWIOriginalDataEntry(native, duplicated.uid);
         expect(native.originalData.entries.map(entry => entry.id)).toEqual([74, 0, 1, 2]);
         expect(native.originalData.entries[native.originalDataUidMap[created.uid]].id).toBe(1);
         expect(native.originalData.entries[native.originalDataUidMap[duplicated.uid]]).toMatchObject({
             id: 2, foreign: 'kept', extensions: { foreign: { retained: true } },
         });
 
-        const destination = context.convertCharacterBook({ entries: [{ id: 74, content: 'Destination' }, { id: 0, content: 'Other' }] });
-        const copied = { ...structuredClone(native.entries[0]), uid: context.getFreeWorldEntryUid(destination) };
-        destination.entries[copied.uid] = copied;
-        context.appendWIOriginalDataEntry(destination, copied, native.originalData.entries[0]);
-        expect(destination.originalData.entries.map(entry => entry.id)).toEqual([74, 0, 1]);
-        expect(destination.originalData.entries[2]).toMatchObject({ foreign: 'kept', extensions: { foreign: { retained: true } } });
-        expect(native.originalData.entries[0].id).toBe(74);
+        // Cross-book copy through moveWorldInfoEntry executes appendWIOriginalDataEntry with the source record.
+        const destination = worldInfo.convertCharacterBook({ entries: [{ id: 74, content: 'Destination' }, { id: 0, content: 'Other' }] });
+        const books = new Map([
+            ['Source', structuredClone(native)],
+            ['Destination', structuredClone(destination)],
+        ]);
+        const origFetch = globalThis.fetch;
+        globalThis.fetch = jest.fn(async (url, init) => {
+            const body = JSON.parse(init.body);
+            if (url === '/api/worldinfo/get') {
+                return { ok: books.has(body.name), json: async () => structuredClone(books.get(body.name)) };
+            }
+            if (url === '/api/worldinfo/edit') {
+                books.set(body.name, structuredClone(body.data));
+                return { ok: true, json: async () => ({ name: body.name }) };
+            }
+            return { ok: false, status: 404, json: async () => ({}) };
+        });
+        try {
+            worldInfo.worldInfoCache.clear();
+            worldInfo.setWorldInfoSettings({}, { world_names: ['Source', 'Destination'] });
+            await expect(worldInfo.moveWorldInfoEntry('Source', 'Destination', 0, { deleteOriginal: false })).resolves.toBe(true);
+            const updatedDest = books.get('Destination');
+            expect(updatedDest.originalData.entries.map(entry => entry.id)).toEqual([74, 0, 1]);
+            expect(updatedDest.originalData.entries[2]).toMatchObject({ foreign: 'kept', extensions: { foreign: { retained: true } } });
+            expect(books.get('Source').originalData.entries[0].id).toBe(74);
+        } finally {
+            globalThis.fetch = origFetch;
+        }
     });
 
-    test('native book to card to native roundtrip keeps layout and entry node IDs through UID renumbering', () => {
+    test('native book to card to native roundtrip keeps layout and entry node IDs through UID renumbering', async () => {
         const extensions = { foreign: { nested: ['kept'] }, sillybunny_pathfinder: { version: 1, tree: { id: 'root', children: [{ id: 'place' }] } } };
         const native = {
             extensions,
@@ -424,8 +565,8 @@ describe('convertCharacterBook', () => {
                 42: { uid: 42, displayIndex: 0, content: 'First', extensions: { foreign: 'forty-two', sillybunny_pathfinder: { version: 1, nodeId: 'root' } } },
             },
         };
-        const card = context.convertWorldInfoToCharacterBook('Lore', native.entries, native.extensions);
-        const restored = context.convertCharacterBook(card);
+        const card = await embedNativeBookInCard('Lore', native);
+        const restored = worldInfo.convertCharacterBook(card);
 
         expect(card.entries.map(entry => entry.id)).toEqual([42, 7]);
         expect(restored.extensions).toEqual(extensions);
@@ -445,16 +586,17 @@ describe('convertCharacterBook', () => {
             extensions: { foreign: 'book extension', sillybunny_pathfinder: { version: 1, tree: { id: 'root' } } },
             entries: [{ id: 91, content: 'Imported entry', foreign: 'original entry metadata', extensions: { foreign: 'entry extension', sillybunny_pathfinder: { version: 1, nodeId: 'root' } } }],
         };
-        const native = context.convertCharacterBook(card);
+        const native = worldInfo.convertCharacterBook(card);
         const exported = structuredClone(native.originalData);
-        const restored = context.convertCharacterBook(exported);
+        const restored = worldInfo.convertCharacterBook(exported);
         expect(exported).toEqual(card);
         expect(restored.extensions).toEqual(card.extensions);
         expect(restored.entries[0]).toMatchObject({ uid: 0, extensions: card.entries[0].extensions });
         expect(restored.originalData.entries[0]).toMatchObject({ id: 91, foreign: 'original entry metadata' });
     });
 
-    test('the existing two-argument native conversion still supplies empty extensions', () => {
-        expect(context.convertWorldInfoToCharacterBook('Lore', {}).extensions).toEqual({});
+    test('native book without extensions exports empty extensions on the card', async () => {
+        const card = await embedNativeBookInCard('EmptyLore', { entries: {} });
+        expect(card.extensions).toEqual({});
     });
 });

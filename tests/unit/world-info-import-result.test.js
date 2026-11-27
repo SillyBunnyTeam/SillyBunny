@@ -1,68 +1,114 @@
 /* eslint-disable playwright/no-standalone-expect -- Parameterized Jest tests, not Playwright. */
 import { describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
 
-const source = readFileSync(new URL('../../public/scripts/world-info.js', import.meta.url), 'utf8');
-const importSource = source.match(/^export (async function importWorldInfo\([\s\S]*?^})/m)[1];
+import { event_types } from '../../public/scripts/events.js';
+import { importWorldInfoModule } from '../util/world-info-module-harness.js';
 
-function harness() {
-    const release = jest.fn();
-    const deps = {
-        FormData, Map, parseJsonFile: async file => JSON.parse(await file.text()),
-        getCanonicalWorldInfoName: async () => 'Canonical name', findMatchingLorebookName: () => undefined,
-        world_names: [], checkOverwriteExistingData: jest.fn(async () => true),
-        blockWorldInfoSaves: () => release, settleWorldInfoSave: async () => {}, getRequestHeaders: () => ({}),
-        fetch: jest.fn(async () => new Response('{"name":"Server canonical name"}')),
-        cloneWorldInfoData: structuredClone, worldInfoCommittedEntryInstances: new Map(), worldInfoEntryInstances: new WeakMap(),
-        invalidateWorldInfoCache: jest.fn(), worldInfoCache: new Map(), worldInfoCacheVersions: new Map(), worldInfoEditor: null,
-        updateWorldInfoList: jest.fn(), eventSource: { emit: jest.fn() }, event_types: { WORLDINFO_UPDATED: 'updated' },
-        toastr: { error: jest.fn(), success: jest.fn() }, console: { error() {}, log() {} },
-        t: (parts, ...values) => parts.reduce((text, part, index) => text + part + (values[index] ?? ''), ''),
-        power_user: { import_external_media: false },
-    };
-    const importWorldInfo = new Function(...Object.keys(deps), `${importSource}\nreturn importWorldInfo;`)(...Object.values(deps));
-    return { ...deps, release, importWorldInfo };
+async function setupImportHarness(fetchImpl) {
+    const fetchMock = jest.fn(fetchImpl ?? (async (url) => {
+        if (url === '/api/settings/get') {
+            return new Response(JSON.stringify({ world_names: ['Server canonical name'] }));
+        }
+        return new Response('{"name":"Server canonical name"}');
+    }));
+
+    const { worldInfo, mocks } = await importWorldInfoModule({ fetch: fetchMock });
+    worldInfo.setWorldInfoSettings({}, { world_names: [] });
+    mocks.eventSource.emit.mockClear();
+    return { worldInfo, mocks, fetch: fetchMock };
 }
+
 const book = () => new File(['{"entries":{}}'], 'unsafe? name.json');
 
 describe('opt-in World Info import results', () => {
     test('returns its server canonical name, emits the normal event and releases its save block', async () => {
-        const app = harness();
-        expect(await app.importWorldInfo(book(), { returnResult: true })).toEqual({ ok: true, name: 'Server canonical name', error: null });
-        expect(app.eventSource.emit).toHaveBeenCalledWith('updated', 'Server canonical name', { entries: {} }, { replaced: true });
-        expect(app.release).toHaveBeenCalledTimes(1);
+        const app = await setupImportHarness();
+        expect(await app.worldInfo.importWorldInfo(book(), { returnResult: true })).toEqual({
+            ok: true,
+            name: 'Server canonical name',
+            error: null,
+        });
+        expect(app.mocks.eventSource.emit).toHaveBeenCalledWith(
+            event_types.WORLDINFO_UPDATED,
+            'Server canonical name',
+            { entries: {} },
+            { replaced: true },
+        );
+
+        // Save block must be released so a subsequent save for the canonical name succeeds.
+        app.fetch.mockResolvedValueOnce(new Response('{"name":"Server canonical name"}'));
+        await expect(app.worldInfo.saveWorldInfo('Server canonical name', { entries: {} }, true)).resolves.toBe('Server canonical name');
     });
+
     test.each([
         ['plain server detail', 'Rejected book'],
         ['JSON server detail', '{"error":"Rejected book"}'],
     ])('%s is returned without changing legacy failure returns', async (_label, body) => {
-        const app = harness();
-        app.fetch.mockImplementation(async () => new Response(body, { status: 400, statusText: 'Bad request' }));
-        expect(await app.importWorldInfo(book(), { returnResult: true })).toEqual({ ok: false, name: null, error: 'Rejected book' });
-        expect(await app.importWorldInfo(book())).toBeUndefined();
-        expect(app.eventSource.emit).not.toHaveBeenCalled();
-        expect(app.release).toHaveBeenCalledTimes(2);
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const app = await setupImportHarness(async (url) => {
+            if (url === '/api/settings/get') {
+                return new Response(JSON.stringify({ world_names: [] }));
+            }
+            return new Response(body, { status: 400, statusText: 'Bad request' });
+        });
+
+        try {
+            expect(await app.worldInfo.importWorldInfo(book(), { returnResult: true })).toEqual({
+                ok: false,
+                name: null,
+                error: 'Rejected book',
+            });
+            expect(await app.worldInfo.importWorldInfo(book())).toBeUndefined();
+            expect(app.mocks.eventSource.emit).not.toHaveBeenCalled();
+
+            // Failed imports must release their save block cleanly.
+            app.fetch.mockResolvedValueOnce(new Response('{"name":"unsafe name"}'));
+            await expect(app.worldInfo.saveWorldInfo('unsafe name', { entries: {} }, true)).resolves.toBe('unsafe name');
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
+
     test('JSON error envelopes do not report success', async () => {
-        const app = harness();
-        app.fetch.mockResolvedValue(new Response('{"error":"Cannot persist book"}'));
-        expect(await app.importWorldInfo(book(), { returnResult: true })).toEqual({ ok: false, name: null, error: 'Cannot persist book' });
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const app = await setupImportHarness(async () => new Response('{"error":"Cannot persist book"}'));
+        try {
+            expect(await app.worldInfo.importWorldInfo(book(), { returnResult: true })).toEqual({
+                ok: false,
+                name: null,
+                error: 'Cannot persist book',
+            });
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
+
     test('default successful return remains undefined', async () => {
-        expect(await harness().importWorldInfo(book())).toBeUndefined();
+        const app = await setupImportHarness();
+        expect(await app.worldInfo.importWorldInfo(book())).toBeUndefined();
     });
+
     test('parse errors and missing files produce results only when requested', async () => {
-        const app = harness();
-        expect(await app.importWorldInfo(undefined)).toBeUndefined();
-        expect(await app.importWorldInfo(undefined, { returnResult: true })).toMatchObject({ ok: false, name: null });
-        expect(await app.importWorldInfo(new File(['{}'], 'book.json'), { returnResult: true })).toMatchObject({ ok: false, error: 'Unsupported World Info format' });
-        expect(await app.importWorldInfo(new File(['{}'], 'book.json'))).toBeUndefined();
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const app = await setupImportHarness();
+        try {
+            expect(await app.worldInfo.importWorldInfo(undefined)).toBeUndefined();
+            expect(await app.worldInfo.importWorldInfo(undefined, { returnResult: true })).toMatchObject({ ok: false, name: null });
+            expect(await app.worldInfo.importWorldInfo(new File(['{}'], 'book.json'), { returnResult: true })).toMatchObject({
+                ok: false,
+                error: 'Unsupported World Info format',
+            });
+            expect(await app.worldInfo.importWorldInfo(new File(['{}'], 'book.json'))).toBeUndefined();
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
+
     test('cancelled overwrite preserves false for old callers and returns failure for opt-in callers', async () => {
-        const app = harness();
-        app.checkOverwriteExistingData.mockResolvedValue(false);
-        expect(await app.importWorldInfo(book())).toBe(false);
-        expect(await app.importWorldInfo(book(), { returnResult: true })).toMatchObject({ ok: false, name: null });
+        const app = await setupImportHarness();
+        app.mocks.utils.checkOverwriteExistingData.mockResolvedValue(false);
+        expect(await app.worldInfo.importWorldInfo(book())).toBe(false);
+        expect(await app.worldInfo.importWorldInfo(book(), { returnResult: true })).toMatchObject({ ok: false, name: null });
         expect(app.fetch).not.toHaveBeenCalled();
     });
 });

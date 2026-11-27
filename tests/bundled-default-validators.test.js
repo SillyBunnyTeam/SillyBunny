@@ -1,5 +1,5 @@
 /* global globalThis */
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,14 +8,89 @@ import PNGtext from 'png-chunk-text';
 import extract from 'png-chunks-extract';
 
 import { read as readCardImage } from '../src/character-card-parser.js';
-import { setConfigFilePath } from '../src/util.js';
 import { TavernCardValidator } from '../src/validator/TavernCardValidator.js';
+import { importWorldInfoModule } from './util/world-info-module-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const contentDirectory = path.join(repoRoot, 'default', 'content');
 
+// Load frontend modules before configuring server modules so jest.resetModules() stays isolated.
+const instructCapturedFields = [];
+const instructCapturedNames = new Set();
+const SENTINEL_PREFIX = '__instruct_field__:';
+const OBSOLETE_INSTRUCT_FIELDS = new Set(['separator_sequence', 'names', 'names_force_groups', 'system_sequence_prefix', 'system_sequence_suffix']);
+const instructProxy = new Proxy({}, {
+    get(_target, prop) {
+        if (typeof prop !== 'string' || OBSOLETE_INSTRUCT_FIELDS.has(prop)) {
+            return undefined;
+        }
+        return `${SENTINEL_PREFIX}${prop}`;
+    },
+    set() {
+        return true;
+    },
+});
+const { worldInfo, $ } = await importWorldInfoModule({
+    power_user: { instruct: instructProxy },
+});
+await jest.unstable_mockModule('../public/scripts/openai.js', () => ({
+    parseExampleIntoIndividual: jest.fn(),
+}));
+await jest.unstable_mockModule('../public/scripts/group-chats.js', () => ({
+    selected_group: null,
+}));
+const instructMode = await import('../public/scripts/instruct-mode.js');
+
+const origDollar = globalThis.$;
+const recordField = (value, isCheckbox) => {
+    if (typeof value === 'string' && value.startsWith(SENTINEL_PREFIX)) {
+        const name = value.slice(SENTINEL_PREFIX.length);
+        if (!instructCapturedNames.has(name)) {
+            instructCapturedNames.add(name);
+            instructCapturedFields.push({ name, isCheckbox });
+        }
+    }
+};
+const tracking$ = (selector) => {
+    const base = origDollar(selector);
+    const wrapped = {
+        ...base,
+        prop(attr, value) {
+            if (attr === 'checked' && value !== undefined) {
+                recordField(value, true);
+            }
+            return base.prop(attr, value);
+        },
+        val(value) {
+            if (value !== undefined) {
+                recordField(value, false);
+            }
+            return base.val(value);
+        },
+    };
+    return wrapped;
+};
+globalThis.$ = tracking$;
+globalThis.jQuery = tracking$;
+await instructMode.loadInstructMode({ instruct: [] });
+globalThis.$ = $;
+globalThis.jQuery = $;
+
+const loadedInstructRules = {
+    fields: instructCapturedFields.filter(field => !['enabled', 'bind_to_context'].includes(field.name)),
+    namesBehaviors: Object.values(instructMode.names_behavior_types),
+};
+const loadedWorldInfoRules = {
+    fieldTypes: Object.fromEntries(
+        Object.entries(worldInfo.newWorldInfoEntryDefinition).map(([key, def]) => [key, def.type]),
+    ),
+    positions: Object.values(worldInfo.world_info_position),
+    logics: Object.values(worldInfo.world_info_logic),
+};
+
 // Global content types resolve below this value.
 globalThis.DATA_ROOT = 'data-root';
+const { setConfigFilePath } = await import('../src/util.js');
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 const { CONTENT_TYPES, PRESET_CONTENT_TYPES, getDefaultPresets, getGlobalTargetByType, getUserTargetByType } = await import('../src/endpoints/content-manager.js');
 const { isValidWorldInfoData } = await import('../src/endpoints/worldinfo.js');
@@ -48,7 +123,6 @@ const textFieldsByType = {
     [CONTENT_TYPES.REASONING]: ['prefix', 'suffix', 'separator'],
 };
 
-const settingsOnlyInstructFields = ['enabled', 'bind_to_context'];
 const storyStringFields = ['description', 'personality', 'persona', 'scenario', 'wiBefore', 'wiAfter', 'anchorBefore', 'anchorAfter'];
 const cardChecks = { chara: 'validateV2', ccv3: 'validateV3' };
 const knownCardFailures = new Map([
@@ -118,16 +192,6 @@ function readObject(entry) {
     return isPlainObject(data) ? data : null;
 }
 
-function readSource(...segments) {
-    return fs.readFileSync(path.join(repoRoot, ...segments), 'utf8').replace(/\r\n/g, '\n');
-}
-
-function readBlock(source, declaration) {
-    const start = source.indexOf(`\n${declaration}\n`);
-    const end = source.indexOf(declaration.endsWith('[') ? '\n];' : '\n};', start);
-    return start === -1 || end === -1 ? '' : source.slice(start, end);
-}
-
 function resolveTarget(type) {
     return getUserTargetByType(type, directoryNames) ?? getGlobalTargetByType(type);
 }
@@ -165,28 +229,10 @@ function isPlainRelativePath(value) {
 }
 
 function readInstructRules() {
-    const source = readSource('public', 'scripts', 'instruct-mode.js');
-    const fields = [...readBlock(source, 'const controls = [').matchAll(/property: '(\w+)', isCheckbox: (true|false)/g)]
-        .map(([, name, isCheckbox]) => ({ name, isCheckbox: isCheckbox === 'true' }))
-        .filter(field => !settingsOnlyInstructFields.includes(field.name));
-    const namesBehaviors = [...readBlock(source, 'export const names_behavior_types = {').matchAll(/: '(\w+)'/g)].map(match => match[1]);
-    return { fields, namesBehaviors };
+    return loadedInstructRules;
 }
 
-function readWorldInfoRules() {
-    const source = readSource('public', 'scripts', 'world-info.js');
-    const readNumbers = declaration => [...readBlock(source, declaration).matchAll(/: (\d+),/g)].map(match => Number(match[1]));
-    const definitions = readBlock(source, 'export const newWorldInfoEntryDefinition = {');
-    const fieldTypes = Object.fromEntries([...definitions.matchAll(/^ {4}(\w+): \{ default: .*, type: '([a-z?]+)'/gm)].map(match => [match[1], match[2]]));
-    return {
-        fieldTypes,
-        positions: readNumbers('export const world_info_position = {'),
-        logics: readNumbers('export const world_info_logic = {'),
-    };
-}
-
-let worldInfoRules;
-const getWorldInfoRules = () => (worldInfoRules ??= readWorldInfoRules());
+const getWorldInfoRules = () => loadedWorldInfoRules;
 
 function matchesFieldType(value, type) {
     switch (type) {

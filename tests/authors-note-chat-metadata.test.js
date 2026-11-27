@@ -3,70 +3,26 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { event_types } from '../public/scripts/events.js';
+import { importWorldInfoModule } from './util/world-info-module-harness.js';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const notesSource = fs.readFileSync(path.join(repoRoot, 'public', 'scripts', 'authors-note.js'), 'utf8');
+// Deferred until script.js behavioural harness lands; verifies script.js delegates to authors-note accessors.
 const scriptSource = fs.readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
-const worldInfoSource = fs.readFileSync(path.join(repoRoot, 'public', 'scripts', 'world-info.js'), 'utf8');
 
-function getFunctionSource(source, name) {
-    const match = source.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`));
-    expect(match).not.toBeNull();
-    return match[0];
-}
-
-/**
- * Rebuilds the Author's Note accessors from the shipped function bodies. The module imports
- * script.js and cannot be loaded under Jest, so the sources are evaluated with the globals they
- * close over.
- * @param {object} chat_metadata Chat metadata to resolve against.
- * @param {object} noteSettings The `extension_settings.note` object.
- * @returns {Record<string, Function>} The accessors.
- */
-function loadAccessors(chat_metadata, noteSettings) {
-    const body = [
-        'const getDefaultRole = () => extension_prompt_roles.SYSTEM;',
-        getFunctionSource(notesSource, 'getAuthorsNotePrompt'),
-        getFunctionSource(notesSource, 'getAuthorsNoteInterval'),
-        getFunctionSource(notesSource, 'getAuthorsNotePosition'),
-        getFunctionSource(notesSource, 'getAuthorsNoteDepth'),
-        getFunctionSource(notesSource, 'getAuthorsNoteRole'),
-        'return { getAuthorsNotePrompt, getAuthorsNoteInterval, getAuthorsNotePosition, getAuthorsNoteDepth, getAuthorsNoteRole };',
-    ].join('\n\n');
-
-    const factory = new Function(
-        'chat_metadata',
-        'extension_settings',
-        'metadata_keys',
-        'DEFAULT_DEPTH',
-        'DEFAULT_POSITION',
-        'DEFAULT_INTERVAL',
-        'extension_prompt_roles',
-        body,
-    );
-
-    return factory(
-        chat_metadata,
-        { note: noteSettings },
-        { prompt: 'note_prompt', interval: 'note_interval', depth: 'note_depth', position: 'note_position', role: 'note_role' },
-        4,
-        1,
-        1,
-        { SYSTEM: 0 },
-    );
+async function loadAuthorsNoteApp(chatMetadata = {}, noteSettings = {}, extraOptions = {}) {
+    return importWorldInfoModule({
+        useRealAuthorsNote: true,
+        chat_metadata: chatMetadata,
+        extension_settings: { note: { allowWIScan: true, ...noteSettings } },
+        ...extraOptions,
+    });
 }
 
 describe('author\'s note chat metadata', () => {
-    test('loading a chat no longer stamps note defaults into chat_metadata', () => {
-        const loadSettings = getFunctionSource(notesSource, 'loadSettings');
-
-        for (const key of ['prompt', 'interval', 'position', 'depth', 'role']) {
-            expect(loadSettings).not.toContain(`chat_metadata[metadata_keys.${key}] =`);
-        }
-    });
-
-    test('resolves every value from settings when the chat has no note', () => {
+    test('loading a chat no longer stamps note defaults into chat_metadata', async () => {
         const chatMetadata = {};
-        const accessors = loadAccessors(chatMetadata, {
+        const { authorsNote, mocks } = await loadAuthorsNoteApp(chatMetadata, {
             default: 'settings note',
             defaultInterval: 3,
             defaultPosition: 2,
@@ -74,57 +30,108 @@ describe('author\'s note chat metadata', () => {
             defaultRole: 1,
         });
 
-        expect(accessors.getAuthorsNotePrompt()).toBe('settings note');
-        expect(accessors.getAuthorsNoteInterval()).toBe(3);
-        expect(accessors.getAuthorsNotePosition()).toBe(2);
-        expect(accessors.getAuthorsNoteDepth()).toBe(7);
-        expect(accessors.getAuthorsNoteRole()).toBe(1);
+        authorsNote.initAuthorsNote();
+        await mocks.eventSource.emit(event_types.CHAT_CHANGED);
+
+        expect(chatMetadata).toEqual({});
+    });
+
+    test('resolves every value from settings when the chat has no note', async () => {
+        const chatMetadata = {};
+        const { authorsNote } = await loadAuthorsNoteApp(chatMetadata, {
+            default: 'settings note',
+            defaultInterval: 3,
+            defaultPosition: 2,
+            defaultDepth: 7,
+            defaultRole: 1,
+        });
+
+        expect(authorsNote.getAuthorsNotePrompt()).toBe('settings note');
+        expect(authorsNote.getAuthorsNoteInterval()).toBe(3);
+        expect(authorsNote.getAuthorsNotePosition()).toBe(2);
+        expect(authorsNote.getAuthorsNoteDepth()).toBe(7);
+        expect(authorsNote.getAuthorsNoteRole()).toBe(1);
 
         // Reading is not a reason to write: a chat that never used a note stays clean, and a clean
         // chat is one the server can skip rewriting.
         expect(chatMetadata).toEqual({});
     });
 
-    test('falls back to the built-in defaults when settings are empty', () => {
-        const accessors = loadAccessors({}, {});
+    test('falls back to the built-in defaults when settings are empty', async () => {
+        const { authorsNote } = await loadAuthorsNoteApp({}, {});
 
-        expect(accessors.getAuthorsNotePrompt()).toBe('');
-        expect(accessors.getAuthorsNoteInterval()).toBe(1);
-        expect(accessors.getAuthorsNotePosition()).toBe(1);
-        expect(accessors.getAuthorsNoteDepth()).toBe(4);
-        expect(accessors.getAuthorsNoteRole()).toBe(0);
+        expect(authorsNote.getAuthorsNotePrompt()).toBe('');
+        expect(authorsNote.getAuthorsNoteInterval()).toBe(1);
+        expect(authorsNote.getAuthorsNotePosition()).toBe(1);
+        expect(authorsNote.getAuthorsNoteDepth()).toBe(4);
+        expect(authorsNote.getAuthorsNoteRole()).toBe(0);
     });
 
-    test('prefers a note the user actually set on the chat', () => {
-        const accessors = loadAccessors(
+    test('prefers a note the user actually set on the chat', async () => {
+        const { authorsNote } = await loadAuthorsNoteApp(
             { note_prompt: 'chat note', note_interval: 5, note_position: 0, note_depth: 9, note_role: 2 },
             { default: 'settings note', defaultInterval: 3, defaultPosition: 2, defaultDepth: 7, defaultRole: 1 },
         );
 
-        expect(accessors.getAuthorsNotePrompt()).toBe('chat note');
-        expect(accessors.getAuthorsNoteInterval()).toBe(5);
-        expect(accessors.getAuthorsNotePosition()).toBe(0);
-        expect(accessors.getAuthorsNoteDepth()).toBe(9);
-        expect(accessors.getAuthorsNoteRole()).toBe(2);
+        expect(authorsNote.getAuthorsNotePrompt()).toBe('chat note');
+        expect(authorsNote.getAuthorsNoteInterval()).toBe(5);
+        expect(authorsNote.getAuthorsNotePosition()).toBe(0);
+        expect(authorsNote.getAuthorsNoteDepth()).toBe(9);
+        expect(authorsNote.getAuthorsNoteRole()).toBe(2);
     });
 
-    test('keeps a zeroed note setting instead of falling through to the default', () => {
-        const accessors = loadAccessors(
+    test('keeps a zeroed note setting instead of falling through to the default', async () => {
+        const { authorsNote } = await loadAuthorsNoteApp(
             { note_prompt: '', note_interval: 0, note_position: 0, note_depth: 0, note_role: 0 },
             { default: 'settings note', defaultInterval: 3, defaultPosition: 2, defaultDepth: 7, defaultRole: 1 },
         );
 
-        expect(accessors.getAuthorsNotePrompt()).toBe('');
-        expect(accessors.getAuthorsNoteInterval()).toBe(0);
-        expect(accessors.getAuthorsNotePosition()).toBe(0);
-        expect(accessors.getAuthorsNoteDepth()).toBe(0);
-        expect(accessors.getAuthorsNoteRole()).toBe(0);
+        expect(authorsNote.getAuthorsNotePrompt()).toBe('');
+        expect(authorsNote.getAuthorsNoteInterval()).toBe(0);
+        expect(authorsNote.getAuthorsNotePosition()).toBe(0);
+        expect(authorsNote.getAuthorsNoteDepth()).toBe(0);
+        expect(authorsNote.getAuthorsNoteRole()).toBe(0);
     });
 
-    test('the prompt builders read through the accessors instead of raw metadata', () => {
+    test('World Info prompt assembly reads through the accessors instead of raw metadata', async () => {
+        const chatMetadata = {};
+        const { worldInfo, authorsNote, mocks, $ } = await loadAuthorsNoteApp(chatMetadata, {
+            default: 'Settings author note.',
+            defaultInterval: 1,
+            defaultPosition: 2,
+            defaultDepth: 7,
+            defaultRole: 1,
+            allowWIScan: true,
+        }, {
+            books: {
+                'Aster Book': {
+                    entries: {
+                        1: { uid: 1, key: ['tea'], keysecondary: [], position: 2, order: 100, content: 'Before AN.' },
+                        2: { uid: 2, key: ['tea'], keysecondary: [], position: 3, order: 90, content: 'After AN.' },
+                    },
+                },
+            },
+            chat: [{ is_user: true, mes: 'Drink tea.' }],
+        });
+
+        $('#extension_floating_prompt').val('Settings author note.');
+        authorsNote.setFloatingPrompt();
+        mocks.setExtensionPrompt.mockClear();
+
+        await worldInfo.checkWorldInfo(['Roleplay User: Drink tea.'], 4000, false);
+
+        expect(mocks.setExtensionPrompt).toHaveBeenCalledWith(
+            authorsNote.NOTE_MODULE_NAME,
+            'Before AN.\nSettings author note.\nAfter AN.',
+            2,
+            7,
+            true,
+            1,
+        );
+        expect(Object.keys(chatMetadata).filter(key => key.startsWith('note_'))).toEqual([]);
+
+        // Keep script.js guard until script.js behavioural harness replaces it.
         expect(scriptSource).toContain('setExtensionPrompt(NOTE_MODULE_NAME, ANWithDesc, getAuthorsNotePosition(), getAuthorsNoteDepth(), extension_settings.note.allowWIScan, getAuthorsNoteRole());');
-        expect(worldInfoSource).toContain('context.setExtensionPrompt(NOTE_MODULE_NAME, ANWithWI, getAuthorsNotePosition(), getAuthorsNoteDepth(), extension_settings.note.allowWIScan, getAuthorsNoteRole());');
         expect(scriptSource).not.toContain('chat_metadata[metadata_keys.');
-        expect(worldInfoSource).not.toContain('chat_metadata[metadata_keys.');
     });
 });

@@ -5,7 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
 
 import extract from 'png-chunks-extract';
 import PNGtext from 'png-chunk-text';
@@ -15,7 +14,7 @@ import { AVATAR_HEIGHT, AVATAR_WIDTH } from '../src/constants.js';
 import { Jimp } from '../src/jimp.js';
 import { setConfigFilePath } from '../src/util.js';
 import encode from '../src/png/encode.js';
-import { escapeCharacterBookRegex, normalizeCharacterBookPosition } from '../public/scripts/world-info-character-book.js';
+import { importWorldInfoModule } from './util/world-info-module-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const originalWorkingDirectory = process.cwd();
@@ -29,18 +28,8 @@ process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
 const { router: charactersRouter, sanitiseFilenameForWindows } = await import('../src/endpoints/characters.js');
-const worldInfoSource = fs.readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
-const conversionFunctions = ['convertCharacterBook', 'getFreeWorldEntryUid', 'parseRegexFromString'].map(name => {
-    const match = worldInfoSource.match(new RegExp(`^(?:export )?(function ${name}\\([\\s\\S]*?^})`, 'm'));
-    if (!match) throw new Error(`Missing function ${name}`);
-    return match[1];
-});
-const restoreCharacterBook = vm.runInNewContext(`${conversionFunctions.join('\n')}\nconvertCharacterBook`, {
-    structuredClone, escapeCharacterBookRegex, normalizeCharacterBookPosition,
-    worldInfoDataSnapshots: new WeakMap(), newWorldInfoEntryTemplate: {},
-    world_info_position: { before: 0, after: 1 }, world_info_logic: { AND_ANY: 0 },
-    extension_prompt_roles: { SYSTEM: 0 }, DEFAULT_DEPTH: 4, DEFAULT_WEIGHT: 100,
-});
+const { worldInfo } = await importWorldInfoModule();
+const restoreCharacterBook = worldInfo.convertCharacterBook;
 
 describe('character card metadata preservation', () => {
     let baseUrl;
