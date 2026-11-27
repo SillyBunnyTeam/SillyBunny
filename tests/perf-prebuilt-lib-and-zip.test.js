@@ -15,6 +15,8 @@ import {
     PREBUILT_LIB_FILENAME,
     PREBUILT_LIB_MANIFEST_FILENAME,
     PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
+    PREBUILT_LIB_MAX_BUNDLE_BYTES,
+    PREBUILT_LIB_MAX_MANIFEST_BYTES,
     computePublicLibInputsHash,
     isValidPrebuiltLibManifest,
     readPrebuiltPublicLibManifest,
@@ -405,6 +407,100 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
             const lines = loggedLines();
             expect(lines).toHaveLength(1);
             expect(lines[0]).toMatch(/symlink/);
+        });
+
+        describe('size limits are checked before anything is read into memory', () => {
+            function makeSparseFile(filePath, bytes) {
+                const fd = fs.openSync(filePath, 'w');
+                fs.ftruncateSync(fd, bytes);
+                fs.closeSync(fd);
+            }
+
+            function spyOnReads() {
+                const readPaths = [];
+                const realReadFileSync = fs.readFileSync;
+                const realOpenSync = fs.openSync;
+                const readSpy = jest.spyOn(fs, 'readFileSync').mockImplementation((target, ...args) => {
+                    readPaths.push(String(target));
+                    return realReadFileSync(target, ...args);
+                });
+                const openSpy = jest.spyOn(fs, 'openSync').mockImplementation((target, ...args) => {
+                    readPaths.push(String(target));
+                    return realOpenSync(target, ...args);
+                });
+                return {
+                    readPaths,
+                    restore() {
+                        readSpy.mockRestore();
+                        openSpy.mockRestore();
+                    },
+                };
+            }
+
+            test('rejects a manifest that claims a bundle above the limit, and a file of that size, without reading the file', () => {
+                const claimedBytes = PREBUILT_LIB_MAX_BUNDLE_BYTES + 1;
+                const dir = writePrebuilt({ bundleBytes: claimedBytes });
+                makeSparseFile(path.join(dir, PREBUILT_LIB_FILENAME), claimedBytes);
+
+                const reads = spyOnReads();
+                let seeded;
+                try {
+                    ({ seeded } = seed(dir));
+                } finally {
+                    reads.restore();
+                }
+
+                expect(seeded).toBe(false);
+                expect(reads.readPaths.filter(target => target.endsWith(PREBUILT_LIB_FILENAME))).toEqual([]);
+                const lines = loggedLines();
+                expect(lines).toHaveLength(1);
+                expect(lines[0]).toMatch(/limit/);
+                expect(readPrebuiltPublicLibManifest(dir)).toBeNull();
+            });
+
+            test('rejects a file above the limit when the manifest claims a small one, without reading it', () => {
+                const dir = writePrebuilt();
+                makeSparseFile(path.join(dir, PREBUILT_LIB_FILENAME), PREBUILT_LIB_MAX_BUNDLE_BYTES + 1);
+
+                const reads = spyOnReads();
+                let seeded;
+                try {
+                    ({ seeded } = seed(dir));
+                } finally {
+                    reads.restore();
+                }
+
+                expect(seeded).toBe(false);
+                expect(reads.readPaths.filter(target => target.endsWith(PREBUILT_LIB_FILENAME))).toEqual([]);
+                expect(loggedLines()).toHaveLength(1);
+            });
+
+            test('rejects a manifest file above its limit without reading it', () => {
+                const dir = writePrebuilt();
+                makeSparseFile(path.join(dir, PREBUILT_LIB_MANIFEST_FILENAME), PREBUILT_LIB_MAX_MANIFEST_BYTES + 1);
+
+                const reads = spyOnReads();
+                let seeded;
+                try {
+                    ({ seeded } = seed(dir));
+                } finally {
+                    reads.restore();
+                }
+
+                expect(seeded).toBe(false);
+                expect(reads.readPaths.filter(target => target.endsWith(PREBUILT_LIB_MANIFEST_FILENAME))).toEqual([]);
+                const lines = loggedLines();
+                expect(lines).toHaveLength(1);
+                expect(lines[0]).toMatch(/limit/);
+            });
+
+            test('still seeds a bundle at the limit', () => {
+                const bytes = Buffer.alloc(PREBUILT_LIB_MAX_BUNDLE_BYTES, 0x61);
+                const dir = writePrebuilt({ sha256: sha256Hex(bytes), bundleBytes: bytes.byteLength });
+                fs.writeFileSync(path.join(dir, PREBUILT_LIB_FILENAME), bytes);
+
+                expect(seed(dir).seeded).toBe(true);
+            });
         });
 
         test.each([

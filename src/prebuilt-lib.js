@@ -18,6 +18,10 @@ export const PREBUILT_LIB_INPUT_FILES = Object.freeze([
     'bun.lock',
 ]);
 
+// Far above any real bundle (a few MB) and manifest (a few hundred bytes); they only bound what a damaged or hostile dist/lib can make the server allocate.
+export const PREBUILT_LIB_MAX_BUNDLE_BYTES = 32 * 1024 * 1024;
+export const PREBUILT_LIB_MAX_MANIFEST_BYTES = 64 * 1024;
+
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 
 /**
@@ -143,6 +147,37 @@ function getInstalledWebpackVersion() {
 }
 
 /**
+ * Reads a regular file in full, unless it has more than `maxBytes` bytes. The size comes from the open descriptor,
+ * so a file that grows after an earlier lstat cannot make the buffer larger than the limit.
+ * @param {string} filePath File to read.
+ * @param {number} maxBytes Largest size that is read.
+ * @returns {Buffer|null} The content, or null when the file is larger than `maxBytes` or was shorter than its size.
+ */
+function readRegularFileUpTo(filePath, maxBytes) {
+    // O_NOFOLLOW does not exist on Windows; the callers have lstat-checked the path.
+    const fd = fs.openSync(filePath, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+    try {
+        const stat = fs.fstatSync(fd);
+        if (!stat.isFile() || stat.size > maxBytes) {
+            return null;
+        }
+
+        const buffer = Buffer.allocUnsafe(stat.size);
+        let offset = 0;
+        while (offset < buffer.byteLength) {
+            const bytesRead = fs.readSync(fd, buffer, offset, buffer.byteLength - offset, offset);
+            if (bytesRead === 0) {
+                return null;
+            }
+            offset += bytesRead;
+        }
+        return buffer;
+    } finally {
+        fs.closeSync(fd);
+    }
+}
+
+/**
  * Reads and validates the manifest of a prebuilt directory, and says why when it is not usable.
  * @param {string} prebuiltDir Directory containing `lib.manifest.json`.
  * @returns {{ manifest: Record<string, any>|null, reason: string|null }} `manifest` is null when nothing usable is offered.
@@ -169,11 +204,21 @@ function loadPrebuiltPublicLibManifest(prebuiltDir) {
     if (stat.isSymbolicLink() || !stat.isFile()) {
         return { manifest: null, reason: 'the manifest is a symlink or not a regular file' };
     }
+    if (stat.size > PREBUILT_LIB_MAX_MANIFEST_BYTES) {
+        return { manifest: null, reason: `the manifest is above the limit of ${PREBUILT_LIB_MAX_MANIFEST_BYTES} bytes` };
+    }
 
     try {
-        const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        const manifestBytes = readRegularFileUpTo(manifestPath, PREBUILT_LIB_MAX_MANIFEST_BYTES);
+        if (!manifestBytes) {
+            return { manifest: null, reason: `the manifest is above the limit of ${PREBUILT_LIB_MAX_MANIFEST_BYTES} bytes or changed while it was read` };
+        }
+        const parsed = JSON.parse(manifestBytes.toString('utf8'));
         if (!isValidPrebuiltLibManifest(parsed)) {
             return { manifest: null, reason: 'the manifest does not match schema version 1' };
+        }
+        if (resolveManifestBundleBytes(parsed) > PREBUILT_LIB_MAX_BUNDLE_BYTES) {
+            return { manifest: null, reason: `the manifest claims a bundle above the limit of ${PREBUILT_LIB_MAX_BUNDLE_BYTES} bytes` };
         }
         return {
             manifest: {
@@ -276,19 +321,22 @@ export function trySeedPrebuiltPublicLib({
     if (sourceStat.isSymbolicLink() || !sourceStat.isFile()) {
         return reject(`${PREBUILT_LIB_FILENAME} is a symlink or not a regular file`);
     }
+    if (sourceStat.size > PREBUILT_LIB_MAX_BUNDLE_BYTES) {
+        return reject(`${PREBUILT_LIB_FILENAME} is above the limit of ${PREBUILT_LIB_MAX_BUNDLE_BYTES} bytes`);
+    }
     if (sourceStat.size !== manifest.bundleBytes) {
         return reject(`${PREBUILT_LIB_FILENAME} has ${sourceStat.size} bytes, the manifest says ${manifest.bundleBytes}`);
     }
 
     let verifiedBuffer;
     try {
-        verifiedBuffer = fs.readFileSync(sourceBundlePath);
+        verifiedBuffer = readRegularFileUpTo(sourceBundlePath, manifest.bundleBytes);
     } catch (error) {
         return reject(`${PREBUILT_LIB_FILENAME} cannot be read: ${error?.message}`);
     }
 
-    if (verifiedBuffer.byteLength !== manifest.bundleBytes) {
-        return reject(`${PREBUILT_LIB_FILENAME} size changed while it was read`);
+    if (!verifiedBuffer || verifiedBuffer.byteLength !== manifest.bundleBytes) {
+        return reject(`${PREBUILT_LIB_FILENAME} changed while it was read`);
     }
     if (sha256Hex(verifiedBuffer) !== manifest.sha256) {
         return reject(`${PREBUILT_LIB_FILENAME} fails the sha256 integrity check`);
