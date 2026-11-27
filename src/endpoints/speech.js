@@ -1,7 +1,6 @@
 import { Buffer } from 'node:buffer';
 import fs from 'node:fs';
 import express from 'express';
-import wavefile from 'wavefile';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 import mime from 'mime-types';
@@ -12,11 +11,22 @@ import { readSecret, SECRET_KEYS } from './secrets.js';
 export const router = express.Router();
 
 /**
+ * Imports wavefile for the local transformers.js speech routes.
+ * SillyBunny: loaded on first use so remote TTS providers never pay for it.
+ * @returns {Promise<typeof import('wavefile')>} wavefile module
+ */
+async function loadWaveFile() {
+    const module = await import('wavefile');
+    return /** @type {typeof import('wavefile')} */ (module.default ?? module);
+}
+
+/**
  * Gets the audio data from a base64-encoded audio file.
  * @param {string} audio Base64-encoded audio
- * @returns {Float64Array} Audio data
+ * @returns {Promise<Float64Array>} Audio data
  */
-function getWaveFile(audio) {
+async function getWaveFile(audio) {
+    const wavefile = await loadWaveFile();
     const wav = new wavefile.WaveFile();
     wav.fromDataURI(audio);
     wav.toBitDepth('32f');
@@ -44,7 +54,7 @@ router.post('/recognize', async (req, res) => {
         const TASK = 'automatic-speech-recognition';
         const { model, audio, lang } = req.body;
         const pipe = await getPipeline(TASK, model);
-        const wav = getWaveFile(audio);
+        const wav = await getWaveFile(audio);
         const start = performance.now();
         const result = await pipe(wav, { language: lang || null, task: 'transcribe' });
         const end = performance.now();
@@ -71,6 +81,7 @@ router.post('/synthesize', async (req, res) => {
         const end = performance.now();
         console.debug(`Execution duration: ${(end - start) / 1000} seconds`);
 
+        const wavefile = await loadWaveFile();
         const wav = new wavefile.WaveFile();
         wav.fromScratch(1, result.sampling_rate, '32f', result.audio);
         const buffer = wav.toBuffer();

@@ -9,10 +9,21 @@ import crypto from 'node:crypto';
 import { imageSize } from 'image-size';
 import writeFileAtomic from 'write-file-atomic';
 import express from 'express';
-import { Jimp } from '../jimp.js';
 import { getConfigValue, isPathUnderParent, uuidv4 } from '../util.js';
+import { createFileStamp, isFileStampCurrent } from '../file-stamp.js';
 
 export const METADATA_FILE = 'image-metadata.json';
+
+// SillyBunny: Jimp and its WASM codecs load on the first dominant-color decode, not at server start.
+/** @type {Promise<typeof import('../jimp.js').Jimp>|null} */
+let jimpPromise = null;
+function loadJimp() {
+    jimpPromise ??= import('../jimp.js').then(module => module.Jimp).catch(error => {
+        jimpPromise = null;
+        throw error;
+    });
+    return jimpPromise;
+}
 
 /**
  * @typedef {Object} ImageMetadata
@@ -144,6 +155,48 @@ export function isAnimatedWebP(buffer) {
     return headerBuffer.includes('ANIM') || headerBuffer.includes('ANMF');
 }
 
+/** Bytes the animation checks above inspect. */
+export const ANIMATION_HEADER_BYTES = 200;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * Detects animation from an image's leading bytes, matching generateImageMetadata without decoding.
+ * GIFs always count as animated; PNGs and WebPs use the same chunk checks as the full-file path.
+ * @param {Buffer} header The first ANIMATION_HEADER_BYTES bytes of the file (or the whole file)
+ * @returns {boolean} True if the image is animated
+ */
+export function isAnimatedImageHeader(header) {
+    if (header.length >= 6 && (header.toString('latin1', 0, 6) === 'GIF87a' || header.toString('latin1', 0, 6) === 'GIF89a')) {
+        return true;
+    }
+    if (header.length >= 8 && header.subarray(0, 8).equals(PNG_SIGNATURE)) {
+        return isAnimatedApng(header);
+    }
+    if (header.length >= 12 && header.toString('latin1', 0, 4) === 'RIFF' && header.toString('latin1', 8, 12) === 'WEBP') {
+        return isAnimatedWebP(header);
+    }
+    return false;
+}
+
+/**
+ * Reads only the leading bytes of an image file to tell whether it is animated.
+ * @param {string} filePath Full path to the image
+ * @returns {Promise<boolean>} True if animated; false if static, unreadable or missing
+ */
+export async function readIsAnimatedFromHeader(filePath) {
+    let fileHandle = null;
+    try {
+        fileHandle = await fs.open(filePath, 'r');
+        const header = Buffer.alloc(ANIMATION_HEADER_BYTES);
+        const { bytesRead } = await fileHandle.read(header, 0, header.length, 0);
+        return isAnimatedImageHeader(header.subarray(0, bytesRead));
+    } catch {
+        return false;
+    } finally {
+        await fileHandle?.close();
+    }
+}
+
 /**
  * Calculate average color using Jimp.
  * Resizes the image to 1x1 to efficiently get the average color.
@@ -152,6 +205,7 @@ export function isAnimatedWebP(buffer) {
  */
 async function getAverageColorWithJimp(buffer) {
     try {
+        const Jimp = await loadJimp();
         const image = await Jimp.read(buffer);
         image.resize({ w: 1, h: 1 });
 
@@ -166,6 +220,15 @@ async function getAverageColorWithJimp(buffer) {
         console.warn('[Jimp] Failed to calculate average color:', error.message);
         return '#808080';
     }
+}
+
+/**
+ * Gets the time at which a file counts as added: its creation time, or its modification time where the file system has none.
+ * @param {import('node:fs').Stats} stats Stats of the file
+ * @returns {number} Milliseconds since the epoch
+ */
+function getAddedTimestamp(stats) {
+    return Math.floor(stats.birthtimeMs || stats.mtimeMs);
 }
 
 /**
@@ -207,8 +270,7 @@ export async function generateImageMetadata(filePath, type) {
 
     let addedTimestamp;
     try {
-        const stats = await fs.stat(filePath);
-        addedTimestamp = Math.floor(stats.birthtimeMs || stats.mtimeMs);
+        addedTimestamp = getAddedTimestamp(await fs.stat(filePath));
     } catch {
         addedTimestamp = Date.now();
     }
@@ -224,19 +286,53 @@ export async function generateImageMetadata(filePath, type) {
     };
 }
 
+// SillyBunny: the parsed index is kept per file and reused while its stamp is unchanged and settled,
+// so read-only routes skip the disk read and JSON parse. Writers still get their own copy.
+/** @type {Map<string, {stamp: import('../file-stamp.js').FileStamp, index: MetadataIndex}>} */
+const metadataIndexCache = new Map();
+
+function createEmptyMetadataIndex() {
+    return { version: 1, images: {}, folders: [] };
+}
+
+/**
+ * Reads the metadata index through the in-memory cache. The returned object is shared: never mutate it.
+ * @param {string} userDataRoot - Path to the user data directory root
+ * @returns {Promise<MetadataIndex>} The shared, read-only metadata index
+ */
+export async function readMetadataIndexCached(userDataRoot) {
+    const indexPath = path.join(userDataRoot, METADATA_FILE);
+    let stamp;
+    try {
+        stamp = createFileStamp(await fs.stat(indexPath, { bigint: true }));
+    } catch {
+        metadataIndexCache.delete(indexPath);
+        return createEmptyMetadataIndex();
+    }
+
+    const cached = metadataIndexCache.get(indexPath);
+    if (cached && isFileStampCurrent(cached.stamp, stamp)) {
+        return cached.index;
+    }
+
+    try {
+        const rawData = await fs.readFile(indexPath, 'utf8');
+        const index = JSON.parse(rawData);
+        metadataIndexCache.set(indexPath, { stamp, index });
+        return index;
+    } catch {
+        metadataIndexCache.delete(indexPath);
+        return createEmptyMetadataIndex();
+    }
+}
+
 /**
  * Reads the centralized metadata index from the user data root.
  * @param {string} userDataRoot - Path to the user data directory root
- * @returns {Promise<MetadataIndex>} The metadata index
+ * @returns {Promise<MetadataIndex>} The metadata index, safe for the caller to mutate
  */
 export async function readMetadataIndex(userDataRoot) {
-    const indexPath = path.join(userDataRoot, METADATA_FILE);
-    try {
-        const rawData = await fs.readFile(indexPath, 'utf8');
-        return JSON.parse(rawData);
-    } catch {
-        return { version: 1, images: {}, folders: [] };
-    }
+    return structuredClone(await readMetadataIndexCached(userDataRoot));
 }
 
 /**
@@ -247,7 +343,20 @@ export async function readMetadataIndex(userDataRoot) {
 export async function writeMetadataIndex(userDataRoot, metadata) {
     const indexPath = path.join(userDataRoot, METADATA_FILE);
     const jsonString = JSON.stringify(metadata, null, 4);
+    metadataIndexCache.delete(indexPath);
     await writeFileAtomic(indexPath, jsonString, 'utf8');
+    metadataIndexCache.delete(indexPath);
+}
+
+/**
+ * Tells whether cached metadata is still current for a file.
+ * @param {ImageMetadata|undefined} cached Cached metadata entry
+ * @param {number} currentMtime Current mtime of the file
+ * @param {ThumbnailType} type The thumbnail type for resolution calculation
+ * @returns {boolean} True if the cached entry can be used as-is
+ */
+function isMetadataCurrent(cached, currentMtime, type) {
+    return Boolean(cached) && cached.mtime === currentMtime && cached.thumbnailResolution === getThumbnailResolution(type);
 }
 
 /**
@@ -261,9 +370,9 @@ export async function writeMetadataIndex(userDataRoot, metadata) {
 export async function getOrGenerateMetadataBatch(userDataRoot, relativePaths, type) {
     /** @type {Object.<string, ImageMetadata>} */
     const results = {};
-    const index = await readMetadataIndex(userDataRoot);
-    let indexModified = false;
-    let generatedCount = 0;
+    const index = await readMetadataIndexCached(userDataRoot);
+    /** @type {Map<string, ImageMetadata>} */
+    const generated = new Map();
 
     for (const relativePath of relativePaths) {
         // Normalize the path to use forward slashes for consistent keys
@@ -281,7 +390,7 @@ export async function getOrGenerateMetadataBatch(userDataRoot, relativePaths, ty
         const cached = index.images[posixPath];
 
         // If cached and not modified, use cached unless thumbnail dimensions changed.
-        if (cached && cached.mtime === currentMtime && cached.thumbnailResolution === getThumbnailResolution(type)) {
+        if (isMetadataCurrent(cached, currentMtime, type)) {
             results[relativePath] = cached;
             continue;
         }
@@ -293,25 +402,198 @@ export async function getOrGenerateMetadataBatch(userDataRoot, relativePaths, ty
 
             // Preserve folderIds if they existed
             if (cached?.folderIds) {
-                metadata.folderIds = cached.folderIds;
+                metadata.folderIds = Array.isArray(cached.folderIds) ? [...cached.folderIds] : cached.folderIds;
             }
 
-            index.images[posixPath] = metadata;
+            generated.set(posixPath, metadata);
             results[relativePath] = metadata;
-            indexModified = true;
-            generatedCount++;
         } catch (error) {
             console.warn(`[ImageMetadata] Failed to generate metadata for ${relativePath}:`, error.message);
         }
     }
 
-    // Write index if modified
-    if (indexModified) {
-        await writeMetadataIndex(userDataRoot, index);
+    // SillyBunny: decoding can take a while, so merge into a fresh read of the index right before
+    // writing. Folder changes saved meanwhile are kept instead of being overwritten by a stale copy,
+    // and files deleted or renamed while decoding are not resurrected.
+    if (generated.size > 0) {
+        const latestIndex = await readMetadataIndex(userDataRoot);
+        let hasLiveUpdates = false;
+        for (const [posixPath, metadata] of generated) {
+            const fullPath = path.join(userDataRoot, posixPath);
+            try {
+                await fs.access(fullPath);
+            } catch {
+                continue;
+            }
+            const latestFolderIds = latestIndex.images[posixPath]?.folderIds;
+            if (Array.isArray(latestFolderIds)) {
+                metadata.folderIds = [...latestFolderIds];
+            }
+            latestIndex.images[posixPath] = metadata;
+            hasLiveUpdates = true;
+        }
+        if (hasLiveUpdates) {
+            await writeMetadataIndex(userDataRoot, latestIndex);
+        }
     }
 
-    return { results, generatedCount };
+    return { results, generatedCount: generated.size };
 }
+
+/**
+ * Records the added time of every listed image that has none in the index, so that a client that sorts by it gets
+ * it in the same load. The time comes from one `stat`, so this does not decode the image. An image without an entry
+ * gets a stub with no `mtime`, which stays stale for `getOrGenerateMetadataBatch`, so the hash and the dominant color
+ * are still generated in full later.
+ * @param {string} userDataRoot - Path to the user data directory root
+ * @param {string[]} relativePaths - Relative paths from userDataRoot
+ * @returns {Promise<number>} How many entries received a time
+ */
+export async function ensureAddedTimestamps(userDataRoot, relativePaths) {
+    const index = await readMetadataIndexCached(userDataRoot);
+    const toPosix = relativePath => relativePath.replaceAll(path.sep, path.posix.sep);
+    const missing = relativePaths.filter(relativePath => typeof index.images[toPosix(relativePath)]?.addedTimestamp !== 'number');
+    if (missing.length === 0) {
+        return 0;
+    }
+
+    /** @type {Map<string, number>} */
+    const timestamps = new Map();
+    let nextIndex = 0;
+    const worker = async () => {
+        while (nextIndex < missing.length) {
+            const relativePath = missing[nextIndex++];
+            try {
+                timestamps.set(toPosix(relativePath), getAddedTimestamp(await fs.stat(path.join(userDataRoot, relativePath))));
+            } catch {
+                // The file is gone, so there is nothing to sort.
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(ANIMATION_SCAN_CONCURRENCY, missing.length) }, worker));
+    if (timestamps.size === 0) {
+        return 0;
+    }
+
+    // Merge into a fresh read, so folder changes saved while the files were read are kept.
+    const latestIndex = await readMetadataIndex(userDataRoot);
+    let changed = 0;
+    for (const [posixPath, addedTimestamp] of timestamps) {
+        const entry = latestIndex.images[posixPath];
+        if (typeof entry?.addedTimestamp === 'number') {
+            continue;
+        }
+        if (entry) {
+            entry.addedTimestamp = addedTimestamp;
+        } else {
+            latestIndex.images[posixPath] = { folderIds: [], addedTimestamp };
+        }
+        changed++;
+    }
+    if (changed > 0) {
+        await writeMetadataIndex(userDataRoot, latestIndex);
+    }
+    return changed;
+}
+
+/** @type {Map<string, {pending: Map<string, ThumbnailType>, running: Promise<void>|null}>} */
+const metadataGenerationQueues = new Map();
+
+/**
+ * Queues metadata generation to run after the response, one batch per user data root at a time.
+ * @param {string} userDataRoot - Path to the user data directory root
+ * @param {string[]} relativePaths - Relative paths whose metadata is missing or stale
+ * @param {ThumbnailType} type - The thumbnail type for resolution calculation
+ * @returns {Promise<void>} Settles when every queued path for this root has been processed
+ */
+export function queueMetadataGeneration(userDataRoot, relativePaths, type) {
+    let queue = metadataGenerationQueues.get(userDataRoot);
+    if (!queue) {
+        queue = { pending: new Map(), running: null };
+        metadataGenerationQueues.set(userDataRoot, queue);
+    }
+    for (const relativePath of relativePaths) {
+        queue.pending.set(relativePath, type);
+    }
+
+    if (!queue.running) {
+        const activeQueue = queue;
+        activeQueue.running = (async () => {
+            try {
+                while (activeQueue.pending.size > 0) {
+                    /** @type {Map<ThumbnailType, string[]>} */
+                    const byType = new Map();
+                    for (const [relativePath, pathType] of activeQueue.pending) {
+                        byType.set(pathType, [...(byType.get(pathType) ?? []), relativePath]);
+                    }
+                    activeQueue.pending.clear();
+                    for (const [pathType, paths] of byType) {
+                        try {
+                            await getOrGenerateMetadataBatch(userDataRoot, paths, pathType);
+                        } catch (error) {
+                            console.warn('[ImageMetadata] Background metadata generation failed:', error.message);
+                        }
+                    }
+                }
+            } finally {
+                activeQueue.running = null;
+                if (metadataGenerationQueues.get(userDataRoot) === activeQueue && activeQueue.pending.size === 0) {
+                    metadataGenerationQueues.delete(userDataRoot);
+                }
+            }
+        })();
+    }
+
+    return queue.running;
+}
+
+/**
+ * Tells whether each image is animated without decoding it: current cached metadata wins, and
+ * missing or stale entries fall back to a header sniff and are reported for later generation.
+ * @param {string} userDataRoot - Path to the user data directory root
+ * @param {string[]} relativePaths - Array of relative paths from userDataRoot
+ * @param {ThumbnailType} type - The thumbnail type for resolution calculation
+ * @returns {Promise<{animated: Object.<string, boolean>, stalePaths: string[]}>} Animation flag per path, and paths needing metadata
+ */
+export async function getAnimationFlagsBatch(userDataRoot, relativePaths, type) {
+    const index = await readMetadataIndexCached(userDataRoot);
+    /** @type {Object.<string, boolean>} */
+    const animated = {};
+    /** @type {boolean[]} */
+    const isStale = new Array(relativePaths.length).fill(false);
+
+    // Bounded so a large backgrounds folder cannot exhaust file handles on a cold index.
+    let nextIndex = 0;
+    const worker = async () => {
+        while (nextIndex < relativePaths.length) {
+            const position = nextIndex++;
+            const relativePath = relativePaths[position];
+            const posixPath = relativePath.replaceAll(path.sep, path.posix.sep);
+            const fullPath = path.join(userDataRoot, relativePath);
+
+            let stats;
+            try {
+                stats = await fs.stat(fullPath);
+            } catch {
+                continue; // File doesn't exist, skip
+            }
+
+            const cached = index.images[posixPath];
+            if (isMetadataCurrent(cached, stats.mtimeMs, type) && typeof cached.isAnimated === 'boolean') {
+                animated[relativePath] = cached.isAnimated;
+                continue;
+            }
+
+            animated[relativePath] = await readIsAnimatedFromHeader(fullPath);
+            isStale[position] = true;
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(ANIMATION_SCAN_CONCURRENCY, relativePaths.length) }, worker));
+
+    return { animated, stalePaths: relativePaths.filter((_, position) => isStale[position]) };
+}
+
+const ANIMATION_SCAN_CONCURRENCY = 32;
 
 /**
  * Removes metadata for an image from the centralized index.
@@ -552,7 +834,7 @@ export const router = express.Router();
  */
 router.post('/folders/get', async function (request, response) {
     try {
-        const index = await readMetadataIndex(request.user.directories.root);
+        const index = await readMetadataIndexCached(request.user.directories.root);
         return response.json(index.folders || []);
     } catch (error) {
         console.error('[ImageMetadata] Folders list error:', error);
@@ -773,7 +1055,7 @@ router.post('/all', async function (request, response) {
     try {
         const userDataRoot = request.user.directories.root;
         const prefix = String(request.body.prefix || '');
-        const index = await readMetadataIndex(userDataRoot);
+        const index = await readMetadataIndexCached(userDataRoot);
 
         // If prefix specified, filter to only matching paths
         if (prefix) {

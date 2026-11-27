@@ -1,8 +1,6 @@
 import fetch from 'node-fetch';
 import express from 'express';
-import { translate as bingTranslate } from 'bing-translate-api';
 import urlJoin from 'url-join';
-import { Translator } from 'google-translate-api-x';
 
 import { readSecret, SECRET_KEYS } from './secrets.js';
 import { getConfigValue, uuidv4 } from '../util.js';
@@ -88,6 +86,8 @@ router.post('/google', async (request, response) => {
 
         console.debug('Input text: ' + text);
 
+        // SillyBunny: translation clients load with the provider that uses them.
+        const { Translator } = await import('google-translate-api-x');
         const translator = new Translator({ to: lang, requestFunction: fetch });
         const translatedText = await translator.translate(text).then(result => result.text);
 
@@ -398,6 +398,7 @@ router.post('/bing', async (request, response) => {
 
         console.debug('Input text: ' + text);
 
+        const { translate: bingTranslate } = await import('bing-translate-api');
         const result = await bingTranslate(text, null, lang);
         const translatedText = result?.translation;
         console.debug('Translated text: ' + translatedText);

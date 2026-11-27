@@ -7,6 +7,7 @@ import _ from 'lodash';
 import { tryParse, tryWriteFileSync } from '../util.js';
 import { localizeWorldInfoExternalMedia } from '../external-media-import.js';
 import { restoreExternalMediaUrls } from '../external-media-manifest.js';
+import { createFileStamp, isFileStampCurrent } from '../file-stamp.js'; // SillyBunny: caches validate against a stamp, not (mtime, size)
 
 const WORLD_INFO_EXTENSION = '.json';
 // SillyBunny divergence: canonical World Info filenames are UTF-8 bounded and written through the fork's safe persistence path.
@@ -150,50 +151,141 @@ export function readWorldInfoFile(directories, worldInfoName, allowDummy) {
 
 export const router = express.Router();
 
+// SillyBunny: the list only needs each book's name and extensions, so those are kept per file and
+// reused while the file's stamp is unchanged and settled. Each listing rebuilds the folder's map, dropping deleted files.
+/** @type {Map<string, Map<string, {stamp: import('../file-stamp.js').FileStamp, name: unknown, extensions: object}>>} */
+const worldInfoListCache = new Map();
+const WORLD_INFO_LIST_CONCURRENCY = 16;
+
+// SillyBunny: a file's JSON is validated once per stamp; unchanged files are sent as stored.
+/** @type {Map<string, {stamp: import('../file-stamp.js').FileStamp}>} */
+const validatedWorldInfoFiles = new Map();
+const VALIDATED_WORLD_INFO_LIMIT = 256;
+
+export function clearWorldInfoCaches() {
+    worldInfoListCache.clear();
+    validatedWorldInfoFiles.clear();
+}
+
+function invalidateWorldInfoFileCaches(filePath) {
+    validatedWorldInfoFiles.delete(filePath);
+    worldInfoListCache.get(path.dirname(filePath))?.delete(filePath);
+}
+
+/**
+ * Reads the list entry for one World Info file, from cache when the file is unchanged.
+ * @param {string} filePath Full path to the file
+ * @param {Map<string, {stamp: import('../file-stamp.js').FileStamp, name: unknown, extensions: object}>} previous Entries from the last listing
+ * @param {Map<string, {stamp: import('../file-stamp.js').FileStamp, name: unknown, extensions: object}>} next Entries for this listing
+ * @returns {Promise<{name: unknown, extensions: object}>} Header fields for the list
+ */
+async function readWorldInfoListHeader(filePath, previous, next) {
+    const stamp = createFileStamp(await fs.promises.stat(filePath, { bigint: true }));
+    const cached = previous.get(filePath);
+    if (cached && isFileStampCurrent(cached.stamp, stamp)) {
+        next.set(filePath, cached);
+        return cached;
+    }
+
+    const fileContents = await fs.promises.readFile(filePath, 'utf8');
+    const fileContentsParsed = tryParse(fileContents) || {};
+    const fileExtensions = fileContentsParsed?.extensions || {};
+    const header = {
+        stamp,
+        name: fileContentsParsed?.name,
+        extensions: _.isObjectLike(fileExtensions) ? fileExtensions : {},
+    };
+    next.set(filePath, header);
+    return header;
+}
+
 router.post('/list', async (request, response) => {
     try {
-        const data = [];
-        const jsonFiles = (await fs.promises.readdir(request.user.directories.worlds, { withFileTypes: true }))
+        const worldsDirectory = request.user.directories.worlds;
+        const jsonFiles = (await fs.promises.readdir(worldsDirectory, { withFileTypes: true }))
             .filter((file) => file.isFile() && path.extname(file.name).toLowerCase() === '.json')
             .sort((a, b) => a.name.localeCompare(b.name));
 
-        for (const file of jsonFiles) {
-            try {
-                const filePath = path.join(request.user.directories.worlds, file.name);
-                const fileContents = await fs.promises.readFile(filePath, 'utf8');
-                const fileContentsParsed = tryParse(fileContents) || {};
-                const fileExtensions = fileContentsParsed?.extensions || {};
-                const fileNameWithoutExt = path.parse(file.name).name;
-                const fileData = {
-                    file_id: fileNameWithoutExt,
-                    name: fileContentsParsed?.name || fileNameWithoutExt,
-                    extensions: _.isObjectLike(fileExtensions) ? fileExtensions : {},
-                };
-                data.push(fileData);
-            } catch (err) {
-                console.warn(`Error reading or parsing World Info file ${file.name}:`, err);
-            }
-        }
+        const previous = worldInfoListCache.get(worldsDirectory) ?? new Map();
+        const next = new Map();
+        /** @type {Array<{file_id: string, name: unknown, extensions: object}|null>} */
+        const slots = new Array(jsonFiles.length).fill(null);
 
-        return response.send(data);
+        let nextIndex = 0;
+        const worker = async () => {
+            while (nextIndex < jsonFiles.length) {
+                const position = nextIndex++;
+                const file = jsonFiles[position];
+                try {
+                    const filePath = path.join(worldsDirectory, file.name);
+                    const header = await readWorldInfoListHeader(filePath, previous, next);
+                    const fileNameWithoutExt = path.parse(file.name).name;
+                    slots[position] = {
+                        file_id: fileNameWithoutExt,
+                        name: header.name || fileNameWithoutExt,
+                        extensions: header.extensions,
+                    };
+                } catch (err) {
+                    console.warn(`Error reading or parsing World Info file ${file.name}:`, err);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(WORLD_INFO_LIST_CONCURRENCY, jsonFiles.length) }, worker));
+        worldInfoListCache.set(worldsDirectory, next);
+
+        return response.send(slots.filter(Boolean));
     } catch (err) {
         console.error('Error reading World Info directory:', err);
         return response.sendStatus(500);
     }
 });
 
-router.post('/get', (request, response) => {
+router.post('/get', async (request, response) => {
     if (!request.body?.name) {
         return response.sendStatus(400);
     }
 
-    const file = readWorldInfoFile(request.user.directories, request.body.name, false);
+    try {
+        const worldInfoName = request.body.name;
+        const filename = getExistingWorldInfoFilename(request.user.directories, worldInfoName);
+        if (!filename) {
+            console.error(`World info file ${getWorldInfoFilename(worldInfoName)} doesn't exist.`);
+            return response.sendStatus(404);
+        }
 
-    if (!file) {
-        return response.sendStatus(404);
+        // SillyBunny: send the stored JSON text instead of parsing and re-serializing it. The body
+        // decodes to the same value; only insignificant whitespace differs.
+        const pathToWorldInfo = path.join(request.user.directories.worlds, filename);
+        const fileHandle = await fs.promises.open(pathToWorldInfo, 'r');
+        let stamp;
+        let worldInfoText;
+        try {
+            stamp = createFileStamp(await fileHandle.stat({ bigint: true }));
+            worldInfoText = await fileHandle.readFile('utf8');
+        } finally {
+            await fileHandle.close();
+        }
+
+        const validated = validatedWorldInfoFiles.get(pathToWorldInfo);
+        if (validated && isFileStampCurrent(validated.stamp, stamp)) {
+            validatedWorldInfoFiles.delete(pathToWorldInfo);
+        } else {
+            const parsed = JSON.parse(worldInfoText);
+            if (!parsed) {
+                // Matches the old falsy-file branch: a stored falsy JSON value reads as a missing book.
+                return response.sendStatus(404);
+            }
+        }
+        validatedWorldInfoFiles.set(pathToWorldInfo, { stamp });
+        if (validatedWorldInfoFiles.size > VALIDATED_WORLD_INFO_LIMIT) {
+            validatedWorldInfoFiles.delete(validatedWorldInfoFiles.keys().next().value);
+        }
+
+        return response.type('json').send(worldInfoText);
+    } catch (err) {
+        console.error('Failed to read World Info file:', err);
+        return response.sendStatus(500);
     }
-
-    return response.send(file);
 });
 
 router.post('/delete', (request, response) => {
@@ -209,6 +301,7 @@ router.post('/delete', (request, response) => {
     const pathToWorldInfo = path.join(request.user.directories.worlds, filename);
 
     fs.unlinkSync(pathToWorldInfo);
+    invalidateWorldInfoFileCaches(pathToWorldInfo);
 
     return response.sendStatus(200);
 });
@@ -241,6 +334,7 @@ router.post('/import', async (request, response) => {
 
         const pathToNewFile = path.join(request.user.directories.worlds, filename);
         writeWorldInfoFile(pathToNewFile, persistedContents);
+        invalidateWorldInfoFileCaches(pathToNewFile);
         return response.send(localized.changed ? { name: worldName, data: worldContent } : { name: worldName });
     } catch (err) {
         console.error('World Info import failed:', err);
@@ -288,6 +382,7 @@ router.post('/edit', (request, response) => {
     }
 
     writeWorldInfoFile(pathToFile, JSON.stringify(request.body.data, null, 4));
+    invalidateWorldInfoFileCaches(pathToFile);
 
     return response.send({ ok: true, name: worldName });
 });
@@ -315,6 +410,8 @@ router.post('/rename', (request, response) => {
     try {
         writeWorldInfoFile(oldPath, JSON.stringify(data, null, 4));
         fs.renameSync(oldPath, newPath);
+        invalidateWorldInfoFileCaches(oldPath);
+        invalidateWorldInfoFileCaches(newPath);
         return response.send({ ok: true, name: canonicalName });
     } catch (err) {
         console.error('World Info rename failed:', err);

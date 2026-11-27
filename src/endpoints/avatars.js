@@ -3,7 +3,6 @@ import fs from 'node:fs';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
-import { Jimp } from '../jimp.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 
 // SillyBunny: a deleted persona takes its conversations with it.
@@ -47,6 +46,8 @@ router.post('/upload', getFileNameValidationFunction('overwrite_name'), async (r
     try {
         const pathToUpload = path.join(request.file.destination, request.file.filename);
         const crop = tryParse(request.query.crop);
+        // SillyBunny: Jimp and its WASM codecs load only when an avatar is uploaded, not at server boot.
+        const { Jimp } = await import('../jimp.js');
         const rawImg = await Jimp.read(pathToUpload);
         const image = await applyAvatarCropResize(rawImg, crop);
 

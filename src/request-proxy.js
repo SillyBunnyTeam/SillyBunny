@@ -1,10 +1,13 @@
 import process from 'node:process';
 import http from 'node:http';
 import https from 'node:https';
-import { ProxyAgent } from 'proxy-agent';
+import { createRequire } from 'node:module';
 import { isValidUrl, color } from './util.js';
 
 const LOG_HEADER = '[Request Proxy]';
+// SillyBunny: proxy-agent pulls in every proxy protocol client, so it is required only when the proxy is enabled.
+// It is a CommonJS package, so require() keeps initialization synchronous for the caller.
+const require = createRequire(import.meta.url);
 
 /**
  * Initialize request proxy.
@@ -49,6 +52,8 @@ export default function initRequestProxy({ enabled, url, bypass, enableKeepAlive
         const httpAgent = http.globalAgent;
         const httpsAgent = https.globalAgent;
 
+        /** @type {typeof import('proxy-agent')} */
+        const { ProxyAgent } = require('proxy-agent');
         const proxyAgent = new ProxyAgent({ httpAgent, httpsAgent, keepAlive: enableKeepAlive });
 
         http.globalAgent = proxyAgent;

@@ -1,7 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
 
-import vectra from 'vectra';
 import express from 'express';
 import sanitize from 'sanitize-filename';
 
@@ -298,7 +297,7 @@ class InvalidVectorFolderError extends Error {}
  * @param {string} collectionId - The collection ID
  * @param {string} source - The source of the vector
  * @param {object} sourceSettings - The model for the source
- * @returns {Promise<vectra.LocalIndex>} - The index for the collection
+ * @returns {Promise<import('vectra').LocalIndex>} - The index for the collection
  */
 async function getIndex(directories, collectionId, source, sourceSettings) {
     const model = getModelScope(sourceSettings);
@@ -309,6 +308,8 @@ async function getIndex(directories, collectionId, source, sourceSettings) {
         throw new InvalidVectorFolderError(`Invalid vector source "${source}" or collection ID "${collectionId}".`);
     }
     const pathToFile = path.join(directories.vectors, sourceFolder, collectionFolder, sanitize(model));
+    // SillyBunny: vectra loads with the first index access instead of at server boot.
+    const { default: vectra } = await import('vectra');
     const store = new vectra.LocalIndex(pathToFile);
 
     if (!await store.isIndexCreated()) {

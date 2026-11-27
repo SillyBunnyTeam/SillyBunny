@@ -107,6 +107,15 @@ function readStore(userRoot) {
     }
 }
 
+function tryReadStoreWithoutLock(userRoot) {
+    const filePath = path.join(userRoot, ENTITY_DATE_ADDED_FILE);
+    try {
+        return normalizeStore(JSON.parse(fs.readFileSync(filePath, 'utf8')));
+    } catch {
+        return null;
+    }
+}
+
 function withStoreLock(userRoot, callback) {
     fs.mkdirSync(userRoot, { recursive: true });
     const lockPath = path.join(userRoot, LOCK_FILENAME);
@@ -163,6 +172,48 @@ function updateStore(userRoot, entityType, callback) {
 export function reconcileEntityDateAdded(userRoot, entityType, entities, now = Date.now()) {
     if (!Array.isArray(entities)) {
         throw new TypeError('Entity date-added reconciliation requires an entity array.');
+    }
+    if (typeof userRoot !== 'string' || !userRoot) {
+        throw new TypeError('A user root is required for entity date-added metadata.');
+    }
+    if (!ENTITY_TYPES.has(entityType)) {
+        throw new TypeError(`Unsupported entity date-added type: ${entityType}`);
+    }
+
+    // Read without acquiring the interprocess lock first. Only take the lock and write if the store is missing,
+    // unreadable, uninitialized, or at least one non-tombstoned entity ID is absent from persisted entries.
+    const existingStore = tryReadStoreWithoutLock(userRoot);
+    if (existingStore) {
+        const scope = existingStore[entityType];
+        if (scope.initialized) {
+            const result = new Map();
+            let needsUpdate = false;
+
+            for (const entity of entities) {
+                if (!entity || typeof entity.id !== 'string' || !entity.id) {
+                    throw new TypeError('Entity date-added reconciliation requires non-empty string IDs.');
+                }
+
+                const timestamp = scope.entries[entity.id];
+                if (isValidTimestamp(timestamp)) {
+                    result.set(entity.id, timestamp);
+                    continue;
+                }
+
+                const deletedAt = scope.deleted[entity.id];
+                const fallback = normalizeTimestamp(entity.fallback, 0);
+                if (isValidTimestamp(deletedAt) && fallback <= deletedAt) {
+                    continue;
+                }
+
+                needsUpdate = true;
+                break;
+            }
+
+            if (!needsUpdate) {
+                return result;
+            }
+        }
     }
 
     const discoveredAt = normalizeTimestamp(now, Date.now());

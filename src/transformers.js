@@ -3,14 +3,34 @@ import fs from 'node:fs';
 import process from 'node:process';
 import { Buffer } from 'node:buffer';
 
-import { pipeline, env } from 'sillytavern-transformers';
 import { getConfigValue } from './util.js';
 import { serverDirectory } from './server-directory.js';
-import { decodeRawImage } from './transformers-image.js';
 
-configureTransformers();
+/** @type {Promise<typeof import('sillytavern-transformers')>|null} */
+let transformersModulePromise = null;
 
-function configureTransformers() {
+/**
+ * Imports and configures sillytavern-transformers on first use.
+ * SillyBunny: the library and its ONNX runtime cost tens of MB, so they load only when a pipeline is needed.
+ * @returns {Promise<typeof import('sillytavern-transformers')>} The configured module
+ */
+function loadTransformers() {
+    if (!transformersModulePromise) {
+        transformersModulePromise = import('sillytavern-transformers').then((module) => {
+            configureTransformers(module.env);
+            return module;
+        }).catch((error) => {
+            transformersModulePromise = null;
+            throw error;
+        });
+    }
+    return transformersModulePromise;
+}
+
+/**
+ * @param {import('sillytavern-transformers').env} env transformers.js environment
+ */
+function configureTransformers(env) {
     // Limit the number of threads to 1 to avoid issues on Android
     env.backends.onnx.wasm.numThreads = 1;
     // Use WASM from a local folder to avoid CDN connections
@@ -59,6 +79,7 @@ export async function getRawImage(image) {
     try {
         const buffer = Buffer.from(image, 'base64');
         // SillyBunny: RawImage.fromBlob() can loop forever on malformed non-image input, and it fails for every image under Bun.
+        const { decodeRawImage } = await import('./transformers-image.js');
         return await decodeRawImage(buffer);
     } catch {
         return null;
@@ -133,6 +154,7 @@ export async function getPipeline(task, forceModel = '') {
     const model = forceModel || getModelForTask(task);
     const localOnly = !getConfigValue('extensions.models.autoDownload', true, 'boolean');
     console.log('Initializing transformers.js pipeline for task', task, 'with model', model);
+    const { pipeline } = await loadTransformers();
     const instance = await pipeline(task, model, { cache_dir: cacheDir, quantized: tasks[task].quantized ?? true, local_files_only: localOnly });
     tasks[task].pipeline = instance;
     tasks[task].currentModel = model;

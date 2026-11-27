@@ -1,6 +1,5 @@
 import fetch from 'node-fetch';
 import express from 'express';
-import { AIHorde, ModelGenerationInputStableSamplers, ModelInterrogationFormTypes, HordeAsyncRequestStates } from '@zeldafan0225/ai_horde';
 import { abortOnRequestClose, getVersion, delay, Cache } from '../util.js';
 import { readSecret, SECRET_KEYS } from './secrets.js';
 
@@ -8,6 +7,15 @@ const ANONYMOUS_KEY = '0000000000';
 const HORDE_TEXT_MODEL_METADATA_URL = 'https://raw.githubusercontent.com/db0/AI-Horde-text-model-reference/main/db.json';
 const cache = new Cache(60 * 1000);
 export const router = express.Router();
+
+/**
+ * Imports the AI Horde client library.
+ * SillyBunny: only the image and caption routes need it, so the text routes never load it.
+ * @returns {Promise<typeof import('@zeldafan0225/ai_horde')>} AI Horde library
+ */
+function loadHordeLibrary() {
+    return import('@zeldafan0225/ai_horde');
+}
 
 /**
  * Returns the AIHorde client agent.
@@ -20,9 +28,10 @@ async function getClientAgent() {
 
 /**
  * Returns the AIHorde client.
- * @returns {Promise<AIHorde>} AIHorde client
+ * @returns {Promise<import('@zeldafan0225/ai_horde').AIHorde>} AIHorde client
  */
 async function getHordeClient() {
+    const { AIHorde } = await loadHordeLibrary();
     return new AIHorde({
         client_agent: await getClientAgent(),
     });
@@ -213,6 +222,7 @@ router.post('/generate-text', async (request, response) => {
 
 router.post('/sd-samplers', async (_, response) => {
     try {
+        const { ModelGenerationInputStableSamplers } = await loadHordeLibrary();
         const samplers = Object.values(ModelGenerationInputStableSamplers);
         response.send(samplers);
     } catch (error) {
@@ -235,6 +245,7 @@ router.post('/sd-models', async (_, response) => {
 router.post('/caption-image', async (request, response) => {
     try {
         const api_key_horde = readSecret(request.user.directories, SECRET_KEYS.HORDE) || ANONYMOUS_KEY;
+        const { ModelInterrogationFormTypes, HordeAsyncRequestStates } = await loadHordeLibrary();
         const ai_horde = await getHordeClient();
         const result = await ai_horde.postAsyncInterrogate({
             source_image: request.body.image,

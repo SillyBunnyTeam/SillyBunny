@@ -12,11 +12,23 @@ import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { getConfigValue, color, recoverFileWriteSync, setPermissionsSync, isValidUrl } from '../util.js';
 import { write } from '../character-card-parser.js';
 import { serverDirectory } from '../server-directory.js';
-import { Jimp, JimpMime } from '../jimp.js';
 import { DEFAULT_AVATAR_PATH } from '../constants.js';
 // SillyBunny: bundled assistant cards, sprites and worlds that nobody edited are brought up to date in the per-user pass, and a replaced card loses its cached thumbnails.
 import { reconcileManagedContent } from '../sillybunny-managed-content.js';
 import { invalidateThumbnail } from './thumbnails.js';
+
+// SillyBunny: Jimp and its WASM codecs load only when converting a non-PNG Perchance avatar, not at server boot.
+/** @type {Promise<{Jimp: typeof import('../jimp.js').Jimp, JimpMime: typeof import('../jimp.js').JimpMime}>|null} */
+let contentManagerJimpPromise = null;
+function loadContentManagerJimp() {
+    contentManagerJimpPromise ??= import('../jimp.js')
+        .then(({ Jimp, JimpMime }) => ({ Jimp, JimpMime }))
+        .catch((error) => {
+            contentManagerJimpPromise = null;
+            throw error;
+        });
+    return contentManagerJimpPromise;
+}
 
 const contentDirectory = path.join(serverDirectory, 'default/content');
 const scaffoldDirectory = path.join(serverDirectory, 'default/scaffold');
@@ -1847,6 +1859,7 @@ async function fetchPerchanceAvatar(avatarUrl, isAvatarBase64) {
         } else {
             // use jimp to convert the base64 to PNG if it's not PNG
             console.debug('Perchance character avatar is not PNG, converting to PNG...');
+            const { Jimp, JimpMime } = await loadContentManagerJimp();
             return await Jimp.read(buffer).then(image => image.getBuffer(JimpMime.png));
         }
     }
@@ -1865,6 +1878,7 @@ async function fetchPerchanceAvatar(avatarUrl, isAvatarBase64) {
             console.debug(`Perchance character avatar is not PNG: ${avatarContentType}. Converting to PNG...`);
 
             // use jimp to convert the image to PNG if it's not PNG
+            const { Jimp, JimpMime } = await loadContentManagerJimp();
             return await Jimp.read(avatarBuffer)
                 .then(image => image.getBuffer(JimpMime.png));
         }
