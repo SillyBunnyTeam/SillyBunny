@@ -51,7 +51,7 @@ import {
 
 import getWebpackServeMiddleware from './middleware/webpack-serve.js';
 // SillyBunny: serve RAM-cached rewritten index.html and hashed /frontend-assets/ when frontend build is enabled.
-import { FRONTEND_ASSET_PREFIX, readRewrittenFrontendHtml } from './frontend-assets.js';
+import { FRONTEND_ASSET_PREFIX, isRawFrontendRequested, readRewrittenFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
 import getResponseCompressionMiddleware from './middleware/response-compression.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
@@ -375,7 +375,8 @@ app.get('/', restartCacheClear, cacheBuster.middleware, (request, response) => {
 
     // SillyBunny: return RAM-cached rewritten index.html (with importmap and hashed asset URLs) when active.
     // An unreadable file falls through to sendFile() below, which answers with the usual error status.
-    if (shouldServeFrontendAssets()) {
+    // A browser without import map support asks for the plain page with a query flag.
+    if (!isRawFrontendRequested(request) && shouldServeFrontendAssets()) {
         const indexPath = path.join(serverDirectory, 'public', 'index.html');
         const indexHtml = readRewrittenFrontendHtml(indexPath);
         if (indexHtml !== null) {

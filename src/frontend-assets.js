@@ -12,6 +12,8 @@ export const FRONTEND_INPUTS_STAMP_FILE = '.inputs-stamp.json';
 export const FRONTEND_MANIFEST_VERSION = 2;
 export const FRONTEND_ASSET_PREFIX = '/frontend-assets/';
 export const HASHED_FRONTEND_ASSET_RE = /-[a-f0-9]{8,}\.[a-z0-9]+$/i;
+// Query flag that asks GET / for the plain public/ page, set by the import map support check below.
+export const FRONTEND_RAW_QUERY_PARAM = 'sbRawFrontend';
 
 const REWRITTEN_HTML_CACHE_MAX_ENTRIES = 16;
 
@@ -553,9 +555,23 @@ function hasValidImportMap(manifest) {
     return Boolean(imports && typeof imports === 'object' && Object.keys(imports).length > 0);
 }
 
+// Import maps apply to import() and static imports only through the map, so a browser without import map support would load
+// the hashed page and fail on bare specifiers. This classic script runs before the first module script and sends such a
+// browser to the plain public/ page once. It avoids syntax newer than ES5 because the browsers it exists for are old.
+const IMPORT_MAP_SUPPORT_CHECK_SCRIPT = `<script>if(!(window.HTMLScriptElement&&HTMLScriptElement.supports&&HTMLScriptElement.supports('importmap'))&&location.search.indexOf('${FRONTEND_RAW_QUERY_PARAM}=1')<0){location.replace(location.pathname+(location.search?location.search+'&':'?')+'${FRONTEND_RAW_QUERY_PARAM}=1'+location.hash)}</script>`;
+
 function serializeImportMapScript(importMap) {
     const safeJson = JSON.stringify(importMap).replace(/</g, '\\u003c');
-    return `<script type="importmap">${safeJson}</script>`;
+    return `${IMPORT_MAP_SUPPORT_CHECK_SCRIPT}<script type="importmap">${safeJson}</script>`;
+}
+
+/**
+ * Returns true when the request asked for the plain public/ page instead of the hashed one.
+ * @param {{ query?: Record<string, unknown> }} request
+ * @returns {boolean}
+ */
+export function isRawFrontendRequested(request) {
+    return request?.query?.[FRONTEND_RAW_QUERY_PARAM] === '1';
 }
 
 // An attribute name starts after whitespace. A word boundary would also match the tail of a longer name:

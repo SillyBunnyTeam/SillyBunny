@@ -30,6 +30,7 @@ import {
     getFrontendHtmlCacheStats,
     isExcludedFrontendPublicPath,
     isManifestFresh,
+    isRawFrontendRequested,
     loadFrontendManifest,
     readRewrittenFrontendHtml,
     rewriteFrontendHtml,
@@ -848,8 +849,9 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         const solid = `${FRONTEND_ASSET_PREFIX}${manifest.assets['css/solid.min.css'].output}`;
         const brands = `${FRONTEND_ASSET_PREFIX}${manifest.assets['css/brands.min.css'].output}`;
         const scriptHashed = manifest.importMap.imports['/script.js'];
-        // The rewriter adds the import map to any document, so compare the tags without it.
+        // The rewriter adds the import map and its support check to any document, so compare the tags without them.
         const rewrite = html => rewriteFrontendHtml(html, { enabled: true, distRoot: tmpDistDir })
+            .replace(/<script>if\(!\(window\.HTMLScriptElement[\s\S]*?<\/script>/, '')
             .replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, '')
             .trim();
 
@@ -919,6 +921,49 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         } finally {
             fs.rmSync(fixtureRoot, { recursive: true, force: true });
         }
+    });
+
+    test('(m) a browser without import map support is sent to the plain page once, and a supporting browser is left alone', () => {
+        setSbDev(undefined);
+        const rewritten = rewriteFrontendHtml(fs.readFileSync(indexHtmlPath, 'utf8'), { enabled: true, distRoot: tmpDistDir });
+
+        const checkScripts = [...rewritten.matchAll(/<script>((?:(?!<\/script>)[\s\S])*HTMLScriptElement(?:(?!<\/script>)[\s\S])*)<\/script>/g)];
+        expect(checkScripts).toHaveLength(1);
+        const checkIndex = checkScripts[0].index;
+        expect(checkIndex).toBeLessThan(rewritten.search(/<script\b[^>]*\btype="importmap"[^>]*>/i));
+        expect(checkIndex).toBeLessThan(rewritten.search(/<link\b[^>]*\brel="modulepreload"[^>]*>/i));
+        expect(checkIndex).toBeLessThan(rewritten.search(/<script\b[^>]*\btype="module"[^>]*>/i));
+
+        // The page runs the check as a classic script in any browser, including ones that predate optional chaining and arrow functions.
+        const checkSource = checkScripts[0][1];
+        expect(checkSource).not.toMatch(/=>|\?\.|\blet\b|\bconst\b/);
+
+        const runCheck = ({ htmlScriptElement, search = '', pathname = '/', hash = '' }) => {
+            const replaced = [];
+            const sandbox = {
+                location: { search, pathname, hash, replace: url => replaced.push(url) },
+            };
+            sandbox.window = sandbox;
+            if (htmlScriptElement) {
+                sandbox.HTMLScriptElement = htmlScriptElement;
+            }
+            vm.runInContext(checkSource, vm.createContext(sandbox));
+            return replaced;
+        };
+
+        expect(runCheck({ htmlScriptElement: { supports: type => type === 'importmap' } })).toEqual([]);
+        expect(runCheck({})).toEqual(['/?sbRawFrontend=1']);
+        expect(runCheck({ htmlScriptElement: {} })).toEqual(['/?sbRawFrontend=1']);
+        expect(runCheck({ htmlScriptElement: { supports: () => false } })).toEqual(['/?sbRawFrontend=1']);
+        expect(runCheck({ htmlScriptElement: { supports: () => false }, pathname: '/app/', search: '?a=b', hash: '#c' }))
+            .toEqual(['/app/?a=b&sbRawFrontend=1#c']);
+        // The flag ends the redirect, so a browser that stays unsupported cannot reload in a loop.
+        expect(runCheck({ htmlScriptElement: { supports: () => false }, search: '?sbRawFrontend=1' })).toEqual([]);
+
+        expect(isRawFrontendRequested({ query: { sbRawFrontend: '1' } })).toBe(true);
+        expect(isRawFrontendRequested({ query: {} })).toBe(false);
+        expect(isRawFrontendRequested({ query: { sbRawFrontend: '0' } })).toBe(false);
+        expect(isRawFrontendRequested({})).toBe(false);
     });
 
     test('(i) no case reads or writes the repository\'s own dist/frontend', () => {
