@@ -89,7 +89,7 @@ function createTtsVoiceMapInitializer(initialize) {
     let currentPromise = null;
     let unrestrictedRequested = false;
     let requestedSpeakers = new Set();
-    return function requestVoiceMapInitialization(unrestricted = false, speakers = []) {
+    function requestVoiceMapInitialization(unrestricted = false, speakers = []) {
         unrestrictedRequested ||= Boolean(unrestricted);
         for (const speaker of Array.isArray(speakers) ? speakers : []) {
             const name = String(speaker || '').trim();
@@ -109,7 +109,26 @@ function createTtsVoiceMapInitializer(initialize) {
             });
         }
         return currentPromise;
-    };
+    }
+    // SillyBunny: expose the in-flight voice map promise so auto narration can wait without blocking SimpleMutex (ST #6097).
+    requestVoiceMapInitialization.pending = () => currentPromise;
+    return requestVoiceMapInitialization;
+}
+
+// SillyBunny: cap how long auto narration waits for an in-flight voice map init before falling back (ST #6097).
+const VOICE_MAP_INIT_TIMEOUT = 10000;
+const voiceMapWakeupAttachedPromises = new WeakSet();
+
+/**
+ * Waits for an in-flight voice map initialisation up to a timeout without propagating rejections.
+ * @param {Promise<void>} voiceMapInit Promise returned by initVoiceMap()
+ * @param {number} [timeoutMs=VOICE_MAP_INIT_TIMEOUT] Maximum time to wait in milliseconds
+ * @returns {Promise<boolean>} True when the initialisation settled within the timeout
+ */
+async function waitForVoiceMapInit(voiceMapInit, timeoutMs = VOICE_MAP_INIT_TIMEOUT) {
+    const settled = Promise.resolve(voiceMapInit).then(() => true, () => true);
+    const timedOut = delay(timeoutMs).then(() => false);
+    return Promise.race([settled, timedOut]);
 }
 
 let voiceMapEntries = [];
@@ -947,6 +966,26 @@ async function processTtsQueue() {
         return;
     }
 
+    // SillyBunny: hold unmapped auto-narration jobs while a chat-switch voice map init is in flight, without awaiting inside SimpleMutex (ST #6097).
+    const nextJob = ttsJobQueue[0];
+    const pendingVoiceMapInit = requestVoiceMapInitialization.pending?.();
+    if (nextJob && pendingVoiceMapInit && !hasVoiceMapForSpeaker(nextJob.name)) {
+        const now = Date.now();
+        if (typeof nextJob._voiceMapWaitStartedAt !== 'number') {
+            nextJob._voiceMapWaitStartedAt = now;
+        }
+        if (now - nextJob._voiceMapWaitStartedAt < VOICE_MAP_INIT_TIMEOUT) {
+            if (!voiceMapWakeupAttachedPromises.has(pendingVoiceMapInit)) {
+                voiceMapWakeupAttachedPromises.add(pendingVoiceMapInit);
+                pendingVoiceMapInit.catch(() => {}).finally(() => {
+                    scheduleTtsQueueWakeup();
+                });
+            }
+            return;
+        }
+        console.warn(`TTS: voice map initialisation exceeded ${VOICE_MAP_INIT_TIMEOUT}ms; proceeding with narration`);
+    }
+
     console.debug('New message found, running TTS');
     currentTtsJob = ttsJobQueue.shift();
 
@@ -1475,7 +1514,7 @@ async function onChatChanged() {
     await onGenerationEnded();
     resetTtsPlayback();
     const voiceMapInit = initVoiceMap();
-    await Promise.race([voiceMapInit, delay(debounce_timeout.relaxed)]);
+    await waitForVoiceMapInit(voiceMapInit, debounce_timeout.relaxed);
     lastMessage = null;
 }
 
