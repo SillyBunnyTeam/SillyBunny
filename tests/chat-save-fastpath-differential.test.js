@@ -585,6 +585,32 @@ describe('ChatStateCache bounds, stat-tuple guards, hard-link pre-write, and fsy
         }
     });
 
+    test('fsyncs the temporary file of a regular backup before it is renamed into place', async () => {
+        const realOpenSync = fs.openSync.bind(fs);
+        const realFsyncSync = fs.fsyncSync.bind(fs);
+        const fdPaths = new Map();
+        const fsyncedPaths = [];
+        jest.spyOn(fs, 'openSync').mockImplementation((p, ...rest) => {
+            const fd = realOpenSync(p, ...rest);
+            fdPaths.set(fd, String(p));
+            return fd;
+        });
+        jest.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+            fsyncedPaths.push(fdPaths.get(fd));
+            return realFsyncSync(fd);
+        });
+
+        await trySaveChat(makeLargeChat(4, 'backup-fsync'), chatFile, false, 'user1', 'TestCard', backupsDir, {
+            recoveryTarget,
+            deferBackup: false,
+        });
+
+        const regularBackups = fs.readdirSync(backupsDir).filter(name => name.startsWith('chat_testcard_'));
+        expect(regularBackups).toHaveLength(1);
+        const regularBackupPrefix = path.join(backupsDir, 'chat_testcard_');
+        expect(fsyncedPaths.some(fsyncedPath => fsyncedPath?.startsWith(regularBackupPrefix))).toBe(true);
+    });
+
     test('fsyncs the active file after restoring byte 0, so an acknowledged save leaves the complete valid file on disk', async () => {
         const initial = makeLargeChat(10, 'init-slug');
         const firstSave = await trySaveChat(initial, chatFile, false, 'user1', 'TestCard', backupsDir, {

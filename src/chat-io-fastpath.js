@@ -840,19 +840,21 @@ export function writeDurableAtomicFileSync(filePath, data, options = undefined) 
 }
 
 /**
- * Atomically writes a non-durable backup file (with `fsync: false`) from memory, preserving Windows retries.
+ * Atomically writes a backup file from memory, preserving Windows retries. `write-file-atomic` fsyncs the
+ * temporary file before the rename, so a power cut cannot leave a zero-length or partial backup under its
+ * final name. The directory is not fsynced, so a power cut can lose the newest backup but not corrupt it.
  * @param {string} filePath Target path
  * @param {string|Buffer} data File contents
  * @param {string} [encoding]
  * @returns {{ dev: bigint, ino: bigint, size: bigint, mtimeNs: bigint, ctimeNs: bigint }|null}
  */
-export function writeNonDurableAtomicFileSync(filePath, data, encoding = 'utf8') {
+export function writeAtomicBackupFileSync(filePath, data, encoding = 'utf8') {
     const directory = path.dirname(filePath);
     if (!fs.existsSync(directory)) {
         fs.mkdirSync(directory, { recursive: true });
     }
 
-    const atomicOptions = Buffer.isBuffer(data) ? { fsync: false } : { encoding, fsync: false };
+    const atomicOptions = Buffer.isBuffer(data) ? {} : { encoding };
     const atomicResult = runWithWindowsRetries(() => writeFileAtomicSync(filePath, data, atomicOptions));
     if (atomicResult.ok) {
         return safeLstatTuple(filePath);

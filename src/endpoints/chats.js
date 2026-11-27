@@ -36,7 +36,7 @@ import {
     tryHardLinkPreWriteBackupSync,
     withValidationTime,
     writeChatFileInPlaceFast,
-    writeNonDurableAtomicFileSync,
+    writeAtomicBackupFileSync,
 } from '../chat-io-fastpath.js';
 import {
     CHAT_HEADER_FIXED_UP_SYMBOL,
@@ -637,10 +637,10 @@ function backupChat(directory, name, data, backupPrefix = CHAT_BACKUPS_PREFIX, h
 
         const backupFile = path.join(directory, `${backupPrefix}${name}_${generateTimestamp()}.jsonl`);
 
-        // SillyBunny: regular chat backups never hard-link to live `.latest.jsonl` and write non-durably from memory.
+        // SillyBunny: regular chat backups never hard-link to live `.latest.jsonl` and are written from memory.
         let writtenTuple = null;
         if (isRegularBackup) {
-            writtenTuple = writeNonDurableAtomicFileSync(backupFile, data);
+            writtenTuple = writeAtomicBackupFileSync(backupFile, data);
         } else {
             tryWriteFileSync(backupFile, data);
         }
