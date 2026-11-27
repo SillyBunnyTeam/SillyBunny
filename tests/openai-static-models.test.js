@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
 
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
-const gpt6Models = ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'];
+const gpt6Models = ['gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'];
 const currentGemmaModels = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const currentClaudeModels = ['claude-opus-5', 'claude-sonnet-5'];
 const currentGoogleStudioModels = ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1'];
@@ -125,7 +125,7 @@ test('OpenAI pickers include GPT-5.6 and GPT-6 and omit retired native OpenAI mo
     expect(readSource('../public/index.html')).toContain('<option value="gpt-5.3-chat-latest">gpt-5.3-chat-latest (deprecated)</option>');
 });
 
-for (const model of ['gpt-6-astra', 'gpt-6-astra-2026-09-14']) {
+for (const model of ['gpt-6-astra', 'gpt-6-astra-2026-09-14', 'gpt-6.1-sol', 'gpt-6.1-terra']) {
     test(`${model} enables images without advertising unsupported tool calls`, () => {
         const imageSupport = readSource('../public/scripts/openai.js').match(/export function isImageInliningSupported\(\) \{[\s\S]*?\n\}/)[0].replace('export ', '');
         const toolSupport = readSource('../public/scripts/tool-calling.js').match(/static isToolCallingSupported\([\s\S]*?\n {4}\}/)[0].replace('static ', 'function ');
@@ -162,7 +162,7 @@ test('GPT-6 models are listed once in the image-capable model list', () => {
     const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
     const occurrences = Object.fromEntries(gpt6Models.map(model => [model, visionModels.split(`'${model}'`).length - 1]));
 
-    expect(occurrences).toEqual({ 'gpt-6-astra': 1, 'gpt-6-sol': 1, 'gpt-6-luna': 1 });
+    expect(occurrences).toEqual({ 'gpt-6.1-sol': 1, 'gpt-6.1-terra': 1, 'gpt-6-astra': 1, 'gpt-6-sol': 1, 'gpt-6-luna': 1 });
 });
 
 test('GPT-5.6 and GPT-6 support distinct max reasoning effort and 1.05-million-token context', () => {
@@ -193,6 +193,8 @@ test('GPT-5.6 and GPT-6 support distinct max reasoning effort and 1.05-million-t
 });
 
 for (const [model, expected] of [
+    ['gpt-6.1-sol', 1050000],
+    ['gpt-6.1-terra', 1050000],
     ['gpt-6-astra-2026-09-14', 1050000],
     ['gpt-6-sol', 1050000],
     ['gpt-6-luna', 1050000],
@@ -229,9 +231,11 @@ test('Claude pickers include current Claude 5 models and omit all retired Claude
     const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
 
     expect(mainPicker).toEqual(expect.arrayContaining(currentClaudeModels));
+    expect(mainPicker).toContain('claude-fable-5-2');
     expect(mainPicker).toContain('claude-fable-5-1');
     expect(mainPicker).toContain('claude-opus-5-5');
     expect(captionPicker).toEqual(expect.arrayContaining(currentClaudeModels));
+    expect(captionPicker).toContain('claude-fable-5-2');
     expect(captionPicker).toContain('claude-fable-5-1');
     expect(captionPicker).toContain('claude-opus-5-5');
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));

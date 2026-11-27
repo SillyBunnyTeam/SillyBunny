@@ -124,6 +124,8 @@ describe('Claude 5 backend request handling', () => {
     });
 
     test.each([
+        'claude-fable-5-2',
+        'anthropic/claude-fable-5-2',
         'claude-fable-5-1',
         'anthropic/claude-fable-5-1',
         'claude-opus-5-5',

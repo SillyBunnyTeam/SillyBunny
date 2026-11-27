@@ -344,7 +344,8 @@ async function sendClaudeRequest(request, response) {
         const convertedPrompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, useSystemPrompt, useTools, getPromptNames(request));
         // SillyBunny: claude-fable-5 support (substring match also catches router ids like 'anthropic/claude-fable-5')
         const isFableModel = /claude-fable/.test(request.body.model);
-        const useNativeJsonOutput = /claude-(fable-5-1|opus-5-5)/.test(request.body.model);
+        // SillyBunny: include Claude Fable 5.2 in native JSON output support (ST e725a86d6).
+        const useNativeJsonOutput = /claude-(fable-5-[12]|opus-5-5)/.test(request.body.model);
         // SillyBunny: Claude Sonnet 5 and Opus 5 require adaptive thinking and reject sampling params and assistant prefill.
         const isSonnetOrOpus5 = /claude-(?:sonnet|opus)-5/.test(request.body.model);
         const isOpus55Model = /claude-opus-5-5(?:[-/:]|$)/.test(request.body.model);
@@ -391,7 +392,7 @@ async function sendClaudeRequest(request, response) {
             requestBody.tools = claudeFunctionTools;
         }
 
-        // Fable 5.1 and Opus 5.5 reject forced tools, but support native JSON outputs.
+        // Fable 5.1 and 5.2 and Opus 5.5 reject forced tools, but support native JSON outputs.
         if (request.body.json_schema) {
             if (useNativeJsonOutput) {
                 requestBody.output_config = {
@@ -3506,22 +3507,26 @@ async function handleChatCompletionsGenerate(request, response) {
         // to the provider verbatim.
         applyReasoningEffortNormalization(request.body);
 
-        // SillyBunny: enforce upstream Astra constraints before dispatch so profile overrides
-        // follow the same rules as the frontend builder.
+        // SillyBunny: enforce upstream GPT-6 Astra and GPT-6.1 constraints before dispatch so profile overrides
+        // follow the same rules as the frontend builder (adapted from ST #6213).
         if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES, CHAT_COMPLETION_SOURCES.AZURE_OPENAI, CHAT_COMPLETION_SOURCES.OPENROUTER].includes(request.body.chat_completion_source)
-            && /gpt-6-astra/.test(request.body.model)) {
+            && /gpt-(?:6-astra|6\.1-(?:sol|terra))/.test(request.body.model)) {
             // A profile override can supply max_tokens after a preset set max_completion_tokens.
             request.body.max_completion_tokens = request.body.max_tokens ?? request.body.max_completion_tokens;
-            for (const key of ['max_tokens', 'temperature', 'top_p', 'logprobs', 'top_logprobs']) {
-                delete request.body[key];
+            delete request.body.max_tokens;
+            if (/gpt-(?:6-astra|6\.1-sol)/.test(request.body.model) || request.body.reasoning_effort !== 'none') {
+                for (const key of ['temperature', 'top_p', 'logprobs', 'top_logprobs']) {
+                    delete request.body[key];
+                }
             }
-            if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)) {
+            if (/gpt-(?:6-astra|6\.1-sol)/.test(request.body.model)
+                && [CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES].includes(request.body.chat_completion_source)) {
                 for (const key of ['frequency_penalty', 'presence_penalty', 'logit_bias', 'stop']) {
                     delete request.body[key];
                 }
             }
             if ([CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.AZURE_OPENAI].includes(request.body.chat_completion_source)
-                && /^gpt-6-astra/.test(request.body.model)) {
+                && /^gpt-(?:6-astra|6\.1-(?:sol|terra))/.test(request.body.model)) {
                 delete request.body.tools;
                 delete request.body.tool_choice;
             }

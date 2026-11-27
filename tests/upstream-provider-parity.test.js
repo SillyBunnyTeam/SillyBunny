@@ -109,11 +109,15 @@ describe('upstream provider request integration', () => {
     for (const [source, model] of [
         ['openai', 'gpt-6-astra'],
         ['openai', 'gpt-6-astra-2026-09-14'],
+        ['openai', 'gpt-6.1-sol'],
         ['openai_responses', 'gpt-6-astra'],
+        ['openai_responses', 'gpt-6.1-sol'],
         ['azure_openai', 'gpt-6-astra'],
         ['azure_openai', 'gpt-6-astra-2026-09-14'],
+        ['azure_openai', 'gpt-6.1-sol'],
         ['openrouter', 'openai/gpt-6-astra'],
         ['openrouter', 'openai/gpt-6-astra-2026-09-14'],
+        ['openrouter', 'openai/gpt-6.1-sol'],
     ]) {
         test(`normalizes Astra generation parameters for ${source} model ${model}`, async () => {
             const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'max' });
@@ -131,12 +135,16 @@ describe('upstream provider request integration', () => {
     for (const [source, model] of [
         ['openai', 'gpt-6-sol'],
         ['openai', 'gpt-6-luna'],
+        ['openai', 'gpt-6.1-terra'],
         ['openai_responses', 'gpt-6-sol'],
         ['openai_responses', 'gpt-6-luna'],
+        ['openai_responses', 'gpt-6.1-terra'],
         ['azure_openai', 'gpt-6-sol'],
         ['azure_openai', 'gpt-6-luna'],
+        ['azure_openai', 'gpt-6.1-terra'],
         ['openrouter', 'openai/gpt-6-sol'],
         ['openrouter', 'openai/gpt-6-luna'],
+        ['openrouter', 'openai/gpt-6.1-terra'],
     ]) {
         test(`normalizes Sol and Luna generation parameters at max effort for ${source} model ${model}`, async () => {
             const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'max' });
@@ -154,10 +162,13 @@ describe('upstream provider request integration', () => {
     for (const [source, model] of [
         ['openai', 'gpt-6-sol'],
         ['openai', 'gpt-6-luna'],
+        ['openai', 'gpt-6.1-terra'],
         ['openai_responses', 'gpt-6-sol'],
         ['openai_responses', 'gpt-6-luna'],
+        ['openai_responses', 'gpt-6.1-terra'],
         ['azure_openai', 'gpt-6-sol'],
         ['azure_openai', 'gpt-6-luna'],
+        ['azure_openai', 'gpt-6.1-terra'],
     ]) {
         test(`keeps Sol and Luna sampling when reasoning is none for ${source} model ${model}`, async () => {
             const runtime = makeRuntime({ chat_completion_source: source, reasoning_effort: 'none' });

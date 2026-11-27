@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `public/scripts/tokenizers.js`, `public/scripts/tool-calling.js`, `src/constants.js`, `src/endpoints/tokenizers.js` and `src/endpoints/backends/chat-completions.js` - Claude Fable 5.2 and GPT-6.1 Sol/Terra models
+| Field | Value |
+| --- | --- |
+| File | `public/index.html`, `public/scripts/extensions/caption/settings.html`, `public/scripts/openai.js`, `public/scripts/tokenizers.js`, `public/scripts/tool-calling.js`, `src/constants.js`, `src/endpoints/tokenizers.js`, `src/endpoints/backends/chat-completions.js` (plus SillyBunny-owned `public/scripts/generation-request-controls.js`). |
+| Area | Model catalogs, vision detection, 1.05M context, tokenizer selection, reasoning-effort rules, tool-calling gates, and Claude native JSON output for `claude-fable-5-2`, `gpt-6.1-sol`, and `gpt-6.1-terra`. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6213 (GPT-6.1 Sol and Terra) and commit `e725a86d6` (Claude Fable 5.2) before the next full upstream sync. SillyBunny maps GPT-6.1 Terra's reasoning-off check onto its `'none'` effort rung (keeping `'min'` as `'minimal'`), keeps SillyBunny's `claude_model` default (`claude-opus-5`), and extends SillyBunny's server-side dispatch guard and `generation-request-controls.js` reasoning detection to GPT-6.1 Sol and Terra. |
+| Target seam | `getReasoningEffort()`, `createGenerationParameters()`, `getMaxContextOpenAI()`, and `isImageInliningSupported()` in `public/scripts/openai.js`; `ToolManager.isToolCallingSupported()` in `public/scripts/tool-calling.js`; `sendClaudeRequest()` and the GPT-6 dispatch guard in `src/endpoints/backends/chat-completions.js`; `requestUsesReasoning()` in `public/scripts/generation-request-controls.js`. |
+| Adapter shape | Add `gpt-6.1-sol`, `gpt-6.1-terra`, and `claude-fable-5-2` to the main and caption pickers; widen `gpt-6-` matchers to `gpt-6(?:\.\d+)?-` for verbosity, 1.05M context, tokenizers, and parameter normalization; allow `'none'` effort for `gpt-6.1-terra` and always strip sampling params for `gpt-6.1-sol`; require Responses API for Chat Completions tools on both `gpt-6.1-sol` and `gpt-6.1-terra`; add `claude-fable-5-2` to `useNativeJsonOutput` (`/claude-(fable-5-[12]|opus-5-5)/`). |
+| Protecting tests | `tests/openai-static-models.test.js`, `tests/reasoning-effort-none.test.js`, `tests/claude-sonnet5.test.js`, `tests/upstream-provider-parity.test.js`, `tests/openai-responses.test.js`, `tests/story-mode-request-controls.test.js`. |
+| Validation | Root and `tests/` lint, focused Jest suites (`openai-static-models`, `reasoning-effort-none`, `claude-sonnet5`, `upstream-provider-parity`, `openai-responses`, `story-mode-request-controls`, `tokenizer-cache-priming`), `npm run check:frontend-budgets`. |
+| Rollback path | Remove `gpt-6.1-sol`, `gpt-6.1-terra`, and `claude-fable-5-2` from the pickers, `visionSupportedModels`, and `OPENAI_REASONING_EFFORT_MODELS`; restore `gpt-6-` regexes in `openai.js`, `tokenizers.js`, `tool-calling.js`, `constants.js`, `src/endpoints/tokenizers.js`, `generation-request-controls.js`, and `chat-completions.js`; restore `useNativeJsonOutput` to `fable-5-1`; and revert the added test cases. Existing saved presets and chats are unchanged. Reconcile on the upstream sync carrying ST #6213 / `e725a86d6`. |
+| Last reviewed | 2026-11-27 (adapted early port of ST #6213 and `e725a86d6`). |
+| Owner | Server and API compatibility integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
