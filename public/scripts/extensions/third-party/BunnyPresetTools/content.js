@@ -1770,11 +1770,14 @@ function syncSettingsPanel() {
 }
 
 // SillyBunny: event-driven bootstrap + one-shot mount observer instead of permanent 1s setInterval polling.
+// The prompt list is not a target of its own: it only exists once Prompt Manager renders, which never happens
+// on text-completion APIs, and the observer on the static prompt container attaches the enhancer when it appears.
+// Waiting for the list would keep this document-wide observer on for the whole session.
 function hasAllBootstrapTargets() {
     return Boolean(
-        document.getElementById('extensions_settings')
-        && document.querySelector('#completion_prompt_manager_list')
-        && document.getElementById('bg1')
+        settingsContainerElement
+        && promptContainerElement
+        && backgroundLayerElement
         && document.getElementById('Backgrounds'),
     );
 }
