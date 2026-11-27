@@ -43,7 +43,6 @@ import {
     shouldRedirectToLogin,
     cleanUploads,
     getSessionCookieAge,
-    getSessionCookieExpires,
     verifySecuritySettings,
     loginPageMiddleware,
     migratePublicOverrides,
@@ -78,6 +77,8 @@ import {
     setWindowTitle,
     getConfigValue,
 } from './util.js';
+// SillyBunny: flush Node's V8 bytecode compile cache via the lightweight shared helper.
+import { flushNodeCompileCache } from './node-compile-cache.js';
 import { isBenignStreamAbort } from './stream-disconnect-guard.js';
 import { answerWithErrorMessage, forwardAsyncRouteErrors, handleRouteError } from './route-errors.js';
 import { UPLOADS_DIRECTORY } from './constants.js';
@@ -173,10 +174,22 @@ app.use(cookieSession({
 }));
 
 if (isBunRuntime()) {
+    // SillyBunny: read sessionTimeout once at startup instead of re-querying config on every Bun request.
+    const sessionTimeoutSeconds = getConfigValue('sessionTimeout', -1, 'number');
     app.use((req, _res, next) => {
         // Bun 1.3.11 overflows large millisecond cookie ages via Date.now(),
         // so we provide a concrete expiry date on each request instead.
-        req.sessionOptions.expires = getSessionCookieExpires();
+        if (sessionTimeoutSeconds === 0) {
+            req.sessionOptions.expires = undefined;
+        } else {
+            const expires = new Date();
+            if (sessionTimeoutSeconds > 0) {
+                expires.setUTCSeconds(expires.getUTCSeconds() + sessionTimeoutSeconds);
+            } else {
+                expires.setUTCDate(expires.getUTCDate() + 400);
+            }
+            req.sessionOptions.expires = expires;
+        }
         delete req.sessionOptions.maxAge;
         next();
     });
@@ -364,6 +377,16 @@ if (!cliArgs.disableCsrf) {
 }
 
 // Static files
+// SillyBunny: cache negative frontend manifest checks with a false sentinel so missing dist/frontend/asset-manifest.json does not stat on every request.
+/** @type {boolean | null} */
+let cachedShouldServeFrontendAssets = null;
+function isFrontendAssetServingActive() {
+    if (cachedShouldServeFrontendAssets === null) {
+        cachedShouldServeFrontendAssets = Boolean(shouldServeFrontendAssets());
+    }
+    return cachedShouldServeFrontendAssets;
+}
+
 // Host index page
 app.get('/', restartCacheClear, cacheBuster.middleware, (request, response) => {
     if (shouldRedirectToLogin(request)) {
@@ -372,7 +395,7 @@ app.get('/', restartCacheClear, cacheBuster.middleware, (request, response) => {
         return response.redirect(redirectUrl);
     }
 
-    if (shouldServeFrontendAssets()) {
+    if (isFrontendAssetServingActive()) {
         const indexPath = path.join(serverDirectory, 'public', 'index.html');
         const indexHtml = safeReadFileSync(indexPath);
         response.type('html');
@@ -405,7 +428,7 @@ app.use(FRONTEND_ASSET_PREFIX, frontendAssetMiddleware.immutableAssets);
 app.use(webpackMiddleware);
 app.use(userCssMiddleware);
 app.use((request, response, next) => {
-    if (!shouldServeFrontendAssets()) {
+    if (!isFrontendAssetServingActive()) {
         return next();
     }
 
@@ -738,6 +761,49 @@ function setDnsResolutionOrder() {
     }
 }
 
+function applyHttpServerTimeouts(server) {
+    if (!server || typeof server !== 'object') {
+        return;
+    }
+    // SillyBunny: keep headersTimeout above keepAliveTimeout so browser and WebView sockets stay pooled past Node's 5s default.
+    if ('headersTimeout' in server) {
+        server.headersTimeout = 66_000;
+    }
+    if ('keepAliveTimeout' in server) {
+        server.keepAliveTimeout = 65_000;
+    }
+}
+
+async function startServerWithHygiene() {
+    const originalCreateHttpServer = http.createServer;
+    const originalCreateHttpsServer = https.createServer;
+
+    http.createServer = function (...args) {
+        const server = originalCreateHttpServer.apply(this, args);
+        if (args.includes(app)) {
+            applyHttpServerTimeouts(server);
+        }
+        return server;
+    };
+    https.createServer = function (...args) {
+        const server = originalCreateHttpsServer.apply(this, args);
+        if (args.includes(app)) {
+            applyHttpServerTimeouts(server);
+        }
+        return server;
+    };
+
+    try {
+        const result = await new ServerStartup(app, cliArgs).start();
+        // SillyBunny: persist V8 bytecode cache right after listen because Android stops backgrounded servers with SIGKILL.
+        flushNodeCompileCache();
+        return result;
+    } finally {
+        http.createServer = originalCreateHttpServer;
+        https.createServer = originalCreateHttpsServer;
+    }
+}
+
 // User storage module needs to be initialized before starting the server
 initUserStorage(globalThis.DATA_ROOT)
     .then(setDnsResolutionOrder)
@@ -749,7 +815,7 @@ initUserStorage(globalThis.DATA_ROOT)
     .then(apply404Middleware)
     // SillyBunny: the last handler answers a failed route, plugin routes included, without error details.
     .then(() => app.use(handleRouteError))
-    .then(() => new ServerStartup(app, cliArgs).start())
+    .then(startServerWithHygiene)
     .then(postSetupTasks)
     .catch((error) => {
         console.error('A critical error has occurred while starting the server:', error);

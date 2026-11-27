@@ -62,6 +62,8 @@ if !errorlevel! neq 0 goto end
 
 echo Entering SillyBunny (Node.js mode)...
 set NODE_NO_WARNINGS=1
+REM SillyBunny: enable Node V8 bytecode compile cache outside git-tracked paths.
+if not defined NODE_COMPILE_CACHE set "NODE_COMPILE_CACHE=%~dp0node_modules\.cache\sillybunny-v8"
 
 :server_loop
 node --no-warnings server.js %*

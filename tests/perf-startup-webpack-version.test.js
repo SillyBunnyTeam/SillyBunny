@@ -1,0 +1,1067 @@
+import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { constants as moduleConstants } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import getPublicLibConfig, {
+    buildPublicLibMinimizer,
+    getPublicLibCacheInfo,
+    invalidatePublicLibCacheInfo,
+    resolveTerserPluginPath,
+    resolveWebpackMinimizerSpec,
+} from '../webpack.config.js';
+import getWebpackServeMiddleware from '../src/middleware/webpack-serve.js';
+import {
+    MemoryLimitedMap,
+    enableNodeCompileCache,
+    flushNodeCompileCache,
+    getConfig,
+    getConfigValue,
+    getVersion,
+    invalidateFirefoxCache,
+    invalidateVersionCache,
+    setConfigFilePath,
+} from '../src/util.js';
+import {
+    enableNodeCompileCache as directEnableNodeCompileCache,
+    flushNodeCompileCache as directFlushNodeCompileCache,
+} from '../src/node-compile-cache.js';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const defaultConfigPath = path.join(repoRoot, 'default', 'config.yaml');
+const originalDataRoot = global.DATA_ROOT;
+const compileCacheStatus = moduleConstants.compileCacheStatus;
+const describePosix = process.platform === 'win32' ? describe.skip : describe;
+
+setConfigFilePath(defaultConfigPath);
+
+afterEach(() => {
+    jest.restoreAllMocks();
+    global.DATA_ROOT = originalDataRoot;
+    invalidatePublicLibCacheInfo();
+    invalidateVersionCache();
+    setConfigFilePath(defaultConfigPath);
+});
+
+afterAll(() => {
+    global.DATA_ROOT = originalDataRoot;
+    setConfigFilePath(defaultConfigPath);
+});
+
+describe('lazy webpack configuration and middleware', () => {
+    let tempDir;
+
+    beforeEach(() => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-perf-webpack-'));
+        global.DATA_ROOT = tempDir;
+        invalidatePublicLibCacheInfo();
+    });
+
+    afterEach(() => {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    test('importing webpack.config.js and webpack-serve.js does not eagerly load webpack', () => {
+        const script = [
+            `globalThis.DATA_ROOT = ${JSON.stringify(tempDir)};`,
+            `await import(${JSON.stringify(pathToFileURL(path.join(repoRoot, 'webpack.config.js')).href)});`,
+            `await import(${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src', 'middleware', 'webpack-serve.js')).href)});`,
+            'const loaded = process.moduleLoadList.filter(entry => entry.includes("webpack"));',
+            'console.log(JSON.stringify({ loaded }));',
+        ].join('\n');
+
+        const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+            cwd: repoRoot,
+            encoding: 'utf8',
+        }).trim();
+        const parsed = JSON.parse(raw.split(/\r?\n/).pop());
+        expect(parsed.loaded).toEqual([]);
+    });
+
+    test('memoizes getPublicLibCacheInfo per process without re-hashing lockfiles', () => {
+        const first = getPublicLibCacheInfo();
+        const readSpy = jest.spyOn(fs, 'readFileSync');
+
+        const second = getPublicLibCacheInfo();
+        const third = getPublicLibCacheInfo();
+
+        expect(second).toEqual(first);
+        expect(third).toEqual(first);
+        expect(readSpy).not.toHaveBeenCalled();
+
+        const alternateRoot = path.join(tempDir, 'alt-data');
+        global.DATA_ROOT = alternateRoot;
+        const relocated = getPublicLibCacheInfo();
+        expect(relocated.webpackRoot).toBe(path.resolve(alternateRoot, '_webpack'));
+        expect(relocated.cacheVersion).toBe(first.cacheVersion);
+        expect(readSpy).not.toHaveBeenCalled();
+    });
+
+    test('disables filesystem pack cache and minimizes in-process on Android only', async () => {
+        const { default: webpack } = await import('webpack');
+        const entryFile = path.join(tempDir, 'noop-entry.js');
+        fs.writeFileSync(entryFile, 'export const value = 1;\n', 'utf8');
+
+        const previousAndroid = process.env.SILLYBUNNY_ANDROID_APP;
+        try {
+            delete process.env.SILLYBUNNY_ANDROID_APP;
+            const desktopConfig = getPublicLibConfig({ outputPath: path.join(tempDir, 'desktop-out') });
+            expect(desktopConfig.cache).toBe(false);
+            expect(desktopConfig.optimization.minimize).toBe(true);
+            expect(desktopConfig.optimization.minimizer).toHaveLength(1);
+            expect(typeof desktopConfig.optimization.minimizer[0].apply).toBe('function');
+
+            const desktopCompiler = webpack({ ...desktopConfig, entry: entryFile });
+            await new Promise((resolve, reject) => desktopCompiler.close(err => err ? reject(err) : resolve()));
+
+            process.env.SILLYBUNNY_ANDROID_APP = '1';
+            const androidConfig = getPublicLibConfig({ outputPath: path.join(tempDir, 'android-out') });
+            expect(androidConfig.optimization.minimizer).toHaveLength(1);
+            expect(typeof androidConfig.optimization.minimizer[0].apply).toBe('function');
+
+            const androidCompiler = webpack({ ...androidConfig, entry: entryFile });
+            await new Promise((resolve, reject) => androidCompiler.close(err => err ? reject(err) : resolve()));
+
+            const seenOptions = [];
+            const captureLoader = () => class CapturingMinimizer {
+                constructor(opts) {
+                    seenOptions.push(opts);
+                }
+                apply() {}
+            };
+            buildPublicLibMinimizer({ env: {}, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
+            buildPublicLibMinimizer({ env: { SILLYBUNNY_ANDROID_APP: '1' }, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
+            buildPublicLibMinimizer({ env: {}, platform: 'android', loadPlugin: captureLoader })[0].apply({});
+            buildPublicLibMinimizer({ env: { TERMUX_VERSION: '0.118.0' }, platform: 'linux', loadPlugin: captureLoader })[0].apply({});
+            expect(seenOptions[0]).not.toHaveProperty('parallel');
+            expect(seenOptions.slice(1).map(opts => opts.parallel)).toEqual([false, false, false]);
+
+            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            buildPublicLibMinimizer({
+                env: {},
+                platform: 'linux',
+                loadPlugin: () => { throw new Error('broken plugin'); },
+            })[0].apply({});
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to load webpack minimizer plugin'),
+                expect.any(Error),
+            );
+        } finally {
+            if (previousAndroid === undefined) {
+                delete process.env.SILLYBUNNY_ANDROID_APP;
+            } else {
+                process.env.SILLYBUNNY_ANDROID_APP = previousAndroid;
+            }
+        }
+    });
+
+    test('resolves webpack 5.112 minimizer-webpack-plugin and webpack 5.105 terser-webpack-plugin across nested and isolated layouts', async () => {
+        const { createRequire } = await import('node:module');
+
+        const modernRoot = path.join(tempDir, 'modern-webpack-layout');
+        const modernWebpackDir = path.join(modernRoot, 'node_modules', 'webpack');
+        const modernMinimizerDir = path.join(modernWebpackDir, 'node_modules', 'minimizer-webpack-plugin');
+        fs.mkdirSync(modernMinimizerDir, { recursive: true });
+        fs.writeFileSync(path.join(modernRoot, 'package.json'), JSON.stringify({ name: 'modern-fixture', version: '1.0.0' }), 'utf8');
+        fs.writeFileSync(path.join(modernWebpackDir, 'package.json'), JSON.stringify({
+            name: 'webpack',
+            version: '5.112.2',
+            main: 'index.js',
+            exports: { '.': './index.js' },
+        }), 'utf8');
+        fs.writeFileSync(path.join(modernWebpackDir, 'index.js'), 'module.exports = {};\n', 'utf8');
+        fs.writeFileSync(path.join(modernMinimizerDir, 'package.json'), JSON.stringify({ name: 'minimizer-webpack-plugin', version: '5.14.0', main: 'index.js' }), 'utf8');
+        fs.writeFileSync(path.join(modernMinimizerDir, 'index.js'), 'module.exports = class ModernMinimizerPlugin { constructor(opts) { this.opts = opts; } apply(c) { c.applied = this.opts; } };\n', 'utf8');
+
+        const modernRequire = createRequire(path.join(modernRoot, 'package.json'));
+        const modernSpec = resolveWebpackMinimizerSpec({
+            baseRequire: modernRequire,
+            fallbackWebpackPkgPath: null,
+        });
+        expect(modernSpec?.kind).toBe('minimizer-webpack-plugin');
+        expect(fs.realpathSync.native(modernSpec.pluginPath)).toBe(fs.realpathSync.native(path.join(modernMinimizerDir, 'index.js')));
+
+        const modernMinimizer = buildPublicLibMinimizer({
+            env: {},
+            resolveMinimizerSpec: () => modernSpec,
+        });
+        const modernStubCompiler = {};
+        modernMinimizer[0].apply(modernStubCompiler);
+        expect(modernStubCompiler.applied).toMatchObject({
+            minify: {
+                path: modernSpec.pluginPath,
+                export: 'terserMinify',
+            },
+            minimizerOptions: { compress: { passes: 2 } },
+        });
+        expect(modernStubCompiler.applied).not.toHaveProperty('parallel');
+
+        const nestedRoot = path.join(tempDir, 'nested-layout');
+        const nestedWebpackDir = path.join(nestedRoot, 'node_modules', 'webpack');
+        const nestedTerserDir = path.join(nestedWebpackDir, 'node_modules', 'terser-webpack-plugin');
+        fs.mkdirSync(nestedTerserDir, { recursive: true });
+        fs.writeFileSync(path.join(nestedRoot, 'package.json'), JSON.stringify({ name: 'fixture', version: '1.0.0' }), 'utf8');
+        fs.writeFileSync(path.join(nestedWebpackDir, 'package.json'), JSON.stringify({ name: 'webpack', version: '5.105.4' }), 'utf8');
+        fs.writeFileSync(path.join(nestedTerserDir, 'package.json'), JSON.stringify({ name: 'terser-webpack-plugin', version: '5.3.17', main: 'index.js' }), 'utf8');
+        fs.writeFileSync(path.join(nestedTerserDir, 'index.js'), 'module.exports = class NestedTerserPlugin { constructor(opts) { this.opts = opts; } apply(c) { c.applied = this.opts; } };\n', 'utf8');
+
+        const nestedRequire = createRequire(path.join(nestedRoot, 'package.json'));
+        const resolvedNested = resolveTerserPluginPath({
+            baseRequire: nestedRequire,
+            fallbackWebpackPkgPath: null,
+        });
+        expect(fs.realpathSync.native(resolvedNested)).toBe(fs.realpathSync.native(path.join(nestedTerserDir, 'index.js')));
+
+        const minimizer = buildPublicLibMinimizer({
+            env: { SILLYBUNNY_ANDROID_APP: '1' },
+            resolvePluginPath: () => resolvedNested,
+        });
+        const stubCompiler = {};
+        minimizer[0].apply(stubCompiler);
+        expect(stubCompiler.applied).toEqual({
+            parallel: false,
+            terserOptions: { compress: { passes: 2 } },
+        });
+
+        const isolatedRoot = path.join(tempDir, 'isolated-layout');
+        const storeNodeModules = path.join(isolatedRoot, 'node_modules', '.bun', 'webpack@5.105.4', 'node_modules');
+        const storeWebpackDir = path.join(storeNodeModules, 'webpack');
+        const storeTerserDir = path.join(storeNodeModules, 'terser-webpack-plugin');
+        fs.mkdirSync(storeWebpackDir, { recursive: true });
+        fs.mkdirSync(storeTerserDir, { recursive: true });
+        fs.writeFileSync(path.join(isolatedRoot, 'package.json'), JSON.stringify({ name: 'isolated-fixture', version: '1.0.0' }), 'utf8');
+        fs.writeFileSync(path.join(storeWebpackDir, 'package.json'), JSON.stringify({ name: 'webpack', version: '5.105.4' }), 'utf8');
+        fs.writeFileSync(path.join(storeTerserDir, 'package.json'), JSON.stringify({ name: 'terser-webpack-plugin', version: '5.3.17', main: 'index.js' }), 'utf8');
+        fs.writeFileSync(path.join(storeTerserDir, 'index.js'), 'module.exports = class IsolatedTerserPlugin {};\n', 'utf8');
+        const symlinkWebpackDir = path.join(isolatedRoot, 'node_modules', 'webpack');
+        fs.symlinkSync(storeWebpackDir, symlinkWebpackDir, process.platform === 'win32' ? 'junction' : 'dir');
+
+        const isolatedRequire = createRequire(path.join(isolatedRoot, 'package.json'));
+        const resolvedIsolated = resolveTerserPluginPath({
+            baseRequire: isolatedRequire,
+            fallbackWebpackPkgPath: path.join(symlinkWebpackDir, 'package.json'),
+        });
+        expect(fs.realpathSync.native(resolvedIsolated)).toBe(fs.realpathSync.native(path.join(storeTerserDir, 'index.js')));
+
+        const emptyRoot = path.join(tempDir, 'empty-layout');
+        fs.mkdirSync(emptyRoot, { recursive: true });
+        fs.writeFileSync(path.join(emptyRoot, 'package.json'), JSON.stringify({ name: 'empty-fixture', version: '1.0.0' }), 'utf8');
+        const emptyRequire = createRequire(path.join(emptyRoot, 'package.json'));
+
+        const missingPath = resolveTerserPluginPath({
+            baseRequire: emptyRequire,
+            fallbackWebpackPkgPath: null,
+        });
+        expect(missingPath).toBeNull();
+        expect(buildPublicLibMinimizer({ resolvePluginPath: () => missingPath })).toEqual(['...']);
+        expect(buildPublicLibMinimizer({
+            resolvePluginPath: () => { throw new Error('MODULE_NOT_FOUND'); },
+        })).toEqual(['...']);
+    });
+
+    test('bundles every moment locale, including locales outside the UI language list', async () => {
+        const { default: webpack } = await import('webpack');
+        const entryFile = path.join(tempDir, 'moment-entry.js');
+        const outDir = path.join(tempDir, 'moment-out');
+        fs.writeFileSync(entryFile, 'import moment from \'moment\';\nexport { moment };\n', 'utf8');
+        fs.mkdirSync(outDir, { recursive: true });
+        fs.writeFileSync(path.join(outDir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+
+        const baseConfig = getPublicLibConfig({ outputPath: outDir });
+        const compiler = webpack({
+            ...baseConfig,
+            entry: entryFile,
+            resolve: {
+                ...baseConfig.resolve,
+                modules: [path.join(repoRoot, 'node_modules'), 'node_modules'],
+            },
+        });
+
+        await new Promise((resolve, reject) => {
+            compiler.run((err, stats) => {
+                compiler.close((closeErr) => {
+                    if (err || closeErr) {
+                        reject(err || closeErr);
+                        return;
+                    }
+                    if (stats?.hasErrors()) {
+                        reject(new Error(stats.toString()));
+                        return;
+                    }
+                    resolve();
+                });
+            });
+        });
+
+        // getCurrentLocale() passes the raw browser language to moment, so a locale that the UI has no translation for must still format.
+        const script = [
+            `const { moment } = await import(${JSON.stringify(pathToFileURL(path.join(outDir, 'lib.js')).href)});`,
+            'const format = (code) => moment("2026-03-05T10:00:00Z").utc().locale(code).format("LL");',
+            'console.log(JSON.stringify({ pl: format("pl"), tr: format("tr"), ja: format("ja"), global: moment.locale("pl") }));',
+        ].join('\n');
+        const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }).trim();
+        expect(JSON.parse(raw.split(/\r?\n/).pop())).toEqual({
+            pl: '5 marca 2026',
+            tr: '5 Mart 2026',
+            ja: '2026年3月5日',
+            global: 'pl',
+        });
+    }, 20_000);
+
+    test('webpack-serve fast-paths non-lib.js requests and reuses precompiled lib.js without compiling', async () => {
+        const cacheInfo = getPublicLibCacheInfo();
+        fs.mkdirSync(cacheInfo.outputDirectory, { recursive: true });
+        fs.writeFileSync(cacheInfo.outputFilePath, 'export const ready = true;\n', 'utf8');
+
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        const middleware = getWebpackServeMiddleware();
+
+        await middleware.runWebpackCompiler();
+        expect(logSpy).toHaveBeenCalledWith('Reusing precompiled frontend libraries...');
+
+        const parseSpy = jest.spyOn(path, 'parse');
+        let nextCalls = 0;
+        const next = () => { nextCalls += 1; };
+
+        middleware({ method: 'GET', path: '/style.css' }, {}, next);
+        middleware({ method: 'POST', path: '/lib.js' }, {}, next);
+        middleware({ method: 'GET', path: '/nested/lib.js' }, {}, next);
+
+        expect(nextCalls).toBe(3);
+        expect(parseSpy).not.toHaveBeenCalled();
+
+        let sentRoot = null;
+        let sentFile = null;
+        const headers = new Map();
+        middleware(
+            { method: 'GET', path: '/lib.js' },
+            {
+                setHeader: (k, v) => headers.set(k, v),
+                sendFile: (file, opts) => {
+                    sentFile = file;
+                    sentRoot = opts.root;
+                },
+            },
+            next,
+        );
+
+        expect(headers.get('Cache-Control')).toBe('no-cache');
+        expect(sentFile).toBe('lib.js');
+        expect(sentRoot).toBe(cacheInfo.outputDirectory);
+    });
+});
+
+describe('memoized getVersion and util hotfixes', () => {
+    let tempDir;
+
+    beforeEach(() => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-perf-version-'));
+        invalidateVersionCache();
+    });
+
+    afterEach(() => {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    test('uses at most 2 git calls on cache miss and preserves exact return schema', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-test' }), 'utf8');
+        fs.mkdirSync(path.join(tempDir, '.git', 'refs', 'heads'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, '.git', 'HEAD'), 'ref: refs/heads/staging\n', 'utf8');
+        fs.writeFileSync(path.join(tempDir, '.git', 'refs', 'heads', 'staging'), 'abcdef1234567890abcdef1234567890abcdef12\n', 'utf8');
+
+        const calls = [];
+        const execGit = async (_dir, args) => {
+            calls.push(args);
+            if (args[0] === 'show') {
+                return 'abcdef123\n2026-11-24 10:00:00 +0000\nabcdef1234567890abcdef1234567890abcdef12\n';
+            }
+            if (args[0] === 'rev-parse' && args[1] === '@{u}') {
+                return '1111111111111111111111111111111111111111\n';
+            }
+            throw new Error(`Unexpected git args: ${args.join(' ')}`);
+        };
+
+        const version = await getVersion({ baseDir: tempDir, execGit });
+        expect(calls.length).toBeLessThanOrEqual(2);
+        expect(calls[0]).toContain('--no-show-signature');
+        expect(version).toEqual({
+            agent: 'SillyBunny:2.0.0-test:fork',
+            pkgVersion: '2.0.0-test',
+            gitRevision: 'abcdef123',
+            gitBranch: 'staging',
+            commitDate: '2026-11-24 10:00:00 +0000',
+            isLatest: false,
+        });
+    });
+
+    test('falls back to git rev-parse for branch name on git reftable HEAD sentinels', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-reftable' }), 'utf8');
+        fs.mkdirSync(path.join(tempDir, '.git', 'reftable'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, '.git', 'HEAD'), 'ref: refs/heads/.invalid\n', 'utf8');
+        fs.writeFileSync(path.join(tempDir, '.git', 'reftable', 'tables.list'), '0x0001.ref\n', 'utf8');
+
+        const calls = [];
+        const execGit = async (_dir, args) => {
+            calls.push(args);
+            if (args[0] === 'show') {
+                return '1234abcd0\n2026-11-24 12:00:00 +0000\n1234abcd00000000000000000000000000000000\n';
+            }
+            if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') {
+                return 'staging\n';
+            }
+            throw new Error('fatal: no upstream configured');
+        };
+
+        const version = await getVersion({ baseDir: tempDir, execGit });
+        expect(version.gitBranch).toBe('staging');
+        expect(calls).toContainEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
+    });
+
+    test('keeps branch and revision with isLatest=true when no upstream branch is configured', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-local' }), 'utf8');
+        fs.mkdirSync(path.join(tempDir, '.git', 'refs', 'heads'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, '.git', 'HEAD'), 'ref: refs/heads/feature/offline\n', 'utf8');
+
+        const execGit = async (_dir, args) => {
+            if (args[0] === 'show') {
+                return 'deadbeef0\n2026-11-24 11:00:00 +0000\ndeadbeef00000000000000000000000000000000\n';
+            }
+            throw new Error('fatal: no upstream configured');
+        };
+
+        const version = await getVersion({ baseDir: tempDir, execGit });
+        expect(version).toEqual({
+            agent: 'SillyBunny:2.0.0-local:fork',
+            pkgVersion: '2.0.0-local',
+            gitRevision: 'deadbeef0',
+            gitBranch: 'feature/offline',
+            commitDate: '2026-11-24 11:00:00 +0000',
+            isLatest: true,
+        });
+    });
+
+    test('gracefully returns null git fields when git spawn fails with ENOENT', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-nogit' }), 'utf8');
+        fs.mkdirSync(path.join(tempDir, '.git'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, '.git', 'HEAD'), 'ref: refs/heads/staging\n', 'utf8');
+
+        const execGit = async () => {
+            const err = new Error('spawn git ENOENT');
+            err.code = 'ENOENT';
+            throw err;
+        };
+
+        const version = await getVersion({ baseDir: tempDir, execGit });
+        expect(version).toEqual({
+            agent: 'SillyBunny:2.0.0-nogit:fork',
+            pkgVersion: '2.0.0-nogit',
+            gitRevision: null,
+            gitBranch: null,
+            commitDate: null,
+            isLatest: true,
+        });
+    });
+
+    test('memoizes real git getVersion(), coalesces concurrent calls, and invalidates on ref changes', async () => {
+        execFileSync('git', ['init', '-b', 'main'], { cwd: tempDir, stdio: 'ignore' });
+        execFileSync('git', ['config', 'user.email', 'test@users.noreply.github.com'], { cwd: tempDir, stdio: 'ignore' });
+        execFileSync('git', ['config', 'user.name', 'Test'], { cwd: tempDir, stdio: 'ignore' });
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-repo' }), 'utf8');
+        execFileSync('git', ['add', 'package.json'], { cwd: tempDir, stdio: 'ignore' });
+        execFileSync('git', ['commit', '-m', 'init'], { cwd: tempDir, stdio: 'ignore' });
+
+        const [first, concurrent] = await Promise.all([
+            getVersion({ baseDir: tempDir }),
+            getVersion({ baseDir: tempDir }),
+        ]);
+        expect(first.gitBranch).toBe('main');
+        expect(first.gitRevision).toBeTruthy();
+        expect(concurrent).toEqual(first);
+
+        const t0 = performance.now();
+        const cached = await getVersion({ baseDir: tempDir });
+        const elapsedMs = performance.now() - t0;
+        expect(cached).toEqual(first);
+        expect(elapsedMs).toBeLessThan(15);
+
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.1-repo' }), 'utf8');
+        execFileSync('git', ['add', 'package.json'], { cwd: tempDir, stdio: 'ignore' });
+        execFileSync('git', ['commit', '-m', 'bump'], { cwd: tempDir, stdio: 'ignore' });
+
+        const updated = await getVersion({ baseDir: tempDir });
+        expect(updated.pkgVersion).toBe('2.0.1-repo');
+        expect(updated.gitRevision).not.toBe(first.gitRevision);
+    });
+
+    test('reads the checkout that holds the server and ignores GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE from the environment', async () => {
+        const ambientNames = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR'];
+        const cleanEnv = { ...process.env };
+        for (const name of ambientNames) {
+            delete cleanEnv[name];
+        }
+        const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: cleanEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+        const makeRepo = (dir, commits) => {
+            fs.mkdirSync(dir, { recursive: true });
+            git(dir, 'init', '-b', 'main');
+            git(dir, 'config', 'user.email', 'test@users.noreply.github.com');
+            git(dir, 'config', 'user.name', 'Test');
+            fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ version: '2.0.0-env' }), 'utf8');
+            git(dir, 'add', 'package.json');
+            for (let index = 0; index < commits; index++) {
+                git(dir, 'commit', '--allow-empty', '-m', `commit ${index}`);
+            }
+        };
+
+        const serverRepo = path.join(tempDir, 'server');
+        const otherRepo = path.join(tempDir, 'other');
+        makeRepo(serverRepo, 2);
+        makeRepo(otherRepo, 1);
+        const expectedRevision = git(serverRepo, 'rev-parse', '--short', 'HEAD');
+        expect(git(otherRepo, 'rev-parse', '--short', 'HEAD')).not.toBe(expectedRevision);
+
+        // Jest gives the test its own copy of process.env, which child processes of the code under test never see, so the lookup runs in a real process.
+        const script = [
+            `const { getVersion } = await import(${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src', 'util.js')).href)});`,
+            `console.log(JSON.stringify(await getVersion({ baseDir: ${JSON.stringify(serverRepo)} })));`,
+        ].join('\n');
+        const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            env: {
+                ...cleanEnv,
+                GIT_DIR: path.join(otherRepo, '.git'),
+                GIT_WORK_TREE: otherRepo,
+                GIT_INDEX_FILE: path.join(otherRepo, '.git', 'index'),
+                GIT_COMMON_DIR: path.join(otherRepo, '.git'),
+            },
+        }).trim();
+        const version = JSON.parse(raw.split(/\r?\n/).pop());
+        expect(version.gitRevision).toBe(expectedRevision);
+        expect(version.gitBranch).toBe('main');
+    });
+
+    test('does not poison version cache across concurrent ref changes or mid-flight invalidation', async () => {
+        fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({ version: '2.0.0-race' }), 'utf8');
+        fs.mkdirSync(path.join(tempDir, '.git', 'refs', 'heads'), { recursive: true });
+        fs.writeFileSync(path.join(tempDir, '.git', 'HEAD'), 'ref: refs/heads/main\n', 'utf8');
+        const mainRefPath = path.join(tempDir, '.git', 'refs', 'heads', 'main');
+        fs.writeFileSync(mainRefPath, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n', 'utf8');
+
+        let releaseFirst;
+        const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+        let showCalls = 0;
+
+        const execGit = async (_dir, args) => {
+            if (args[0] === 'show') {
+                showCalls += 1;
+                if (showCalls === 1) {
+                    await firstGate;
+                    return 'aaaaaaa11\n2026-11-24 10:00:00 +0000\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n';
+                }
+                if (showCalls === 2) {
+                    return 'bbbbbbb22\n2026-11-24 10:05:00 +0000\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n';
+                }
+                return 'ccccccc33\n2026-11-24 10:10:00 +0000\ncccccccccccccccccccccccccccccccccccccccc\n';
+            }
+            throw new Error('fatal: no upstream configured');
+        };
+
+        // Case 1: ref advances on disk while Call 1 is in flight -> Call 1 must not cache stale data under new fingerprint.
+        const pendingFirst = getVersion({ baseDir: tempDir, execGit, useCache: true });
+        fs.writeFileSync(mainRefPath, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nchanged\n', 'utf8');
+        const bumped = new Date(Date.now() + 5_000);
+        fs.utimesSync(mainRefPath, bumped, bumped);
+        releaseFirst();
+
+        const firstResult = await pendingFirst;
+        expect(firstResult.gitRevision).toBe('aaaaaaa11');
+
+        const secondResult = await getVersion({ baseDir: tempDir, execGit, useCache: true });
+        expect(secondResult.gitRevision).toBe('bbbbbbb22');
+        expect(showCalls).toBe(2);
+
+        // Case 2: invalidateVersionCache() while Call 3 is in flight -> Call 3 must not repopulate cache.
+        invalidateVersionCache();
+        let releaseThird;
+        const thirdGate = new Promise((resolve) => { releaseThird = resolve; });
+        let genCalls = 0;
+        const execGitGen = async (_dir, args) => {
+            if (args[0] === 'show') {
+                genCalls += 1;
+                if (genCalls === 1) {
+                    await thirdGate;
+                    return 'stale0001\n2026-11-24 10:15:00 +0000\n0000000000000000000000000000000000000001\n';
+                }
+                return 'fresh0002\n2026-11-24 10:20:00 +0000\n0000000000000000000000000000000000000002\n';
+            }
+            throw new Error('fatal: no upstream configured');
+        };
+
+        const pendingThird = getVersion({ baseDir: tempDir, execGit: execGitGen, useCache: true });
+        invalidateVersionCache();
+        releaseThird();
+        expect((await pendingThird).gitRevision).toBe('stale0001');
+
+        const afterInvalidate = await getVersion({ baseDir: tempDir, execGit: execGitGen, useCache: true });
+        expect(afterInvalidate.gitRevision).toBe('fresh0002');
+        expect(genCalls).toBe(2);
+    });
+
+    test('getConfig preserves zero-syscall singleton identity until setConfigFilePath switches files', () => {
+        const cfgPathA = path.join(tempDir, 'config-a.yaml');
+        const cfgPathB = path.join(tempDir, 'config-b.yaml');
+        fs.writeFileSync(cfgPathA, 'port: 8123\n', 'utf8');
+        fs.writeFileSync(cfgPathB, 'port: 9456\nextraFlag: true\n', 'utf8');
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            setConfigFilePath(cfgPathA);
+
+            const firstConfig = getConfig();
+            expect(getConfigValue('port', 8000, 'number')).toBe(8123);
+
+            const statSpy = jest.spyOn(fs, 'statSync');
+            const readSpy = jest.spyOn(fs, 'readFileSync');
+
+            // Modifying config.yaml on disk must not replace the cached singleton object or trigger statSync per read.
+            fs.writeFileSync(cfgPathA, 'port: 7777\n', 'utf8');
+            expect(getConfig()).toBe(firstConfig);
+            expect(getConfigValue('port', 8000, 'number')).toBe(8123);
+            expect(statSpy).not.toHaveBeenCalled();
+            expect(readSpy).not.toHaveBeenCalled();
+
+            // Switching to another path resets the cached singleton.
+            setConfigFilePath(cfgPathB);
+            expect(getConfigValue('port', 8000, 'number')).toBe(9456);
+            expect(getConfigValue('extraFlag', false, 'boolean')).toBe(true);
+        } finally {
+            setConfigFilePath(defaultConfigPath);
+        }
+    });
+
+    test('invalidateFirefoxCache sets Cache-Control: must-understand, no-store only for Firefox image responses', () => {
+        const firefoxHeaders = new Map();
+        invalidateFirefoxCache(
+            'avatar.png',
+            { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; rv:135.0) Gecko/20100101 Firefox/135.0' } },
+            { setHeader: (k, v) => firefoxHeaders.set(k, v) },
+        );
+        expect(firefoxHeaders.get('Cache-Control')).toBe('must-understand, no-store');
+
+        const chromeHeaders = new Map();
+        invalidateFirefoxCache(
+            'avatar.png',
+            { headers: { 'user-agent': 'Mozilla/5.0 Chrome/135.0.0.0 Safari/537.36' } },
+            { setHeader: (k, v) => chromeHeaders.set(k, v) },
+        );
+        expect(chromeHeaders.has('Cache-Control')).toBe(false);
+    });
+});
+
+describe('MemoryLimitedMap O(1) LRU eviction', () => {
+    test('promotes accessed keys on get() so least-recently-used entries evict first', () => {
+        const map = new MemoryLimitedMap('20B');
+        map.set('a', '12345');
+        map.set('b', '67890');
+
+        expect(map.get('a')).toBe('12345');
+
+        map.set('c', 'abcde');
+        expect(map.has('a')).toBe(true);
+        expect(map.has('b')).toBe(false);
+        expect(map.has('c')).toBe(true);
+        expect(map.totalMemory()).toBe(20);
+    });
+
+    test('sustains O(1) throughput across thousands of updates and evictions', () => {
+        const map = new MemoryLimitedMap('4 KB');
+        const start = performance.now();
+        for (let i = 0; i < 5_000; i++) {
+            const key = `card-${i % 400}`;
+            map.set(key, 'x'.repeat(16));
+            if (i % 3 === 0) {
+                map.get(key);
+            }
+        }
+        const elapsedMs = performance.now() - start;
+        expect(elapsedMs).toBeLessThan(200);
+        expect(map.totalMemory()).toBeLessThanOrEqual(4096);
+    });
+});
+
+describe('Node V8 compile cache and launcher hygiene', () => {
+    test('enableNodeCompileCache and flushNodeCompileCache honor env, fallback path, and Bun guard', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-env-'));
+        const repoDir = path.join(tempRoot, 'sillybunny');
+        const customCacheDir = path.join(tempRoot, 'custom-v8');
+        const calls = [];
+        const mockModule = {
+            enableCompileCache: (dir) => {
+                calls.push(['enable', dir]);
+                return { status: compileCacheStatus.ENABLED, directory: dir };
+            },
+            flushCompileCache: () => { calls.push(['flush']); },
+        };
+
+        const defaultDir = enableNodeCompileCache({
+            moduleApi: mockModule,
+            env: {},
+            versions: { node: '24.0.0' },
+            repoDir,
+        });
+        expect(defaultDir).toBe(path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8'));
+
+        const customDir = enableNodeCompileCache({
+            moduleApi: mockModule,
+            env: { NODE_COMPILE_CACHE: customCacheDir },
+            versions: { node: '24.0.0' },
+            repoDir,
+        });
+        expect(customDir).toBe(customCacheDir);
+
+        expect(enableNodeCompileCache({
+            moduleApi: mockModule,
+            env: {},
+            versions: { node: '24.0.0', bun: '1.4.4' },
+            repoDir,
+        })).toBeNull();
+        expect(flushNodeCompileCache({
+            moduleApi: mockModule,
+            versions: { node: '24.0.0', bun: '1.4.4' },
+        })).toBe(false);
+
+        expect(flushNodeCompileCache({
+            moduleApi: mockModule,
+            versions: { node: '24.0.0' },
+        })).toBe(true);
+
+        expect(calls).toEqual([
+            ['enable', path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8')],
+            ['enable', customCacheDir],
+            ['flush'],
+        ]);
+
+        expect(enableNodeCompileCache).toBe(directEnableNodeCompileCache);
+        expect(flushNodeCompileCache).toBe(directFlushNodeCompileCache);
+
+        const throwingModule = {
+            flushCompileCache: () => { throw Object.assign(new Error('EROFS'), { code: 'EROFS' }); },
+        };
+        expect(flushNodeCompileCache({ moduleApi: throwingModule, versions: { node: '24.0.0' } })).toBe(false);
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    test('enableNodeCompileCache reports the status that Node.js returns instead of the directory it asked for', () => {
+        const versions = { node: '24.0.0' };
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-status-'));
+        const repoDir = path.join(tempRoot, 'sillybunny');
+        const moduleReturning = (result) => ({ enableCompileCache: () => result });
+
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning({ status: compileCacheStatus.FAILED, message: 'Cannot create cache directory: permission denied' }),
+            env: {},
+            versions,
+            repoDir,
+        })).toBeNull();
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning({ status: compileCacheStatus.DISABLED, message: 'Disabled by NODE_DISABLE_COMPILE_CACHE' }),
+            env: {},
+            versions,
+            repoDir,
+        })).toBeNull();
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning({ status: compileCacheStatus.ALREADY_ENABLED, directory: '/var/cache/active-v8' }),
+            env: { NODE_COMPILE_CACHE: path.join(tempRoot, 'requested-v8') },
+            versions,
+            repoDir,
+        })).toBe('/var/cache/active-v8');
+        expect(enableNodeCompileCache({
+            moduleApi: moduleReturning(undefined),
+            env: {},
+            versions,
+            repoDir,
+        })).toBeNull();
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    test('enableNodeCompileCache follows the status of the real Node.js API', () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-real-'));
+        try {
+            const cacheRoot = path.join(tempRoot, 'cache');
+            const script = [
+                `const { enableNodeCompileCache } = await import(${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src', 'node-compile-cache.js')).href)});`,
+                `console.log(JSON.stringify(enableNodeCompileCache({ env: { NODE_COMPILE_CACHE: ${JSON.stringify(cacheRoot)} }, repoDir: ${JSON.stringify(path.join(tempRoot, 'repo'))} })));`,
+            ].join('\n');
+            const run = (extraEnv) => {
+                const env = { ...process.env, ...extraEnv };
+                delete env.NODE_COMPILE_CACHE;
+                if (!('NODE_DISABLE_COMPILE_CACHE' in extraEnv)) {
+                    delete env.NODE_DISABLE_COMPILE_CACHE;
+                }
+                const raw = execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', env }).trim();
+                return JSON.parse(raw.split(/\r?\n/).pop());
+            };
+
+            expect(run({})).toBe(cacheRoot);
+            // Node.js answers a disabled cache with a DISABLED status, not with an exception.
+            expect(run({ NODE_DISABLE_COMPILE_CACHE: '1' })).toBeNull();
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    });
+
+    describe('private compile cache directory', () => {
+        let tempDir;
+        let repoDir;
+        let defaultCacheDir;
+        const versions = { node: '24.0.0' };
+        const enabledModule = () => {
+            const asked = [];
+            return {
+                asked,
+                enableCompileCache: (dir) => {
+                    asked.push(dir);
+                    return { status: compileCacheStatus.ENABLED, directory: dir };
+                },
+            };
+        };
+
+        // Only root can chown, so a directory that another user owns is modelled by changing the owner that stat reports.
+        const reportOwnedByAnotherUser = (target) => {
+            const realStatSync = fs.statSync;
+            jest.spyOn(fs, 'statSync').mockImplementation((candidate, ...rest) => {
+                const stat = realStatSync(candidate, ...rest);
+                return candidate === target ? Object.assign(Object.create(Object.getPrototypeOf(stat)), stat, { uid: process.getuid() + 1 }) : stat;
+            });
+        };
+
+        beforeEach(() => {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-compile-cache-dir-'));
+            repoDir = path.join(tempDir, 'repo');
+            defaultCacheDir = path.join(repoDir, 'node_modules', '.cache', 'sillybunny-v8');
+        });
+
+        afterEach(() => {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        });
+
+        describePosix('with POSIX owner and mode bits', () => {
+            test('uses an external directory that the user owns and that group and others cannot write to', () => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external, { mode: 0o755 });
+                fs.chmodSync(external, 0o755);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(external);
+                expect(moduleApi.asked).toEqual([external]);
+                expect(env.NODE_COMPILE_CACHE).toBe(external);
+                expect(warn).not.toHaveBeenCalled();
+            });
+
+            test.each([
+                ['group-writable', 0o775],
+                ['world-writable', 0o777],
+            ])('falls back to the default private directory when an external directory is %s', (_label, mode) => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external);
+                fs.chmodSync(external, mode);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(moduleApi.asked).toEqual([defaultCacheDir]);
+                expect(env.NODE_COMPILE_CACHE).toBe(defaultCacheDir);
+                expect(warn).toHaveBeenCalledTimes(1);
+                expect(warn.mock.calls[0][0]).toContain(external);
+                expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+            });
+
+            test('falls back to the default private directory when an external directory belongs to another user', () => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external, { mode: 0o700 });
+                reportOwnedByAnotherUser(external);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(env.NODE_COMPILE_CACHE).toBe(defaultCacheDir);
+                expect(warn).toHaveBeenCalledTimes(1);
+            });
+
+            test('creates a missing external directory closed to group and others', () => {
+                const external = path.join(tempDir, 'made', 'by', 'the-wrapper');
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+
+                expect(enableNodeCompileCache({ moduleApi, env: { NODE_COMPILE_CACHE: external }, versions, repoDir, warn })).toBe(external);
+                expect(fs.statSync(external).mode & 0o777).toBe(0o700);
+                expect(warn).not.toHaveBeenCalled();
+            });
+
+            test('the default directory passes its own check: it is created private and an older group-writable one is closed', () => {
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+
+                expect(enableNodeCompileCache({ moduleApi, env: {}, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+
+                fs.chmodSync(defaultCacheDir, 0o775);
+                const env = { NODE_COMPILE_CACHE: defaultCacheDir };
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBe(defaultCacheDir);
+                expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+                expect(warn).not.toHaveBeenCalled();
+            });
+
+            test('stays off and says so when even the default directory is not private', () => {
+                const external = path.join(tempDir, 'external');
+                fs.mkdirSync(external);
+                fs.chmodSync(external, 0o777);
+                fs.mkdirSync(path.dirname(defaultCacheDir), { recursive: true });
+                fs.mkdirSync(defaultCacheDir, { mode: 0o700 });
+                reportOwnedByAnotherUser(defaultCacheDir);
+                const moduleApi = enabledModule();
+                const warn = jest.fn();
+                const env = { NODE_COMPILE_CACHE: external };
+
+                expect(enableNodeCompileCache({ moduleApi, env, versions, repoDir, warn })).toBeNull();
+                expect(moduleApi.asked).toEqual([]);
+                expect('NODE_COMPILE_CACHE' in env).toBe(false);
+                expect(warn).toHaveBeenCalledTimes(1);
+            });
+        });
+
+        test('skips the ownership and mode check on Windows', () => {
+            const external = path.join(tempDir, 'external');
+            fs.mkdirSync(external, { recursive: true });
+            if (process.platform !== 'win32') {
+                fs.chmodSync(external, 0o777);
+            }
+            const moduleApi = enabledModule();
+            const warn = jest.fn();
+
+            expect(enableNodeCompileCache({ moduleApi, env: { NODE_COMPILE_CACHE: external }, versions, repoDir, warn, platform: 'win32' })).toBe(external);
+            expect(warn).not.toHaveBeenCalled();
+        });
+    });
+
+    describePosix('start.sh compile cache directory', () => {
+        const startShSource = fs.readFileSync(path.join(repoRoot, 'start.sh'), 'utf8');
+        let tempDir;
+        let scriptDir;
+        let harnessPath;
+        let defaultCacheDir;
+
+        // start.sh cannot be sourced without installing packages, so the two functions are lifted out and run alone.
+        const extractShellFunction = (name) => {
+            const lines = startShSource.split('\n');
+            const start = lines.findIndex(line => line.startsWith(`${name}() {`));
+            expect(start).toBeGreaterThanOrEqual(0);
+            const end = lines.findIndex((line, index) => index > start && line === '}');
+            expect(end).toBeGreaterThan(start);
+            return lines.slice(start, end + 1).join('\n');
+        };
+
+        const configure = (requested) => {
+            const env = { ...process.env };
+            delete env.NODE_COMPILE_CACHE;
+            if (requested !== undefined) {
+                env.NODE_COMPILE_CACHE = requested;
+            }
+            const output = execFileSync('bash', [harnessPath, scriptDir], { encoding: 'utf8', env });
+            const lines = output.trim().split('\n');
+            return { result: lines.pop().replace(/^RESULT=/, ''), notices: lines };
+        };
+
+        beforeEach(() => {
+            tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-start-sh-cache-'));
+            scriptDir = path.join(tempDir, 'install');
+            fs.mkdirSync(path.join(scriptDir, 'node_modules'), { recursive: true });
+            defaultCacheDir = path.join(scriptDir, 'node_modules', '.cache', 'sillybunny-v8');
+            harnessPath = path.join(tempDir, 'harness.sh');
+            fs.writeFileSync(harnessPath, [
+                '#!/usr/bin/env bash',
+                'set -euo pipefail',
+                'SCRIPT_DIR="$1"',
+                extractShellFunction('compile_cache_dir_is_private'),
+                extractShellFunction('configure_compile_cache'),
+                'configure_compile_cache',
+                'printf "RESULT=%s\\n" "${NODE_COMPILE_CACHE-unset}"',
+                '',
+            ].join('\n\n'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        });
+
+        test('the launcher default is created private and passes its own check', () => {
+            expect(configure()).toEqual({ result: defaultCacheDir, notices: [] });
+            expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+        });
+
+        test('an older default directory that is open to the group is closed again', () => {
+            fs.mkdirSync(defaultCacheDir, { recursive: true });
+            fs.chmodSync(defaultCacheDir, 0o775);
+
+            expect(configure()).toEqual({ result: defaultCacheDir, notices: [] });
+            expect(fs.statSync(defaultCacheDir).mode & 0o777).toBe(0o700);
+        });
+
+        test.each([
+            ['group-writable', 0o775],
+            ['world-writable', 0o777],
+        ])('ignores an external directory that is %s and uses the default', (_label, mode) => {
+            const external = path.join(tempDir, 'external');
+            fs.mkdirSync(external);
+            fs.chmodSync(external, mode);
+
+            const { result, notices } = configure(external);
+            expect(result).toBe(defaultCacheDir);
+            expect(notices).toHaveLength(1);
+            expect(notices[0]).toContain(external);
+            expect(fs.statSync(external).mode & 0o777).toBe(mode);
+        });
+
+        test('uses an external directory that only this user can write to, and creates a missing one private', () => {
+            const readable = path.join(tempDir, 'readable');
+            fs.mkdirSync(readable);
+            fs.chmodSync(readable, 0o755);
+            expect(configure(readable)).toEqual({ result: readable, notices: [] });
+
+            const missing = path.join(tempDir, 'missing', 'cache');
+            expect(configure(missing)).toEqual({ result: missing, notices: [] });
+            expect(fs.statSync(missing).mode & 0o777).toBe(0o700);
+        });
+    });
+
+    test('launchers, server.js, and server-main.js wire V8 compile cache and HTTP keep-alive hygiene safely', () => {
+        const serverSource = fs.readFileSync(path.join(repoRoot, 'server.js'), 'utf8');
+        const serverMainSource = fs.readFileSync(path.join(repoRoot, 'src', 'server-main.js'), 'utf8');
+        const startShSource = fs.readFileSync(path.join(repoRoot, 'start.sh'), 'utf8');
+        const startBatSource = fs.readFileSync(path.join(repoRoot, 'Start.bat'), 'utf8');
+        const startNodeBatSource = fs.readFileSync(path.join(repoRoot, 'Start-Node.bat'), 'utf8');
+
+        expect(serverSource.startsWith('#!/usr/bin/env bun')).toBe(true);
+        expect(serverSource).toContain('./src/node-compile-cache.js');
+        expect(serverSource.indexOf('enableNodeCompileCache()')).toBeGreaterThan(0);
+        expect(serverSource.indexOf('enableNodeCompileCache()')).toBeLessThan(serverSource.indexOf('server-supervisor.js'));
+
+        expect(serverMainSource).toContain('keepAliveTimeout = 65_000');
+        expect(serverMainSource).toContain('headersTimeout = 66_000');
+        expect(serverMainSource).toContain('./node-compile-cache.js');
+        expect(serverMainSource).toContain('flushNodeCompileCache()');
+        expect(serverMainSource).toContain('cachedShouldServeFrontendAssets = null');
+        expect(serverMainSource.indexOf('if (isBunRuntime())')).toBeLessThan(serverMainSource.indexOf('sessionTimeoutSeconds'));
+
+        expect(startShSource).toContain('NODE_COMPILE_CACHE="$SCRIPT_DIR/node_modules/.cache/sillybunny-v8"');
+        expect(startShSource).not.toMatch(/\bexec\s+"\$RUNTIME_CMD"/);
+        expect(startBatSource).toContain('if not defined NODE_COMPILE_CACHE set "NODE_COMPILE_CACHE=%~dp0node_modules\\.cache\\sillybunny-v8"');
+        expect(startNodeBatSource).toContain('if not defined NODE_COMPILE_CACHE set "NODE_COMPILE_CACHE=%~dp0node_modules\\.cache\\sillybunny-v8"');
+    });
+});

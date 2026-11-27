@@ -325,9 +325,38 @@ if is_truthy "${SILLYBUNNY_BUN_SMOL:-}" && [[ "$runtime_kind" == node ]]; then
     echo "[SillyBunny] For Bun with --smol, use ./start-bun.sh (Termux: bash start-termux-bun.sh)."
 fi
 
+# SillyBunny: a compile cache is executable content, so only a directory that this user owns and that group and others cannot write to is used.
+compile_cache_dir_is_private() {
+    local dir="$1"
+    [[ -d "$dir" && -O "$dir" ]] || return 1
+    [[ -z "$(find -H "$dir" -prune \( -perm -020 -o -perm -002 \) -print 2>/dev/null)" ]]
+}
+
+configure_compile_cache() {
+    if [[ -n "${NODE_COMPILE_CACHE:-}" ]]; then
+        [[ -e "$NODE_COMPILE_CACHE" ]] || mkdir -p -m 700 "$NODE_COMPILE_CACHE" 2>/dev/null || true
+        if ! compile_cache_dir_is_private "$NODE_COMPILE_CACHE"; then
+            echo "[SillyBunny] Ignoring NODE_COMPILE_CACHE=$NODE_COMPILE_CACHE: it must be owned by the current user and not writable by group or others."
+            unset NODE_COMPILE_CACHE
+        fi
+    fi
+
+    if [[ -z "${NODE_COMPILE_CACHE:-}" ]]; then
+        export NODE_COMPILE_CACHE="$SCRIPT_DIR/node_modules/.cache/sillybunny-v8"
+        # A directory that an earlier start created follows the umask, so close it to group and others.
+        mkdir -p "$NODE_COMPILE_CACHE" 2>/dev/null && chmod 700 "$NODE_COMPILE_CACHE" 2>/dev/null || true
+        if ! compile_cache_dir_is_private "$NODE_COMPILE_CACHE"; then
+            echo "[SillyBunny] Compile cache stays off: $NODE_COMPILE_CACHE must be owned by the current user and not writable by group or others."
+            unset NODE_COMPILE_CACHE
+        fi
+    fi
+}
+
 echo "Entering SillyBunny..."
 export NODE_NO_WARNINGS=1
 export SILLYBUNNY_LAUNCHER=1
+# SillyBunny: enable Node V8 bytecode compile cache outside git-tracked paths.
+configure_compile_cache
 
 restart_exit_code=75
 server_restart_count=0

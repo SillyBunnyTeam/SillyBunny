@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
-import { runSupervisor, shouldSupervise } from './src/server-supervisor.js';
+// SillyBunny: enable Node's V8 bytecode cache before loading application modules so warm restarts skip reparsing.
+import { enableNodeCompileCache } from './src/node-compile-cache.js';
+
+enableNodeCompileCache();
+
+const { runSupervisor, shouldSupervise } = await import('./src/server-supervisor.js');
 
 // Supervise a child copy so restarts and transactional plugin replacement are
 // owned by one process. Launcher scripts may wrap this supervisor so host-code

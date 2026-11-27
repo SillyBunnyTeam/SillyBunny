@@ -2,16 +2,243 @@ import process from 'node:process';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
+import chalk from 'chalk';
 import isDocker from 'is-docker';
-import webpack from 'webpack';
-import { isBunRuntime } from './src/runtime.js';
+import { isBunRuntime, isNativeTermuxEnvironment } from './src/runtime.js';
 import { serverDirectory } from './src/server-directory.js';
-import { getVersion, color } from './src/util.js';
+
+const color = chalk;
+const moduleRequire = createRequire(import.meta.url);
 
 const BUN_LIB_BUNDLE_SIGNATURE = 'bun-no-minify-v1';
-const PUBLIC_LIB_CONFIG_SIGNATURE = 'chevrotain-esm-alias-v1';
+const PUBLIC_LIB_CONFIG_SIGNATURE = 'chevrotain-esm-alias-minimizer-v3';
 const WEBPACK_CACHE_KEEP_COUNT = 3;
 const PUBLIC_LIB_FILENAME = 'lib.js';
+
+function readJsonVersion(filePath, fallback) {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        return typeof parsed?.version === 'string' && parsed.version ? parsed.version : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function findPackageJsonFromEntry(entryPath) {
+    let dir = path.dirname(entryPath);
+    for (let depth = 0; depth < 6; depth++) {
+        const candidate = path.join(dir, 'package.json');
+        if (fs.existsSync(candidate)) {
+            try {
+                const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+                if (parsed?.name === 'webpack') {
+                    return candidate;
+                }
+            } catch {
+                // Continue walking upward when a package.json cannot be parsed.
+            }
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            break;
+        }
+        dir = parent;
+    }
+    return null;
+}
+
+function resolveWebpackPackageJsonFile(baseRequire = moduleRequire) {
+    try {
+        return baseRequire.resolve('webpack/package.json');
+    } catch {
+        // Fall back to resolving webpack's main entry if exports restrict ./package.json.
+    }
+
+    try {
+        const mainEntry = baseRequire.resolve('webpack');
+        const found = findPackageJsonFromEntry(mainEntry);
+        if (found) {
+            return found;
+        }
+    } catch {
+        // Fall back to serverDirectory lookup below.
+    }
+
+    return null;
+}
+
+function resolveWebpackPackageJsonPath() {
+    const directPath = path.join(serverDirectory, 'node_modules', 'webpack', 'package.json');
+    if (fs.existsSync(directPath)) {
+        return directPath;
+    }
+
+    return resolveWebpackPackageJsonFile();
+}
+
+// SillyBunny: read package versions directly from JSON so importing webpack.config.js never loads webpack or spawns git.
+const webpackPackageJsonPath = resolveWebpackPackageJsonPath();
+const appPkgVersion = readJsonVersion(path.join(serverDirectory, 'package.json'), 'UNKNOWN');
+const webpackVersion = webpackPackageJsonPath ? readJsonVersion(webpackPackageJsonPath, 'unknown') : 'unknown';
+
+/** @type {{ runtimeKey: string, value: string } | null} */
+let cachedWebpackVersionEntry = null;
+/** @type {{ kind: 'minimizer-webpack-plugin' | 'terser-webpack-plugin', pluginPath: string } | null | undefined} */
+let cachedMinimizerSpec;
+/** @type {Map<string, { webpackRoot: string, cacheVersion: string, cacheDirectory: string, outputDirectory: string, outputFile: string, outputFilePath: string }>} */
+const publicLibCacheInfoMemo = new Map();
+
+const WEBPACK_MINIMIZER_PACKAGES = /** @type {const} */ ([
+    'minimizer-webpack-plugin',
+    'terser-webpack-plugin',
+]);
+
+// SillyBunny: webpack 5.106+ replaced terser-webpack-plugin with minimizer-webpack-plugin; resolve either from webpack's real package root first.
+export function resolveWebpackMinimizerSpec({
+    baseRequire = moduleRequire,
+    createRequireFromPath = createRequire,
+    realpathSync = fs.realpathSync,
+    fallbackWebpackPkgPath = webpackPackageJsonPath,
+} = {}) {
+    const candidateAnchors = [];
+    const addAnchor = (anchor) => {
+        if (!anchor) {
+            return;
+        }
+        try {
+            const real = realpathSync(anchor);
+            if (!candidateAnchors.includes(real)) {
+                candidateAnchors.push(real);
+            }
+        } catch {
+            // Keep the unresolved path when realpath fails.
+        }
+        if (!candidateAnchors.includes(anchor)) {
+            candidateAnchors.push(anchor);
+        }
+    };
+
+    addAnchor(resolveWebpackPackageJsonFile(baseRequire));
+    addAnchor(fallbackWebpackPkgPath);
+
+    for (const anchorPath of candidateAnchors) {
+        let anchoredRequire;
+        try {
+            anchoredRequire = createRequireFromPath(anchorPath);
+        } catch {
+            continue;
+        }
+        for (const pkgName of WEBPACK_MINIMIZER_PACKAGES) {
+            try {
+                return {
+                    kind: pkgName,
+                    pluginPath: anchoredRequire.resolve(pkgName),
+                };
+            } catch {
+                // Try the next package or anchor.
+            }
+        }
+    }
+
+    for (const pkgName of WEBPACK_MINIMIZER_PACKAGES) {
+        try {
+            return {
+                kind: pkgName,
+                pluginPath: baseRequire.resolve(pkgName),
+            };
+        } catch {
+            // Try the next package.
+        }
+    }
+
+    return null;
+}
+
+export function resolveTerserPluginPath(options = {}) {
+    return resolveWebpackMinimizerSpec(options)?.pluginPath ?? null;
+}
+
+function isTermuxEnv(env) {
+    if (env === process.env) {
+        return isNativeTermuxEnvironment();
+    }
+    return Boolean(env?.TERMUX_VERSION)
+        || env?.PREFIX === '/data/data/com.termux/files/usr'
+        || (typeof env?.HOME === 'string' && env.HOME.startsWith('/data/data/com.termux/files/home'));
+}
+
+export function buildPublicLibMinimizer({
+    env = process.env,
+    platform = process.platform,
+    resolveMinimizerSpec = () => {
+        if (cachedMinimizerSpec === undefined) {
+            cachedMinimizerSpec = resolveWebpackMinimizerSpec();
+        }
+        return cachedMinimizerSpec;
+    },
+    resolvePluginPath = undefined,
+    loadPlugin = (pluginPath) => moduleRequire(pluginPath),
+} = {}) {
+    let spec = null;
+    try {
+        if (typeof resolvePluginPath === 'function') {
+            const legacyPath = resolvePluginPath();
+            spec = legacyPath ? { kind: 'terser-webpack-plugin', pluginPath: legacyPath } : null;
+        } else {
+            spec = resolveMinimizerSpec();
+        }
+    } catch {
+        spec = null;
+    }
+
+    if (!spec?.pluginPath) {
+        return ['...'];
+    }
+
+    const isAndroidHost = env.SILLYBUNNY_ANDROID_APP === '1'
+        || platform === 'android'
+        || isTermuxEnv(env);
+    // The bundle is one asset, so the plugin's default of one worker per asset already gives one worker on desktop.
+    const parallelOption = isAndroidHost ? { parallel: false } : {};
+    return [
+        {
+            apply(compiler) {
+                let MinimizerPlugin;
+                try {
+                    MinimizerPlugin = loadPlugin(spec.pluginPath);
+                } catch (error) {
+                    console.warn(`Failed to load webpack minimizer plugin at ${spec.pluginPath}; continuing without custom minimizer.`, error);
+                    return;
+                }
+                // SillyBunny: minify in-process on Android (APK and Termux) so no worker thread adds to the memory peak.
+                const pluginOptions = spec.kind === 'minimizer-webpack-plugin'
+                    ? {
+                        ...parallelOption,
+                        test: /^[^?#]*\.[cm]?js(?:[?#].*)?$/i,
+                        minify: {
+                            path: spec.pluginPath,
+                            export: 'terserMinify',
+                        },
+                        minimizerOptions: {
+                            compress: {
+                                passes: 2,
+                            },
+                        },
+                    }
+                    : {
+                        ...parallelOption,
+                        terserOptions: {
+                            compress: {
+                                passes: 2,
+                            },
+                        },
+                    };
+                new MinimizerPlugin(pluginOptions).apply(compiler);
+            },
+        },
+    ];
+}
 
 function hashFileIfPresent(hasher, filePath) {
     if (!fs.existsSync(filePath)) {
@@ -39,15 +266,29 @@ function getPublicLibInputsSignature() {
  * @returns {string} The cache version string.
  */
 function getWebpackCacheVersion() {
-    return crypto.createHash('shake256', { outputLength: 8 })
+    const runtimeKey = isBunRuntime() ? BUN_LIB_BUNDLE_SIGNATURE : 'default';
+    if (cachedWebpackVersionEntry && cachedWebpackVersionEntry.runtimeKey === runtimeKey) {
+        return cachedWebpackVersionEntry.value;
+    }
+
+    const value = crypto.createHash('shake256', { outputLength: 8 })
         .update(JSON.stringify([
-            appVersion.pkgVersion,
-            webpack.version,
+            appPkgVersion,
+            webpackVersion,
             PUBLIC_LIB_CONFIG_SIGNATURE,
-            isBunRuntime() ? BUN_LIB_BUNDLE_SIGNATURE : 'default',
+            runtimeKey,
             getPublicLibInputsSignature(),
         ]))
         .digest('hex');
+
+    cachedWebpackVersionEntry = { runtimeKey, value };
+    return value;
+}
+
+export function invalidatePublicLibCacheInfo() {
+    cachedWebpackVersionEntry = null;
+    cachedMinimizerSpec = undefined;
+    publicLibCacheInfoMemo.clear();
 }
 
 /**
@@ -99,8 +340,6 @@ function pruneWebpackCache(webpackRoot, currentCacheVersion, { keepCount = WEBPA
     }
 }
 
-const appVersion = await getVersion();
-
 function getWebpackRoot({ forceDist = false } = {}) {
     if (forceDist || isDocker()) {
         return path.resolve(process.cwd(), 'dist', '_webpack');
@@ -129,13 +368,19 @@ function getOutputDirectory(webpackRoot, cacheVersion) {
  */
 export function getPublicLibCacheInfo({ forceDist = false } = {}) {
     const webpackRoot = getWebpackRoot({ forceDist });
+    const runtimeKey = isBunRuntime() ? BUN_LIB_BUNDLE_SIGNATURE : 'default';
+    const memoKey = `${Boolean(forceDist)}:${runtimeKey}:${webpackRoot}`;
+    const cached = publicLibCacheInfoMemo.get(memoKey);
+    if (cached) {
+        return { ...cached };
+    }
+
     const cacheVersion = getWebpackCacheVersion();
     const cacheDirectory = getCacheDirectory(webpackRoot, cacheVersion);
     const outputDirectory = getOutputDirectory(webpackRoot, cacheVersion);
     const outputFile = PUBLIC_LIB_FILENAME;
     const outputFilePath = path.join(outputDirectory, outputFile);
-
-    return {
+    const cacheInfo = {
         webpackRoot,
         cacheVersion,
         cacheDirectory,
@@ -143,6 +388,9 @@ export function getPublicLibCacheInfo({ forceDist = false } = {}) {
         outputFile,
         outputFilePath,
     };
+
+    publicLibCacheInfoMemo.set(memoKey, cacheInfo);
+    return { ...cacheInfo };
 }
 
 /**
@@ -174,7 +422,6 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
     const {
         webpackRoot,
         cacheVersion,
-        cacheDirectory,
         outputDirectory,
     } = getPublicLibCacheInfo({ forceDist });
 
@@ -189,12 +436,8 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
     return {
         mode: 'production',
         entry: path.join(serverDirectory, 'public/lib.js'),
-        cache: isBunRuntime() ? false : {
-            type: 'filesystem',
-            cacheDirectory: cacheDirectory,
-            store: 'pack',
-            compression: 'gzip',
-        },
+        // SillyBunny: cacheVersion already scopes each output directory to one input hash, so a pack cache never gets a hit.
+        cache: false,
         devtool: false,
         watch: false,
         resolve: {
@@ -219,6 +462,9 @@ export default function getPublicLibConfig({ forceDist = false, pruneCache = fal
         },
         optimization: {
             minimize,
+            ...(minimize ? {
+                minimizer: buildPublicLibMinimizer(),
+            } : {}),
         },
         output: {
             path: outputPath ?? outputDirectory,
