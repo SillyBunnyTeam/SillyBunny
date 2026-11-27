@@ -1006,7 +1006,7 @@ export function hasCrossBlockTextHazard(block) {
 
 /**
  * Creates a stateful incremental block formatter for a streamed message. It formats each settled block once,
- * keeps the result until `reset()`, and formats the rest of the message (the tail, and any
+ * keeps the result by block position until `reset()`, and formats the rest of the message (the tail, and any
  * settled block that cannot stand alone) in one `formatFn` call, so the output equals `formatFn(markdown)` at every
  * tick. It formats the whole message in one call when `getSignature` returns `null`, and on `isFinal`.
  *
@@ -1029,9 +1029,8 @@ export function hasCrossBlockTextHazard(block) {
  * @returns {{ format: (markdown: string, options?: { isFinal?: boolean }) => string, reset: () => void }}
  */
 export function createIncrementalBlockFormatter(formatFn, { getSignature = () => '' } = {}) {
-    /** @type {Map<string, { text: string, html: string | null, standsAlone: boolean, hasCode: boolean }>} Formatted blocks by text. */
-    const entriesByText = new Map();
-    const MAX_CACHED_BLOCKS = 256;
+    /** @type {{ text: string, html: string | null, standsAlone: boolean, hasCode: boolean }[]} Formatted blocks by position. */
+    let entries = [];
     let signature = null;
 
     function formatBlock(text) {
@@ -1048,7 +1047,7 @@ export function createIncrementalBlockFormatter(formatFn, { getSignature = () =>
                 return formatFn(source);
             }
             if (isFinal) {
-                entriesByText.clear();
+                entries = [];
                 signature = null;
                 return formatFn(source);
             }
@@ -1058,7 +1057,7 @@ export function createIncrementalBlockFormatter(formatFn, { getSignature = () =>
                 return formatFn(source);
             }
             if (nextSignature !== signature) {
-                entriesByText.clear();
+                entries = [];
                 signature = nextSignature;
             }
 
@@ -1072,13 +1071,10 @@ export function createIncrementalBlockFormatter(formatFn, { getSignature = () =>
             let reusedHasCode = false;
             let reused = 0;
             for (; reused < prefixBlocks.length; reused++) {
-                let entry = entriesByText.get(prefixBlocks[reused]);
-                if (!entry) {
+                let entry = entries[reused];
+                if (!entry || entry.text !== prefixBlocks[reused]) {
                     entry = formatBlock(prefixBlocks[reused]);
-                    if (entriesByText.size >= MAX_CACHED_BLOCKS) {
-                        entriesByText.delete(entriesByText.keys().next().value);
-                    }
-                    entriesByText.set(prefixBlocks[reused], entry);
+                    entries[reused] = entry;
                 }
                 if (!entry.standsAlone) {
                     break;
@@ -1101,7 +1097,7 @@ export function createIncrementalBlockFormatter(formatFn, { getSignature = () =>
             return htmlParts.join('\n');
         },
         reset() {
-            entriesByText.clear();
+            entries = [];
             signature = null;
         },
     };

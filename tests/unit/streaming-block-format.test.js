@@ -254,6 +254,43 @@ describe('the incremental block formatter shows what the whole-message format sh
     });
 });
 
+describe('settled blocks are formatted once however long the reply is', () => {
+    test.each([300, 1000])('a reply of %i paragraphs', (paragraphCount) => {
+        // A call that passes hooks formats a settled block; the tail is formatted without hooks.
+        const callsByBlock = new Map();
+        const formatter = createIncrementalBlockFormatter((block, hooks) => {
+            if (hooks) callsByBlock.set(block, (callsByBlock.get(block) ?? 0) + 1);
+            const html = `<p>${block.trim()}</p>`;
+            hooks?.onConvertedHtml?.(html);
+            return html;
+        });
+        const paragraphs = Array.from({ length: paragraphCount }, (_, index) => `Paragraph ${index}: she turned toward the window.`);
+        const document = paragraphs.join('\n\n');
+        const streamedFrom = document.indexOf(`Paragraph ${paragraphCount - 20}:`);
+        for (let end = streamedFrom; end <= document.length; end += 7) {
+            formatter.format(document.slice(0, end), { isFinal: false });
+        }
+
+        expect(callsByBlock.size).toBeGreaterThanOrEqual(paragraphCount - 21);
+        expect([...callsByBlock].filter(([, calls]) => calls > 1)).toEqual([]);
+    });
+
+    test('drops the formatted blocks on reset', () => {
+        const formatCalls = [];
+        const formatter = createIncrementalBlockFormatter((block, hooks) => {
+            formatCalls.push(block);
+            hooks?.onConvertedHtml?.(`<p>${block}</p>`);
+            return `<p>${block}</p>`;
+        });
+        const markdown = 'One.\n\nTwo.\n\nThree, still going';
+        formatter.format(markdown, { isFinal: false });
+        formatter.reset();
+        formatCalls.length = 0;
+        formatter.format(markdown, { isFinal: false });
+        expect(formatCalls).toEqual(['One.\n\n', 'Two.\n\n', 'Three, still going']);
+    });
+});
+
 describe('splitStreamingBlocks', () => {
     test('does not throw on a dash run that closes no comment', () => {
         for (const text of ['a <--> b\n\nc', 'x < y --> z\n\nw', '<-- left\n\nright -->\n\nend']) {
