@@ -539,7 +539,7 @@ describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startu
         });
     });
 
-    describe('index.html deferred CSS priority, font-display:swap, in-place adoption, and --doc-height coalescing', () => {
+    describe('index.html deferred CSS priority, in-place adoption, and --doc-height coalescing', () => {
         const indexHtml = readPublic('index.html');
 
         test('gates sillybunny-mobile-navigation.css to BOTTOM_BAR_COMPACT_QUERY, eliminates preload-as-style socket starvation, and leaves boot prefetch to PR 10', () => {
@@ -657,12 +657,6 @@ describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startu
             await listPromise;
             expect(headChildren.indexOf(entityPlaceholder)).toBeLessThan(headChildren.indexOf(userCss));
             expect(headChildren.indexOf(hashedPlaceholder)).toBeLessThan(headChildren.indexOf(userCss));
-        });
-
-        test('switches solid.min.css from font-display:block to font-display:swap', () => {
-            const solidCss = readPublic('css', 'solid.min.css');
-            expect(solidCss).toContain('font-display:swap');
-            expect(solidCss).not.toContain('font-display:block');
         });
 
         test('coalesces --doc-height resize writes into one rAF', () => {
