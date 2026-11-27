@@ -3,6 +3,7 @@ import { describe, expect, test } from '@jest/globals';
 
 import {
     createArchive,
+    dataUrlExtension,
     fetchArchiveEntries,
     fileNameFromUrl,
     formatFailedFiles,
@@ -72,6 +73,13 @@ describe('bulk actions: names inside an archive', () => {
         expect(planArchiveNames([{ name: '', fallback: 'Picture 1' }, { name: undefined, fallback: 'Picture 2' }])).toEqual(['Picture 1', 'Picture 2']);
     });
 
+    test('knows the extension of a picture that carries its data, which has no file name to read it from', () => {
+        expect(dataUrlExtension('data:image/png;base64,AAAA')).toBe('.png');
+        expect(dataUrlExtension('data:image/jpeg;base64,AAAA')).toBe('.jpg');
+        expect(dataUrlExtension('data:image/webp;base64,AAAA')).toBe('.webp');
+        expect(dataUrlExtension('/user/a.png')).toBe('');
+    });
+
     test('reads a file name from the end of an address', () => {
         expect(fileNameFromUrl('/user/files/My%20Report.pdf?x=1#top')).toBe('My Report.pdf');
         expect(fileNameFromUrl('https://example.test/a/b/photo.png')).toBe('photo.png');
@@ -109,7 +117,7 @@ describe('bulk actions: which addresses an archive fetches', () => {
 describe('bulk actions: fetching the files of an archive', () => {
     test('fetches every file and keeps the order of the list', async () => {
         const result = await fetchArchiveEntries(
-            [{ name: 'a.png', url: '/a' }, { name: 'b.png', url: '/b' }, { name: 'c.png', url: '/c' }],
+            [{ name: 'a.png', source: '/a' }, { name: 'b.png', source: '/b' }, { name: 'c.png', source: '/c' }],
             async url => new TextEncoder().encode(`bytes of ${url}`),
         );
         expect(result.failed).toEqual([]);
@@ -119,7 +127,7 @@ describe('bulk actions: fetching the files of an archive', () => {
 
     test('names a file that fails and still returns the others', async () => {
         const result = await fetchArchiveEntries(
-            [{ name: 'a.png', url: '/a' }, { name: 'broken.png', url: '/broken' }, { name: 'c.png', url: '/c' }],
+            [{ name: 'a.png', source: '/a' }, { name: 'broken.png', source: '/broken' }, { name: 'c.png', source: '/c' }],
             async (url) => {
                 if (url === '/broken') {
                     throw new Error('404');
@@ -132,14 +140,14 @@ describe('bulk actions: fetching the files of an archive', () => {
     });
 
     test('counts a file that gives no bytes as failed', async () => {
-        const result = await fetchArchiveEntries([{ name: 'a.png', url: '/a' }], async () => null);
+        const result = await fetchArchiveEntries([{ name: 'a.png', source: '/a' }], async () => null);
         expect(result.failed.map(item => item.name)).toEqual(['a.png']);
     });
 
     test('runs a few requests at a time and no more', async () => {
         let running = 0;
         let peak = 0;
-        const candidates = Array.from({ length: 12 }, (_, index) => ({ name: `f${index}`, url: `/f${index}` }));
+        const candidates = Array.from({ length: 12 }, (_, index) => ({ name: `f${index}`, source: `/f${index}` }));
         const result = await fetchArchiveEntries(candidates, async () => {
             running += 1;
             peak = Math.max(peak, running);

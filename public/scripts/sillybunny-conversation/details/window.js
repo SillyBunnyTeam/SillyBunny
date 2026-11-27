@@ -3,8 +3,10 @@
  * dialog frame's navigation stack. A page is built when it is pushed and dropped when it pops; every row saves its
  * own setting as it changes, so a page holds no state that the window has to write back.
  *
- * A page builder is `(context, args) => { title, subtitle?, content, responses?, onResponse?, onMount?, dispose? }`, where
- * `responses` is the explicit-action form (Cancel at the start, the affirmative at the end) that `openDialog` takes.
+ * A page builder is `(context, args) => { title, subtitle?, content, responses?, onResponse?, onMount?, canClose?,
+ * leaveSelection?, dispose? }`, where `responses` is the explicit-action form (Cancel at the start, the affirmative at the
+ * end) that `openDialog` takes. A page with selection mode gives `canClose`, so that Escape and a swipe leave the mode
+ * before they pop the page, and `leaveSelection`, which the window calls before another page is pushed over it.
  */
 
 import { openDialog } from '../../sillybunny-editor/dialog.js';
@@ -59,10 +61,16 @@ function buildInto(current, id, args) {
     return buildPage(id, { conversationId: current.conversationId, nav: current.nav }, args);
 }
 
+/** A page that is pushed over a page in selection mode leaves that mode first, so that it is not still active under the new page. */
+function leaveSelection(current) {
+    current.pages.at(-1)?.spec.leaveSelection?.();
+}
+
 function pushPage(current, id, args = {}) {
     if (!current.dialog.isOpen || !isKnownPage(id)) {
         return null;
     }
+    leaveSelection(current);
     let spec;
     try {
         spec = buildInto(current, id, args);
@@ -76,6 +84,7 @@ function pushPage(current, id, args = {}) {
         subtitle: spec.subtitle,
         content: spec.content,
         responses: spec.responses ?? null,
+        canClose: spec.canClose,
         className: `sb-details-frame sb-details-frame--${id}`,
     });
     const entry = { handle, spec };
@@ -83,6 +92,17 @@ function pushPage(current, id, args = {}) {
     spec.onMount?.({
         setResponseEnabled: (responseId, enabled) => handle.setResponseEnabled(responseId, enabled),
         setTitle: title => handle.setTitle(title),
+        // The parts of the page's frame that a page may add to: selection mode takes over its header and puts a bar under its body.
+        frame: {
+            page: handle.page,
+            body: handle.body,
+            header: handle.header,
+            headerStart: handle.headerStart,
+            headerEnd: handle.headerEnd,
+            titleNode: handle.titleNode,
+            closeButton: handle.closeButton,
+            search: handle.search,
+        },
     });
     handle.closed.then(({ response }) => {
         const committed = spec.responses && response !== 'cancel' && response !== 'back' && response !== 'close';
@@ -104,12 +124,16 @@ function pushPage(current, id, args = {}) {
     return handle;
 }
 
-/** A picture opens as a page of the window: the zoomed avatar is a child of `body`, and would sit under the window's inert layer. */
-function pushPicture(current, { title, src, kind = 'image', alt = '' }) {
+/**
+ * A picture opens as a page of the window: the zoomed avatar is a child of `body`, and would sit under the window's inert layer.
+ * With `onRemove`, the page has a menu with Remove From Chat, which closes the page once the item is gone from the chat.
+ */
+function pushPicture(current, { title, src, kind = 'image', alt = '', onRemove = null }) {
     const safeSrc = toSafeAttachmentUrl(src, { allowDataImage: kind !== 'video' });
     if (!current.dialog.isOpen || !safeSrc) {
         return null;
     }
+    leaveSelection(current);
     const body = el('div', 'sb-details-picture');
     const media = kind === 'video' ? el('video', 'sb-details-picture__media') : el('img', 'sb-details-picture__media');
     media.src = safeSrc;
@@ -119,7 +143,22 @@ function pushPicture(current, { title, src, kind = 'image', alt = '' }) {
         media.alt = alt;
     }
     body.append(media);
-    const handle = current.dialog.push({ title, content: body, className: 'sb-details-frame sb-details-frame--picture' });
+    const removeFromChat = async () => {
+        if (await onRemove()) {
+            handle.close();
+        }
+    };
+    const handle = current.dialog.push({
+        title,
+        content: body,
+        className: 'sb-details-frame sb-details-frame--picture',
+        ...(onRemove
+            ? {
+                menu: () => [{ items: [{ label: 'Remove From Chat', icon: 'fa-solid fa-trash-can', danger: true, onSelect: () => void removeFromChat() }] }],
+                menuLabel: kind === 'video' ? 'Video Menu' : 'Picture Menu',
+            }
+            : {}),
+    });
     const entry = { handle, spec: { content: body } };
     current.pages.push(entry);
     handle.closed.then(() => {

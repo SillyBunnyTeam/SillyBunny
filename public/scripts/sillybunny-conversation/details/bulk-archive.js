@@ -90,6 +90,14 @@ export function fileNameFromUrl(url) {
     }
 }
 
+const DATA_IMAGE_EXTENSIONS = Object.freeze({ png: '.png', jpeg: '.jpg', jpg: '.jpg', gif: '.gif', webp: '.webp', avif: '.avif', bmp: '.bmp' });
+
+/** The extension of a picture that carries its data, from its type; empty for any other address. */
+export function dataUrlExtension(url) {
+    const type = /^data:image\/([a-z]+);base64,/i.exec(String(url ?? ''))?.[1]?.toLowerCase();
+    return (type && DATA_IMAGE_EXTENSIONS[type]) || '';
+}
+
 /**
  * Whether the archive may fetch an address: one of the page's own origin (its own picture, its own file) or a picture
  * that carries its data. An address of another site is never fetched, so that the page does not send a request on
@@ -114,8 +122,9 @@ export function isFetchableAttachmentUrl(url, base) {
 
 /**
  * Fetches the files of an archive a few at a time. A file that fails does not stop the others; it is reported by name.
- * @param {{ name: string, url: string }[]} candidates Names are final: see {@link planArchiveNames}.
- * @param {(url: string) => Promise<Uint8Array|ArrayBuffer|null>} fetchBytes
+ * @param {{ name: string, source: string }[]} candidates Names are final: see {@link planArchiveNames}. `source` is
+ * whatever `fetchBytes` needs to get the bytes: an address, or the id of a chat.
+ * @param {(source: string) => Promise<Uint8Array|ArrayBuffer|null>} fetchBytes
  * @returns {Promise<{ entries: { name: string, data: Uint8Array|ArrayBuffer }[], failed: { name: string, error: unknown }[] }>}
  * Entries keep the order of the candidates.
  */
@@ -125,9 +134,9 @@ export async function fetchArchiveEntries(candidates, fetchBytes, { concurrency 
     async function worker() {
         while (next < candidates.length) {
             const index = next++;
-            const { name, url } = candidates[index];
+            const { name, source } = candidates[index];
             try {
-                const data = await fetchBytes(url);
+                const data = await fetchBytes(source);
                 results[index] = data ? { name, data } : { name, error: new Error('The file gave no data.') };
             } catch (error) {
                 results[index] = { name, error };

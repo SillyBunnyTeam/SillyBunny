@@ -1248,20 +1248,13 @@ export function toggleConversationMessagePin(messageId) {
 }
 
 /**
- * Deletes messages of the open chat in one commit. Besides the messages it keeps the composer, the read marker and the
+ * Deletes messages of a loaded chat in one commit. Besides the messages it keeps the composer, the read marker and the
  * send queue free of references to them.
+ * @param {{ conversationId: string, chatId: string }} address
  * @param {string[]} messageIds
  * @returns {string[]} The ids that were deleted.
  */
-export function deleteConversationMessages(messageIds) {
-    const avatar = getCurrentCharAvatar();
-    const groupId = getConversationGroupIdForAvatar(avatar);
-    const personaId = getConversationPersonaId();
-    const address = avatar ? conversationData.resolve({ avatar, groupId, personaId }) : null;
-    if (!address) {
-        return [];
-    }
-
+export function deleteMessagesInChat(address, messageIds) {
     const removed = removeChatMessages(conversationData, address, messageIds);
     if (!removed.length) {
         return [];
@@ -1274,6 +1267,19 @@ export function deleteConversationMessages(messageIds) {
     dropQueueItemsOfDeletedMessages(sendQueue, { chatId: address.chatId, messageIds: removed });
     scheduleTimelineRender();
     return removed;
+}
+
+/**
+ * Deletes messages of the open chat in one commit.
+ * @param {string[]} messageIds
+ * @returns {string[]} The ids that were deleted.
+ */
+export function deleteConversationMessages(messageIds) {
+    const avatar = getCurrentCharAvatar();
+    const groupId = getConversationGroupIdForAvatar(avatar);
+    const personaId = getConversationPersonaId();
+    const address = avatar ? conversationData.resolve({ avatar, groupId, personaId }) : null;
+    return address ? deleteMessagesInChat(address, messageIds) : [];
 }
 
 export function deleteConversationMessage(messageId) {
