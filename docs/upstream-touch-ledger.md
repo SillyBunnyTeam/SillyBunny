@@ -24,20 +24,6 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
-### Inert `<template>` adoption for `public/index.html` prototype blocks
-| Field | Value |
-| --- | --- |
-| File | `public/index.html`; `public/script.js`; `public/scripts/group-chats.js`; `public/scripts/logit-bias.js`; `public/scripts/openai.js`; `public/scripts/personas.js`; `public/scripts/swipe-picker.js`; `public/scripts/tags.js`; `public/scripts/world-info.js`. |
-| Area | Initial HTML DOM size and template cloning for messages, characters, groups, tags, world-info entries, logit-bias rows, avatars, chats and media attachments. |
-| Divergence reason | Upstream keeps 23 unused clone-prototype `.template_element` `<div>` trees attached to the live document at initial parse, adding 533 live DOM nodes to every style recalculation and selector walk. SillyBunny converts those 23 containers to inert `<template>` elements behind `dom-template.js` while keeping all live settings controls and `#group_member_template` (for third-party extensions) attached. |
-| Target seam | `public/scripts/dom-template.js` (`cloneTemplate`, `cloneTemplateNode`, `getTemplateJQuery`, `getTemplateRoot`, `queryTemplateElement`). |
-| Adapter shape | Converts 23 prototype `.template_element` containers in `public/index.html` to inert `<template>` elements (keeping `#group_member_template` and live form/popup/dialog templates untouched for extension and live-DOM compatibility) and replaces direct `$('#id .sel').clone()` / `$('#id .sel')` lookups in the 8 upstream caller modules (and `#zoomed_avatar_template` in `public/scripts/sillybunny-avatar-viewer.js`) with `cloneTemplate()` / `getTemplateJQuery()`, marked with `SillyBunny:` comments. |
-| Protecting tests | `tests/perf-viewport-template-tabs-split.test.js`; `tests/sillybunny-avatar-viewer.test.js`; `tests/world-info-legacy-layout.test.js`; `tests/unit/preset-lorebook-dialogs.test.js`. |
-| Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
-| Rollback path | Change the 23 marked `<template>` elements back to `<div class="template_element">` in `public/index.html`, revert the marked `dom-template.js` caller hunks in the 8 upstream scripts, and remove `public/scripts/dom-template.js`. No persisted data changes. |
-| Last reviewed | 2026-11-26, PR #1043 (large lists, template diet, viewport coordinator, tabs split). |
-| Owner | UI shell and performance integrator. |
-
 ### Shared `ViewportCoordinator` subscription in `browser-fixes.js` and `power-user.js`
 | Field | Value |
 | --- | --- |
@@ -49,7 +35,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/perf-viewport-template-tabs-split.test.js`; `tests/mobile-shell-lifecycle-wiring.test.js`; `tests/mobile-keyboard-focused-input-scroll.test.js`; `tests/mobile-shell-lifecycle-viewport-sync.test.js`; `tests/moving-ui-viewport.test.js`. |
 | Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
 | Rollback path | Revert the marked `subscribeViewport` / `subscribeMovingUIViewport` hunks in `public/scripts/browser-fixes.js` and `public/scripts/power-user.js` (and the SillyBunny-owned subscribers in `mobile-shell-lifecycle`, `chat-render-lifecycle/mobile-viewport.js`, `moving-ui-viewport.js`, and `sillybunny-tabs.js`) and remove `public/scripts/viewport-coordinator.js`. No saved user data changes. |
-| Last reviewed | 2026-11-26, PR #1043 (large lists, template diet, viewport coordinator, tabs split). |
+| Last reviewed | 2026-11-26, PR #1043 (large lists, viewport coordinator, tabs split). |
 | Owner | UI shell and performance integrator. |
 
 ### `public/scripts/backgrounds.js` - O(1) background indexes and keyed thumbnail reconciliation
@@ -63,7 +49,7 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Protecting tests | `tests/perf-large-lists-virtualization.test.js`; `tests/unit/sillybunny-background-sections.test.js`. |
 | Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
 | Rollback path | Revert the marked `SillyBunny:` `Map` index and keyed reconciliation hunks in `public/scripts/backgrounds.js` (and matching gallery hook consumers in `public/scripts/sillybunny-background-gallery.js`). All indexes are in-memory only and no background files or metadata change. |
-| Last reviewed | 2026-11-26, PR #1043 (large lists, template diet, viewport coordinator, tabs split). |
+| Last reviewed | 2026-11-26, PR #1043 (large lists, viewport coordinator, tabs split). |
 | Owner | UI shell and performance integrator. |
 
 ### Extension row action overflow adapter
