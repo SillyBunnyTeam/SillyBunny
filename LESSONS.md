@@ -1912,6 +1912,12 @@ This is the largest class by a wide margin.
 - **Guards:** entries leave a bucket only when one is inserted (`setTokenCacheEntry()`), and a chat bucket leaves only when a new one is created or the cache loads. The bound is 20 chats and 20,000 entries per chat in memory; `saveTokenCache()` writes at most the newest 500 entries per chat, in the same plain-object format. `tokenCacheOrders` keeps each bucket's key order so that an eviction is O(1). The cache moves a chat to the newest position when the user switches to it, not on every count.
 - **Tests:** `tests/token-cache-bounds.test.js`.
 
+### Itemized prompts (`public/scripts/itemized-prompts.js`)
+
+- **Breaks:** the cap on stored prompt sets per chat trims when a chat loads and when it saves, so a cap below the number of generated messages of a long chat deleted the older sets from IndexedDB on the next save, and the Prompt Itemization button of their messages disappeared. Upstream keeps every set.
+- **Guards:** `MAX_ITEMIZED_PROMPTS` is a count per chat, kept above the generated messages of a long chat. `Generate()` in `public/script.js` trims with the same number as a literal, so a change of the constant changes both. The button and the inspector find a set by `mesId`, so a trim removes only the buttons of the messages whose sets it removes.
+- **Tests:** `tests/unit/sillybunny-itemized-prompts-cap.test.js`.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

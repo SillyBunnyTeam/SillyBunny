@@ -9274,8 +9274,8 @@ export async function Generate(type, { automatic_trigger, force_name2, quiet_pro
             } else {
                 itemizedPrompts.push(additionalPromptStuff);
                 // SillyBunny: keep only the latest prompt snapshots inline so extracted VM test harnesses need no extra import.
-                if (itemizedPrompts.length > 50) {
-                    itemizedPrompts.splice(0, itemizedPrompts.length - 50);
+                if (itemizedPrompts.length > 500) {
+                    itemizedPrompts.splice(0, itemizedPrompts.length - 500);
                 }
             }
 

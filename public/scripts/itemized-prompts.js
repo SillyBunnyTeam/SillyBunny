@@ -13,8 +13,9 @@ let PromptArrayItemForRawPromptDisplay;
 let priorPromptArrayItemForRawPromptDisplay;
 
 const promptStorage = localforage.createInstance({ name: 'SillyTavern_Prompts' });
-// SillyBunny: bound retained prompt snapshots per chat so long sessions do not pin hundreds of megabytes in memory and IndexedDB.
-export const MAX_ITEMIZED_PROMPTS = 50;
+// SillyBunny: bound retained prompt snapshots per chat so a chat with thousands of generations does not pin them all in memory and IndexedDB.
+// A set is kept for the Prompt Itemization button of its message, so the bound is a count that covers every generated message of a long chat.
+export const MAX_ITEMIZED_PROMPTS = 500;
 export let itemizedPrompts = [];
 
 /**

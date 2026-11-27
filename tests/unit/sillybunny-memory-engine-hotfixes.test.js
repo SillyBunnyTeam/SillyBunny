@@ -130,7 +130,6 @@ describe('Slice 1E: bounded session caches and World Info fast paths', () => {
         const tokenizersSource = readRepoFile('public/scripts/tokenizers.js');
         const worldInfoSource = readRepoFile('public/scripts/world-info.js');
 
-        expect(itemizedSource).toContain('export const MAX_ITEMIZED_PROMPTS = 50;');
         expect(itemizedSource).toContain('export function trimItemizedPrompts(');
 
         expect(backgroundsSource).toContain('const MAX_THUMBNAIL_BLOB_URLS = 64;');
