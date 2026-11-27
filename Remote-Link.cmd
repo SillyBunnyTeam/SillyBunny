@@ -15,4 +15,5 @@ echo To abort, press Ctrl+C or close this window now!
 echo.
 pause
 if not exist cloudflared.exe curl -Lo cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
-cloudflared.exe tunnel --url localhost:4444
+REM SillyBunny: rewrite Host header to localhost so quick tunnels pass the default host whitelist (ST #6162).
+cloudflared.exe tunnel --url localhost:4444 --http-host-header localhost:4444

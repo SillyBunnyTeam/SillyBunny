@@ -168,9 +168,21 @@ describe('host whitelist middleware', () => {
         test.each([
             ['the shipped default config', undefined],
             ['a config file without the option', '{}\n'],
-            ['a config file that turns the option off', 'hostWhitelist:\n  enabled: false\n'],
-        ])('lets through an unlisted host with %s', async (_name, configText) => {
+        ])('blocks an unlisted host by default with %s while allowing localhost and IP literals', async (_name, configText) => {
             const configPath = configText === undefined ? undefined : writeConfig(configText);
+            const app = await startApp(await loadHostWhitelist({ SILLYTAVERN_HOSTWHITELIST_SCAN: 'false' }, configPath));
+
+            const blocked = await sendRequest(app.port, { Host: UNTRUSTED_HOST });
+            const local = await sendRequest(app.port, { Host: 'localhost:4444' });
+            const literal = await sendRequest(app.port, { Host: '192.168.1.25:4444' });
+
+            expect(blocked.status).toBe(403);
+            expect(local.status).toBe(200);
+            expect(literal.status).toBe(200);
+        });
+
+        test('lets through an unlisted host with a config file that turns the option off', async () => {
+            const configPath = writeConfig('hostWhitelist:\n  enabled: false\n');
             const app = await startApp(await loadHostWhitelist({ SILLYTAVERN_HOSTWHITELIST_SCAN: 'false' }, configPath));
 
             const response = await sendRequest(app.port, { Host: UNTRUSTED_HOST });
@@ -193,6 +205,7 @@ describe('host whitelist middleware', () => {
 
         function loadScan(env = {}) {
             return loadHostWhitelist({
+                SILLYTAVERN_HOSTWHITELIST_ENABLED: 'false',
                 SILLYTAVERN_HOSTWHITELIST_SCAN: 'true',
                 SILLYTAVERN_HOSTWHITELIST_HOSTS: JSON.stringify([ALLOWED_HOST]),
                 ...env,

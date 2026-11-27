@@ -195,6 +195,12 @@ export function addMissingConfigValues(configPath) {
         // Get all keys from the original config
         const originalKeys = getAllKeys(config);
 
+        // SillyBunny: keep hostWhitelist.enabled off when upgrading an existing config that predates the key (Option A rollout of ST #6162).
+        if (_.has(defaultConfig, 'hostWhitelist.enabled') && !_.has(config, 'hostWhitelist.enabled')) {
+            _.set(config, 'hostWhitelist.enabled', false);
+            console.log('Preserving hostWhitelist.enabled=false for existing config.yaml.');
+        }
+
         // Use lodash's defaultsDeep function to recursively apply default properties
         config = _.defaultsDeep(config, defaultConfig);
 
