@@ -139,13 +139,14 @@ export async function flushJournal(file = undefined) {
 }
 
 /**
- * Synchronously persists any dirty in-memory journal snapshots (used on clean process exit or simulated restart).
+ * Synchronously persists the latest in-memory journal snapshots (used on clean process exit or simulated restart).
+ * A snapshot whose async write is still in flight is no longer dirty, but the write may never finish, so it is written again.
  * @param {string} [file] Optional journal file path
  */
 function flushJournalSync(file = undefined) {
     const targets = file ? (pendingWrites.has(file) ? [[file, pendingWrites.get(file)]] : []) : [...pendingWrites.entries()];
     for (const [targetFile, state] of targets) {
-        if (!state || !state.dirty) {
+        if (!state || (!state.dirty && !state.promise)) {
             continue;
         }
         const snapshot = state.payload;
