@@ -12,6 +12,7 @@ import { isBunRuntime } from '../src/runtime.js';
 import { serverDirectory } from '../src/server-directory.js';
 import {
     PREBUILT_LIB_FILENAME,
+    PREBUILT_LIB_LICENSE_FILENAME,
     PREBUILT_LIB_MANIFEST_FILENAME,
     PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
     computePublicLibInputsHash,
@@ -65,7 +66,7 @@ export function resolvePrebuiltPublicLibConfig(outputPath, { entry = undefined }
  * @param {string} outputDir Directory to emit `lib.js` into.
  * @param {object} [options] Optional compile overrides.
  * @param {string} [options.entry] Optional custom entry path (defaults to `public/lib.js`).
- * @returns {Promise<Buffer>} Compiled `lib.js` buffer.
+ * @returns {Promise<{ bundle: Buffer, license: Buffer|null }>} Compiled `lib.js` and the licence notices that the minifier extracted, if any.
  */
 export async function compilePrebuiltPublicLibToDir(outputDir, { entry = undefined } = {}) {
     if (isBunRuntime()) {
@@ -105,7 +106,13 @@ export async function compilePrebuiltPublicLibToDir(outputDir, { entry = undefin
         throw new Error(`Webpack did not produce ${PREBUILT_LIB_FILENAME} in ${outputDir}.`);
     }
 
-    return fs.readFileSync(bundlePath);
+    const licensePath = path.join(outputDir, PREBUILT_LIB_LICENSE_FILENAME);
+    const license = fs.existsSync(licensePath) ? fs.readFileSync(licensePath) : null;
+
+    return {
+        bundle: fs.readFileSync(bundlePath),
+        license: license && license.byteLength > 0 ? license : null,
+    };
 }
 
 /**
@@ -196,8 +203,9 @@ export async function buildPrebuiltPublicLib({
 
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-prebuilt-lib-stage-'));
     let bundleBuffer;
+    let licenseBuffer;
     try {
-        bundleBuffer = await compilePrebuiltPublicLibToDir(stageDir, { entry });
+        ({ bundle: bundleBuffer, license: licenseBuffer } = await compilePrebuiltPublicLibToDir(stageDir, { entry }));
     } finally {
         fs.rmSync(stageDir, { recursive: true, force: true });
     }
@@ -211,22 +219,29 @@ export async function buildPrebuiltPublicLib({
         webpackVersion: webpack.version,
         bundleBytes: bundleBuffer.byteLength,
         builtWithNode: true,
+        ...(licenseBuffer ? { licenseSha256: sha256Hex(licenseBuffer), licenseBytes: licenseBuffer.byteLength } : {}),
     };
 
     const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
     const manifestBuffer = Buffer.from(manifestJson, 'utf8');
 
     if (verify) {
+        // The rebuild runs in the same checkout, so it shows that the build is deterministic for this repository path and
+        // node_modules layout. Webpack's deterministic module ids hash module paths relative to the repository, so a
+        // checkout at another depth or with a symlinked node_modules can produce other bytes.
         const verifyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-prebuilt-lib-verify-'));
         let verifyBuffer;
+        let verifyLicense;
         try {
-            verifyBuffer = await compilePrebuiltPublicLibToDir(verifyDir, { entry });
+            ({ bundle: verifyBuffer, license: verifyLicense } = await compilePrebuiltPublicLibToDir(verifyDir, { entry }));
         } finally {
             fs.rmSync(verifyDir, { recursive: true, force: true });
         }
 
         const verifySha256 = sha256Hex(verifyBuffer);
-        if (verifySha256 !== sha256 || verifyBuffer.byteLength !== bundleBuffer.byteLength) {
+        const licenseMatches = (verifyLicense?.byteLength ?? 0) === (licenseBuffer?.byteLength ?? 0)
+            && (!licenseBuffer || sha256Hex(verifyLicense) === manifest.licenseSha256);
+        if (verifySha256 !== sha256 || verifyBuffer.byteLength !== bundleBuffer.byteLength || !licenseMatches) {
             throw new Error(
                 `Prebuilt lib.js reproducibility check failed: expected sha256=${sha256} (${bundleBuffer.byteLength} bytes), got sha256=${verifySha256} (${verifyBuffer.byteLength} bytes).`,
             );
@@ -237,7 +252,14 @@ export async function buildPrebuiltPublicLib({
     fs.mkdirSync(resolvedOutDir, { recursive: true });
     const bundlePath = path.join(resolvedOutDir, PREBUILT_LIB_FILENAME);
     const manifestPath = path.join(resolvedOutDir, PREBUILT_LIB_MANIFEST_FILENAME);
+    const licensePath = path.join(resolvedOutDir, PREBUILT_LIB_LICENSE_FILENAME);
     fs.writeFileSync(bundlePath, bundleBuffer);
+    // A licence file from an earlier build must not stay next to a bundle that has no extracted notices.
+    if (licenseBuffer) {
+        fs.writeFileSync(licensePath, licenseBuffer);
+    } else {
+        fs.rmSync(licensePath, { force: true });
+    }
     fs.writeFileSync(manifestPath, manifestBuffer);
 
     let resolvedTarballPath = null;
@@ -246,6 +268,7 @@ export async function buildPrebuiltPublicLib({
         fs.mkdirSync(path.dirname(resolvedTarballPath), { recursive: true });
         const archiveBuffer = createDeterministicTarGz([
             { name: `dist/lib/${PREBUILT_LIB_FILENAME}`, content: bundleBuffer },
+            ...(licenseBuffer ? [{ name: `dist/lib/${PREBUILT_LIB_LICENSE_FILENAME}`, content: licenseBuffer }] : []),
             { name: `dist/lib/${PREBUILT_LIB_MANIFEST_FILENAME}`, content: manifestBuffer },
         ]);
         fs.writeFileSync(resolvedTarballPath, archiveBuffer);

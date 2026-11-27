@@ -9,6 +9,8 @@ import { serverDirectory } from './server-directory.js';
 
 export const PREBUILT_LIB_MANIFEST_SCHEMA_VERSION = 1;
 export const PREBUILT_LIB_FILENAME = 'lib.js';
+// The minifier writes the notices it extracts from third-party code to `<output filename>.LICENSE.txt`, and the first line of lib.js points at it.
+export const PREBUILT_LIB_LICENSE_FILENAME = `${PREBUILT_LIB_FILENAME}.LICENSE.txt`;
 export const PREBUILT_LIB_MANIFEST_FILENAME = 'lib.manifest.json';
 export const PREBUILT_LIB_INPUT_FILES = Object.freeze([
     'public/lib.js',
@@ -21,6 +23,7 @@ export const PREBUILT_LIB_INPUT_FILES = Object.freeze([
 // Far above any real bundle (a few MB) and manifest (a few hundred bytes); they only bound what a damaged or hostile dist/lib can make the server allocate.
 export const PREBUILT_LIB_MAX_BUNDLE_BYTES = 32 * 1024 * 1024;
 export const PREBUILT_LIB_MAX_MANIFEST_BYTES = 64 * 1024;
+export const PREBUILT_LIB_MAX_LICENSE_BYTES = 1024 * 1024;
 
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 
@@ -121,6 +124,18 @@ export function isValidPrebuiltLibManifest(value) {
 
     if (manifest.file !== undefined && manifest.file !== PREBUILT_LIB_FILENAME) {
         return false;
+    }
+
+    // The licence fields are optional (a bundle without extracted notices has none), but a half-written pair is invalid.
+    if (manifest.licenseSha256 !== undefined || manifest.licenseBytes !== undefined) {
+        if (typeof manifest.licenseSha256 !== 'string'
+            || !SHA256_HEX_RE.test(manifest.licenseSha256)
+            || typeof manifest.licenseBytes !== 'number'
+            || !Number.isInteger(manifest.licenseBytes)
+            || manifest.licenseBytes <= 0
+            || manifest.licenseBytes > PREBUILT_LIB_MAX_LICENSE_BYTES) {
+            return false;
+        }
     }
 
     if (manifest.bundleBytes !== undefined) {
@@ -243,6 +258,29 @@ export function readPrebuiltPublicLibManifest(prebuiltDir) {
 }
 
 /**
+ * Writes a file through a temporary name in the same directory and renames it into place.
+ * @param {string} targetPath Destination path.
+ * @param {Buffer} bytes Content to write.
+ */
+function writeFileAtomically(targetPath, bytes) {
+    const tempName = `.${path.basename(targetPath)}.seed.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    const tempPath = path.join(path.dirname(targetPath), tempName);
+
+    try {
+        // Write the verified bytes to a fresh inode so later rebuilds of dist/lib/lib.js cannot mutate the cache in place.
+        fs.writeFileSync(tempPath, bytes);
+        fs.renameSync(tempPath, targetPath);
+    } catch (error) {
+        try {
+            fs.rmSync(tempPath, { force: true });
+        } catch {
+            // Ignore cleanup failure for temp file.
+        }
+        throw error;
+    }
+}
+
+/**
  * Seeds `<DATA_ROOT>/_webpack/<cacheVersion>/output/lib.js` from a verified prebuilt `dist/lib/` bundle.
  * Returns `false` whenever a bundle is offered but rejected, after one log line that names the reason, and returns `false`
  * without logging when none is offered. The caller then runs the local Webpack build.
@@ -342,25 +380,37 @@ export function trySeedPrebuiltPublicLib({
         return reject(`${PREBUILT_LIB_FILENAME} fails the sha256 integrity check`);
     }
 
-    const outputDir = path.dirname(outputPath);
-    const tempName = `.${path.basename(outputPath)}.seed.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-    const tempPath = path.join(outputDir, tempName);
+    // A live Webpack build leaves the notices beside lib.js, so a seeded bundle must carry them too.
+    let verifiedLicense = null;
+    if (manifest.licenseSha256 !== undefined) {
+        const licensePath = path.join(resolvedPrebuiltDir, PREBUILT_LIB_LICENSE_FILENAME);
+        try {
+            const licenseStat = fs.lstatSync(licensePath);
+            if (licenseStat.isSymbolicLink() || !licenseStat.isFile()) {
+                return reject(`${PREBUILT_LIB_LICENSE_FILENAME} is a symlink or not a regular file`);
+            }
+            verifiedLicense = readRegularFileUpTo(licensePath, manifest.licenseBytes);
+        } catch (error) {
+            return reject(`${PREBUILT_LIB_LICENSE_FILENAME} cannot be read: ${error?.message}`);
+        }
+        if (!verifiedLicense || verifiedLicense.byteLength !== manifest.licenseBytes || sha256Hex(verifiedLicense) !== manifest.licenseSha256) {
+            return reject(`${PREBUILT_LIB_LICENSE_FILENAME} fails the integrity check against the manifest`);
+        }
+    }
 
+    const outputDir = path.dirname(outputPath);
     try {
         fs.mkdirSync(outputDir, { recursive: true });
-        // Write the verified bytes to a fresh inode so later rebuilds of dist/lib/lib.js cannot mutate the cache in place.
-        fs.writeFileSync(tempPath, verifiedBuffer);
-        fs.renameSync(tempPath, outputPath);
+        // The licence goes first: webpack-serve treats an existing lib.js as a complete output directory.
+        if (verifiedLicense) {
+            writeFileAtomically(path.join(outputDir, PREBUILT_LIB_LICENSE_FILENAME), verifiedLicense);
+        }
+        writeFileAtomically(outputPath, verifiedBuffer);
         if (cacheVersion) {
             console.debug(`Seeded prebuilt frontend library bundle for cache version ${cacheVersion}.`);
         }
         return true;
     } catch (error) {
-        try {
-            fs.rmSync(tempPath, { force: true });
-        } catch {
-            // Ignore cleanup failure for temp file.
-        }
         return reject(`it could not be written to the cache: ${error?.message}`);
     }
 }

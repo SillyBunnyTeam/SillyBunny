@@ -13,9 +13,11 @@ import yauzl from 'yauzl';
 import { setConfigFilePath } from '../src/util.js';
 import {
     PREBUILT_LIB_FILENAME,
+    PREBUILT_LIB_LICENSE_FILENAME,
     PREBUILT_LIB_MANIFEST_FILENAME,
     PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
     PREBUILT_LIB_MAX_BUNDLE_BYTES,
+    PREBUILT_LIB_MAX_LICENSE_BYTES,
     PREBUILT_LIB_MAX_MANIFEST_BYTES,
     computePublicLibInputsHash,
     isValidPrebuiltLibManifest,
@@ -585,13 +587,16 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
 
         const archiveBytes = fs.readFileSync(tarballPath);
         const extracted = parseTarGz(archiveBytes);
-        expect([...extracted.keys()]).toEqual(['dist/lib/lib.js', 'dist/lib/lib.manifest.json']);
+        // The minifier extracts the notices of the third-party code in this entry, and they travel with the bundle.
+        expect([...extracted.keys()]).toEqual(['dist/lib/lib.js', 'dist/lib/lib.js.LICENSE.txt', 'dist/lib/lib.manifest.json']);
         expect(extracted.get('dist/lib/lib.js')).toEqual(fs.readFileSync(result.bundlePath));
+        expect(extracted.get('dist/lib/lib.js.LICENSE.txt')).toEqual(fs.readFileSync(path.join(outDir, 'lib.js.LICENSE.txt')));
         expect(extracted.get('dist/lib/lib.manifest.json')).toEqual(fs.readFileSync(result.manifestPath));
 
         // Re-running deterministic tar.gz creation yields byte-for-byte identical archive bytes.
         const secondArchive = createDeterministicTarGz([
             { name: 'dist/lib/lib.js', content: fs.readFileSync(result.bundlePath) },
+            { name: 'dist/lib/lib.js.LICENSE.txt', content: fs.readFileSync(path.join(outDir, 'lib.js.LICENSE.txt')) },
             { name: 'dist/lib/lib.manifest.json', content: fs.readFileSync(result.manifestPath) },
         ]);
         expect(secondArchive.equals(archiveBytes)).toBe(true);
@@ -605,6 +610,137 @@ describe('prebuilt public lib.js manifest, seeding, and reproducible build', () 
             prebuiltDir: outDir,
         })).toBe(true);
         expect(sha256Hex(fs.readFileSync(seededOutput))).toBe(result.manifest.sha256);
+    });
+
+    describe('third-party licence notices that the minifier extracts', () => {
+        const LICENSE_NOTICE = '/*! @license ExampleVendor-Test-Licence-1.0 (c) Example Vendor */';
+
+        async function buildWithLicense() {
+            const workDir = makeTempDir('sb-build-license-');
+            const outDir = path.join(workDir, 'dist', 'lib');
+            const tarballPath = path.join(workDir, 'sillybunny-prebuilt-lib.tar.gz');
+            const entryPath = path.join(workDir, 'license-entry.js');
+            fs.writeFileSync(entryPath, `${LICENSE_NOTICE}\nexport const answer = () => 40 + 2;\n`, 'utf8');
+
+            const result = await buildPrebuiltPublicLib({ outDir, tarballPath, entry: entryPath });
+            return { workDir, outDir, tarballPath, result };
+        }
+
+        test('the build keeps lib.js.LICENSE.txt in dist/lib, in the tarball and in the manifest', async () => {
+            const { outDir, tarballPath, result } = await buildWithLicense();
+
+            const licensePath = path.join(outDir, PREBUILT_LIB_LICENSE_FILENAME);
+            expect(fs.readFileSync(path.join(outDir, PREBUILT_LIB_FILENAME), 'utf8')).toContain(`For license information please see ${PREBUILT_LIB_LICENSE_FILENAME}`);
+            const licenseBytes = fs.readFileSync(licensePath);
+            expect(licenseBytes.toString('utf8')).toContain('ExampleVendor-Test-Licence-1.0');
+            expect(result.manifest.licenseSha256).toBe(sha256Hex(licenseBytes));
+            expect(result.manifest.licenseBytes).toBe(licenseBytes.byteLength);
+
+            const extracted = parseTarGz(fs.readFileSync(tarballPath));
+            expect([...extracted.keys()]).toEqual([
+                `dist/lib/${PREBUILT_LIB_FILENAME}`,
+                `dist/lib/${PREBUILT_LIB_LICENSE_FILENAME}`,
+                `dist/lib/${PREBUILT_LIB_MANIFEST_FILENAME}`,
+            ]);
+            expect(extracted.get(`dist/lib/${PREBUILT_LIB_LICENSE_FILENAME}`)).toEqual(licenseBytes);
+        });
+
+        test('a build without extracted notices leaves no licence file or licence fields behind', async () => {
+            const workDir = makeTempDir('sb-build-nolicense-');
+            const outDir = path.join(workDir, 'dist', 'lib');
+            fs.mkdirSync(outDir, { recursive: true });
+            fs.writeFileSync(path.join(outDir, PREBUILT_LIB_LICENSE_FILENAME), 'left over from an earlier build');
+            const entryPath = path.join(workDir, 'plain-entry.js');
+            fs.writeFileSync(entryPath, 'export const answer = () => 40 + 2;\n', 'utf8');
+
+            const result = await buildPrebuiltPublicLib({ outDir, entry: entryPath });
+
+            expect(fs.existsSync(path.join(outDir, PREBUILT_LIB_LICENSE_FILENAME))).toBe(false);
+            expect(result.manifest.licenseSha256).toBeUndefined();
+            expect(result.manifest.licenseBytes).toBeUndefined();
+        });
+
+        test('seeding writes the licence file next to lib.js, and rejects a missing or altered one', async () => {
+            const { outDir } = await buildWithLicense();
+            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+            try {
+                const manifest = readPrebuiltPublicLibManifest(outDir);
+                const seedInto = (name) => {
+                    const outputPath = path.join(makeTempDir(`sb-seed-license-${name}-`), 'output', 'lib.js');
+                    const seeded = trySeedPrebuiltPublicLib({
+                        cacheVersion: manifest.cacheVersion,
+                        inputsHash: manifest.inputsHash,
+                        outputPath,
+                        prebuiltDir: outDir,
+                    });
+                    return { seeded, outputPath };
+                };
+
+                const good = seedInto('good');
+                expect(good.seeded).toBe(true);
+                expect(fs.readdirSync(path.dirname(good.outputPath)).sort()).toEqual([PREBUILT_LIB_FILENAME, PREBUILT_LIB_LICENSE_FILENAME]);
+                expect(fs.readFileSync(path.join(path.dirname(good.outputPath), PREBUILT_LIB_LICENSE_FILENAME)))
+                    .toEqual(fs.readFileSync(path.join(outDir, PREBUILT_LIB_LICENSE_FILENAME)));
+
+                const licensePath = path.join(outDir, PREBUILT_LIB_LICENSE_FILENAME);
+                const originalLicense = fs.readFileSync(licensePath);
+
+                fs.writeFileSync(licensePath, Buffer.concat([originalLicense, Buffer.from('tampered')]));
+                warnSpy.mockClear();
+                const altered = seedInto('altered');
+                expect(altered.seeded).toBe(false);
+                expect(fs.existsSync(altered.outputPath)).toBe(false);
+                expect(warnSpy.mock.calls.map(call => String(call[0]))).toEqual([expect.stringMatching(/LICENSE/)]);
+
+                fs.rmSync(licensePath);
+                warnSpy.mockClear();
+                const missing = seedInto('missing');
+                expect(missing.seeded).toBe(false);
+                expect(fs.existsSync(missing.outputPath)).toBe(false);
+                expect(warnSpy.mock.calls.map(call => String(call[0]))).toEqual([expect.stringMatching(/LICENSE/)]);
+            } finally {
+                warnSpy.mockRestore();
+                debugSpy.mockRestore();
+            }
+        });
+
+        test('a manifest without licence fields seeds lib.js alone, as the Android manifest variant does', () => {
+            const prebuiltDir = makeTempDir('sb-seed-nolicense-');
+            const bundle = Buffer.from('export const plain = true;\n', 'utf8');
+            fs.writeFileSync(path.join(prebuiltDir, PREBUILT_LIB_FILENAME), bundle);
+            fs.writeFileSync(path.join(prebuiltDir, PREBUILT_LIB_MANIFEST_FILENAME), JSON.stringify({
+                schemaVersion: PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
+                cacheVersion: 'plain',
+                inputsHash: sha256Hex('plain-inputs'),
+                sha256: sha256Hex(bundle),
+                webpackVersion: webpack.version,
+                bundleBytes: bundle.byteLength,
+                builtWithNode: true,
+            }));
+            const outputPath = path.join(makeTempDir('sb-seed-nolicense-out-'), 'lib.js');
+
+            expect(trySeedPrebuiltPublicLib({ cacheVersion: 'plain', inputsHash: sha256Hex('plain-inputs'), outputPath, prebuiltDir })).toBe(true);
+            expect(fs.readdirSync(path.dirname(outputPath))).toEqual([PREBUILT_LIB_FILENAME]);
+        });
+
+        test('isValidPrebuiltLibManifest refuses half-written or oversized licence fields', () => {
+            const base = {
+                schemaVersion: PREBUILT_LIB_MANIFEST_SCHEMA_VERSION,
+                cacheVersion: 'v',
+                inputsHash: sha256Hex('i'),
+                sha256: sha256Hex('b'),
+                webpackVersion: webpack.version,
+                bundleBytes: 10,
+                builtWithNode: true,
+            };
+            expect(isValidPrebuiltLibManifest({ ...base, licenseSha256: sha256Hex('l'), licenseBytes: 5 })).toBe(true);
+            expect(isValidPrebuiltLibManifest({ ...base, licenseSha256: sha256Hex('l') })).toBe(false);
+            expect(isValidPrebuiltLibManifest({ ...base, licenseBytes: 5 })).toBe(false);
+            expect(isValidPrebuiltLibManifest({ ...base, licenseSha256: 'zz', licenseBytes: 5 })).toBe(false);
+            expect(isValidPrebuiltLibManifest({ ...base, licenseSha256: sha256Hex('l'), licenseBytes: 0 })).toBe(false);
+            expect(isValidPrebuiltLibManifest({ ...base, licenseSha256: sha256Hex('l'), licenseBytes: PREBUILT_LIB_MAX_LICENSE_BYTES + 1 })).toBe(false);
+        });
     });
 
     test('package.json scripts and release.yml wire prebuilt lib build, verify, and tarball upload', () => {
