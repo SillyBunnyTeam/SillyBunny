@@ -351,7 +351,7 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
         const sources = ['reportLazyModuleFailure', 'loadControllerOrReport', ...names].map(extractShellFunction);
         const toastr = { error: jest.fn() };
         const errors = [];
-        const sandbox = { toastr, console: { error: (...args) => errors.push(args) }, String, ...globals };
+        const sandbox = { toastr, console: { error: (...args) => errors.push(args) }, String, sbReportedLazyFailures: new WeakSet(), ...globals };
         const functions = vm.runInNewContext(`${sources.join('\n')}\n({ ${names.join(', ')} })`, sandbox);
         return { functions, toastr, errors };
     }
@@ -480,9 +480,9 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
             expect(compiled.toastr.error).not.toHaveBeenCalled();
         });
 
-        test('updating the Editor panel says so when the backend panels module cannot load', async () => {
+        test('updating the Editor panel only logs a failed load: the held Editor page shows the error page with Retry', async () => {
             const loadBackendPanelsController = failingLoader();
-            const compiled = compileShell(['updateEditorPanel'], {
+            const compiled = compileShell(['updateEditorPanel', 'logHeldPageFailure'], {
                 loadBackendPanelsController,
                 backendPanelsController: null,
                 getShellState: () => null,
@@ -491,7 +491,8 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
             compiled.functions.updateEditorPanel({});
             await new Promise(resolve => setTimeout(resolve, 0));
             expect(loadBackendPanelsController).toHaveBeenCalledTimes(1);
-            expectReported(compiled);
+            expect(compiled.toastr.error).not.toHaveBeenCalled();
+            expect(compiled.errors).toHaveLength(1);
         });
     });
 

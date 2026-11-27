@@ -242,15 +242,33 @@ function loadUniversalSearchController() {
     return universalSearchLoader.load();
 }
 
+/** The failures that have been reported: callers that share one import share its error, and it is reported once. */
+const sbReportedLazyFailures = new WeakSet();
+
 /**
- * Shows that a lazy module did not load: the console and a toast with the error, as the settings panel does for its own
- * load failure. The next call that needs the module imports it again on a new URL.
+ * Shows that a lazy module did not load for an action that has no page to show it: the console and a toast with the error,
+ * as the settings panel does for its own load failure. A page that a lazy module builds shows its own error page instead
+ * (`markPanelsBusyUntilBuilt`) and uses `logHeldPageFailure`. The next call that needs the module imports it again on a new URL.
  * @param {string} label What did not load, for the console.
  * @param {unknown} error
  */
 function reportLazyModuleFailure(label, error) {
+    if (error !== null && typeof error === 'object') {
+        if (sbReportedLazyFailures.has(error)) return;
+        sbReportedLazyFailures.add(error);
+    }
     console.error(`[SillyBunny] Could not load ${label}:`, error);
     toastr.error(String(error?.message || error), undefined, { preventDuplicates: true });
+}
+
+/**
+ * Logs that a lazy module did not load for a page that is held until the module builds it. The error page of that page is the
+ * report, with its Retry, so there is no toast: the same form as an on-demand panel (`createOnDemandShellPanel`).
+ * @param {string} label
+ * @param {unknown} error
+ */
+function logHeldPageFailure(label, error) {
+    console.error(`[SillyBunny] Could not load ${label}:`, error);
 }
 
 /**
@@ -384,6 +402,11 @@ function restoreSettingsFocus() {
     const tab = document.querySelector('.sb-settings-tab[aria-selected="true"]');
     const target = tab && !tab.closest('[inert]') ? tab : document.getElementById('sb-settings-close');
     target?.focus({ preventScroll: true });
+}
+
+/** Opens the Customize pages that one build fills. A failed build shows as the error page of each of them, so it is only logged. */
+function activateHeldSettingsPages() {
+    return initializeSettingsPanel().catch(error => logHeldPageFailure('the settings pages', error));
 }
 
 function initializeSettingsPanel() {
@@ -7243,7 +7266,7 @@ function buildEditorPanel() {
                 backendPanelsController.groupAdvancedFormattingIntoDrawers();
                 backendPanelsController.updateEditorPanel(panel);
             } else {
-                void ensureEditorReady().catch(error => reportLazyModuleFailure('Editor panel', error));
+                void ensureEditorReady().catch(error => logHeldPageFailure('Editor panel', error));
             }
         },
     };
@@ -7254,7 +7277,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
         backendPanelsController.updateEditorPanel(panel);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updateEditorPanel(panel)).catch(error => reportLazyModuleFailure('Editor panel', error));
+    void loadBackendPanelsController().then(panels => panels.updateEditorPanel(panel)).catch(error => logHeldPageFailure('Editor panel', error));
 }
 
 function updatePromptingPanel(panel) {
@@ -7263,7 +7286,7 @@ function updatePromptingPanel(panel) {
         backendPanelsController.updatePromptingPanel(panel);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updatePromptingPanel(panel)).catch(error => reportLazyModuleFailure('Prompting panel', error));
+    void loadBackendPanelsController().then(panels => panels.updatePromptingPanel(panel)).catch(error => logHeldPageFailure('Prompting panel', error));
 }
 
 function getImporterState() {
@@ -7335,7 +7358,7 @@ function groupAdvancedFormattingIntoDrawers() {
         backendPanelsController.groupAdvancedFormattingIntoDrawers();
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.groupAdvancedFormattingIntoDrawers()).catch(error => reportLazyModuleFailure('Formatting panel', error));
+    void loadBackendPanelsController().then(panels => panels.groupAdvancedFormattingIntoDrawers()).catch(error => logHeldPageFailure('Formatting panel', error));
 }
 
 function updateFormattingGroupVisibility(formatting) {
@@ -7343,7 +7366,7 @@ function updateFormattingGroupVisibility(formatting) {
         backendPanelsController.updateFormattingGroupVisibility(formatting);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updateFormattingGroupVisibility(formatting)).catch(error => reportLazyModuleFailure('Formatting panel', error));
+    void loadBackendPanelsController().then(panels => panels.updateFormattingGroupVisibility(formatting)).catch(error => logHeldPageFailure('Formatting panel', error));
 }
 
 function setSillyTavernImportBusy(isBusy) {
@@ -8623,10 +8646,7 @@ function buildShell(shellKey) {
 
         basePanel.ensureReady = initializeSettingsPanel;
         basePanel.holdUntilBuilt = true;
-        basePanel.onActivate = () => initializeSettingsPanel().catch(error => {
-            console.error('[SillyBunny] Could not initialize settings:', error);
-            toastr.error(String(error.message || error));
-        });
+        basePanel.onActivate = activateHeldSettingsPages;
     }
 
     registerShellTab(shellKey, shellConfig.baseTab, basePanel);

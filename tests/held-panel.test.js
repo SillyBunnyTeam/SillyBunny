@@ -296,3 +296,135 @@ describe('markPanelsBusyUntilBuilt and registerShellTab', () => {
         expect(document.activeElement).toBe(shell.closeButton);
     });
 });
+
+describe('one failed module load is one report', () => {
+    function extractFunction(name) {
+        const match = new RegExp(`^(async )?function ${name}\\(`, 'm').exec(tabsSource);
+        expect(match).not.toBeNull();
+        const bodyStart = tabsSource.indexOf('{', tabsSource.indexOf(')', match.index + match[0].length - 1));
+        let depth = 0;
+        let end = bodyStart;
+        for (; end < tabsSource.length; end++) {
+            if (tabsSource[end] === '{') depth++;
+            else if (tabsSource[end] === '}' && --depth === 0) break;
+        }
+        return tabsSource.slice(match.index, end + 1);
+    }
+
+    /** The shell's own functions against stubbed loaders; every toast and every console error is counted. */
+    function compile(names, globals = {}) {
+        const toastr = { error: jest.fn() };
+        const logged = [];
+        const tabs = new Map();
+        const sandbox = {
+            document,
+            HTMLElement,
+            Promise,
+            String,
+            WeakSet,
+            toastr,
+            console: { error: (...args) => logged.push(args) },
+            t: strings => strings[0],
+            createStatusPage,
+            holdPanel,
+            clearPanelPage,
+            showPanelPage,
+            releasePanel,
+            applyPageWidth() {},
+            getShellState: () => ({ tabs }),
+            sbReportedLazyFailures: new WeakSet(),
+            ...globals,
+        };
+        const all = ['reportLazyModuleFailure', 'logHeldPageFailure', 'loadControllerOrReport', 'markPanelsBusyUntilBuilt', 'restoreSettingsFocus', 'registerShellTab', ...names];
+        const functions = vm.runInNewContext(`${all.map(extractFunction).join('\n')}\n({ ${all.join(', ')} })`, sandbox);
+        return { ...functions, toastr, logged, tabs, sandbox };
+    }
+
+    const importError = () => new Error('Failed to fetch dynamically imported module: /scripts/sillybunny-tabs/backend-panels.js');
+    const flush = async () => {
+        for (let turn = 0; turn < 12; turn++) await Promise.resolve();
+    };
+    const statusOf = scroller => scroller.querySelector(':scope > .sb-status-page');
+
+    test('the Editor page: a failed load shows the error page and no toast, and a Retry that fails again shows the page again, still no toast', async () => {
+        const { scroller, panel } = createPanel();
+        let attempts = 0;
+        const loadBackendPanelsController = jest.fn(() => { attempts++; return Promise.reject(importError()); });
+        const shell = compile(['buildEditorPanel'], {
+            loadBackendPanelsController,
+            backendPanelsController: null,
+            createElement: (tag, { className } = {}) => Object.assign(document.createElement(tag), { className }),
+            createShellPanel: () => ({ panel, scroller }),
+        });
+        const bundle = shell.buildEditorPanel();
+        shell.registerShellTab('left', { id: 'editor' }, bundle);
+
+        bundle.onActivate();
+        await flush();
+
+        expect(statusOf(scroller).dataset.state).toBe('error');
+        expect(statusOf(scroller).textContent).toContain('Settings Not Loaded');
+        expect(statusOf(scroller).querySelector('button').textContent).toBe('Retry');
+        expect(shell.toastr.error).not.toHaveBeenCalled();
+        expect(attempts).toBe(1);
+
+        statusOf(scroller).querySelector('button').click();
+        await flush();
+
+        expect(attempts).toBe(2);
+        expect(statusOf(scroller).dataset.state).toBe('error');
+        expect(scroller.querySelectorAll(':scope > .sb-status-page')).toHaveLength(1);
+        expect(shell.toastr.error).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        ['updateEditorPanel', [{}]],
+        ['updatePromptingPanel', [document.createElement('section')]],
+        ['groupAdvancedFormattingIntoDrawers', []],
+        ['updateFormattingGroupVisibility', [document.createElement('div')]],
+    ])('%s: a failed load of the backend panels module makes no toast, because the held page shows it', async (name, args) => {
+        const loadBackendPanelsController = jest.fn(() => Promise.reject(importError()));
+        const shell = compile([name], { loadBackendPanelsController, backendPanelsController: null, getShellState: () => ({ tabs: new Map() }) });
+
+        shell[name](...args);
+        await flush();
+
+        expect(loadBackendPanelsController).toHaveBeenCalledTimes(1);
+        expect(shell.toastr.error).not.toHaveBeenCalled();
+        expect(shell.logged).toHaveLength(1);
+    });
+
+    test('the Customize pages: a failed settings build makes no toast, because each held page shows the error page', async () => {
+        const initializeSettingsPanel = jest.fn(() => Promise.reject(importError()));
+        const shell = compile(['activateHeldSettingsPages'], { initializeSettingsPanel });
+
+        await expect(shell.activateHeldSettingsPages()).resolves.toBeUndefined();
+
+        expect(shell.toastr.error).not.toHaveBeenCalled();
+        expect(shell.logged).toHaveLength(1);
+    });
+
+    test('a shell action that needs a module and has no page to show the failure makes exactly one toast', async () => {
+        const loadChatActionsSearchController = jest.fn(() => Promise.reject(importError()));
+        const shell = compile(['openChatById'], { loadChatActionsSearchController });
+
+        await shell.openChatById('chat');
+
+        expect(shell.toastr.error).toHaveBeenCalledTimes(1);
+        expect(shell.logged).toHaveLength(1);
+    });
+
+    test('callers that share one failed import share one report, and a later failure is a new report', async () => {
+        const failure = importError();
+        const loadChatActionsSearchController = jest.fn(() => Promise.reject(failure));
+        const shell = compile(['openChatById', 'handleRenameChat'], { loadChatActionsSearchController });
+
+        await Promise.all([shell.openChatById('chat'), shell.handleRenameChat(), shell.openChatById('other')]);
+        expect(shell.toastr.error).toHaveBeenCalledTimes(1);
+        expect(shell.logged).toHaveLength(1);
+
+        loadChatActionsSearchController.mockImplementation(() => Promise.reject(importError()));
+        await shell.openChatById('chat');
+        expect(shell.toastr.error).toHaveBeenCalledTimes(2);
+    });
+});

@@ -95,7 +95,7 @@ for (const { id, shell, tab } of HELD_PAGES) {
     });
 }
 
-test('a page whose module cannot load shows the error page, keeps its raw rows hidden, and Retry builds it', async ({ page, baseURL }) => {
+test('a page whose module cannot load shows the error page and no toast, keeps its raw rows hidden, and Retry builds it', async ({ page, baseURL }) => {
     test.setTimeout(120_000);
     let failing = true;
     await page.route(HELD_MODULES, route => (failing ? route.abort('connectionreset') : route.fallback()));
@@ -108,6 +108,14 @@ test('a page whose module cannot load shows the error page, keeps its raw rows h
     await expect(status).toContainText('Settings Not Loaded');
     await expect(page.locator(panel)).not.toHaveAttribute('aria-busy', 'true');
     expect(await page.locator(`${panel} .sb-shell-panel-scroller > :not(.sb-status-page)`).evaluateAll(rows => rows.filter(row => getComputedStyle(row).visibility !== 'hidden').length), 'raw rows that are painted next to the error page').toBe(0);
+
+    // One failure is one report: the error page, with no toast, as the Sampling and Data & Security pages do.
+    await expect(page.locator('#toast-container .toast')).toHaveCount(0);
+
+    // A Retry that fails again shows the error page again, still with no toast.
+    await status.getByRole('button', { name: 'Retry' }).click();
+    await expect(status).toHaveAttribute('data-state', 'error');
+    await expect(page.locator('#toast-container .toast')).toHaveCount(0);
 
     failing = false;
     await status.getByRole('button', { name: 'Retry' }).click();
