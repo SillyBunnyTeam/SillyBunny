@@ -105,6 +105,7 @@ let lazyLoadObserver = null;
 let cachedSystemBackgrounds = [];
 let systemBackgroundsLoaded = false;
 let inFlightBackgroundsPromise = null;
+let queuedBackgroundsPromise = null;
 
 export let background_settings = {
     name: '__transparent.png',
@@ -851,12 +852,22 @@ function renderChatBackgrounds(backgrounds) {
     activateLazyLoader();
 }
 
-export async function getBackgrounds() {
+export function getBackgrounds() {
     // SillyBunny: coalesce concurrent loads and fetch folder + image metadata in parallel.
-    if (inFlightBackgroundsPromise) {
-        return inFlightBackgroundsPromise;
+    if (!inFlightBackgroundsPromise) {
+        return startBackgroundsLoad();
     }
 
+    // The running load may have read the list before the change that made this caller ask for a refresh, so one more load follows it.
+    // Callers that ask meanwhile share that load. ensureBackgroundsLoaded() only needs a loaded list and joins the running load.
+    queuedBackgroundsPromise ??= inFlightBackgroundsPromise.catch(() => undefined).then(() => {
+        queuedBackgroundsPromise = null;
+        return startBackgroundsLoad();
+    });
+    return queuedBackgroundsPromise;
+}
+
+function startBackgroundsLoad() {
     inFlightBackgroundsPromise = (async () => {
         const response = await fetch('/api/backgrounds/all', {
             method: 'POST',

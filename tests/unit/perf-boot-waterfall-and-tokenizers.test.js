@@ -941,6 +941,70 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         });
     });
 
+    test('getBackgrounds after a change returns a list read after that change, not the one an earlier load is still fetching', async () => {
+        const slices = [
+            extractSliceBetween(backgroundsSource, 'let cachedSystemBackgrounds = [];', 'export let background_settings'),
+            extractSliceBetween(backgroundsSource, 'export function getBackgrounds() {', '/**\n * Preloads all image metadata'),
+        ].join('\n').replace(/export /g, '');
+
+        let serverFiles = ['old.png'];
+        const pendingResponses = [];
+        const sandbox = {
+            THUMBNAIL_CONFIG: {},
+            getRequestHeaders: () => ({}),
+            loadFolders: async () => undefined,
+            preloadImageMetadata: async () => undefined,
+            renderSystemBackgrounds: jest.fn(),
+            highlightSelectedBackground: jest.fn(),
+            // Each request reads the server list when it is sent and answers when the test releases it.
+            fetch: jest.fn((url) => {
+                const images = serverFiles.map(filename => ({ filename, isAnimated: false }));
+                return new Promise(resolve => pendingResponses.push(() => resolve({
+                    ok: true,
+                    json: async () => ({ images, config: {} }),
+                })));
+            }),
+            JSON,
+        };
+        const context = vm.createContext(sandbox);
+        vm.runInContext(slices, context);
+        const listedFiles = () => vm.runInContext('cachedSystemBackgrounds.map(img => img.filename)', context);
+        const flush = () => new Promise(resolve => setImmediate(resolve));
+
+        // A load starts, and the server list changes while its response is still pending.
+        const firstLoad = sandbox.ensureBackgroundsLoaded();
+        await flush();
+        expect(sandbox.fetch).toHaveBeenCalledTimes(1);
+        serverFiles = ['old.png', 'uploaded.png'];
+
+        // The caller that made the change asks for a refresh and must see the change.
+        const refresh = sandbox.getBackgrounds();
+        let refreshed = false;
+        refresh.then(() => { refreshed = true; });
+        pendingResponses.shift()();
+        await firstLoad;
+        await flush();
+        expect(refreshed).toBe(false);
+        expect(sandbox.fetch).toHaveBeenCalledTimes(2);
+        pendingResponses.shift()();
+        await refresh;
+        expect(listedFiles()).toEqual(['old.png', 'uploaded.png']);
+
+        // Refreshes that arrive while one load runs share a single follow-up load.
+        const secondLoad = sandbox.getBackgrounds();
+        await flush();
+        const callsBefore = sandbox.fetch.mock.calls.length;
+        const sharedA = sandbox.getBackgrounds();
+        const sharedB = sandbox.getBackgrounds();
+        pendingResponses.shift()();
+        await secondLoad;
+        await flush();
+        expect(sandbox.fetch).toHaveBeenCalledTimes(callsBefore + 1);
+        pendingResponses.shift()();
+        await Promise.all([sharedA, sharedB]);
+        expect(sandbox.fetch).toHaveBeenCalledTimes(callsBefore + 1);
+    });
+
     test('extensions getManifests uses inline manifests without HTTP fetches and falls back per-extension when absent', async () => {
         const discoverSlice = extractSliceBetween(
             extensionsSource,
