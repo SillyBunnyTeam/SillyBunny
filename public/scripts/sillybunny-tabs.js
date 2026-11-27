@@ -4535,12 +4535,45 @@ async function handleDeleteChat() {
     return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleDeleteChat();
 }
 
+/**
+ * Runs a chat action that keeps its own button disabled while it works. The Chat Actions sheet on a phone closes after a click
+ * unless the clicked button is already disabled (`ensureSheet()` in sillybunny-mobile-bottom-bar.js), so the button is marked in
+ * the click itself, before the lazy module that holds the action has loaded. The action clears the mark when it ends; it is
+ * cleared here too for a load that fails or an action that returns before it starts.
+ * @param {HTMLElement|null} button
+ * @param {boolean} shouldMark whether the action will mark the button at all
+ * @param {() => Promise<unknown>} action
+ */
+async function runBusyChatAction(button, shouldMark, action) {
+    const marked = Boolean(shouldMark) && button instanceof HTMLElement;
+    if (marked) {
+        button.classList.add('is-busy');
+        setButtonDisabled(button, true);
+    }
+    try {
+        return await action();
+    } finally {
+        if (marked) {
+            button.classList.remove('is-busy');
+            setButtonDisabled(button, false);
+        }
+    }
+}
+
 async function handleAutoNameChat() {
-    return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleAutoNameChat();
+    return runBusyChatAction(
+        getBottomChatBarState().autoNameButton,
+        getChatUiContext().hasChat,
+        async () => (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleAutoNameChat(),
+    );
 }
 
 async function handleMassDeleteChats() {
-    return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleMassDeleteChats();
+    return runBusyChatAction(
+        getBottomChatBarState().massDeleteButton,
+        getChatUiContext().canBrowseChats,
+        async () => (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleMassDeleteChats(),
+    );
 }
 
 function handleNewChat() {

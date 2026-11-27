@@ -432,6 +432,61 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
         });
     });
 
+    describe('a chat action that marks its button busy does it at the click, before the lazy module loads', () => {
+        // The Chat Actions sheet on a phone closes after a click unless the clicked button is disabled by then.
+        const actions = [
+            { name: 'handleMassDeleteChats', key: 'massDeleteButton' },
+            { name: 'handleAutoNameChat', key: 'autoNameButton' },
+        ];
+
+        for (const { name, key } of actions) {
+            describe(`${name} in the shell`, () => {
+                function setUp({ context = { canBrowseChats: true, hasChat: true }, load }) {
+                    const button = document.createElement('button');
+                    const loader = jest.fn(load);
+                    const compiled = compileShell([name, 'runBusyChatAction', 'setButtonDisabled'], {
+                        HTMLElement,
+                        Boolean,
+                        loadChatActionsSearchController: loader,
+                        getChatUiContext: () => context,
+                        getBottomChatBarState: () => ({ [key]: button }),
+                    });
+                    return { button, loader, run: compiled.functions[name], compiled };
+                }
+
+                test('disables the button in the click, while the module is still loading', async () => {
+                    let arrive;
+                    const { button, loader, run } = setUp({ load: () => new Promise(resolve => { arrive = resolve; }) });
+                    const finished = run();
+                    expect(loader).toHaveBeenCalledTimes(1);
+                    expect(button.disabled).toBe(true);
+                    expect(button.classList.contains('is-busy')).toBe(true);
+                    arrive({ [name]: jest.fn(async () => 'done') });
+                    await expect(finished).resolves.toBe('done');
+                    expect(button.disabled).toBe(false);
+                    expect(button.classList.contains('is-busy')).toBe(false);
+                });
+
+                test('enables the button again when the module cannot load', async () => {
+                    const { button, run, compiled } = setUp({ load: () => Promise.reject(new Error('Failed to fetch dynamically imported module')) });
+                    await expect(run()).resolves.toBeUndefined();
+                    expect(button.disabled).toBe(false);
+                    expect(button.classList.contains('is-busy')).toBe(false);
+                    expect(compiled.toastr.error).toHaveBeenCalledTimes(1);
+                });
+
+                test('leaves the button alone when the action has nothing to do', async () => {
+                    const { button, run } = setUp({ context: { canBrowseChats: false, hasChat: false }, load: async () => ({ [name]: jest.fn(async () => undefined) }) });
+                    const finished = run();
+                    expect(button.disabled).toBe(false);
+                    expect(button.classList.contains('is-busy')).toBe(false);
+                    await finished;
+                    expect(button.disabled).toBe(false);
+                });
+            });
+        }
+    });
+
     describe('a lazy controller that cannot load is reported, not dropped', () => {
         const importError = new Error('Failed to fetch dynamically imported module');
         const failingLoader = () => jest.fn(() => Promise.reject(importError));
