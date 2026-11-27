@@ -1,6 +1,6 @@
-import structuredClone from './index.js';
-
-if (!("structuredClone" in globalThis)) {
-    console.debug("Monkey-patching structuredClone");
+// SillyBunny: skip loading the 4-file structuredClone polyfill graph when native structuredClone exists.
+if (typeof globalThis.structuredClone !== 'function') {
+    const { default: structuredClone } = await import('./index.js');
+    console.debug('Monkey-patching structuredClone');
     globalThis.structuredClone = structuredClone;
 }

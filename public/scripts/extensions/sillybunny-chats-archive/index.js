@@ -41,10 +41,16 @@ function onOpen(event) {
         });
 }
 
+function isButtonMounted() {
+    const container = document.getElementById('rm_buttons_container');
+    const button = document.getElementById(BUTTON_ID);
+    return Boolean(container && button && button.parentElement === container);
+}
+
 function ensureButton() {
     const container = document.getElementById('rm_buttons_container');
     if (!container) {
-        return;
+        return false;
     }
     let button = document.getElementById(BUTTON_ID);
     if (!button) {
@@ -69,18 +75,23 @@ function ensureButton() {
     if (button.parentElement !== container) {
         container.append(button);
     }
+    return true;
 }
 
 function ensureEntryPoints() {
-    ensureButton();
+    return ensureButton();
 }
 
 function install() {
-    ensureEntryPoints();
-    const target = document.querySelector(PANEL_SELECTOR) ?? document.body;
+    const mounted = ensureEntryPoints();
+    const buttonContainer = document.getElementById('rm_buttons_container');
     if (!observer) {
-        // The fork re-renders the character shell in places; re-assert cheaply.
+        // Watch only until mounted, then narrow to direct childList on #rm_buttons_container so
+        // unrelated #right-nav-panel character list churn never triggers this observer.
         observer = new MutationObserver(() => {
+            if (isButtonMounted()) {
+                return;
+            }
             if (pending !== null) {
                 return;
             }
@@ -90,7 +101,20 @@ function install() {
             }, OBSERVER_DEBOUNCE_MS);
         });
     }
-    if (observerTarget !== target) {
+    if (mounted && buttonContainer) {
+        if (observerTarget !== buttonContainer) {
+            observer.disconnect();
+            observer.observe(buttonContainer, { childList: true });
+            if (buttonContainer.parentElement) {
+                observer.observe(buttonContainer.parentElement, { childList: true });
+            }
+            observerTarget = buttonContainer;
+        }
+        return;
+    }
+
+    const target = document.querySelector(PANEL_SELECTOR) ?? document.body;
+    if (target && observerTarget !== target) {
         observer.disconnect();
         observer.observe(target, { childList: true, subtree: true });
         if (target !== document.body && target.parentElement) {

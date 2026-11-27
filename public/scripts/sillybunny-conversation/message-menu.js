@@ -30,6 +30,9 @@ export function registerMessageMenuReactions(provider) {
     provider.bindReactionChips();
 }
 
+const boundTimelines = new WeakSet();
+let lastHoveredItem = null;
+
 function isCoarsePointer() {
     return coarseQuery?.matches === true;
 }
@@ -181,8 +184,13 @@ function syncHoveredMetaClearance(event) {
     if (event.key !== 'Shift') {
         return;
     }
+    const timeline = document.getElementById('sb_conversation_timeline');
+    if (!(timeline instanceof HTMLElement)) {
+        return;
+    }
+    lastHoveredItem = null;
     requestAnimationFrame(() => {
-        document.querySelectorAll(`${MESSAGE_SELECTOR}:hover, ${MESSAGE_SELECTOR}:focus-within`).forEach(syncMetaClearance);
+        timeline.querySelectorAll(`${MESSAGE_SELECTOR}:hover, ${MESSAGE_SELECTOR}:focus-within`).forEach(syncMetaClearance);
     });
 }
 
@@ -229,6 +237,49 @@ function handleMenuKey(event) {
     openConversationMessageMenu(trigger, { keyboard: true });
 }
 
+/**
+ * Binds delegated hover and focus clearance handlers onto the Conversation timeline container so
+ * pointerover never runs document-wide getBoundingClientRect() during normal roleplay browsing.
+ * @param {HTMLElement|null|undefined} timeline
+ */
+export function bindConversationMessageMenuTimeline(timeline) {
+    if (!(timeline instanceof HTMLElement) || boundTimelines.has(timeline)) {
+        return;
+    }
+    boundTimelines.add(timeline);
+    if (timeline.dataset) {
+        timeline.dataset.sbConversationMenuBound = '1';
+    }
+
+    timeline.addEventListener('pointerover', (event) => {
+        const item = asElement(event.target)?.closest(MESSAGE_SELECTOR);
+        if (!(item instanceof HTMLElement)) {
+            lastHoveredItem = null;
+            return;
+        }
+        syncMenuTitle(event.target);
+        if (item !== lastHoveredItem) {
+            lastHoveredItem = item;
+            syncToolbarQuickRow(item);
+            syncMetaClearance(item);
+        }
+    }, { passive: true });
+
+    timeline.addEventListener('pointerleave', () => {
+        lastHoveredItem = null;
+    }, { passive: true });
+
+    timeline.addEventListener('focusin', (event) => {
+        const item = asElement(event.target)?.closest(MESSAGE_SELECTOR);
+        if (!(item instanceof HTMLElement)) {
+            return;
+        }
+        syncMenuTitle(event.target);
+        syncToolbarQuickRow(item);
+        syncMetaClearance(item);
+    });
+}
+
 export function initializeConversationMessageMenu() {
     if (initialized) {
         return;
@@ -238,16 +289,10 @@ export function initializeConversationMessageMenu() {
     window.addEventListener('click', handleClickCapture, true);
     window.addEventListener('keydown', handleMenuKey, true);
     document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('pointerover', (event) => {
-        syncMenuTitle(event.target);
-        syncToolbarQuickRow(event.target);
-        syncMetaClearance(event.target);
-    }, { passive: true });
-    document.addEventListener('focusin', (event) => {
-        syncMenuTitle(event.target);
-        syncToolbarQuickRow(event.target);
-        syncMetaClearance(event.target);
+    document.addEventListener('sb-conversation-timeline-mounted', (event) => {
+        bindConversationMessageMenuTimeline(asElement(event.target) ?? document.getElementById('sb_conversation_timeline'));
     });
+    bindConversationMessageMenuTimeline(document.getElementById('sb_conversation_timeline'));
     window.addEventListener('keydown', syncHoveredMetaClearance, { passive: true });
     window.addEventListener('keyup', syncHoveredMetaClearance, { passive: true });
 }

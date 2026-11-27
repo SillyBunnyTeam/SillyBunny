@@ -49,6 +49,9 @@ let legacySettingsMigrationChecked = false;
 let activeSectionDrag = null;
 let sectionDropIndicator = null;
 let suppressSectionToggleUntil = 0;
+// SillyBunny: one-shot cold-load mount observer replaces the permanent 1s setInterval(bootstrap) poller.
+let bootstrapMountObserver = null;
+let bootstrapScheduled = false;
 
 function migrateLegacySettings() {
     if (legacySettingsMigrationChecked) {
@@ -1766,6 +1769,79 @@ function syncSettingsPanel() {
     setSettingsPanelExpanded(settings.settingsPanelExpanded);
 }
 
-bootstrap();
-setInterval(bootstrap, 1000);
+// SillyBunny: event-driven bootstrap + one-shot mount observer instead of permanent 1s setInterval polling.
+// The prompt list is not a target of its own: it only exists once Prompt Manager renders, which never happens
+// on text-completion APIs, and the observer on the static prompt container attaches the enhancer when it appears.
+// Waiting for the list would keep this document-wide observer on for the whole session.
+function hasAllBootstrapTargets() {
+    return Boolean(
+        settingsContainerElement
+        && promptContainerElement
+        && backgroundLayerElement
+        && document.getElementById('Backgrounds'),
+    );
+}
+
+function stopBootstrapMountObserver() {
+    if (!bootstrapMountObserver) {
+        return;
+    }
+    bootstrapMountObserver.disconnect();
+    bootstrapMountObserver = null;
+}
+
+function runBootstrap() {
+    bootstrap();
+    if (hasAllBootstrapTargets()) {
+        stopBootstrapMountObserver();
+    }
+}
+
+function scheduleBootstrap() {
+    if (bootstrapScheduled) {
+        return;
+    }
+    bootstrapScheduled = true;
+    queueMicrotask(() => {
+        bootstrapScheduled = false;
+        runBootstrap();
+    });
+}
+
+function watchBootstrapTargetsOnce() {
+    if (hasAllBootstrapTargets() || bootstrapMountObserver || typeof MutationObserver !== 'function') {
+        return;
+    }
+    const root = document.body || document.documentElement;
+    if (!root) {
+        return;
+    }
+    bootstrapMountObserver = new MutationObserver(() => {
+        scheduleBootstrap();
+    });
+    bootstrapMountObserver.observe(root, { childList: true, subtree: true });
+}
+
+runBootstrap();
+watchBootstrapTargetsOnce();
+if (typeof document !== 'undefined' && document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        runBootstrap();
+        watchBootstrapTargetsOnce();
+    }, { once: true });
+}
+// Nothing polls the settings any more, so the panels re-read them when the app says that they may have changed:
+// any code that changes extension settings from outside this file saves them afterwards (SETTINGS_UPDATED), and a
+// settings load rebuilds them. The sync only writes what differs, so an unsaved divider field is kept.
+for (const eventName of [
+    event_types?.APP_READY,
+    event_types?.SETTINGS_LOADED,
+    event_types?.SETTINGS_LOADED_AFTER,
+    event_types?.SETTINGS_UPDATED,
+    event_types?.EXTENSION_SETTINGS_LOADED,
+    event_types?.OAI_PRESET_CHANGED_AFTER,
+    event_types?.CHAT_CHANGED,
+].filter(Boolean)) {
+    eventSource.on(eventName, scheduleBootstrap);
+}
 eventSource.on(event_types.CHAT_CHANGED, scheduleBackgroundSync);

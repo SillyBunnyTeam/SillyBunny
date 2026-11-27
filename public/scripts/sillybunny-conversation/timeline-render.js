@@ -124,11 +124,62 @@ function buildTimelineFingerprint({ avatar, groupId, chatId, personaId, settings
     ].join('\u001d'));
 }
 
-function buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index }) {
+export function buildConversationReceiptMap(allMessages, seenAt = 0) {
+    const receipts = new Map();
+    const list = Array.isArray(allMessages) ? allMessages : [];
+    let lastNonUserSystemIndex = -1;
+    for (let index = list.length - 1; index >= 0; index--) {
+        const role = list[index]?.role;
+        if (role !== 'user' && role !== 'system') {
+            lastNonUserSystemIndex = index;
+            break;
+        }
+    }
+
+    const numericSeenAt = Number.isFinite(Number(seenAt)) && Number(seenAt) > 0 ? Math.floor(Number(seenAt)) : 0;
+    for (let index = 0; index < list.length; index++) {
+        const message = list[index];
+        const messageId = message?.id;
+        if (!message || messageId === undefined || messageId === null || receipts.has(messageId)) {
+            continue;
+        }
+        if (message.role !== 'user') {
+            receipts.set(messageId, '');
+            continue;
+        }
+        if (index < lastNonUserSystemIndex) {
+            receipts.set(messageId, 'Seen');
+            continue;
+        }
+        const createdAt = Number.isFinite(Number(message.created_at)) && Number(message.created_at) > 0
+            ? Math.floor(Number(message.created_at))
+            : 0;
+        receipts.set(messageId, numericSeenAt > 0 && createdAt > 0 && numericSeenAt >= createdAt ? 'Seen' : 'Delivered');
+    }
+
+    return receipts;
+}
+
+function getCachedEffectiveStatus(statusCache, speakerAvatar) {
+    if (!speakerAvatar) {
+        return '';
+    }
+    if (statusCache && statusCache.has(speakerAvatar)) {
+        return statusCache.get(speakerAvatar);
+    }
+    const status = getEffectiveConversationStatus(speakerAvatar);
+    statusCache?.set(speakerAvatar, status);
+    return status;
+}
+
+function buildConversationMessageFingerprint(message, { avatar, groupId, personaId, settings, index, receiptMap = null, statusCache = null }) {
     const speakerAvatar = message?.role === 'member' ? message.extra?.member_avatar : avatar;
     const speakerStatus = speakerAvatar && message?.role !== 'user' && message?.role !== 'system'
-        ? getEffectiveConversationStatus(speakerAvatar)
+        ? getCachedEffectiveStatus(statusCache, speakerAvatar)
         : '';
+    const receiptText = receiptMap && message?.id !== undefined && receiptMap.has(message.id)
+        ? receiptMap.get(message.id)
+        : getConversationMessageReceipt(message, avatar, { groupId, personaId });
 
     return hashConversationRenderFingerprint([
         message?.id || '',
@@ -139,7 +190,7 @@ function buildConversationMessageFingerprint(message, { avatar, groupId, persona
         message?.mes || '',
         personaId || '',
         getConversationMessageExtraFingerprint(message),
-        getConversationMessageReceipt(message, avatar, { groupId, personaId }),
+        receiptText,
         getConversationMessageAvatar(message, avatar),
         settings?.prose_polisher ? '1' : '0',
         speakerStatus,
@@ -448,7 +499,7 @@ function stripConversationDayDividers(timeline) {
     timeline.querySelectorAll('.sb-conversation-day-divider').forEach(node => node.remove());
 }
 
-function insertConversationDayDividers(timeline, messages) {
+function insertConversationDayDividers(timeline, messages, nodeById = null) {
     stripConversationDayDividers(timeline);
     let previousDayKey = '';
     for (const message of messages) {
@@ -459,12 +510,14 @@ function insertConversationDayDividers(timeline, messages) {
         }
 
         previousDayKey = dayKey;
-        const node = timeline.querySelector(`.sb-conversation-message[data-message-id="${CSS.escape(String(message.id || ''))}"]`);
+        const messageId = String(message.id || '');
+        const node = nodeById?.get(messageId)
+            || timeline.querySelector(`.sb-conversation-message[data-message-id="${CSS.escape(messageId)}"]`);
         node?.before(createConversationDayDivider(dayKey));
     }
 }
 
-function createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint, baseFingerprint }) {
+function createConversationMessageElement(message, { avatar, groupId, personaId, settings, index, fingerprint, baseFingerprint, receiptMap = null, statusCache = null }) {
     const item = document.createElement('article');
     item.className = 'sb-conversation-message';
     item.dataset.role = message.role || 'character';
@@ -499,7 +552,7 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
         if (messageAvatar && message.role !== 'system') {
             const statusDot = document.createElement('span');
             statusDot.className = 'sb-conversation-status-dot';
-            statusDot.dataset.status = getEffectiveConversationStatus(messageAvatar);
+            statusDot.dataset.status = getCachedEffectiveStatus(statusCache, messageAvatar);
             statusDot.setAttribute('aria-hidden', 'true');
             avatarWrap.appendChild(statusDot);
         }
@@ -642,7 +695,9 @@ function createConversationMessageElement(message, { avatar, groupId, settings, 
 
     const reactions = createReactionChips(message);
 
-    const receiptText = getConversationMessageReceipt(message, avatar, { groupId });
+    const receiptText = receiptMap && message?.id !== undefined && receiptMap.has(message.id)
+        ? receiptMap.get(message.id)
+        : getConversationMessageReceipt(message, avatar, { groupId, personaId });
     let receipt = null;
     if (receiptText) {
         receipt = document.createElement('span');
@@ -871,7 +926,7 @@ function updateMessageReactionsInPlace(node, message, fingerprint) {
     return focusedChip ? findReactionChipFocusTarget(node, focusedReaction, focusedChipIndex) : null;
 }
 
-function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter }) {
+function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter, receiptMap = null, statusCache = null }) {
     const existingNodes = new Map();
     timeline.querySelectorAll('.sb-conversation-message[data-message-id]').forEach((node) => {
         if (node instanceof HTMLElement && !node.classList.contains('sb-conversation-typing-indicator') && !node.classList.contains('sb-conversation-image-pending')) {
@@ -879,10 +934,11 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
         }
     });
 
+    const nodeById = new Map();
     const grouping = getConversationTimelineGroupMeta(messages, { breaksAfter });
     messages.forEach((message, index) => {
         const messageId = String(message?.id || '');
-        const fingerprintContext = { avatar, groupId, personaId, settings, index };
+        const fingerprintContext = { avatar, groupId, personaId, settings, index, receiptMap, statusCache };
         const fingerprint = buildConversationMessageFingerprint(message, fingerprintContext);
         const baseFingerprint = buildConversationMessageBaseFingerprint(message, fingerprintContext);
         const currentNode = existingNodes.get(messageId) || null;
@@ -893,7 +949,7 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
                 focusTarget = updateMessageReactionsInPlace(currentNode, message, fingerprint);
                 nextNode = currentNode;
             } else {
-                nextNode = createConversationMessageElement(message, { avatar, groupId, settings, index, fingerprint, baseFingerprint });
+                nextNode = createConversationMessageElement(message, { avatar, groupId, personaId, settings, index, fingerprint, baseFingerprint, receiptMap, statusCache });
                 if (currentNode) {
                     if (currentNode.classList.contains('has-open-menu')) {
                         nextNode.classList.add('has-open-menu');
@@ -905,6 +961,7 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
         }
 
         existingNodes.delete(messageId);
+        nodeById.set(messageId, nextNode);
         const referenceNode = timeline.children[index] || null;
         if (nextNode !== referenceNode) {
             timeline.insertBefore(nextNode, referenceNode);
@@ -922,6 +979,7 @@ function reconcileConversationMessageNodes(timeline, messages, { avatar, groupId
     });
 
     existingNodes.forEach(node => node.remove());
+    return nodeById;
 }
 
 export function renderConversationTimeline() {
@@ -930,6 +988,10 @@ export function renderConversationTimeline() {
     const personaId = getConversationPersonaId();
     if (!(timeline instanceof HTMLElement)) {
         return;
+    }
+
+    if (!timeline.dataset?.sbConversationMenuBound && typeof CustomEvent === 'function' && typeof timeline.dispatchEvent === 'function') {
+        timeline.dispatchEvent(new CustomEvent('sb-conversation-timeline-mounted', { bubbles: true }));
     }
 
     const previousScrollTop = timeline.scrollTop;
@@ -1047,8 +1109,11 @@ export function renderConversationTimeline() {
     // A search shows the messages that match and not the course of the chat, so it shows no line between them.
     const pinEvents = conversationState.conversationTimelineSearchQuery ? [] : getPinEvents(messages, getConversationMessageTimestampMs);
     const breaksAfter = new Set(pinEvents.map(event => event.afterMessageId));
-    reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter });
-    insertConversationDayDividers(timeline, messages);
+    const seenAt = getConversationSeenAt(avatar, { groupId, personaId });
+    const receiptMap = buildConversationReceiptMap(allMessages, seenAt);
+    const statusCache = new Map();
+    const nodeById = reconcileConversationMessageNodes(timeline, messages, { avatar, groupId, personaId, settings, breaksAfter, receiptMap, statusCache });
+    insertConversationDayDividers(timeline, messages, nodeById);
     placePinEventRows(timeline, pinEvents, detachedPinRows);
 
     const typingParticipants = getActiveTypingParticipants(avatar, { chatId, groupId, personaId });

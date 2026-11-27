@@ -92,7 +92,9 @@ export function createEditorSession(config) {
 
     function notify() {
         clearDirtyDebounce();
-        onStateChange(getState());
+        const state = getState();
+        if (!state.dirty) stopDraftTimer();
+        onStateChange(state);
     }
 
     function clearDirtyDebounce() {
@@ -103,8 +105,16 @@ export function createEditorSession(config) {
 
     function stopDraftTimer() {
         if (draftTimerId === null) return;
-        timers.clearInterval(draftTimerId);
+        timers.clearTimeout(draftTimerId);
         draftTimerId = null;
+    }
+
+    function scheduleDraftSave() {
+        if (!context || draftTimerId !== null) return;
+        draftTimerId = timers.setTimeout(() => {
+            draftTimerId = null;
+            if (context && isDirty()) writeDraft();
+        }, DRAFT_INTERVAL_MS);
     }
 
     function writeDraft() {
@@ -128,9 +138,6 @@ export function createEditorSession(config) {
         token++;
         context = { ...nextContext };
         captureBaseline();
-        draftTimerId = timers.setInterval(() => {
-            if (isDirty()) writeDraft();
-        }, DRAFT_INTERVAL_MS);
         offerStoredDraft();
         notify();
     }
@@ -159,10 +166,12 @@ export function createEditorSession(config) {
     /**
      * Report an edit. Typing uses the trailing debounce so long fields are not
      * serialized on every keystroke; structural edits pass { immediate: true }.
+     * Arms a one-shot draft backup timer only when edits occur.
      * @param {{ immediate?: boolean }} [options]
      */
     function changed(options = {}) {
         if (!context) return;
+        scheduleDraftSave();
         if (options.immediate) {
             notify();
             return;
@@ -181,6 +190,7 @@ export function createEditorSession(config) {
      */
     function markSaved(nextContext) {
         if (!context) return;
+        stopDraftTimer();
         const previousId = context.entityId;
         if (nextContext) context = { ...context, ...nextContext };
         captureBaseline();
@@ -207,8 +217,12 @@ export function createEditorSession(config) {
                 baseline = structuredClone(savedSnapshot);
                 baselineJson = JSON.stringify(baseline);
                 if (context.entityId !== previousId) drafts.remove(previousId);
-                if (isDirty()) writeDraft();
-                else drafts.remove(context.entityId);
+                if (isDirty()) {
+                    writeDraft();
+                } else {
+                    stopDraftTimer();
+                    drafts.remove(context.entityId);
+                }
                 notify();
                 return true;
             },
@@ -236,6 +250,7 @@ export function createEditorSession(config) {
     /** Revert to the saved baseline and drop its backup. The session stays open. */
     function discard() {
         if (!context || !baseline) return;
+        stopDraftTimer();
         restoreSnapshot(baseline);
         drafts.remove(context.entityId);
         notify();

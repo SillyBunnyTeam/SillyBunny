@@ -2939,6 +2939,48 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/slash-commands/SlashCommandParser.js` and `public/scripts/autocomplete/MacroAutoComplete.js` - O(N) STScript parsing and MacroAutoComplete parse gate
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/slash-commands/SlashCommandParser.js`; `public/scripts/autocomplete/MacroAutoComplete.js`. |
+| Area | STScript parser performance and free-text macro autocomplete gating. |
+| Divergence reason | Upstream's `SlashCommandParser` rescans `this.text.slice(0, this.index)` on every `|` and allocates per-token slices and regexes (`O(pipes × N)`, freezing the UI for ~2.5 s on large Quick Reply packs), and `MacroAutoComplete` runs synchronous `MacroParser.parseDocument()` on every keystroke. |
+| Target seam | none yet; incremental brace tracking, sticky regex cache and lazy `Error.stack` getters live directly in `SlashCommandParser.js`, and the `{{` gate with a leaf-element skip in `MacroAutoComplete.js`. |
+| Adapter shape | Marked `SillyBunny:` blocks in both files: incremental `macroBraceDepth`/`macroBraceScannedIndex`, cached sticky (`y`) regexes, lazy `isExtension`/`isThirdParty`/`source` getters and a one-time `hljs.registerLanguage` guard in `SlashCommandParser.js`; `shouldShowNormally && text.includes('{{')` short-circuit and the leaf-element skip in `MacroAutoComplete.js`. |
+| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js` (STScript parse time that grows linearly with the command count, split-brace & strict-escape edge cases, lazy `Error.stack`, Quick Reply run isolation, `MacroAutoComplete` gate and observer wiring inside message text); `tests/macro-comment-pipes.test.js`. |
+| Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites (`tests/perf-ui-smoothness-cold-load.test.js` 23/23, 2,000-command parse in ~25 ms). |
+| Rollback path | Revert the marked `SillyBunny:` blocks in `SlashCommandParser.js` and `MacroAutoComplete.js` to restore upstream parsing and observer handling. All caches are in-memory only and no script formats change. |
+| Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
+| Owner | Frontend runtime and UI performance integrator. |
+
+### `public/scripts/extensions/quick-reply/src/QuickReply.js` and `public/scripts/extensions/quick-reply/style.css` - modal editor observer teardown, event-driven syntax highlighting, template cache and popup class toggles
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/quick-reply/src/QuickReply.js`; `public/scripts/extensions/quick-reply/style.css`. |
+| Area | Quick Reply modal editor lifecycle, syntax highlight loop, template fetch caching, and modal popup CSS selector scoping. |
+| Divergence reason | Upstream leaks `document.body` `MutationObserver` instances when the Quick Reply modal editor closes, runs a continuous 60 Hz `requestAnimationFrame` copy loop while open, refetches `qrEditor.html` with `no-store` on every open, and matches 237 `.popup:has(#qr--modalEditor...)` selectors that force wide `:has()` invalidations across modal popups. |
+| Target seam | none yet; popup state class sync (`sb-qr-modal-editor-popup`, `sb-qr-modal-editor-executing`, `sb-qr-modal-editor-minimized`), session-cached `qrEditor.html`, event-driven `scheduleSyntaxUpdate()`, and `try/finally` observer/listener teardown live in `QuickReply.js` paired with class selectors in `quick-reply/style.css`. |
+| Adapter shape | Marked `SillyBunny:` blocks in `QuickReply.js` and `quick-reply/style.css` replacing all 237 `:has(#qr--modalEditor...)` selector prefixes with `:where(.sb-qr-modal-editor-popup):not(#qr--modalEditor)` plus `.sb-qr-modal-editor-executing` / `-minimized` while preserving `-webkit-backdrop-filter` companions. `:where()` adds no specificity and `:not(#qr--modalEditor)` always matches (the ID is on a descendant of the popup), so each selector has the same specificity as the `:has()` form it replaced. |
+| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js` (specificity of every marker selector, and of the rule that hides the popup buttons while a script runs against the dialog chrome rule); `tests/css-has-scope.test.js`; `tests/webkit-prefix-companions.test.js`; `npm run check:design-rules`. |
+| Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:design-rules`, `tests/css-has-scope.test.js`, `tests/webkit-prefix-companions.test.js`, and `tests/perf-ui-smoothness-cold-load.test.js`. |
+| Rollback path | Revert the marked `SillyBunny:` blocks in `QuickReply.js` and `quick-reply/style.css` to restore `:has(#qr--modalEditor)` selectors and upstream's modal editor lifecycle. No saved Quick Reply sets or user settings change. |
+| Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
+| Owner | UI shell and performance integrator. |
+
+### `public/css/brands.min.css` and `public/scripts/extensions.js` - cold-load font swap and wand-menu observer
+| Field | Value |
+| --- | --- |
+| File | `public/css/brands.min.css`; `public/scripts/extensions.js`. |
+| Area | Cold-load font rendering (`font-display`), extensions wand-menu visibility watcher. |
+| Divergence reason | Upstream's `brands.min.css` blocks icon paint with `font-display: block`, and `extensions.js` leaks a 1-second `setInterval(showHideExtensionsMenu, 1000)` when the wand menu is empty. |
+| Target seam | none yet; direct marked edits in each upstream-origin file. |
+| Adapter shape | Marked `SillyBunny:` blocks: `font-display:swap` in `public/css/brands.min.css`; `#extensionsMenu` `MutationObserver` + `APP_READY` check replacing `setInterval(showHideExtensionsMenu, 1000)` in `public/scripts/extensions.js`. |
+| Protecting tests | `tests/perf-ui-smoothness-cold-load.test.js`; `tests/css-has-scope.test.js`; `tests/webkit-prefix-companions.test.js`; `tests/audit-design-rules.test.js`; `tests/startup-module-graph.test.js`. |
+| Validation | 2026-11-26: root and `tests/` lint (0 errors), `npm run check:frontend-budgets`, `npm run check:frontend-contracts`, `npm run check:design-rules`, and focused Jest suites. |
+| Rollback path | Revert the marked `SillyBunny:` hunks in `brands.min.css` and `extensions.js`. No saved user data, locale files, or settings keys change. |
+| Last reviewed | 2026-11-26, Wave-2 Track C (`perf/pr17-ui-smoothness-cold-load`). |
+| Owner | UI shell and performance integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?

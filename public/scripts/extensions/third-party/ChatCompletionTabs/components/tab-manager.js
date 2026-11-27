@@ -23,23 +23,81 @@ export class TabManager {
         this.movedElements = new Map();
         this.isTabsCreated = false;
         this.enabled = true;
+        // SillyBunny: track event-driven lifecycle hooks and one-shot init timer instead of permanent 2s setInterval polling.
+        this.initTimerId = null;
+        this.boundCheckCondition = () => this.checkConditionAndInitialize();
+        this.lifecycleCleanup = [];
+        this.lifecycleAttached = false;
 
         this.init();
     }
 
     init() {
-        setTimeout(() => this.checkConditionAndInitialize(), 300);
-        this.intervalId = setInterval(() => this.checkConditionAndInitialize(), 2000);
+        this.attachLifecycleHooks();
+        this.initTimerId = setTimeout(() => {
+            this.initTimerId = null;
+            this.checkConditionAndInitialize();
+        }, 300);
+    }
+
+    // SillyBunny: react to app/API/preset lifecycle events instead of polling every 2s.
+    attachLifecycleHooks() {
+        if (this.lifecycleAttached) {
+            return;
+        }
+        this.lifecycleAttached = true;
+
+        const ctx = globalThis.SillyTavern?.getContext?.();
+        const eventSource = ctx?.eventSource;
+        const eventTypes = ctx?.eventTypes ?? ctx?.event_types;
+        const eventNames = [
+            eventTypes?.APP_READY,
+            eventTypes?.SETTINGS_LOADED_AFTER,
+            eventTypes?.MAIN_API_CHANGED,
+            eventTypes?.OAI_PRESET_CHANGED_AFTER,
+        ].filter(Boolean);
+
+        if (eventSource && typeof eventSource.on === 'function') {
+            for (const eventName of eventNames) {
+                eventSource.on(eventName, this.boundCheckCondition);
+                this.lifecycleCleanup.push(() => {
+                    eventSource.removeListener?.(eventName, this.boundCheckCondition);
+                });
+            }
+        }
+
+        if (typeof document !== 'undefined') {
+            const onMainApiChange = (event) => {
+                if (event?.target?.id === 'main_api') {
+                    this.boundCheckCondition();
+                }
+            };
+            document.addEventListener('change', onMainApiChange);
+            this.lifecycleCleanup.push(() => document.removeEventListener('change', onMainApiChange));
+        }
+    }
+
+    detachLifecycleHooks() {
+        if (this.initTimerId !== null) {
+            clearTimeout(this.initTimerId);
+            this.initTimerId = null;
+        }
+        while (this.lifecycleCleanup.length) {
+            const cleanup = this.lifecycleCleanup.pop();
+            try {
+                cleanup();
+            } catch {
+                // Ignore teardown errors if context changed.
+            }
+        }
+        this.lifecycleAttached = false;
     }
 
     setEnabled(enabled) {
         this.enabled = enabled;
         if (!enabled) {
-            // Clear interval to prevent re-creation
-            if (this.intervalId) {
-                clearInterval(this.intervalId);
-                this.intervalId = null;
-            }
+            // SillyBunny: detach lifecycle hooks cleanly when disabled.
+            this.detachLifecycleHooks();
 
             // Force remove tabs immediately when disabled
             if (this.isTabsCreated) {
@@ -53,9 +111,9 @@ export class TabManager {
                     this.forceRemoveAllTabElements();
                 }
             }, 100);
-        } else if (enabled && !this.intervalId) {
-            // Re-enable interval checking when enabled
-            this.intervalId = setInterval(() => this.checkConditionAndInitialize(), 2000);
+        } else if (enabled) {
+            // SillyBunny: re-attach event-driven lifecycle hooks when enabled.
+            this.attachLifecycleHooks();
             // Check immediately
             this.checkConditionAndInitialize();
         }
@@ -403,12 +461,10 @@ export class TabManager {
         }
     }
 
-    // Clean up method to stop all timers
+    // Clean up method to stop all listeners and timers
     destroy() {
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.intervalId = null;
-        }
+        // SillyBunny: detach lifecycle hooks and timers on destroy.
+        this.detachLifecycleHooks();
         if (this.isTabsCreated) {
             this.removeTabs();
         }

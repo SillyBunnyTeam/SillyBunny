@@ -171,6 +171,7 @@ export function createTagManager(adapter) {
     let visibleIds = [];
     let selection = null;
     let bulkBusy = false;
+    let memberFocusHandle = null;
     let finish;
     const closed = new Promise(resolve => finish = resolve);
     /** @type {ReturnType<typeof openDialog>|null} */
@@ -254,6 +255,8 @@ export function createTagManager(adapter) {
     function dispose() {
         if (disposed) return;
         disposed = true;
+        memberFocusHandle?.destroy();
+        memberFocusHandle = null;
         selection?.destroy();
         sortable?.destroy();
         unbindKeyboard();
@@ -372,41 +375,45 @@ export function createTagManager(adapter) {
 
     function renderTagMembers(tag, container, onAdd) {
         const state = getState();
-        const keys = Object.entries(state.tagMap).filter(([, ids]) => Array.isArray(ids) && ids.includes(tag.id)).map(([key]) => key);
+        const keySet = new Set(Object.entries(state.tagMap).filter(([, ids]) => Array.isArray(ids) && ids.includes(tag.id)).map(([key]) => key));
         const members = [
-            ...state.characters.filter(character => keys.includes(String(character.avatar))).map(character => ({
+            ...state.characters.filter(character => keySet.has(String(character.avatar))).map(character => ({
                 key: String(character.avatar), name: String(character.name ?? character.avatar), avatar: adapter.getAvatar?.(character),
             })),
-            ...state.groups.filter(group => keys.includes(String(group.id))).map(group => ({
+            ...state.groups.filter(group => keySet.has(String(group.id))).map(group => ({
                 key: String(group.id), name: String(group.name ?? group.id), avatar: adapter.getGroupAvatar?.(group),
             })),
         ];
-        const rows = members.map(member => {
-            const remove = rowButton(t`Remove`, 'minus', () => {
-                actions.removeMember(tag, member.key);
-                renderTagMembers(tag, container, onAdd);
-                commit();
-            }, 'sb-tag-manager__member-remove');
-            return createEntityRow({
-                key: `tag-member:${tag.id}:${member.key}`,
-                label: member.name,
-                title: member.name,
-                avatar: member.avatar ?? null,
-                suffix: [remove],
-                compatClasses: { row: ['ds-entity-row--surface'] },
-            }).row;
-        });
-        if (!rows.length) {
-            rows.push(createStatusPage({
+        const fragment = document.createDocumentFragment();
+        if (members.length) {
+            for (const member of members) {
+                const remove = rowButton(t`Remove`, 'minus', () => {
+                    actions.removeMember(tag, member.key);
+                    renderTagMembers(tag, container, onAdd);
+                    commit();
+                }, 'sb-tag-manager__member-remove');
+                fragment.append(createEntityRow({
+                    key: `tag-member:${tag.id}:${member.key}`,
+                    label: member.name,
+                    title: member.name,
+                    avatar: member.avatar ?? null,
+                    suffix: [remove],
+                    compatClasses: { row: ['ds-entity-row--surface'] },
+                }).row);
+            }
+        } else {
+            fragment.append(createStatusPage({
                 state: 'empty', icon: 'users', title: t`No Members`, compact: true,
                 actions: [{ label: t`Add`, primary: true, onActivate: onAdd }],
             }).element);
         }
-        container.replaceChildren(...rows);
+        container.replaceChildren(fragment);
     }
 
     function openMembers(tag) {
         if (!frame || !tag) return;
+        memberFocusHandle?.destroy();
+        memberFocusHandle = null;
         const list = element('div', 'ds-entity-list sb-tag-manager__members');
         list.setAttribute('role', 'list');
         const add = createIconButton(t`Add`, 'plus', 'sb-tag-manager__member-add');
@@ -439,7 +446,14 @@ export function createTagManager(adapter) {
         const page = frame.push({ title: tag.name, content, initialFocus: () => add });
         page.header.querySelector('.sb-dialog__header-end').append(add);
         renderTagMembers(tag, list, onAdd);
-        bindListFocus(list, { rowSelector: '.ds-entity-row' });
+        const focusHandle = bindListFocus(list, { rowSelector: '.ds-entity-row' });
+        memberFocusHandle = focusHandle;
+        page.closed.then(() => {
+            focusHandle.destroy();
+            if (memberFocusHandle === focusHandle) {
+                memberFocusHandle = null;
+            }
+        });
     }
 
     function showColor(tag, property) {

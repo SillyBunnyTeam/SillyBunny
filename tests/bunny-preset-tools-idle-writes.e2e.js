@@ -1,14 +1,21 @@
 import { expect, test } from '@playwright/test';
 import { testSetup } from './frontend/frontent-test-utils.js';
 
-// BunnyPresetTools re-syncs its panels and the animated background layer every second. The tests run a fake clock
-// between their steps, so the sync ticks without waiting for real seconds.
+// BunnyPresetTools re-syncs its panels and the animated background layer when the app reports that settings changed.
+// Nothing polls, so a step that changes the settings object from the page reports it like the app does after a save.
+// The fake clock runs the extension's own timers between the steps without waiting for real time.
+const reportSettingsChanged = page => page.evaluate(async () => {
+    const { eventSource, eventTypes } = window.SillyTavern.getContext();
+    await eventSource.emit(eventTypes.SETTINGS_UPDATED);
+    await new Promise(resolve => queueMicrotask(resolve));
+});
+
 test.describe('BunnyPresetTools idle sync', () => {
     test.beforeEach(async ({ page }) => {
         let settingsVersion = Date.now();
         await page.route('**/api/settings/save', route => route.fulfill({ status: 200, json: { version: ++settingsVersion } }));
         await page.route('https://example.invalid/**', route => route.abort());
-        // Installed before the boot, so that the sync interval uses the fake timers. Time still flows during the boot.
+        // Installed before the boot, so that the extension's timers use the fake clock. Time still flows during the boot.
         await page.clock.install();
         await testSetup.awaitST({ page });
     });
@@ -27,14 +34,50 @@ test.describe('BunnyPresetTools idle sync', () => {
             window.bptIdleWatch = { observer, describe, records, present: watched.map(element => Boolean(element)) };
         });
         await page.clock.runFor(3500);
-        const result = await page.evaluate(() => {
-            const { observer, describe, records, present } = window.bptIdleWatch;
+        const idle = await page.evaluate(() => {
+            const { observer, describe, records } = window.bptIdleWatch;
             records.push(...observer.takeRecords().map(describe));
             observer.disconnect();
+            return records;
+        });
+
+        // A settings report also makes other modules rewrite classes on <body>, so this half watches the extension's
+        // own nodes and the class calls that the extension makes on <body>, and a sync that changed nothing must write none.
+        await page.evaluate(() => {
+            const { describe, records } = window.bptIdleWatch;
+            const observer = new MutationObserver(list => records.push(...list.map(describe)));
+            for (const id of ['bpt-settings', 'bpt-animated-bg-panel', 'bpt-animated-bg-layer']) {
+                observer.observe(document.getElementById(id), { attributes: true, childList: true, subtree: true });
+            }
+            const bodyObserver = new MutationObserver(() => {});
+            bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+            const bodyClasses = document.body.classList;
+            for (const method of ['add', 'remove', 'toggle', 'replace']) {
+                const original = DOMTokenList.prototype[method];
+                bodyClasses[method] = function (...args) {
+                    bodyObserver.takeRecords();
+                    const result = original.apply(this, args);
+                    if (String(args[0]).startsWith('bpt-') && bodyObserver.takeRecords().length) {
+                        records.push(`class write ${method} ${args[0]}`);
+                    }
+                    return result;
+                };
+            }
+            window.bptIdleWatch.syncObserver = observer;
+        });
+        for (let sync = 0; sync < 3; sync++) {
+            await reportSettingsChanged(page);
+            await page.clock.runFor(1200);
+        }
+        const result = await page.evaluate(() => {
+            const { syncObserver, describe, records, present } = window.bptIdleWatch;
+            records.push(...syncObserver.takeRecords().map(describe));
+            syncObserver.disconnect();
             return { present, records };
         });
 
         expect(result.present).toEqual([true, true, true]);
+        expect(idle).toEqual([]);
         expect(result.records).toEqual([]);
     });
 
@@ -70,6 +113,7 @@ test.describe('BunnyPresetTools idle sync', () => {
         });
 
         try {
+            await reportSettingsChanged(page);
             await page.clock.runFor(1500);
             await page.evaluate(() => {
                 const state = window.bptSources;
@@ -77,7 +121,10 @@ test.describe('BunnyPresetTools idle sync', () => {
                 state.out.renderedCount = state.rendered.length;
             });
 
-            await page.clock.runFor(2500);
+            for (let sync = 0; sync < 2; sync++) {
+                await reportSettingsChanged(page);
+                await page.clock.runFor(1200);
+            }
             await page.evaluate(() => {
                 const state = window.bptSources;
                 const afterTicks = state.cards();
@@ -116,6 +163,7 @@ test.describe('BunnyPresetTools idle sync', () => {
                 state.context.extensionSettings.BunnyPresetTools = state.replacement;
             });
 
+            await reportSettingsChanged(page);
             await page.clock.runFor(1500);
             await page.evaluate(() => window.bptSources.cards()[0].querySelector('.menu_button').click());
 
@@ -162,7 +210,10 @@ test.describe('BunnyPresetTools idle sync', () => {
         });
 
         try {
-            await page.clock.runFor(2500);
+            for (let sync = 0; sync < 2; sync++) {
+                await reportSettingsChanged(page);
+                await page.clock.runFor(1200);
+            }
             await page.evaluate(() => {
                 const state = window.bptDivider;
                 state.out.unsaved = state.input.value;
@@ -172,6 +223,7 @@ test.describe('BunnyPresetTools idle sync', () => {
                 state.settings.dividerRegexPattern = 'changed elsewhere';
             });
 
+            await reportSettingsChanged(page);
             await page.clock.runFor(1500);
             await page.evaluate(() => {
                 const state = window.bptDivider;
@@ -182,6 +234,7 @@ test.describe('BunnyPresetTools idle sync', () => {
                 const state = window.bptDivider;
                 state.settings.dividerRegexPattern = state.originalPattern;
             });
+            await reportSettingsChanged(page);
             await page.clock.runFor(1500);
         }
 

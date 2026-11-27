@@ -1614,8 +1614,11 @@ const SB_EXT_TITLED_BY_TOOLTIP = new Set(['deepl_api_endpoint']);
 /** @type {WeakMap<HTMLElement, {sync?: () => void}>} */
 const sbExtensionControllers = new WeakMap();
 
-/** @type {WeakMap<HTMLElement, MutationObserver>} */
+/** @type {WeakMap<HTMLElement, {observer: MutationObserver, active: boolean, present: () => void}>} */
 const sbExtensionObservers = new WeakMap();
+/** @type {Set<HTMLElement>} */
+const sbWatchedExtensionScopes = new Set();
+let sbExtensionObserversPaused = false;
 
 /** @param {string} text */
 function normalizeFieldTitle(text) {
@@ -1997,21 +2000,74 @@ export function normalizeExtensionSettings(scope) {
  * @param {HTMLElement} scope
  */
 export function watchExtensionSettings(scope) {
+    if (!(scope instanceof HTMLElement)) {
+        return;
+    }
+
+    let entry = sbExtensionObservers.get(scope);
+    if (entry) {
+        entry.present();
+        if (!sbExtensionObserversPaused && !entry.active) {
+            entry.observer.observe(scope, { childList: true, subtree: true });
+            entry.active = true;
+        }
+        return;
+    }
+
     const present = () => {
         normalizeExtensionSettings(scope);
         observer?.takeRecords();
     };
-    let observer = sbExtensionObservers.get(scope);
-    if (observer) {
-        present();
-        return;
-    }
-
-    observer = new MutationObserver(records => {
+    const observer = new MutationObserver(records => {
         const added = records.some(record => [...record.addedNodes].some(node => node instanceof HTMLElement));
         if (added) present();
     });
-    sbExtensionObservers.set(scope, observer);
+    entry = { observer, active: false, present };
+    sbExtensionObservers.set(scope, entry);
+    sbWatchedExtensionScopes.add(scope);
     present();
-    observer.observe(scope, { childList: true, subtree: true });
+    if (!sbExtensionObserversPaused) {
+        observer.observe(scope, { childList: true, subtree: true });
+        entry.active = true;
+    }
+}
+
+/**
+ * Disconnects all active extension-settings MutationObservers while the Settings page is closed.
+ */
+export function disconnectExtensionSettingsObservers() {
+    sbExtensionObserversPaused = true;
+    for (const scope of sbWatchedExtensionScopes) {
+        const entry = sbExtensionObservers.get(scope);
+        if (!entry) {
+            sbWatchedExtensionScopes.delete(scope);
+            continue;
+        }
+        if (entry.active) {
+            entry.observer.disconnect();
+            entry.active = false;
+        }
+    }
+}
+
+/**
+ * Re-attaches extension-settings MutationObservers when the Settings page opens.
+ */
+export function reconnectExtensionSettingsObservers() {
+    sbExtensionObserversPaused = false;
+    for (const scope of sbWatchedExtensionScopes) {
+        const entry = sbExtensionObservers.get(scope);
+        if (!entry || !scope.isConnected) {
+            if (!scope.isConnected) {
+                entry?.observer.disconnect();
+                sbWatchedExtensionScopes.delete(scope);
+            }
+            continue;
+        }
+        if (!entry.active) {
+            entry.present();
+            entry.observer.observe(scope, { childList: true, subtree: true });
+            entry.active = true;
+        }
+    }
 }

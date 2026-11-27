@@ -173,6 +173,7 @@ export function mountAgentsPanel(column) {
     let selection;
     let bulkBusy = false;
     let destroyed = false;
+    let dirtyWhileHidden = false;
     let frame = 0;
     let resolveReady;
     const ready = new Promise(resolve => {
@@ -202,7 +203,12 @@ export function mountAgentsPanel(column) {
     const input = searchEntry.input;
     const run = operation => Promise.resolve().then(operation).catch(error => globalThis.toastr?.error(error.message));
     const refreshSoon = () => {
-        if (frame || destroyed) return;
+        if (destroyed) return;
+        if (!controller.isVisible()) {
+            dirtyWhileHidden = true;
+            return;
+        }
+        if (frame) return;
         frame = requestAnimationFrame(() => {
             frame = 0; refresh();
         });
@@ -496,11 +502,16 @@ export function mountAgentsPanel(column) {
         return '—';
     }
 
-    function refresh() {
+    function refresh({ force = false } = {}) {
         if (!shell || !adapter || destroyed) return;
+        if (!force && !controller.isVisible()) {
+            dirtyWhileHidden = true;
+            return;
+        }
         if (shell.isNavigating || shell.pointerActive) {
             shell.deferRefresh(); return;
         }
+        dirtyWhileHidden = false;
         const state = adapter.state();
         if (['settings', 'companions', 'groups'].includes(shell.selectedKey)) pageController?.refresh?.();
         const entries = adapter.getEntries();
@@ -773,8 +784,11 @@ export function mountAgentsPanel(column) {
             shell.scheduleLayout();
             resolveReady();
         },
-        prepareReveal: refresh,
-        onReveal: () => shell.scheduleLayout(),
+        prepareReveal: () => refresh({ force: true }),
+        onReveal: () => {
+            if (dirtyWhileHidden) refresh({ force: true });
+            shell.scheduleLayout();
+        },
         destroy() {
             destroyed = true;
             cancelAnimationFrame(frame);
