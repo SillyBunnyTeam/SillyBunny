@@ -632,7 +632,10 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
 
         const webpackSource = fs.readFileSync(webpackConfigPath, 'utf8');
         expect(webpackSource).not.toContain('terser-webpack-plugin');
-        expect(webpackSource).not.toContain('chevrotain-esm-alias-v1');
+        // A cache signature from the base or from the slim-bundle build must not come back, or that cached bundle would be reused.
+        for (const retiredSignature of ['chevrotain-esm-alias-v1', 'bun-no-minify-v1', 'slim-hljs-moment-ui-locales-v3', 'bun-premin-vendors-v3']) {
+            expect(webpackSource).not.toContain(retiredSignature);
+        }
 
         const builtLibPath = path.join(tmpDistDir, libEntry.output);
         const builtLibSource = fs.readFileSync(builtLibPath, 'utf8');

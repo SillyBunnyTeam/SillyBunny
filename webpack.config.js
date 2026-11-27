@@ -9,8 +9,8 @@ import { serverDirectory } from './src/server-directory.js';
 import { getVersion, color } from './src/util.js';
 
 // SillyBunny: cache signatures and input hashing cover the Bun pre-minified vendor aliases.
-const BUN_LIB_BUNDLE_SIGNATURE = 'bun-premin-vendors-v3';
-const PUBLIC_LIB_CONFIG_SIGNATURE = 'slim-hljs-moment-ui-locales-v3';
+const BUN_LIB_BUNDLE_SIGNATURE = 'bun-premin-vendors-full-libs-v4';
+const PUBLIC_LIB_CONFIG_SIGNATURE = 'full-libs-vendor-aliases-v4';
 const WEBPACK_CACHE_KEEP_COUNT = 3;
 const PUBLIC_LIB_FILENAME = 'lib.js';
 
