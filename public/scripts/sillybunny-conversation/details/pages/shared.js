@@ -407,14 +407,14 @@ export function buildPinned({ conversationId, nav }) {
                             createMenuItem('Show in Chat', 'arrow-up-right-from-square', openInChat(nav, conversationId, item)),
                             createMenuItem(...SELECT_ITEM, () => bulk.enter(`pin:${item.key}`, built.menuButton)),
                         ] },
-                        { items: [createMenuItem('Unpin', 'thumbtack-slash', () => void unpinMessages(conversationId, [item.messageId]))] },
+                        { items: [createMenuItem('Unpin', 'thumbtack', () => void unpinMessages(conversationId, [item.messageId]))] },
                     ],
                 },
             });
             return built.row;
         },
         actions: itemsOf => [
-            { id: 'unpin', label: 'Unpin', icon: 'fa-solid fa-thumbtack-slash', run: keys => unpinMessages(conversationId, itemsOf(keys).map(item => item.messageId)) },
+            { id: 'unpin', label: 'Unpin', icon: 'fa-solid fa-thumbtack', run: keys => unpinMessages(conversationId, itemsOf(keys).map(item => item.messageId)) },
         ],
     });
 }
