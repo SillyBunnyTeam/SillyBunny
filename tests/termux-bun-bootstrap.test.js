@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const prerequisitesSource = readFileSync(path.join(repoRoot, 'scripts', 'install-prerequisites.sh'), 'utf8');
+const startShSource = readFileSync(path.join(repoRoot, 'start.sh'), 'utf8');
 const readmeSource = readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
 
 /**
@@ -277,5 +278,94 @@ describe('install-prerequisites.sh Termux Bun bootstrap wiring', () => {
         const termuxChecks = installBun.match(/is_termux/g) ?? [];
 
         expect(termuxChecks).toHaveLength(1);
+    });
+});
+
+describeShell('install-prerequisites.sh have_working_termux_bun and start.sh shared-storage guard', () => {
+    let probeCounter = 0;
+
+    function runTermuxBunProbe({ termux = true, bun = true, buno = true, shim = true } = {}) {
+        const root = path.join(harnessDir, `termux-bun-${probeCounter++}`);
+        const binDir = path.join(root, 'bin');
+        const libDir = path.join(root, 'lib');
+        mkdirSync(binDir, { recursive: true });
+        mkdirSync(libDir, { recursive: true });
+
+        if (bun) {
+            const bunPath = path.join(binDir, 'bun');
+            writeFileSync(bunPath, '#!/bin/sh\necho 1.4.4\n');
+            chmodSync(bunPath, 0o755);
+        }
+        if (buno) {
+            const bunoPath = path.join(binDir, 'buno');
+            writeFileSync(bunoPath, '#!/bin/sh\nexit 0\n');
+            chmodSync(bunoPath, 0o755);
+        }
+        if (shim) {
+            writeFileSync(path.join(libDir, 'bun-shim.so'), '');
+        }
+
+        const scriptPath = path.join(root, 'probe-termux-bun.sh');
+        writeFileSync(scriptPath, [
+            '#!/usr/bin/env bash',
+            'set -euo pipefail',
+            'TERMUX_PREFIX_DEFAULT="/data/data/com.termux/files/usr"',
+            `BUN_INSTALL_DIR=${JSON.stringify(toBashPath(root))}`,
+            'TERMUX_BUN_SHIM_PATH="$BUN_INSTALL_DIR/lib/bun-shim.so"',
+            extractShellFunction(prerequisitesSource, 'have_command'),
+            extractShellFunction(prerequisitesSource, 'is_termux'),
+            extractShellFunction(prerequisitesSource, 'have_working_termux_bun'),
+            'if have_working_termux_bun; then echo working; else echo missing; fi',
+            '',
+        ].join('\n\n'));
+
+        const env = { ...process.env, PATH: '' };
+        if (termux) {
+            env.TERMUX_VERSION = '0.118.1';
+        } else {
+            delete env.TERMUX_VERSION;
+            delete env.PREFIX;
+        }
+
+        return execFileSync(bashPath, [scriptPath], { env, encoding: 'utf8' }).trim();
+    }
+
+    function runSharedStorageProbe({ termux = true, scriptDir } = {}) {
+        const scriptPath = path.join(harnessDir, `probe-shared-storage-${probeCounter++}.sh`);
+        writeFileSync(scriptPath, [
+            '#!/usr/bin/env bash',
+            'set -euo pipefail',
+            `SCRIPT_DIR=${JSON.stringify(scriptDir)}`,
+            extractShellFunction(startShSource, 'is_termux'),
+            extractShellFunction(startShSource, 'is_termux_shared_storage_repo'),
+            'if is_termux_shared_storage_repo; then echo shared; else echo ok; fi',
+            '',
+        ].join('\n\n'));
+
+        const env = { ...process.env };
+        if (termux) {
+            env.TERMUX_VERSION = '0.118.1';
+        } else {
+            delete env.TERMUX_VERSION;
+            delete env.PREFIX;
+        }
+
+        return execFileSync(bashPath, [scriptPath], { env, encoding: 'utf8' }).trim();
+    }
+
+    test('have_working_termux_bun requires a working bun, buno binary and bun-shim.so on Termux', () => {
+        expect(runTermuxBunProbe({ termux: true, bun: true, buno: true, shim: true })).toBe('working');
+        expect(runTermuxBunProbe({ termux: true, bun: true, buno: false, shim: true })).toBe('missing');
+        expect(runTermuxBunProbe({ termux: true, bun: true, buno: true, shim: false })).toBe('missing');
+        expect(runTermuxBunProbe({ termux: false, bun: true, buno: true, shim: true })).toBe('missing');
+    });
+
+    test('start.sh rejects Termux checkouts on Android shared storage and allows Termux home', () => {
+        expect(runSharedStorageProbe({ termux: true, scriptDir: '/storage/emulated/0/SillyBunny' })).toBe('shared');
+        expect(runSharedStorageProbe({ termux: true, scriptDir: '/sdcard/SillyBunny' })).toBe('shared');
+        expect(runSharedStorageProbe({ termux: true, scriptDir: '/data/data/com.termux/files/home/SillyBunny' })).toBe('ok');
+        expect(runSharedStorageProbe({ termux: false, scriptDir: '/storage/emulated/0/SillyBunny' })).toBe('ok');
+        expect(startShSource).toContain('pwd -P');
+        expect(startShSource).toContain('if (( ! self_update_only )) && is_termux_shared_storage_repo; then');
     });
 });
