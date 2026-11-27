@@ -14,6 +14,7 @@ const READY_TIMEOUT_MS = 120_000;
 const LOG_LINES_KEPT = 40;
 const children = [];
 let ready = false;
+let stopping = false;
 
 function report(message, lines = []) {
     // The write is synchronous, so the message is out before the process group stops.
@@ -23,20 +24,40 @@ function report(message, lines = []) {
 /**
  * Stops all servers and this launcher. Playwright stops the process group only while the launcher runs, so a
  * launcher that stops by itself must stop the servers first.
+ * @param {number} [exitCode=1]
  */
-function stopAll() {
+function stopAll(exitCode = 1) {
+    stopping = true;
     if (process.platform === 'win32') {
         for (const { child } of children) {
             spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
         }
-        process.exit(1);
+        process.exit(exitCode);
+    }
+    for (const { child } of children) {
+        try {
+            child.kill('SIGTERM');
+        } catch {
+            // The child may already have exited.
+        }
+    }
+    if (exitCode === 0) {
+        process.exit(0);
     }
     process.kill(0, 'SIGKILL');
 }
 
+for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+        if (!stopping) {
+            stopAll(0);
+        }
+    });
+}
+
 function fail(message, lines) {
     report(message, lines);
-    stopAll();
+    stopAll(1);
 }
 
 function isPortInUse(port) {
@@ -53,7 +74,8 @@ function isPortInUse(port) {
 async function waitUntilAnswering({ url }, { label, lines }) {
     const deadline = Date.now() + READY_TIMEOUT_MS;
     while (Date.now() < deadline) {
-        const answered = await fetch(url, { signal: AbortSignal.timeout(2_000) }).then(response => response.status < 500, () => false);
+        const answered = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(2_000) })
+            .then(response => response.status < 500, () => false);
         if (answered) {
             return;
         }
@@ -80,6 +102,9 @@ for (const [index, server] of servers.entries()) {
     child.stderr.on('data', keep);
     child.on('error', error => fail(`${label} could not start: ${error.message}`, lines));
     child.on('exit', (code, signal) => {
+        if (stopping) {
+            return;
+        }
         const message = `${label} stopped ${ready ? 'during the tests' : 'before it was ready'} (${signal ?? `exit code ${code}`}). Its last output:`;
         if (ready) {
             report(message, lines);

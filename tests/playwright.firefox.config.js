@@ -8,13 +8,13 @@ import { DIALOG_SPECS } from './playwright.webkit.config.js';
 //
 // `welcome-slide-restyles` is not listed: it counts style recalculations in a trace of a Chrome DevTools Protocol
 // session, which only Chromium offers. `welcome-transitions` skips its one CDP test (CPU throttling) by itself.
-const FIREFOX_SPECS = DIALOG_SPECS;
+export const FIREFOX_SPECS = DIALOG_SPECS;
 
 // Tests that cannot pass in Playwright's Firefox for a reason that is not a defect of the page. Each pattern is
 // matched against the full title, which starts with the spec file name, and across every surface that a spec loops
 // over, so a few tests that pass are left out with the ones that fail. The reasons were checked against Firefox and
 // Chromium on the same page.
-const NOT_RUNNABLE_IN_FIREFOX = [
+export const NOT_RUNNABLE_IN_FIREFOX = [
     {
         // A drag that ends below the viewport edge is clamped there: the sheet stops following the pointer and the
         // pointerup never arrives, so the sheet neither closes nor reaches the drag distance. Chromium delivers both.
@@ -54,17 +54,24 @@ const NOT_RUNNABLE_IN_FIREFOX = [
     },
 ];
 
+const managedServers = Boolean(baseConfig.webServer);
+
 // Opt-in: `npm run test:e2e:firefox`. The default config stays Chromium only.
 export default defineConfig({
     ...baseConfig,
+    // Firefox boots the full app slower than Chromium and specs wait up to 60 s for `app_ready`.
+    timeout: 60_000,
     testMatch: FIREFOX_SPECS.map(name => `**/${name}.e2e.js`),
     grepInvert: NOT_RUNNABLE_IN_FIREFOX.map(({ pattern }) => pattern),
-    globalSetup: './helpers/restart-cache-clear-seed.js',
-    use: {
-        ...baseConfig.use,
-        // The restart cache clear reloads the first load of a context, which Gecko's goto() does not wait for.
-        storageState: restartCacheClearStatePath(baseConfig.use.baseURL),
-    },
+    // Managed servers already seed restart-cache-clear cookies into each worker's storage state.
+    ...(managedServers ? {} : {
+        globalSetup: './helpers/restart-cache-clear-seed.js',
+        use: {
+            ...baseConfig.use,
+            // The restart cache clear reloads the first load of a context, which Gecko's goto() does not wait for.
+            storageState: restartCacheClearStatePath(baseConfig.use.baseURL),
+        },
+    }),
     // As in the WebKit config: a request that the app's service worker handles skips `page.route` stubs.
     projects: [{ name: 'firefox', use: { browserName: 'firefox', serviceWorkers: 'block' } }],
 });

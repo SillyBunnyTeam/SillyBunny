@@ -61,8 +61,8 @@ async function restoreBootState(page) {
  */
 export const test = base.extend({
     sharedPage: [async ({ browser }, use, workerInfo) => {
-        const { baseURL, extraHTTPHeaders } = workerInfo.project.use;
-        const context = await browser.newContext({ baseURL, extraHTTPHeaders });
+        const { baseURL, extraHTTPHeaders, storageState } = workerInfo.project.use;
+        const context = await browser.newContext({ baseURL, extraHTTPHeaders, ...(storageState ? { storageState } : {}) });
         const page = await context.newPage();
         await appSetup.awaitST({ page });
         // The page lives longer than the settings save debounce. Its saves would race the saves of other workers

@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { setConfigFilePath } from '../src/util.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
 
@@ -318,57 +321,59 @@ describe('chat recovery endpoint fallbacks', () => {
         expect(fs.readFileSync(destinationPath, 'utf8')).not.toContain('destination winner');
     });
 
-    test('invalidates stale recovery state when a sidecar rekey fails after rename', async () => {
-        const owner = 'Test Card';
-        const sourceFileName = 'Old Chat.jsonl';
-        const destinationFileName = 'Renamed Chat.jsonl';
-        const chatDirectory = path.join(directories.chats, owner);
-        const sourcePath = path.join(chatDirectory, sourceFileName);
-        const destinationPath = path.join(chatDirectory, destinationFileName);
-        fs.mkdirSync(chatDirectory, { recursive: true });
-        fs.writeFileSync(sourcePath, createChatData('rename me'));
-        const sourceTarget = createCharacterChatTarget({
-            chatsDirectory: directories.chats,
-            backupDirectory: directories.backups,
-            owner,
-            filename: sourceFileName,
-        });
-        const destinationTarget = createCharacterChatTarget({
-            chatsDirectory: directories.chats,
-            backupDirectory: directories.backups,
-            owner,
-            filename: destinationFileName,
-        });
-        writeLatestChatSnapshot(sourceTarget, createChatData('stale old-name snapshot'));
-        const sourceRecoveryPaths = getChatRecoveryPaths(sourceTarget);
-        const destinationRecoveryPaths = getChatRecoveryPaths(destinationTarget);
-        const linkedFile = path.join(tempRoot, 'unsafe-destination-recovery.jsonl');
-        const linkedData = createChatData('do not touch');
-        fs.writeFileSync(linkedFile, linkedData);
-        fs.symlinkSync(linkedFile, destinationRecoveryPaths.latestPath);
-        const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('invalidates stale recovery state when a sidecar rekey fails after rename', async () => {
+            const owner = 'Test Card';
+            const sourceFileName = 'Old Chat.jsonl';
+            const destinationFileName = 'Renamed Chat.jsonl';
+            const chatDirectory = path.join(directories.chats, owner);
+            const sourcePath = path.join(chatDirectory, sourceFileName);
+            const destinationPath = path.join(chatDirectory, destinationFileName);
+            fs.mkdirSync(chatDirectory, { recursive: true });
+            fs.writeFileSync(sourcePath, createChatData('rename me'));
+            const sourceTarget = createCharacterChatTarget({
+                chatsDirectory: directories.chats,
+                backupDirectory: directories.backups,
+                owner,
+                filename: sourceFileName,
+            });
+            const destinationTarget = createCharacterChatTarget({
+                chatsDirectory: directories.chats,
+                backupDirectory: directories.backups,
+                owner,
+                filename: destinationFileName,
+            });
+            writeLatestChatSnapshot(sourceTarget, createChatData('stale old-name snapshot'));
+            const sourceRecoveryPaths = getChatRecoveryPaths(sourceTarget);
+            const destinationRecoveryPaths = getChatRecoveryPaths(destinationTarget);
+            const linkedFile = path.join(tempRoot, 'unsafe-destination-recovery.jsonl');
+            const linkedData = createChatData('do not touch');
+            fs.writeFileSync(linkedFile, linkedData);
+            fs.symlinkSync(linkedFile, destinationRecoveryPaths.latestPath);
+            const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-        const response = await postJson('/api/chats/rename', {
-            avatar_url: `${owner}.png`,
-            original_file: sourceFileName,
-            renamed_file: destinationFileName,
-            is_group: false,
-        });
+            const response = await postJson('/api/chats/rename', {
+                avatar_url: `${owner}.png`,
+                original_file: sourceFileName,
+                renamed_file: destinationFileName,
+                is_group: false,
+            });
 
-        expect(response.status).toBe(200);
-        expect(fs.existsSync(sourcePath)).toBe(false);
-        expect(fs.readFileSync(destinationPath, 'utf8')).toContain('rename me');
-        expect(fs.existsSync(sourceRecoveryPaths.latestPath)).toBe(false);
-        expect(fs.lstatSync(destinationRecoveryPaths.latestPath).isSymbolicLink()).toBe(true);
-        expect(fs.readFileSync(linkedFile, 'utf8')).toBe(linkedData);
-        expect(consoleWarn).toHaveBeenCalledWith(
-            'Failed to move chat recovery state; continuing with renamed chat.',
-            expect.any(Error),
-        );
-        expect(consoleWarn).toHaveBeenCalledWith(
-            'Failed to clear destination chat recovery state after rename.',
-            expect.any(Error),
-        );
+            expect(response.status).toBe(200);
+            expect(fs.existsSync(sourcePath)).toBe(false);
+            expect(fs.readFileSync(destinationPath, 'utf8')).toContain('rename me');
+            expect(fs.existsSync(sourceRecoveryPaths.latestPath)).toBe(false);
+            expect(fs.lstatSync(destinationRecoveryPaths.latestPath).isSymbolicLink()).toBe(true);
+            expect(fs.readFileSync(linkedFile, 'utf8')).toBe(linkedData);
+            expect(consoleWarn).toHaveBeenCalledWith(
+                'Failed to move chat recovery state; continuing with renamed chat.',
+                expect.any(Error),
+            );
+            expect(consoleWarn).toHaveBeenCalledWith(
+                'Failed to clear destination chat recovery state after rename.',
+                expect.any(Error),
+            );
+        });
     });
 
     test('deletes a character chat when recovery storage is unavailable', async () => {

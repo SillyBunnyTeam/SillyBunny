@@ -1,0 +1,377 @@
+[
+    {
+        "name": "loose: backslash pipe is a literal pipe",
+        "script": "/stp-plain a \\| b",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a | b"] }] } }
+    },
+    {
+        "name": "loose: backslash pipe joins a following command into the text",
+        "script": "/stp-plain a \\| /stp-plain b",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a | /stp-plain b"] }] } }
+    },
+    {
+        "name": "loose: a leading escaped pipe is literal",
+        "script": "/stp-plain \\|abc",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["|abc"] }] } }
+    },
+    {
+        "name": "loose: double backslash before a pipe keeps one backslash",
+        "script": "/stp-plain a \\\\| b",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a \\| b"] }] } }
+    },
+    {
+        "name": "loose: backslash before ordinary characters is kept",
+        "script": "/stp-plain C:\\temp\\file",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["C:\\temp\\file"] }] } }
+    },
+    {
+        "name": "loose: trailing backslash is kept",
+        "script": "/stp-plain a\\",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a\\"] }] } }
+    },
+    {
+        "name": "loose: escaped opening closure marker is literal text",
+        "script": "/stp-plain \\{: not a closure",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["{: not a closure"] }] } }
+    },
+    {
+        "name": "loose: escaped closing closure marker stays inside the closure",
+        "script": "/stp-plain {: /stp-plain a \\:} b :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a \\:} b ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["a :} b"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "loose: escaped quote inside a quoted value",
+        "script": "/stp-plain \"say \\\"hi\\\" there\" tail",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["say \"hi\" there", " tail"] }] } }
+    },
+    {
+        "name": "loose: escaped pipe inside a quoted value",
+        "script": "/stp-plain \"a \\| b\" c",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a | b", " c"] }] } }
+    },
+    {
+        "name": "loose: leading escaped quote is literal",
+        "script": "/stp-plain \\\"abc def",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["\"abc def"] }] } }
+    },
+    {
+        "name": "loose: escaped pipe in an unquoted named value",
+        "script": "/stp-plain key=a\\|b rest",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "named": [{ "name": "key", "value": "a|b" }], "unnamed": ["rest"] }]
+            }
+        }
+    },
+    {
+        "name": "loose: escaped space in an unquoted named value",
+        "script": "/stp-plain key=a\\ b rest",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "named": [{ "name": "key", "value": "a b" }], "unnamed": ["rest"] }]
+            }
+        }
+    },
+    {
+        "name": "loose: escaped pipe in a list value stays as written",
+        "script": "/stp-plain key=[a\\|b] rest",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "[a\\|b]" }],
+                        "unnamed": ["rest"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "loose: escaped pipe in a split argument",
+        "script": "/stp-split a\\|b c",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["a|b", "c"] }] } }
+    },
+    {
+        "name": "strict: backslash pipe is a literal pipe",
+        "script": "/stp-plain a \\| b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a | b"], "flags": ["STRICT_ESCAPING"] }] }
+        }
+    },
+    {
+        "name": "strict: a leading escaped pipe is literal",
+        "script": "/stp-plain \\|abc",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["|abc"], "flags": ["STRICT_ESCAPING"] }] }
+        }
+    },
+    {
+        "name": "strict: escaped backslash then pipe ends the command",
+        "script": "/stp-plain a \\\\| /stp-plain b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a \\"], "flags": ["STRICT_ESCAPING"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "strict: escaped backslash and escaped pipe",
+        "script": "/stp-plain a \\\\\\| b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a \\| b"], "flags": ["STRICT_ESCAPING"] }] }
+        }
+    },
+    {
+        "name": "strict: two escaped backslashes then pipe ends the command",
+        "script": "/stp-plain a \\\\\\\\| /stp-plain b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "unnamed": ["a \\\\"], "flags": ["STRICT_ESCAPING"] },
+                    { "name": "stp-plain", "unnamed": ["b"], "flags": ["STRICT_ESCAPING"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "strict: backslash before ordinary characters is kept",
+        "script": "/stp-plain C:\\temp\\file",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["C:\\temp\\file"], "flags": ["STRICT_ESCAPING"] }]
+            }
+        }
+    },
+    {
+        "name": "strict: double backslashes before ordinary text are kept",
+        "script": "/stp-plain a\\\\b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a\\\\b"], "flags": ["STRICT_ESCAPING"] }] }
+        }
+    },
+    {
+        "name": "strict: escaped delimiters inside a closure",
+        "script": "/stp-plain {: /stp-plain title=\\:} \\{: | /stp-plain title=\\{: \\:} :}",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain title=\\:} \\{: | /stp-plain title=\\{: \\:} ",
+                                    "executors": [
+                                        {
+                                            "name": "stp-plain",
+                                            "named": [{ "name": "title", "value": ":}" }],
+                                            "unnamed": ["{:"],
+                                            "flags": ["STRICT_ESCAPING"]
+                                        },
+                                        {
+                                            "name": "stp-plain",
+                                            "named": [{ "name": "title", "value": "{:" }],
+                                            "unnamed": [":}"],
+                                            "flags": ["STRICT_ESCAPING"]
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "flags": ["STRICT_ESCAPING"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "strict: a pipe inside quotes does not end the command",
+        "script": "/stp-plain \"a | b\" c",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a | b", " c"], "flags": ["STRICT_ESCAPING"] }]
+            }
+        }
+    },
+    {
+        "name": "strict: escaped quote inside a quoted value",
+        "script": "/stp-plain \"say \\\"hi\\\"\" tail",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["say \"hi\"", " tail"], "flags": ["STRICT_ESCAPING"] }]
+            }
+        }
+    },
+    {
+        "name": "strict: escaped backslash before the closing quote",
+        "script": "/stp-plain \"a \\\\\" b",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a \\", " b"], "flags": ["STRICT_ESCAPING"] }]
+            }
+        }
+    },
+    {
+        "name": "strict: escaped closing closure marker stays inside the closure",
+        "script": "/stp-plain {: /stp-plain a \\:} b :}",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a \\:} b ",
+                                    "executors": [
+                                        {
+                                            "name": "stp-plain",
+                                            "unnamed": ["a :} b"],
+                                            "flags": ["STRICT_ESCAPING"]
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "flags": ["STRICT_ESCAPING"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "strict: escaped pipe in an unquoted named value",
+        "script": "/stp-plain key=a\\|b rest",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "a|b" }],
+                        "unnamed": ["rest"],
+                        "flags": ["STRICT_ESCAPING"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "strict: escaped space in an unquoted named value",
+        "script": "/stp-plain key=a\\ b rest",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "a b" }],
+                        "unnamed": ["rest"],
+                        "flags": ["STRICT_ESCAPING"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "strict: pipe inside a quoted named value",
+        "script": "/stp-plain key=\"a | b\" rest",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "a | b" }],
+                        "unnamed": ["rest"],
+                        "flags": ["STRICT_ESCAPING"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "strict: escaped pipe in a split argument",
+        "script": "/stp-split a\\|b c",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-split", "unnamed": ["a|b", "c"], "flags": ["STRICT_ESCAPING"] }] }
+        }
+    },
+    {
+        "name": "loose: an escaped pipe starts the first split value",
+        "script": "/stp-split \\|1 2",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["|1", "2"] }] } }
+    },
+    {
+        "name": "loose: an escaped pipe alone is the first split value",
+        "script": "/stp-split \\| 2",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["|", "2"] }] } }
+    },
+    {
+        "name": "loose: an escaped closing closure marker starts the first split value",
+        "script": "/stp-plain {: /stp-split \\:} x :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-split \\:} x ",
+                                    "executors": [{ "name": "stp-split", "unnamed": [":}", "x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "loose: an escaped pipe starts the variable name of let",
+        "script": "/let \\|x 1",
+        "expected": { "tree": { "variables": ["|x"], "executors": [{ "name": "let", "unnamed": ["|x", "1"] }] } }
+    },
+    {
+        "name": "strict: an escaped pipe starts the first split value",
+        "script": "/stp-split \\| a",
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-split", "unnamed": ["|", "a"], "flags": ["STRICT_ESCAPING"] }] }
+        }
+    }
+]

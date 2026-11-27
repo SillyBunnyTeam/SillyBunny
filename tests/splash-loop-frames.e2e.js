@@ -20,9 +20,11 @@ async function launch(testInfo, { scale, width, height, motion }) {
     const browser = isWebKit
         ? await webkit.launch()
         : await chromium.launch({ args: [`--force-device-scale-factor=${scale}`, `--window-size=${width},${height}`] });
+    const { baseURL, storageState } = testInfo.project.use;
     const context = await browser.newContext({
         ...(isWebKit ? { viewport: { width, height }, deviceScaleFactor: scale } : { viewport: null }),
-        baseURL: testInfo.project.use.baseURL,
+        baseURL,
+        ...(storageState ? { storageState } : {}),
         serviceWorkers: 'block',
         reducedMotion: motion ? 'no-preference' : 'reduce',
     });

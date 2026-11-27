@@ -1,0 +1,139 @@
+[
+    {
+        "name": "line comment ends at the pipe",
+        "script": "// a comment | /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "hash comment ends at the pipe",
+        "script": "/# a comment | /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "comment between commands",
+        "script": "/stp-plain a | // note | /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    { "name": "comment alone", "script": "// just a comment |", "expected": { "tree": { "executors": [] } } },
+    {
+        "name": "comment is not part of a command argument",
+        "script": "/stp-plain a // not a comment",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a // not a comment"] }] } }
+    },
+    {
+        "name": "escaped pipe does not end a comment",
+        "script": "// first \\| still comment | /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "comment inside a closure",
+        "script": "/stp-plain {: // note | /stp-plain x :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " // note | /stp-plain x ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "block comment",
+        "script": "/* block comment *| /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "block comment across lines",
+        "script": "/* multi\nline *|\n/stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "block comment holds pipes",
+        "script": "/* a | b || c *| /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "nested block comment",
+        "script": "/* outer /* inner *| still outer *| /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "consecutive block comments",
+        "script": "/stp-plain a | /* c1 *| /* c2 *| /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    {
+        "name": "block comment inside a closure",
+        "script": "/stp-plain {: /* note *| /stp-plain x :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /* note *| /stp-plain x ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "block comment directly before a command",
+        "script": "/* note *|/stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "block comment before a pipe",
+        "script": "/* note *| | /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "nested block comment that closes right before the outer close",
+        "script": "/* a /* b *|*| /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "nested block comment in a closure that closes right before the outer close",
+        "script": "/stp-plain {: /* a /* b *|*| /stp-plain c :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /* a /* b *|*| /stp-plain c ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["c"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+]

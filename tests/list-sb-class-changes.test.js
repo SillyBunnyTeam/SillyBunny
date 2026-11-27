@@ -498,7 +498,8 @@ describe('reading git objects', () => {
     function commitFiles(files, { dropBlobOf } = {}) {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-class-objects-'));
         temporaryRoots.push(root);
-        const run = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false', ...args], { cwd: root, stdio: 'pipe' }).toString('utf8').trim();
+        // Disable autocrlf so Git stores CRLF fixture bytes verbatim on Windows.
+        const run = (...args) => execFileSync('git', ['-c', 'core.autocrlf=false', '-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false', ...args], { cwd: root, stdio: 'pipe' }).toString('utf8').trim();
         run('init', '-q');
         for (const [name, content] of Object.entries(files)) {
             fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
@@ -559,7 +560,7 @@ describe('command line', () => {
     function repo() {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-class-changes-'));
         temporaryRoots.push(root);
-        const run = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false', ...args], { cwd: root, stdio: 'pipe' });
+        const run = (...args) => execFileSync('git', ['-c', 'core.autocrlf=false', '-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false', ...args], { cwd: root, stdio: 'pipe' });
         run('init', '-q');
         fs.mkdirSync(path.join(root, 'public/css'), { recursive: true });
         fs.mkdirSync(path.join(root, 'public/lib'), { recursive: true });

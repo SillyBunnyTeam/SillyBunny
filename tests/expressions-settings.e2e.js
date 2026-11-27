@@ -16,7 +16,8 @@ const SPRITE_ACTIONS = ['expressions_generate_missing_sprites', 'expressions_upl
 async function openPage(browser, baseURL, viewport, { character } = {}) {
     const surface = SURFACES.find(candidate => candidate.id === 'settings.customize.extensions');
     const variant = { viewport, theme: 'libadwaita', density: 'normal' };
-    const context = await browser.newContext({ ...variantContextOptions(variant), baseURL });
+    const storageState = test.info().project.use.storageState;
+    const context = await browser.newContext({ ...variantContextOptions(variant), baseURL, ...(storageState ? { storageState } : {}) });
     const page = await context.newPage();
     await bootSurfaceApp(page, baseURL, { variant, needs: surface.needs });
     if (character) {
@@ -40,7 +41,8 @@ const LONG_SPRITE = `joy-${'long'.repeat(14)}`;
 
 /** Creates a character whose folder holds the given sprites (file name and label), through the server's own routes. */
 async function createCharacterWithSprites(browser, baseURL, name, sprites) {
-    const probe = await browser.newContext({ baseURL });
+    const storageState = test.info().project.use.storageState;
+    const probe = await browser.newContext({ baseURL, ...(storageState ? { storageState } : {}) });
     const token = (await (await probe.request.get('/csrf-token')).json()).token;
     const headers = { 'X-CSRF-Token': token };
     const made = await probe.request.post('/api/characters/create', { headers, multipart: { ch_name: name, description: 'Sprites.', first_mes: 'Hello.', fav: 'false' } });
@@ -197,7 +199,8 @@ for (const viewport of VIEWPORTS) {
         });
 
         test('a character with no sprites shows a placeholder tile for each expression', async ({ browser, baseURL }) => {
-            const probe = await browser.newContext({ baseURL });
+            const storageState = test.info().project.use.storageState;
+            const probe = await browser.newContext({ baseURL, ...(storageState ? { storageState } : {}) });
             const token = (await (await probe.request.get('/csrf-token')).json()).token;
             const name = `Bare ${viewport}`;
             const made = await probe.request.post('/api/characters/create', { headers: { 'X-CSRF-Token': token }, multipart: { ch_name: name, description: 'No sprites.', first_mes: 'Hello.', fav: 'false' } });

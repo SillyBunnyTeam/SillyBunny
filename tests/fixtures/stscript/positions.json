@@ -1,0 +1,615 @@
+[
+    {
+        "name": "named and unnamed arguments",
+        "script": "/stp-plain key=value rest",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "value", "start": 11, "end": 20 }],
+                        "unnamed": [{ "value": "rest", "start": 21, "end": 25 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 25,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 20,
+                            "startUnnamedArgs": 21,
+                            "endUnnamedArgs": 25
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 25 }],
+                "closures": [{ "start": 1, "end": 24 }],
+                "macros": [],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "only named arguments",
+        "script": "/stp-plain a=1 b=2",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [
+                            { "name": "a", "value": "1", "start": 11, "end": 14 },
+                            { "name": "b", "value": "2", "start": 15, "end": 18 }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 18,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 18,
+                            "startUnnamedArgs": 18,
+                            "endUnnamedArgs": 18
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 18 }],
+                "closures": [{ "start": 1, "end": 17 }],
+                "macros": [],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "two commands",
+        "script": "/stp-plain a | /stp-plain b",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "a", "start": 11, "end": 13 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 13,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 13
+                        }
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "b", "start": 26, "end": 27 }],
+                        "pos": {
+                            "start": 16,
+                            "end": 27,
+                            "startNamedArgs": 26,
+                            "endNamedArgs": 26,
+                            "startUnnamedArgs": 26,
+                            "endUnnamedArgs": 27
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "stp-plain", "start": 1, "end": 13 },
+                    { "name": "stp-plain", "start": 16, "end": 27 }
+                ],
+                "closures": [{ "start": 1, "end": 26 }],
+                "macros": [],
+                "scopes": [[], []]
+            }
+        }
+    },
+    {
+        "name": "closure argument",
+        "script": "/stp-plain {: /stp-plain x :} tail",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "value": {
+                                    "closure": {
+                                        "rawText": " /stp-plain x ",
+                                        "executors": [
+                                            {
+                                                "name": "stp-plain",
+                                                "unnamed": [{ "value": "x", "start": 25, "end": 27 }],
+                                                "pos": {
+                                                    "start": 15,
+                                                    "end": 27,
+                                                    "startNamedArgs": 25,
+                                                    "endNamedArgs": 25,
+                                                    "startUnnamedArgs": 25,
+                                                    "endUnnamedArgs": 27
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                                "start": 11,
+                                "end": 29
+                            },
+                            { "value": " tail", "start": 29, "end": 34 }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 34,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 34
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "stp-plain", "start": 1, "end": 34 },
+                    { "name": "stp-plain", "start": 15, "end": 27 }
+                ],
+                "closures": [{ "start": 1, "end": 33 }, { "start": 12, "end": 28 }],
+                "macros": [],
+                "scopes": [[], []]
+            }
+        }
+    },
+    {
+        "name": "immediately executed closure",
+        "script": "/stp-plain {: a=1 :}()",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "value": {
+                                    "closure": {
+                                        "rawText": " a=1 ",
+                                        "executeNow": true,
+                                        "args": [{ "name": "a", "value": "1", "start": 14, "end": 17 }],
+                                        "variables": ["a"],
+                                        "executors": []
+                                    }
+                                },
+                                "start": 11,
+                                "end": 22
+                            }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 22,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 22
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 22 }],
+                "closures": [{ "start": 1, "end": 21 }, { "start": 12, "end": 21 }],
+                "macros": [],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "quoted and split arguments",
+        "script": "/stp-split one \"two three\" four",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split",
+                        "unnamed": [
+                            { "value": "one", "start": 11, "end": 14 },
+                            { "value": "two three", "start": 15, "end": 26 },
+                            { "value": "four", "start": 27, "end": 31 }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 31,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 31
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-split", "start": 1, "end": 31 }],
+                "closures": [{ "start": 1, "end": 30 }],
+                "macros": [],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "arguments across lines",
+        "script": "/stp-plain\n  key=value\n  text",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "value", "start": 13, "end": 22 }],
+                        "unnamed": [{ "value": "text", "start": 25, "end": 29 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 29,
+                            "startNamedArgs": 13,
+                            "endNamedArgs": 22,
+                            "startUnnamedArgs": 23,
+                            "endUnnamedArgs": 29
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 29 }],
+                "closures": [{ "start": 1, "end": 28 }],
+                "macros": [],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "line comment",
+        "script": "// note | /stp-plain x",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "x", "start": 21, "end": 22 }],
+                        "pos": {
+                            "start": 11,
+                            "end": 22,
+                            "startNamedArgs": 21,
+                            "endNamedArgs": 21,
+                            "startUnnamedArgs": 21,
+                            "endUnnamedArgs": 22
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "/", "start": 1, "end": 8 }, { "name": "stp-plain", "start": 11, "end": 22 }],
+                "closures": [{ "start": 1, "end": 21 }],
+                "macros": [],
+                "scopes": [[], []]
+            }
+        }
+    },
+    {
+        "name": "block comment",
+        "script": "/* block *| /stp-plain x",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "x", "start": 23, "end": 24 }],
+                        "pos": {
+                            "start": 13,
+                            "end": 24,
+                            "startNamedArgs": 23,
+                            "endNamedArgs": 23,
+                            "startUnnamedArgs": 23,
+                            "endUnnamedArgs": 24
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "*", "start": 1, "end": 10 }, { "name": "stp-plain", "start": 13, "end": 24 }],
+                "closures": [{ "start": 1, "end": 23 }],
+                "macros": [],
+                "scopes": [[], []]
+            }
+        }
+    },
+    {
+        "name": "hash comment and block comment",
+        "script": "/# note | /* block *| /stp-plain x",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "x", "start": 33, "end": 34 }],
+                        "pos": {
+                            "start": 23,
+                            "end": 34,
+                            "startNamedArgs": 33,
+                            "endNamedArgs": 33,
+                            "startUnnamedArgs": 33,
+                            "endUnnamedArgs": 34
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "#", "start": 1, "end": 8 },
+                    { "name": "*", "start": 11, "end": 20 },
+                    { "name": "stp-plain", "start": 23, "end": 34 }
+                ],
+                "closures": [{ "start": 1, "end": 33 }],
+                "macros": [],
+                "scopes": [[], [], []]
+            }
+        }
+    },
+    {
+        "name": "nested block comment",
+        "script": "/* outer /* inner *| rest *| /stp-plain x",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "x", "start": 40, "end": 41 }],
+                        "pos": {
+                            "start": 30,
+                            "end": 41,
+                            "startNamedArgs": 40,
+                            "endNamedArgs": 40,
+                            "startUnnamedArgs": 40,
+                            "endUnnamedArgs": 41
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "*", "start": 1, "end": 27 },
+                    { "name": "*", "start": 10, "end": 19 },
+                    { "name": "stp-plain", "start": 30, "end": 41 }
+                ],
+                "closures": [{ "start": 1, "end": 40 }],
+                "macros": [],
+                "scopes": [[], [], []]
+            }
+        }
+    },
+    {
+        "name": "run shorthand",
+        "script": "/:myqr a=1",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": ":",
+                        "command": "run",
+                        "named": [{ "name": "a", "value": "1", "start": 7, "end": 10 }],
+                        "unnamed": [{ "value": "myqr" }],
+                        "pos": { "start": 2, "end": 10, "startNamedArgs": 7, "endNamedArgs": 10 }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": ":", "start": 2, "end": 10 }],
+                "closures": [{ "start": 1, "end": 9 }],
+                "macros": [],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "break and breakpoint",
+        "script": "/break done | /breakpoint | /stp-plain x",
+        "positions": true,
+        "debug": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "break",
+                        "kind": "break",
+                        "unnamed": [{ "value": "done", "start": 7, "end": 12 }],
+                        "pos": { "start": 1, "end": 12 }
+                    },
+                    { "name": "breakpoint", "kind": "breakpoint", "pos": { "start": 15, "end": 25 } },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "x", "start": 39, "end": 40 }],
+                        "pos": {
+                            "start": 29,
+                            "end": 40,
+                            "startNamedArgs": 39,
+                            "endNamedArgs": 39,
+                            "startUnnamedArgs": 39,
+                            "endUnnamedArgs": 40
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "break", "start": 1, "end": 12 },
+                    { "name": "breakpoint", "start": 15, "end": 25 },
+                    { "name": "stp-plain", "start": 29, "end": 40 }
+                ],
+                "closures": [{ "start": 1, "end": 39 }],
+                "macros": [],
+                "scopes": [[], [], []]
+            }
+        }
+    },
+    {
+        "name": "in-script parser flag",
+        "script": "/parser-flag STRICT_ESCAPING | /stp-plain x",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "x", "start": 42, "end": 43 }],
+                        "flags": ["STRICT_ESCAPING"],
+                        "pos": {
+                            "start": 32,
+                            "end": 43,
+                            "startNamedArgs": 42,
+                            "endNamedArgs": 42,
+                            "startUnnamedArgs": 42,
+                            "endUnnamedArgs": 43
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "parser-flag", "start": 1, "end": 29 },
+                    { "name": "stp-plain", "start": 32, "end": 43 }
+                ],
+                "closures": [{ "start": 1, "end": 42 }],
+                "macros": [],
+                "scopes": [[], []]
+            }
+        }
+    },
+    {
+        "name": "unknown command in lenient mode",
+        "script": "/nosuch x",
+        "verify": false,
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "nosuch",
+                        "command": null,
+                        "unnamed": [{ "value": "x", "start": 8, "end": 9 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 9,
+                            "startNamedArgs": 8,
+                            "endNamedArgs": 8,
+                            "startUnnamedArgs": 8,
+                            "endUnnamedArgs": 9
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "nosuch", "start": 1, "end": 9 }],
+                "closures": [{ "start": 1, "end": 8 }],
+                "macros": [],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "argument values with a macro",
+        "script": "/stp-plain key={{user}} {{char}}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "{{user}}", "start": 11, "end": 23 }],
+                        "unnamed": [{ "value": "{{char}}", "start": 24, "end": 32 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 32,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 23,
+                            "startUnnamedArgs": 24,
+                            "endUnnamedArgs": 32
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 32 }],
+                "closures": [{ "start": 1, "end": 31 }],
+                "macros": [{ "name": "user", "start": 15, "end": 23 }, { "name": "char", "start": 24, "end": 32 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macro inside a quoted unnamed value",
+        "script": "/stp-plain \"{{user}}\" tail",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            { "value": "{{user}}", "start": 11, "end": 21 },
+                            { "value": " tail", "start": 21, "end": 26 }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 26,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 26
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 26 }],
+                "closures": [{ "start": 1, "end": 25 }],
+                "macros": [{ "name": "user", "start": 12, "end": 20 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macro inside a quoted named value",
+        "script": "/stp-plain key=\"{{user}}\"",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "{{user}}", "start": 11, "end": 25 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 25,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 25,
+                            "startUnnamedArgs": 25,
+                            "endUnnamedArgs": 25
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 25 }],
+                "closures": [{ "start": 1, "end": 24 }],
+                "macros": [{ "name": "user", "start": 16, "end": 24 }],
+                "scopes": [[]]
+            }
+        }
+    }
+]

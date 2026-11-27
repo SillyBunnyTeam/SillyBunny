@@ -25,32 +25,38 @@ jobs:
           - os: ubuntu-latest
             runtime: default
             expect: bun
+            secondary_launcher: start-bun.sh
             fresh_bun: false
           # The genuine first-run path: hide any preinstalled Bun so
           # install-prerequisites.sh has to download it from https://bun.sh/install.
           - os: ubuntu-latest
             runtime: default
             expect: bun
+            secondary_launcher: start-bun.sh
             fresh_bun: true
           - os: ubuntu-latest
             runtime: node
             expect: node
+            secondary_launcher: start-node.sh
             fresh_bun: false
           # macOS arm64 auto-switches to Node to dodge the Bun idle CPU bug,
           # so the default leg is a Node assertion and Bun needs an override.
           - os: macos-latest
             runtime: default
             expect: node
+            secondary_launcher: start-node.sh
             fresh_bun: false
           - os: macos-latest
             runtime: bun
             expect: bun
+            secondary_launcher: start-bun.sh
             fresh_bun: false
           # The genuine first-run Mac: hide every preinstalled Node.js so the
           # installer has to download the pinned build from nodejs.org.
           - os: macos-latest
             runtime: default
             expect: node
+            secondary_launcher: start-node.sh
             fresh_bun: false
             fresh_node: true
     runs-on: ${{ matrix.os }}
@@ -62,6 +68,8 @@ jobs:
       SILLYBUNNY_USE_NODE: ${{ matrix.runtime == 'node' && '1' || '' }}
       SILLYBUNNY_USE_BUN: ${{ matrix.runtime == 'bun' && '1' || '' }}
       EXPECTED_RUNTIME: ${{ matrix.expect }}
+      # Spaces and parentheses catch unquoted shell paths and batch parse errors.
+      INSTALL_DIR_NAME: 'Silly Bunny (test)'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -150,6 +158,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "${TRIMMED_PATH:-}" ]]; then export PATH="$TRIMMED_PATH"; fi
+          install_dir="$RUNNER_TEMP/$INSTALL_DIR_NAME"
           git branch --force bootstrap-smoke HEAD
           if [[ "${{ matrix.fresh_node }}" == true ]] && command -v node >/dev/null 2>&1; then
             echo "Node.js is resolvable at $(command -v node); the fresh-node leg would not exercise the download." >&2
@@ -158,13 +167,13 @@ jobs:
           bash scripts/bootstrap/install.sh \
             --repo "$GITHUB_WORKSPACE" \
             --ref bootstrap-smoke \
-            --dir "$RUNNER_TEMP/SillyBunny" \
+            --dir "$install_dir" \
             --no-start 2>&1 | tee "$RUNNER_TEMP/install.log"
           if [[ "${{ matrix.fresh_node }}" == true ]]; then
             grep -F "Downloading Node.js" "$RUNNER_TEMP/install.log"
           fi
-          test -f "$RUNNER_TEMP/SillyBunny/server.js"
-          test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$(git rev-parse HEAD)"
+          test -f "$install_dir/server.js"
+          test "$(git -C "$install_dir" rev-parse HEAD)" = "$(git rev-parse HEAD)"
 
       - name: Assert the installer downloaded Node.js
         if: matrix.fresh_node
@@ -182,6 +191,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "${TRIMMED_PATH:-}" ]]; then export PATH="$TRIMMED_PATH"; fi
+          install_dir="$RUNNER_TEMP/$INSTALL_DIR_NAME"
           # Fail loudly if anything already holds the port, so a readiness probe
           # cannot be satisfied by a process other than the one we launched.
           if curl --fail --silent --max-time 2 http://127.0.0.1:4444/ > /dev/null 2>&1; then
@@ -190,10 +200,24 @@ jobs:
           fi
 
           log="$RUNNER_TEMP/bootstrap-smoke.log"
-          cd "$RUNNER_TEMP/SillyBunny"
-          bash ./start.sh > "$log" 2>&1 &
+          # Launch from outside the install folder so BASH_SOURCE carries the
+          # spaced and parenthesized path into start.sh.
+          cd "$RUNNER_TEMP"
+          bash "$install_dir/start.sh" > "$log" 2>&1 &
           pid=$!
-          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          stop_tree() {
+            local parent="$1"
+            local child
+            for child in $(pgrep -P "$parent" 2>/dev/null || true); do
+              stop_tree "$child"
+            done
+            kill "$parent" 2>/dev/null || true
+          }
+          cleanup() {
+            stop_tree "$pid"
+            wait "$pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
 
           # Wait for the launcher to reach its handoff before trusting the port.
           deadline=$((SECONDS + 300))
@@ -226,10 +250,12 @@ jobs:
           done
           echo "Installed copy answered on port 4444."
 
-          # shellcheck disable=SC2016 # single quotes are intentional; only $EXPECTED_RUNTIME should expand in node.
-          node -e '
+          # shellcheck disable=SC2016 # single quotes are intentional; only env vars should expand in node.
+          INSTALL_DIR="$install_dir" node -e '
             const fs = require("node:fs");
-            const marker = JSON.parse(fs.readFileSync("node_modules/.sillybunny-dependencies.json", "utf8"));
+            const path = require("node:path");
+            const markerPath = path.join(process.env.INSTALL_DIR, "node_modules", ".sillybunny-dependencies.json");
+            const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
             const profile = process.env.EXPECTED_RUNTIME + "-production";
             if (!marker.profiles || !marker.profiles[profile]) {
               throw new Error(`dependency marker has no ${profile} entry: ${JSON.stringify(marker.profiles)}`);
@@ -254,6 +280,95 @@ jobs:
             cat "$log" >&2
             exit 1
           fi
+          if [[ "$banner" != *"$INSTALL_DIR_NAME"* ]]; then
+            echo "Startup banner did not report the spaced install folder ($INSTALL_DIR_NAME): $banner" >&2
+            exit 1
+          fi
+          echo "$banner"
+
+      - name: Boot the installed copy through ${{ matrix.secondary_launcher }}
+        env:
+          LAUNCHER_SCRIPT: ${{ matrix.secondary_launcher }}
+          # Set the opposite override so start-bun.sh and start-node.sh prove
+          # they clear it before delegating to start.sh.
+          SILLYBUNNY_USE_NODE: ${{ matrix.expect == 'bun' && '1' || '' }}
+          SILLYBUNNY_USE_BUN: ${{ matrix.expect == 'node' && '1' || '' }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${TRIMMED_PATH:-}" ]]; then export PATH="$TRIMMED_PATH"; fi
+          install_dir="$RUNNER_TEMP/$INSTALL_DIR_NAME"
+          if curl --fail --silent --max-time 2 http://127.0.0.1:4445/ > /dev/null 2>&1; then
+            echo "Something is already listening on port 4445 before $LAUNCHER_SCRIPT starts." >&2
+            exit 1
+          fi
+
+          log="$RUNNER_TEMP/bootstrap-smoke-${LAUNCHER_SCRIPT}.log"
+          cd "$RUNNER_TEMP"
+          bash "$install_dir/$LAUNCHER_SCRIPT" --port 4445 > "$log" 2>&1 &
+          pid=$!
+          stop_tree() {
+            local parent="$1"
+            local child
+            for child in $(pgrep -P "$parent" 2>/dev/null || true); do
+              stop_tree "$child"
+            done
+            kill "$parent" 2>/dev/null || true
+          }
+          cleanup() {
+            stop_tree "$pid"
+            wait "$pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          deadline=$((SECONDS + 180))
+          until grep -qF "Entering SillyBunny" "$log" 2>/dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "$LAUNCHER_SCRIPT exited before reaching the server handoff." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "$LAUNCHER_SCRIPT did not reach the server handoff within 180 seconds." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          while ! curl --fail --silent --max-time 2 http://127.0.0.1:4445/ > /dev/null; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "$LAUNCHER_SCRIPT exited before the server answered on port 4445." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Server did not answer on port 4445 within 180 seconds." >&2
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "$LAUNCHER_SCRIPT answered on port 4445."
+
+          grep -F "Dependencies are up to date." "$log"
+          case "$EXPECTED_RUNTIME" in
+            bun) runtime_label='Bun' ;;
+            node) runtime_label='Node.js' ;;
+            *)
+              echo "Unknown expected runtime: $EXPECTED_RUNTIME" >&2
+              exit 1
+              ;;
+          esac
+          banner="$(grep -F "SillyBunny startup on $runtime_label " "$log" | head -n 1)"
+          if [[ -z "$banner" ]]; then
+            echo "$LAUNCHER_SCRIPT never announced a $runtime_label runtime." >&2
+            cat "$log" >&2
+            exit 1
+          fi
+          if [[ "$banner" != *"$INSTALL_DIR_NAME"* ]]; then
+            echo "Startup banner did not report the spaced install folder ($INSTALL_DIR_NAME): $banner" >&2
+            exit 1
+          fi
           echo "$banner"
 
       - name: Assert the download path installed Bun
@@ -267,15 +382,16 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "${TRIMMED_PATH:-}" ]]; then export PATH="$TRIMMED_PATH"; fi
-          head_before="$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)"
+          install_dir="$RUNNER_TEMP/$INSTALL_DIR_NAME"
+          head_before="$(git -C "$install_dir" rev-parse HEAD)"
           output="$(bash scripts/bootstrap/install.sh \
             --repo "$GITHUB_WORKSPACE" \
             --ref bootstrap-smoke \
-            --dir "$RUNNER_TEMP/SillyBunny" \
+            --dir "$install_dir" \
             --no-start 2>&1)"
           printf '%s\n' "$output"
           grep -F "already installed" <<< "$output"
-          test "$(git -C "$RUNNER_TEMP/SillyBunny" rev-parse HEAD)" = "$head_before"
+          test "$(git -C "$install_dir" rev-parse HEAD)" = "$head_before"
 
       # macOS ships bash 3.2 as /bin/bash, and the wizard only runs on a terminal,
       # so the flag-driven steps above never reach it. expect (part of macOS)
@@ -337,12 +453,16 @@ jobs:
           # Windows x64 defaults to Bun.
           - runtime: default
             expect: bun
+            secondary_launcher: Start-Bun.bat
           - runtime: node
             expect: node
+            secondary_launcher: Start-Node.bat
     runs-on: windows-latest
     timeout-minutes: 35
     env:
       EXPECTED_RUNTIME: ${{ matrix.expect }}
+      # Spaces and parentheses catch unquoted paths and batch parse errors.
+      INSTALL_DIR_NAME: 'Silly Bunny (test)'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -364,12 +484,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           git branch --force bootstrap-smoke HEAD
           if ($LASTEXITCODE -ne 0) { throw "git branch failed with exit code $LASTEXITCODE" }
-          $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
+          $installDir = Join-Path $env:RUNNER_TEMP $env:INSTALL_DIR_NAME
           # Capture every stream: git's clone progress on stderr must not abort a redirected run.
           $output = & .\scripts\bootstrap\Install-SillyBunny.ps1 -Repo $env:GITHUB_WORKSPACE -Ref bootstrap-smoke -Dir $installDir -NoStart *>&1 | Out-String
           Write-Host $output
           if ($output -notmatch 'Done\. Start SillyBunny') { throw 'The installer did not finish a redirected fresh install.' }
-          if (-not (Test-Path (Join-Path $installDir 'server.js'))) { throw 'server.js is missing from the installed copy.' }
+          if (-not (Test-Path -LiteralPath (Join-Path $installDir 'server.js'))) { throw 'server.js is missing from the installed copy.' }
           $installedHead = git -C $installDir rev-parse HEAD
           $sourceHead = git rev-parse HEAD
           if ($installedHead -ne $sourceHead) { throw "Installed HEAD $installedHead does not match $sourceHead." }
@@ -401,21 +521,28 @@ jobs:
           SILLYBUNNY_USE_BUN: ${{ matrix.runtime == 'bun' && '1' || '' }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
+          $installDir = Join-Path $env:RUNNER_TEMP $env:INSTALL_DIR_NAME
           $log = Join-Path $env:RUNNER_TEMP 'bootstrap-smoke.log'
           $errLog = Join-Path $env:RUNNER_TEMP 'bootstrap-smoke.err.log'
 
-          # Start.bat ends in `pause`; a wrapper and a redirected stdin keep it
-          # from blocking forever if the launcher gives up before the server starts.
-          $wrapper = Join-Path $installDir 'run-start-bat.cmd'
+          $alreadyUp = $false
+          try {
+              $probe = Invoke-WebRequest -Uri 'http://127.0.0.1:4444/' -UseBasicParsing -TimeoutSec 2
+              if ($probe.StatusCode -eq 200) { $alreadyUp = $true }
+          } catch {}
+          if ($alreadyUp) { throw 'Something is already listening on port 4444 before the launcher starts.' }
+
+          # Start.bat ends in `pause`; a wrapper outside the install folder with
+          # redirected stdin keeps it from blocking and exercises pushd %~dp0 on
+          # the spaced and parenthesized path.
+          $wrapper = Join-Path $env:RUNNER_TEMP 'run-start-bat.cmd'
           @(
             '@echo off',
-            "cd /d `"$installDir`"",
             "call `"$installDir\Start.bat`" < NUL",
             'exit /b %errorlevel%'
           ) | Set-Content -Path $wrapper -Encoding OEM
 
-          $launcher = Start-Process -FilePath cmd.exe -ArgumentList '/d', '/c', "`"$wrapper`"" -RedirectStandardOutput $log -RedirectStandardError $errLog -NoNewWindow -PassThru
+          $launcher = Start-Process -FilePath cmd.exe -ArgumentList '/d', '/c', "`"$wrapper`"" -WorkingDirectory $env:RUNNER_TEMP -RedirectStandardOutput $log -RedirectStandardError $errLog -NoNewWindow -PassThru
           try {
               $deadline = (Get-Date).AddSeconds(300)
               $ready = $false
@@ -439,8 +566,8 @@ jobs:
 
               $expectedProfile = "$env:EXPECTED_RUNTIME-production"
               $markerPath = Join-Path $installDir 'node_modules\.sillybunny-dependencies.json'
-              if (-not (Test-Path $markerPath)) { throw "Dependency marker $markerPath is missing." }
-              $marker = Get-Content -Raw -Path $markerPath | ConvertFrom-Json
+              if (-not (Test-Path -LiteralPath $markerPath)) { throw "Dependency marker $markerPath is missing." }
+              $marker = Get-Content -Raw -LiteralPath $markerPath | ConvertFrom-Json
               # Profiles are keyed by a hyphenated name, so index the properties
               # rather than relying on dotted access.
               $profileEntry = $null
@@ -460,8 +587,8 @@ jobs:
                   default { throw "Unknown expected runtime: $env:EXPECTED_RUNTIME" }
               }
               $banner = $null
-              if (Test-Path -Path $log) {
-                  $banner = Get-Content -Path $log |
+              if (Test-Path -LiteralPath $log) {
+                  $banner = Get-Content -LiteralPath $log |
                       Where-Object { $_ -like "*SillyBunny startup on $runtimeLabel *" } |
                       Select-Object -First 1
               }
@@ -469,16 +596,109 @@ jobs:
                   Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
                   throw "The server never announced a $runtimeLabel runtime."
               }
+              if ($banner -notlike "*$env:INSTALL_DIR_NAME*") {
+                  throw "Startup banner did not report the spaced install folder ($env:INSTALL_DIR_NAME): $banner"
+              }
               Write-Host $banner
           } finally {
-              if (-not $launcher.HasExited) { taskkill /PID $launcher.Id /T /F | Out-Null }
+              if (-not $launcher.HasExited) {
+                  taskkill /PID $launcher.Id /T /F | Out-Null
+                  $launcher.WaitForExit(15000) | Out-Null
+              }
+          }
+
+      - name: Boot the installed copy through ${{ matrix.secondary_launcher }}
+        shell: powershell
+        env:
+          LAUNCHER_SCRIPT: ${{ matrix.secondary_launcher }}
+          SILLYBUNNY_LAUNCHER: '1'
+          SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1'
+          SILLYBUNNY_AUTO_UPDATE: '0'
+          # Set the opposite override so Start-Bun.bat and Start-Node.bat prove
+          # they clear or ignore a conflicting runtime preference.
+          SILLYBUNNY_USE_NODE: ${{ matrix.expect == 'bun' && '1' || '' }}
+          SILLYBUNNY_USE_BUN: ${{ matrix.expect == 'node' && '1' || '' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installDir = Join-Path $env:RUNNER_TEMP $env:INSTALL_DIR_NAME
+          $launcherPath = Join-Path $installDir $env:LAUNCHER_SCRIPT
+          $log = Join-Path $env:RUNNER_TEMP "bootstrap-smoke-$env:LAUNCHER_SCRIPT.log"
+          $errLog = Join-Path $env:RUNNER_TEMP "bootstrap-smoke-$env:LAUNCHER_SCRIPT.err.log"
+
+          $alreadyUp = $false
+          try {
+              $probe = Invoke-WebRequest -Uri 'http://127.0.0.1:4445/' -UseBasicParsing -TimeoutSec 2
+              if ($probe.StatusCode -eq 200) { $alreadyUp = $true }
+          } catch {}
+          if ($alreadyUp) { throw "Something is already listening on port 4445 before $env:LAUNCHER_SCRIPT starts." }
+
+          $wrapper = Join-Path $env:RUNNER_TEMP 'run-secondary-launcher.cmd'
+          @(
+            '@echo off',
+            "call `"$launcherPath`" --port 4445 < NUL",
+            'exit /b %errorlevel%'
+          ) | Set-Content -Path $wrapper -Encoding OEM
+
+          $launcher = Start-Process -FilePath cmd.exe -ArgumentList '/d', '/c', "`"$wrapper`"" -WorkingDirectory $env:RUNNER_TEMP -RedirectStandardOutput $log -RedirectStandardError $errLog -NoNewWindow -PassThru
+          try {
+              $deadline = (Get-Date).AddSeconds(180)
+              $ready = $false
+              while ((Get-Date) -lt $deadline) {
+                  if ($launcher.HasExited) {
+                      Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                      throw "$env:LAUNCHER_SCRIPT exited with code $($launcher.ExitCode) before the server answered on port 4445."
+                  }
+                  try {
+                      $response = Invoke-WebRequest -Uri 'http://127.0.0.1:4445/' -UseBasicParsing -TimeoutSec 2
+                      if ($response.StatusCode -eq 200) { $ready = $true; break }
+                  } catch {
+                      Start-Sleep -Seconds 1
+                  }
+              }
+              if (-not $ready) {
+                  Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                  throw "$env:LAUNCHER_SCRIPT did not answer on port 4445 within 180 seconds."
+              }
+              Write-Host "$env:LAUNCHER_SCRIPT answered on port 4445."
+
+              $logContent = Get-Content -Raw -LiteralPath $log
+              if ($logContent -notlike '*Dependencies are up to date.*') {
+                  Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                  throw "$env:LAUNCHER_SCRIPT did not reuse the installed dependencies."
+              }
+              if ($env:LAUNCHER_SCRIPT -eq 'Start-Node.bat' -and $logContent -notlike '*Entering SillyBunny (Node.js mode)...*') {
+                  Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                  throw 'Start-Node.bat did not print its Node.js mode handoff line.'
+              }
+
+              $runtimeLabel = switch ($env:EXPECTED_RUNTIME) {
+                  'bun' { 'Bun' }
+                  'node' { 'Node.js' }
+                  default { throw "Unknown expected runtime: $env:EXPECTED_RUNTIME" }
+              }
+              $banner = Get-Content -LiteralPath $log |
+                  Where-Object { $_ -like "*SillyBunny startup on $runtimeLabel *" } |
+                  Select-Object -First 1
+              if (-not $banner) {
+                  Get-Content -Path $log, $errLog -ErrorAction SilentlyContinue | Write-Host
+                  throw "$env:LAUNCHER_SCRIPT never announced a $runtimeLabel runtime."
+              }
+              if ($banner -notlike "*$env:INSTALL_DIR_NAME*") {
+                  throw "Startup banner did not report the spaced install folder ($env:INSTALL_DIR_NAME): $banner"
+              }
+              Write-Host $banner
+          } finally {
+              if (-not $launcher.HasExited) {
+                  taskkill /PID $launcher.Id /T /F | Out-Null
+                  $launcher.WaitForExit(15000) | Out-Null
+              }
           }
 
       - name: Rerunning the installer updates instead of reinstalling
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $installDir = Join-Path $env:RUNNER_TEMP 'SillyBunny'
+          $installDir = Join-Path $env:RUNNER_TEMP $env:INSTALL_DIR_NAME
           $headBefore = git -C $installDir rev-parse HEAD
           # The installer reports through Write-Host, which is the information
           # stream; 2>&1 would drop it and the match below would never fire.

@@ -1,0 +1,408 @@
+[
+    {
+        "name": "command without arguments",
+        "script": "/stp-plain",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain" }] } }
+    },
+    {
+        "name": "unnamed argument keeps inner spacing and is trimmed",
+        "script": "/stp-plain    padded   text   ",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["padded   text"] }] } }
+    },
+    {
+        "name": "unnamed argument spans lines",
+        "script": "/stp-plain first line\nsecond line",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["first line\nsecond line"] }] } }
+    },
+    {
+        "name": "unnamed argument keeps Windows line endings",
+        "script": "/stp-plain first line\r\nsecond line",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["first line\r\nsecond line"] }] } }
+    },
+    {
+        "name": "unnamed argument may contain unicode",
+        "script": "/stp-plain héllo wörld 😀",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["héllo wörld 😀"] }] } }
+    },
+    {
+        "name": "tabs separate the command name from its arguments",
+        "script": "/stp-plain\ta\tb",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a\tb"] }] } }
+    },
+    {
+        "name": "a slash inside an argument is text",
+        "script": "/stp-plain path/to/file /stp-plain nested",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["path/to/file /stp-plain nested"] }] } }
+    },
+    {
+        "name": "named argument alone",
+        "script": "/stp-plain key=value",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "named": [{ "name": "key", "value": "value" }] }] } }
+    },
+    {
+        "name": "named argument followed by unnamed text",
+        "script": "/stp-plain key=value rest of the text",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "value" }],
+                        "unnamed": ["rest of the text"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "several named arguments",
+        "script": "/stp-plain a=1 b=2 c=3 tail",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [
+                            { "name": "a", "value": "1" },
+                            { "name": "b", "value": "2" },
+                            { "name": "c", "value": "3" }
+                        ],
+                        "unnamed": ["tail"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "named arguments may be separated by newlines",
+        "script": "/stp-plain\nkey=value\nother=thing\ntext",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "value" }, { "name": "other", "value": "thing" }],
+                        "unnamed": ["text"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "named argument after text stays in the text",
+        "script": "/stp-plain text key=value",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["text key=value"] }] } }
+    },
+    {
+        "name": "named argument name must be word characters",
+        "script": "/stp-plain my-key=value",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["my-key=value"] }] } }
+    },
+    {
+        "name": "named argument value keeps later equals signs",
+        "script": "/stp-plain a=b=c",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "named": [{ "name": "a", "value": "b=c" }] }] } }
+    },
+    {
+        "name": "leading equals sign is text",
+        "script": "/stp-plain =value",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["=value"] }] } }
+    },
+    {
+        "name": "named argument name may hold digits and underscores",
+        "script": "/stp-plain _k9=v",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "named": [{ "name": "_k9", "value": "v" }] }] } }
+    },
+    {
+        "name": "quoted named argument keeps spaces",
+        "script": "/stp-plain key=\"two words\" rest",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "two words" }],
+                        "unnamed": ["rest"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "empty quoted named argument",
+        "script": "/stp-plain key=\"\" rest",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "named": [{ "name": "key", "value": "" }], "unnamed": ["rest"] }]
+            }
+        }
+    },
+    {
+        "name": "list named argument keeps brackets and spaces",
+        "script": "/stp-plain key=[1, 2, 3] rest",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "[1, 2, 3]" }],
+                        "unnamed": ["rest"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "list named argument may hold a pipe",
+        "script": "/stp-plain key=[a|b] rest",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "named": [{ "name": "key", "value": "[a|b]" }], "unnamed": ["rest"] }]
+            }
+        }
+    },
+    {
+        "name": "named argument value ends at a pipe",
+        "script": "/stp-plain key=value | /stp-plain other",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "named": [{ "name": "key", "value": "value" }] },
+                    { "name": "stp-plain", "unnamed": ["other"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "command name ends at a pipe",
+        "script": "/stp-plain|/stp-plain a",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain" }, { "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "leading quoted unnamed argument is split from the tail",
+        "script": "/stp-plain \"quoted\" tail",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["quoted", " tail"] }] } }
+    },
+    {
+        "name": "leading quoted unnamed argument alone",
+        "script": "/stp-plain \"only quoted\"",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["only quoted"] }] } }
+    },
+    {
+        "name": "quote in the middle of text stays literal",
+        "script": "/stp-plain say \"hi there\" now",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["say \"hi there\" now"] }] } }
+    },
+    {
+        "name": "raw quotes command keeps the quotes",
+        "script": "/stp-raw \"quoted text\"",
+        "expected": { "tree": { "executors": [{ "name": "stp-raw", "unnamed": ["\"quoted text\""] }] } }
+    },
+    {
+        "name": "raw quotes command with raw=false parses the quotes",
+        "script": "/stp-raw raw=false \"quoted text\"",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-raw",
+                        "named": [{ "name": "raw", "value": "false" }],
+                        "unnamed": ["quoted text"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "raw quotes command with raw=true keeps the quotes",
+        "script": "/stp-raw raw=true \"quoted text\"",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-raw",
+                        "named": [{ "name": "raw", "value": "true" }],
+                        "unnamed": ["\"quoted text\""]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "raw named argument is ignored for other commands",
+        "script": "/stp-plain raw=true \"quoted text\"",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "raw", "value": "true" }],
+                        "unnamed": ["quoted text"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "split command separates on whitespace",
+        "script": "/stp-split a b c",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["a", "b", "c"] }] } }
+    },
+    {
+        "name": "split command keeps quoted values together",
+        "script": "/stp-split \"a b\" c \"d e\"",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["a b", "c", "d e"] }] } }
+    },
+    {
+        "name": "split command keeps list values together",
+        "script": "/stp-split [1, 2] c",
+        "expected": { "tree": { "executors": [{ "name": "stp-split", "unnamed": ["[1, 2]", "c"] }] } }
+    },
+    {
+        "name": "split command with named arguments",
+        "script": "/stp-split k=v one two",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-split", "named": [{ "name": "k", "value": "v" }], "unnamed": ["one", "two"] }]
+            }
+        }
+    },
+    {
+        "name": "split command with no arguments",
+        "script": "/stp-split",
+        "expected": { "tree": { "executors": [{ "name": "stp-split" }] } }
+    },
+    {
+        "name": "split count of one keeps the rest together",
+        "script": "/stp-split1 name the rest of it",
+        "expected": { "tree": { "executors": [{ "name": "stp-split1", "unnamed": ["name", "the rest of it"] }] } }
+    },
+    {
+        "name": "split count of two keeps the rest together",
+        "script": "/stp-split2 one two three four",
+        "expected": { "tree": { "executors": [{ "name": "stp-split2", "unnamed": ["one", "two", "three four"] }] } }
+    },
+    {
+        "name": "split count of two with a quoted second value",
+        "script": "/stp-split2 one \"two words\" three four",
+        "expected": { "tree": { "executors": [{ "name": "stp-split2", "unnamed": ["one", "two words", "three four"] }] } }
+    },
+    {
+        "name": "split count of two restores quotes in the rest",
+        "script": "/stp-split2 one two \"three four\" five",
+        "expected": {
+            "tree": { "executors": [{ "name": "stp-split2", "unnamed": ["one", "two", "\"three four\" five"] }] }
+        }
+    },
+    {
+        "name": "split count with a quoted rest before a pipe",
+        "script": "/stp-split1 name \"the rest\" | /stp-plain x",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-split1", "unnamed": ["name", "the rest"] },
+                    { "name": "stp-plain", "unnamed": ["x"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "split count with a quoted rest at the end of the text",
+        "script": "/stp-split1 name \"the rest\"",
+        "expected": { "tree": { "executors": [{ "name": "stp-split1", "unnamed": ["name", "the rest"] }] } }
+    },
+    {
+        "name": "split count with a quoted rest right before a pipe",
+        "script": "/stp-split1 name \"the rest\"| /stp-plain x",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-split1", "unnamed": ["name", "the rest"] },
+                    { "name": "stp-plain", "unnamed": ["x"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "split count with a quoted rest right before a closure end",
+        "script": "/stp-plain {: /stp-split1 name \"the rest\":} | /stp-plain x",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-split1 name \"the rest\"",
+                                    "executors": [{ "name": "stp-split1", "unnamed": ["name", "the rest"] }]
+                                }
+                            }
+                        ]
+                    },
+                    { "name": "stp-plain", "unnamed": ["x"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "split count keeps a closure in the rest as its source text",
+        "script": "/stp-split1 name prefix {: /stp-plain c :}",
+        "expected": { "tree": { "executors": [{ "name": "stp-split1", "unnamed": ["name", "prefix {: /stp-plain c :}"] }] } }
+    },
+    {
+        "name": "split count of two restores quotes in the rest after a closure",
+        "script": "/stp-split2 a {: /stp-plain y :} \"b c\" d",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split2",
+                        "unnamed": [
+                            "a",
+                            { "closure": { "rawText": " /stp-plain y ", "executors": [{ "name": "stp-plain", "unnamed": ["y"] }] } },
+                            "\"b c\" d"
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "let with an empty key value parses like other empty named values",
+        "script": "/let key= x",
+        "expected": { "tree": { "executors": [{ "name": "let", "named": [{ "name": "key", "value": null }], "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "alias resolves to its command",
+        "script": "/stp-aka value",
+        "expected": { "tree": { "executors": [{ "name": "stp-aka", "command": "stp-aliased", "unnamed": ["value"] }] } }
+    },
+    {
+        "name": "primary name resolves to its command",
+        "script": "/stp-aliased value",
+        "expected": { "tree": { "executors": [{ "name": "stp-aliased", "unnamed": ["value"] }] } }
+    },
+    {
+        "name": "a statement without a leading slash is discarded",
+        "script": "some text /stp-plain value",
+        "expected": { "tree": { "executors": [] } }
+    },
+    {
+        "name": "plain text between commands is discarded",
+        "script": "/stp-plain a | in between | /stp-plain b",
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain", "unnamed": ["b"] }]
+            }
+        }
+    },
+    {
+        "name": "leading whitespace before the first command",
+        "script": "   \n  /stp-plain value",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["value"] }] } }
+    },
+    { "name": "empty script", "script": "", "expected": { "tree": { "executors": [] } } },
+    { "name": "whitespace only script", "script": "  \n\t ", "expected": { "tree": { "executors": [] } } },
+    { "name": "plain text only script", "script": "just words", "expected": { "tree": { "executors": [] } } }
+]

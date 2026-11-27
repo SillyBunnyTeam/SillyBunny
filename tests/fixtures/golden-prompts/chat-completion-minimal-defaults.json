@@ -1,0 +1,46 @@
+{
+  "cacheScope": "main",
+  "char_name": "Bramwell Finch",
+  "chat_completion_source": "openai",
+  "chat_id": "golden-chat-minimal-defaults",
+  "custom_prompt_post_processing": "",
+  "enable_web_search": false,
+  "frequency_penalty": 0,
+  "group_names": [],
+  "include_reasoning": false,
+  "log_prompts": false,
+  "max_tokens": 300,
+  "messages": [
+    {
+      "role": "system",
+      "content": "Write Bramwell Finch's next reply in a fictional chat between Bramwell Finch and Rowan Hale."
+    },
+    {
+      "role": "system",
+      "content": "Bramwell Finch tends the lighthouse on Gull Rock and brews strong black tea."
+    },
+    {
+      "role": "system",
+      "content": "[Start a new Chat]"
+    },
+    {
+      "role": "assistant",
+      "content": "\"Step inside out of the spray,\" Bramwell says, gesturing toward the kettle."
+    },
+    {
+      "role": "user",
+      "content": "Good evening, Bramwell. Is the lantern lit?"
+    }
+  ],
+  "model": "gpt-4o",
+  "presence_penalty": 0,
+  "request_image_aspect_ratio": "1:1",
+  "request_image_resolution": "1K",
+  "request_images": false,
+  "seed": 42,
+  "stream": false,
+  "temperature": 0.8,
+  "top_p": 0.95,
+  "type": "normal",
+  "user_name": "Rowan Hale"
+}

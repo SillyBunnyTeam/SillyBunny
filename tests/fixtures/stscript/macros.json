@@ -1,0 +1,401 @@
+[
+    {
+        "name": "single macro",
+        "script": "/stp-plain {{user}} says hi",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{user}} says hi", "start": 11, "end": 27 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 27,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 27
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 27 }],
+                "closures": [{ "start": 1, "end": 26 }],
+                "macros": [{ "name": "user", "start": 11, "end": 19 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "two macros",
+        "script": "/stp-plain {{user}} and {{char}}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{user}} and {{char}}", "start": 11, "end": 32 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 32,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 32
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 32 }],
+                "closures": [{ "start": 1, "end": 31 }],
+                "macros": [{ "name": "user", "start": 11, "end": 19 }, { "name": "char", "start": 24, "end": 32 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "nested macros",
+        "script": "/stp-plain {{reverse::a {{user}}}} tail",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{reverse::a {{user}}}} tail", "start": 11, "end": 39 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 39,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 39
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 39 }],
+                "closures": [{ "start": 1, "end": 38 }],
+                "macros": [{ "name": "reverse", "start": 11, "end": 34 }, { "name": "user", "start": 24, "end": 32 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macro in a named argument",
+        "script": "/stp-plain key={{user}} rest",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "{{user}}", "start": 11, "end": 23 }],
+                        "unnamed": [{ "value": "rest", "start": 24, "end": 28 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 28,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 23,
+                            "startUnnamedArgs": 24,
+                            "endUnnamedArgs": 28
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 28 }],
+                "closures": [{ "start": 1, "end": 27 }],
+                "macros": [{ "name": "user", "start": 15, "end": 23 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "pipe macro",
+        "script": "/stp-plain a | /stp-plain {{pipe}}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "a", "start": 11, "end": 13 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 13,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 13
+                        }
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{pipe}}", "start": 26, "end": 34 }],
+                        "pos": {
+                            "start": 16,
+                            "end": 34,
+                            "startNamedArgs": 26,
+                            "endNamedArgs": 26,
+                            "startUnnamedArgs": 26,
+                            "endUnnamedArgs": 34
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "stp-plain", "start": 1, "end": 13 },
+                    { "name": "stp-plain", "start": 16, "end": 34 }
+                ],
+                "closures": [{ "start": 1, "end": 33 }],
+                "macros": [{ "name": "pipe", "start": 26, "end": 34 }],
+                "scopes": [[], []]
+            }
+        }
+    },
+    {
+        "name": "unclosed macro runs to the end of the text",
+        "script": "/stp-plain {{user",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{user", "start": 11, "end": 17 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 17,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 17
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 17 }],
+                "closures": [{ "start": 1, "end": 16 }],
+                "macros": [{ "name": "user", "start": 11, "end": 17 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macro name ignores whitespace and modifiers",
+        "script": "/stp-plain {{ spaced }} {{!bang}} {{#hash}}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{ spaced }} {{!bang}} {{#hash}}", "start": 11, "end": 43 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 43,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 43
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 43 }],
+                "closures": [{ "start": 1, "end": 42 }],
+                "macros": [
+                    { "name": "spaced", "start": 11, "end": 23 },
+                    { "name": "bang", "start": 24, "end": 33 },
+                    { "name": "hash", "start": 34, "end": 43 }
+                ],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macros in a split argument",
+        "script": "/stp-split {{user}} {{char}}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-split",
+                        "unnamed": [
+                            { "value": "{{user}}", "start": 11, "end": 19 },
+                            { "value": "{{char}}", "start": 20, "end": 28 }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 28,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 28
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-split", "start": 1, "end": 28 }],
+                "closures": [{ "start": 1, "end": 27 }],
+                "macros": [{ "name": "user", "start": 11, "end": 19 }, { "name": "char", "start": 20, "end": 28 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macro inside a closure",
+        "script": "/stp-plain {: /stp-plain {{user}} :}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "value": {
+                                    "closure": {
+                                        "rawText": " /stp-plain {{user}} ",
+                                        "executors": [
+                                            {
+                                                "name": "stp-plain",
+                                                "unnamed": [{ "value": "{{user}}", "start": 25, "end": 34 }],
+                                                "pos": {
+                                                    "start": 15,
+                                                    "end": 34,
+                                                    "startNamedArgs": 25,
+                                                    "endNamedArgs": 25,
+                                                    "startUnnamedArgs": 25,
+                                                    "endUnnamedArgs": 34
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                                "start": 11,
+                                "end": 36
+                            }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 36,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 36
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "stp-plain", "start": 1, "end": 36 },
+                    { "name": "stp-plain", "start": 15, "end": 34 }
+                ],
+                "closures": [{ "start": 1, "end": 35 }, { "start": 12, "end": 35 }],
+                "macros": [{ "name": "user", "start": 25, "end": 33 }],
+                "scopes": [[], []]
+            }
+        }
+    },
+    {
+        "name": "macro with arguments",
+        "script": "/stp-plain {{random::a::b}}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{random::a::b}}", "start": 11, "end": 27 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 27,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 27
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 27 }],
+                "closures": [{ "start": 1, "end": 26 }],
+                "macros": [{ "name": "random", "start": 11, "end": 27 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "macro in a list value",
+        "script": "/stp-plain key=[{{user}}] rest",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "named": [{ "name": "key", "value": "[{{user}}]", "start": 11, "end": 25 }],
+                        "unnamed": [{ "value": "rest", "start": 26, "end": 30 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 30,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 25,
+                            "startUnnamedArgs": 26,
+                            "endUnnamedArgs": 30
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 30 }],
+                "closures": [{ "start": 1, "end": 29 }],
+                "macros": [{ "name": "user", "start": 16, "end": 24 }],
+                "scopes": [[]]
+            }
+        }
+    },
+    {
+        "name": "getvar macro is not replaced by default",
+        "script": "/stp-plain {{getvar::x}}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "{{getvar::x}}", "start": 11, "end": 24 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 24,
+                            "startNamedArgs": 11,
+                            "endNamedArgs": 11,
+                            "startUnnamedArgs": 11,
+                            "endUnnamedArgs": 24
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "stp-plain", "start": 1, "end": 24 }],
+                "closures": [{ "start": 1, "end": 23 }],
+                "macros": [{ "name": "getvar", "start": 11, "end": 24 }],
+                "scopes": [[]]
+            }
+        }
+    }
+]
