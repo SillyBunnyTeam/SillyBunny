@@ -24,7 +24,7 @@ import { serverDirectory } from './server-directory.js';
 import { filterValidIpPatterns, getIpFromRequest } from './express-common.js';
 import { extensionsEnabledFeatureGuard } from './endpoints/extensions.js';
 import { setStoredMediaHeaders } from './stored-media-headers.js'; // SillyBunny: gives the stored images route its own content type and nosniff.
-import { NativeDeflateZipEntry, getZipUnixAttributes } from './zip-native-deflate.js'; // SillyBunny: native zlib deflate and Unix modes for the backup ZIP entries.
+import { BACKUP_DEFLATE_LEVEL, NativeDeflateZipEntry, getZipUnixAttributes } from './zip-native-deflate.js'; // SillyBunny: native zlib deflate and Unix modes for the backup ZIP entries.
 
 export const KEY_PREFIX = 'user:';
 const AVATAR_PREFIX = 'avatar:';
@@ -1443,7 +1443,7 @@ async function createBackupArchiveWithArchiver({ files, handle, response, loadAr
         response.attachment(`${handle}-${timestamp}.zip`);
     }
 
-    const archive = archiver('zip', { forceZip64: true, zlib: { level: 6 } });
+    const archive = archiver('zip', { forceZip64: true, zlib: { level: BACKUP_DEFLATE_LEVEL } });
     let aborted = false;
     let settled = false;
     /** @type {fs.ReadStream | null} */

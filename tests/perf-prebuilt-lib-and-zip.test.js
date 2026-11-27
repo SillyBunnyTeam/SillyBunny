@@ -1085,6 +1085,23 @@ describe('fflate streaming backup ZIP in src/users.js', () => {
         }
     });
 
+    test('deflates at the same level in the ZIP64 fallback as in the streaming path', async () => {
+        const handle = `zip-fallback-level-${Date.now()}`;
+        const userRoot = path.join(global.DATA_ROOT, handle);
+        const chat = compressibleText(2, 3);
+        writeFiles(userRoot, { 'chats/chat.jsonl': chat });
+
+        const streamed = (await readZipEntries(await backupToBuffer(handle), { raw: true })).get('chats/chat.jsonl');
+        const fallback = (await readZipEntries(await backupToBuffer(handle, { zip64Thresholds: { maxTotalBytes: 1 } }), { raw: true })).get('chats/chat.jsonl');
+        const level6Size = zlib.deflateRawSync(Buffer.from(chat), { level: 6 }).byteLength;
+
+        // Both paths are at level 1 (clearly above level 6), so a backup does not change in size or time when it crosses a ZIP32 limit.
+        expect(streamed.content.byteLength).toBeGreaterThan(level6Size * 1.05);
+        expect(fallback.content.byteLength).toBeGreaterThan(level6Size * 1.05);
+        expect(Math.abs(fallback.content.byteLength - streamed.content.byteLength) / streamed.content.byteLength).toBeLessThan(0.02);
+        expect(fallback.crc32).toBe(zlib.crc32(Buffer.from(chat)));
+    });
+
     test.each([
         ['streaming path', undefined],
         ['ZIP64 fallback path', { zip64Thresholds: { maxTotalBytes: 1 } }],
