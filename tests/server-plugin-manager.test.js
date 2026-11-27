@@ -24,6 +24,8 @@ const tempDirectories = [];
 // Staging's platform option only decides how npm is found and run; the release flush follows the host platform.
 const OTHER_PLATFORM = process.platform === 'win32' ? 'linux' : 'win32';
 const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
+// Each staging test spawns several git processes, which can exceed Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
 
 function createTempDirectory() {
     const directory = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-server-plugin-manager-'));
@@ -222,7 +224,7 @@ function captureError(callback) {
 afterEach(() => {
     jest.restoreAllMocks();
     for (const directory of tempDirectories.splice(0)) {
-        fs.rmSync(directory, { recursive: true, force: true });
+        fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5 });
     }
 });
 

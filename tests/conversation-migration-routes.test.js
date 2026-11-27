@@ -3,6 +3,9 @@
  * and the import of the very old browser storage.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+
+// First-request migration rewrites conversation trees and rebuilds the SQLite index, which can exceed Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
