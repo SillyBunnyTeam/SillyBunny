@@ -6601,8 +6601,8 @@ dialog.popup.sb-dialog .popup-content .ds-pref-group-heading {
         .list-group.ctx-menu,
         .autoComplete-wrap > .autoComplete,
         .autoComplete-detailsWrap:not(.commandContainer > *) > .autoComplete-details,
-        .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
-        .popup:has(#qr--modalEditor) .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList,
+        .popup.sb-qr-modal-editor-popup .popup-content > #qr--modalEditor > #qr--main > .qr--labels > label .qr--modal-switcherList,
+        .popup.sb-qr-modal-editor-popup .popup-content > #qr--modalEditor > #qr--main > .qr--labels > .label .qr--modal-switcherList,
         .ds-pref-group
     ) {
         outline: 1px solid CanvasText;

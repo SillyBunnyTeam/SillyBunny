@@ -547,7 +547,7 @@ if (typeof document !== 'undefined') {
         queueMicrotask(watchExtensionsMenu);
     }
 }
-eventSource.on(event_types.APP_READY, watchExtensionsMenu);
+eventSource?.on?.(event_types?.APP_READY, watchExtensionsMenu);
 
 function getExtensionHomePage(manifest) {
     const candidate = manifest?.homepage || manifest?.homePage;
