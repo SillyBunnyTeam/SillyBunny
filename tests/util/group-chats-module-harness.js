@@ -325,7 +325,14 @@ export async function importGroupChatsModule(options = {}) {
     };
 
     const actionMenuMock = {
+        MOBILE_QUERY: '(max-width: 767px)',
+        getRevealScrollTop: jest.fn(() => 0),
+        positionPopover: jest.fn(),
         openActionMenu: jest.fn(),
+        openPopover: jest.fn(),
+        closeActionMenu: jest.fn(),
+        isActionMenuOpen: jest.fn(() => false),
+        getActionMenuTrigger: jest.fn(() => null),
         ...(options.actionMenu ?? {}),
     };
 
