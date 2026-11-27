@@ -130,7 +130,12 @@ app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 // CORS Settings //
 const corsEnabled = getConfigValue('cors.enabled', true, 'boolean');
 if (corsEnabled) {
-    const corsOrigin = getConfigValue('cors.origin', 'null');
+    // SillyBunny: default cors.origin to [] and warn on "null" when listen mode is active or combined with other origins (adapted from ST #6162).
+    const corsOrigin = getConfigValue('cors.origin', []);
+    const corsOriginList = Array.isArray(corsOrigin) ? corsOrigin : [corsOrigin];
+    if (corsOriginList.includes('null') && (cliArgs.listen || corsOriginList.length > 1 || !Array.isArray(corsOrigin))) {
+        console.warn(color.yellow('Warning: cors.origin contains "null". This allows any sandboxed or opaque-origin page to read responses. Remove it from config.yaml unless you need it.'));
+    }
     const corsMethods = getConfigValue('cors.methods', ['OPTIONS']);
     const corsAllowedHeaders = getConfigValue('cors.allowedHeaders', []);
     const corsExposedHeaders = getConfigValue('cors.exposedHeaders', []);

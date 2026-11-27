@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `default/config.yaml`, `src/config-init.js`, `src/middleware/hostWhitelist.js`, `src/server-main.js` and `Remote-Link.cmd` - default host whitelist and CORS origin hardening
+| Field | Value |
+| --- | --- |
+| File | `default/config.yaml`, `src/config-init.js`, `src/middleware/hostWhitelist.js`, `src/server-main.js`, `Remote-Link.cmd`. |
+| Area | Server security defaults: host header validation against DNS rebinding, default CORS origins, config upgrade preservation, and Cloudflare Quick Tunnel launcher. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6162 using Option A rollout: brand-new installs enable `hostWhitelist.enabled: true` and empty `cors.origin: []`, while `addMissingConfigValues()` preserves `hostWhitelist.enabled: false` on existing configs that predate the key so upgrading users are not locked out, `src/server-main.js` avoids spamming local-only legacy `['null']` configs unless `listen` mode or non-default values are used, and `Remote-Link.cmd` passes `--http-host-header localhost:4444` so Quick Tunnels work without opening `.trycloudflare.com` globally. |
+| Target seam | `addMissingConfigValues()` in `src/config-init.js`, `hostWhitelistMiddleware` in `src/middleware/hostWhitelist.js`, CORS initialization in `src/server-main.js`, and `Remote-Link.cmd`. |
+| Adapter shape | Set `hostWhitelist.enabled: true` and `cors.origin: []` in `default/config.yaml`; change `hostWhitelist.js` fallback default to `true` (retaining SillyBunny's `'boolean'` converter); in `config-init.js`, set `hostWhitelist.enabled: false` before `_.defaultsDeep` when upgrading an existing config that lacks the key; in `server-main.js`, default `cors.origin` to `[]` and normalize to an array before checking `'null'`; in `Remote-Link.cmd`, append `--http-host-header localhost:4444`. |
+| Protecting tests | `tests/middleware-host-whitelist.test.js`, `tests/host-whitelist-enabled-switch.test.js`, `tests/config-init.test.js`, `tests/config-key-migration.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- middleware-host-whitelist.test.js host-whitelist-enabled-switch.test.js config-init.test.js config-key-migration.test.js`, Bun and Node.js live server boots on a fresh `--dataRoot`. |
+| Rollback path | Restore `hostWhitelist.enabled: false` and `cors.origin: ["null"]` in `default/config.yaml`, remove the `hostWhitelist.enabled` preservation block in `src/config-init.js`, restore `false` in `src/middleware/hostWhitelist.js`, restore `getConfigValue('cors.origin', 'null')` in `src/server-main.js`, remove `--http-host-header localhost:4444` from `Remote-Link.cmd`, and revert the test changes. Existing user `config.yaml` files remain valid. Reconcile on the upstream sync carrying ST #6162 while keeping upgrade preservation and the `Remote-Link.cmd` flag. |
+| Last reviewed | 2026-11-27 (adapted early port of ST #6162, Option A). |
+| Owner | Server runtime and security integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
