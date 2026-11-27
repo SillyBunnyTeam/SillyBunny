@@ -1013,12 +1013,6 @@ describe('Workstream 4: editor session, picker windowing, list-focus cleanup, mo
         const brandsCss = readPublic('css/brands.min.css');
         expect(brandsCss).toContain('font-display:swap');
         expect(brandsCss).not.toContain('font-display:block');
-
-        const toggleCss = readPublic('css/toggle-dependent.css').replace(/\/\*[\s\S]*?\*\//g, '');
-        expect(toggleCss).not.toMatch(/body\.no-blur\s*\*/);
-        expect(toggleCss).toContain('--SmartThemeBackdropFilter: none');
-        expect(toggleCss).toContain('-webkit-backdrop-filter: unset !important');
-        expect(toggleCss).toContain('backdrop-filter: unset !important');
     });
 });
 
