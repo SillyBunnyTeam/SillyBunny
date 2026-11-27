@@ -124,7 +124,7 @@ describe('Slice 1B observer scoping and leak fixes', () => {
         expect(extActions).not.toContain('rowObserver.observe(document.body');
         expect(extActions).toContain('rowObserver.observe(container');
         expect(msgActions).not.toContain('initializeDeleteCount');
-        expect(tabsJs).not.toContain('if (isActive) tabState.searchIndex = null;');
+        expect(tabsJs).toContain('if (isActive) tabState.searchIndex = null;');
         expect(tabsJs).toContain('ensureClassicScrollbarsSynced();');
     });
 

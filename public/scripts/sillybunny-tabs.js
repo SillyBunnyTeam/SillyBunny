@@ -11090,6 +11090,8 @@ function setActiveTab(shellKey, tabId) {
         const isActive = currentTabId === tabId;
         tabState.panel.classList.toggle('sb-shell-panel-active', isActive);
         tabState.panel.setAttribute('aria-hidden', String(!isActive));
+        // A row that a tab gained after its first search (a late build, an extension) is only in the DOM, so the index of the tab that opens is rebuilt on the next search.
+        if (isActive) tabState.searchIndex = null;
     }
 
     queueTopbarSectionStateSync();
