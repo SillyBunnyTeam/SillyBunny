@@ -15,6 +15,8 @@ import { getFileNameValidationFunction } from '../middleware/validateFileName.js
 import { AIMLAPI_HEADERS } from '../constants.js';
 import { router as imageModelsRouter } from './image-models.js';
 import { getPollinationsImageModels } from '../../public/scripts/image-model-catalogs.js';
+// SillyBunny: enforce SSRF boundary on untrusted provider image download URLs (ST #6107).
+import { getUntrustedRequestAgent } from '../private-request-filter.js';
 
 /**
  * Gets the comfy workflows.
@@ -1463,14 +1465,40 @@ nanogpt.post('/generate', async (request, response) => {
         });
 
         if (!result.ok) {
-            console.warn('NanoGPT returned an error.');
-            return response.sendStatus(500);
+            // SillyBunny: forward upstream NanoGPT error text instead of a bare 500 (ST #6107).
+            const text = await result.text();
+            console.warn('NanoGPT returned an error.', text);
+            return response.status(500).send(text);
         }
 
         /** @type {any} */
         const data = await result.json();
+        const choice = data?.data?.[0];
+        let image = choice?.b64_json;
 
-        const image = data?.data?.[0]?.b64_json;
+        // SillyBunny: download URL-based NanoGPT images over HTTPS via the untrusted-request agent without API key headers (ST #6107).
+        if (!image && choice?.url) {
+            let imageUrl = null;
+            try {
+                imageUrl = new URL(choice.url);
+            } catch {
+                imageUrl = null;
+            }
+            if (!imageUrl || imageUrl.protocol !== 'https:') {
+                console.warn('NanoGPT returned an invalid image URL.');
+                return response.status(500).send('NanoGPT returned an invalid image URL.');
+            }
+            const imageResult = await fetch(imageUrl.toString(), {
+                agent: getUntrustedRequestAgent(),
+                signal: AbortSignal.timeout(30_000),
+            });
+            if (!imageResult.ok) {
+                console.warn('NanoGPT image download failed.', imageResult.status);
+                return response.status(500).send(`NanoGPT image download failed (HTTP ${imageResult.status}).`);
+            }
+            image = Buffer.from(await imageResult.arrayBuffer()).toString('base64');
+        }
+
         if (!image) {
             console.warn('NanoGPT returned invalid data.');
             return response.sendStatus(500);

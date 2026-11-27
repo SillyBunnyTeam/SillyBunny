@@ -1898,6 +1898,14 @@ This is the largest class by a wide margin.
 - **Tests:** `tests/sillybunny-extension-media-integration.test.js` (configurations during an override, Image Generation with a missing or malformed state and user-file resolution, the `genNovelAI()` request, refusals and shared-file cleanup guard), `tests/novelai-image-generation.test.js` (route refusals, including data that is not a PNG, malformed base64 and a total above 25 MiB; its harness takes the server's 500 MB body limit so that such a request reaches the route), `tests/quick-image-gen-precise-reference.test.js`, `tests/data-maid-precise-reference.test.js`, `tests/novelai-precise-reference-editor.test.js` (jsdom unit suite for shared rows, focus survival, `change`-only commits, user-file upload/cleanup and dropped-image alert), `tests/novelai-precise-reference-editor.e2e.js` (both Image Generation and Quick Image Gen at 1440×900 and 390×844 coarse pointer).
 - **Fixes:** `e85b32471` (configurations during an override), `ad8702967` (malformed saved state), `14d25a68d` (editor controls during preparation), `573bd6343` (message when the editor drops prepared images).
 
+### NanoGPT image download URLs and error responses
+
+- **Breaks:** Large NanoGPT image generations return `data[0].url` instead of inline `b64_json`, causing `POST /api/sd/nanogpt/generate` to fail with a bare HTTP 500; non-OK responses from NanoGPT also discarded the upstream error text (upstream ST #6107).
+- **Cause:** The route read only `data?.data?.[0]?.b64_json` and responded to `!result.ok` with `sendStatus(500)`. Fetching a provider-supplied download URL directly with bare `fetch(url)` would also bypass SillyBunny's SSRF guard when the global private request filter is disabled.
+- **Files:** `src/endpoints/stable-diffusion.js` (`nanogpt.post('/generate')`).
+- **Guards:** Validate that `choice.url` parses with `protocol === 'https:'`, fetch it through `getUntrustedRequestAgent()` with `AbortSignal.timeout(30_000)` and no `x-api-key` header, and forward upstream non-OK text with status 500.
+- **Tests:** `tests/stable-diffusion.test.js` (`NanoGPT generation`).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
