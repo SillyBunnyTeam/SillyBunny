@@ -1,10 +1,12 @@
-// SillyBunny: clears browser caches twice after every server start.
-// The server marks pending clears with the sillybunny_cache_boot cookie (see
-// src/middleware/restartCacheClear.js) and sends Clear-Site-Data: "cache" on
-// each index load until two passes are recorded. Each pass here also purges
-// Cache Storage and service workers, records progress, and reloads. The second
-// pass catches caches that a still-controlling service worker re-filled
-// during the first reload (iOS WebKit keeps it attached until unload).
+// SillyBunny: clears browser caches when the server's cache-clear value changes.
+// The server marks a pending clear with the sillybunny_cache_boot cookie (see
+// src/middleware/restartCacheClear.js). Its value changes when the served frontend
+// content or the user's extensions changed (mode: content), or on every server start
+// (mode: always), and the server sends Clear-Site-Data: "cache" on each index load
+// until the passes are recorded. Each pass here also purges Cache Storage and service
+// workers, records progress, and reloads. A page that a service worker controls needs
+// two passes, because that worker can re-fill the caches during the first reload (iOS
+// WebKit keeps it attached until unload). A page without a controlling worker needs one.
 (function () {
     'use strict';
 
