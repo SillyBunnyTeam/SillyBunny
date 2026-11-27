@@ -18,6 +18,40 @@ import { CONVERSATION_STORE_KEY } from '../../public/scripts/sillybunny-conversa
 const sha256 = str => crypto.createHash('sha256').update(str).digest('hex');
 
 /**
+ * Lists a directory that may not exist. A missing directory holds no references, so it counts as empty.
+ * Any other failure is rethrown, because a reference that cannot be read would make the file that it names look loose.
+ * @param {string} directory Directory to list
+ * @returns {Promise<import('node:fs').Dirent[]>}
+ */
+async function readDirectoryOrEmpty(directory) {
+    try {
+        return await fs.promises.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return [];
+        }
+        throw error;
+    }
+}
+
+/**
+ * Reads a text file that may not exist. A missing file holds no references, so it reads as `null`.
+ * Any other failure is rethrown, for the same reason as in `readDirectoryOrEmpty`.
+ * @param {string} filePath File to read
+ * @returns {Promise<string | null>}
+ */
+async function readTextFileOrNull(filePath) {
+    try {
+        return await fs.promises.readFile(filePath, 'utf-8');
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+}
+
+/**
  * SillyBunny: records NovelAI Precise Reference PNG paths saved in Image Generation or Quick Image Gen settings
  * so Data Maid keeps active references and still flags orphaned files.
  * @param {object} settings Parsed settings.json object
@@ -287,26 +321,22 @@ export class DataMaidService {
 
     /**
      * SillyBunny: reads and parses user settings.json once per report.
+     * A settings file that cannot be read rejects, because the references in it would be missing from the report.
      * @returns {Promise<object | null>}
      */
     async #readSettingsOnce() {
-        const pathToSettings = path.join(this.directories.root, SETTINGS_FILE);
-        if (!fs.existsSync(pathToSettings)) {
+        const settingsContent = await readTextFileOrNull(path.join(this.directories.root, SETTINGS_FILE));
+        if (settingsContent === null) {
             return null;
         }
-        try {
-            const settingsContent = await fs.promises.readFile(pathToSettings, 'utf-8');
-            const parsed = tryParse(settingsContent);
-            return parsed && typeof parsed === 'object' ? parsed : null;
-        } catch (error) {
-            console.error('[Data Maid] Error reading settings file:', error);
-            return null;
-        }
+        const parsed = tryParse(settingsContent);
+        return parsed && typeof parsed === 'object' ? parsed : null;
     }
 
     /**
      * SillyBunny: single-pass streaming scan of all group definitions and .jsonl chat files
      * collecting both image and file references without retaining full chats in memory.
+     * Rejects when any of them cannot be read, so the report never lists a referenced file as loose.
      * @returns {Promise<{ knownImages: Set<string>, knownFiles: Set<string> }>}
      */
     async #collectChatAndGroupReferences() {
@@ -371,10 +401,10 @@ export class DataMaidService {
         };
 
         const scanJsonlFile = async (filePath) => {
+            const stream = fs.createReadStream(filePath, { encoding: 'utf-8' });
+            const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+            let isFirstRecord = true;
             try {
-                const stream = fs.createReadStream(filePath, { encoding: 'utf-8' });
-                const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-                let isFirstRecord = true;
                 for await (const line of rl) {
                     if (!line) {
                         continue;
@@ -392,59 +422,49 @@ export class DataMaidService {
                     recordMessage(record);
                 }
             } catch (error) {
-                console.error(`[Data Maid] Error reading chat file ${filePath}:`, error);
+                // A chat file that vanished after it was listed names nothing any more.
+                if (error?.code !== 'ENOENT') {
+                    throw error;
+                }
             }
         };
 
-        try {
-            const groups = await fs.promises.readdir(this.directories.groups, { withFileTypes: true });
-            for (const file of groups) {
-                if (file.isFile() && path.parse(file.name).ext === '.json') {
-                    try {
-                        const pathToFile = path.join(this.directories.groups, file.name);
-                        const fileContent = await fs.promises.readFile(pathToFile, 'utf-8');
-                        const groupData = tryParse(fileContent);
-                        if (groupData?.chat_metadata) {
-                            console.warn('Found group chat metadata in group definition - this is deprecated behavior.');
-                            recordMetadata(groupData.chat_metadata);
-                        }
-                        if (groupData?.past_metadata && typeof groupData.past_metadata === 'object') {
-                            console.warn('Found group past chat metadata in group definition - this is deprecated behavior.');
-                            for (const pastMeta of Object.values(groupData.past_metadata)) {
-                                recordMetadata(pastMeta);
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`[Data Maid] Error parsing group chat file ${file.name}:`, error);
+        for (const file of await readDirectoryOrEmpty(this.directories.groups)) {
+            if (file.isFile() && path.parse(file.name).ext === '.json') {
+                const fileContent = await readTextFileOrNull(path.join(this.directories.groups, file.name));
+                const groupData = tryParse(fileContent ?? '');
+                if (groupData?.chat_metadata) {
+                    console.warn('Found group chat metadata in group definition - this is deprecated behavior.');
+                    recordMetadata(groupData.chat_metadata);
+                }
+                if (groupData?.past_metadata && typeof groupData.past_metadata === 'object') {
+                    console.warn('Found group past chat metadata in group definition - this is deprecated behavior.');
+                    for (const pastMeta of Object.values(groupData.past_metadata)) {
+                        recordMetadata(pastMeta);
                     }
                 }
             }
+        }
 
-            const groupChats = await fs.promises.readdir(this.directories.groupChats, { withFileTypes: true });
-            for (const file of groupChats) {
-                if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                    await scanJsonlFile(path.join(this.directories.groupChats, file.name));
-                }
+        for (const file of await readDirectoryOrEmpty(this.directories.groupChats)) {
+            if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
+                await scanJsonlFile(path.join(this.directories.groupChats, file.name));
             }
+        }
 
-            const chatDirectories = await fs.promises.readdir(this.directories.chats, { withFileTypes: true });
-            for (const directory of chatDirectories) {
-                if (directory.isDirectory()) {
-                    const chatFiles = await fs.promises.readdir(path.join(this.directories.chats, directory.name), { withFileTypes: true });
-                    for (const file of chatFiles) {
-                        if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
-                            await scanJsonlFile(path.join(this.directories.chats, directory.name, file.name));
-                        }
+        for (const directory of await readDirectoryOrEmpty(this.directories.chats)) {
+            if (directory.isDirectory()) {
+                for (const file of await readDirectoryOrEmpty(path.join(this.directories.chats, directory.name))) {
+                    if (file.isFile() && path.parse(file.name).ext === '.jsonl') {
+                        await scanJsonlFile(path.join(this.directories.chats, directory.name, file.name));
                     }
                 }
             }
+        }
 
-            // SillyBunny: conversation chats live in conversations/<id>/chats, which the two scans above do not read.
-            for (const record of await readConversationChatMessages(this.directories)) {
-                recordMessage(record);
-            }
-        } catch (error) {
-            console.error('[Data Maid] Error parsing chats:', error);
+        // SillyBunny: conversation chats live in conversations/<id>/chats, which the two scans above do not read.
+        for (const record of await readConversationChatMessages(this.directories, { strict: true })) {
+            recordMessage(record);
         }
 
         return { knownImages, knownFiles };

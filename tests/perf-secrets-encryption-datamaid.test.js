@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, jest, test } from '@jest/globals';
+import { afterAll, afterEach, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -183,5 +183,219 @@ describe('Data Maid single-pass scan, Conversation Mode media protection, and mo
         expect(report.files.map(p => path.basename(p))).toEqual(['orphan-file.txt']);
         expect(report.avatarThumbnails.map(p => path.basename(p))).toEqual(['GhostChar.png']);
         expect(report.personaThumbnails.map(p => path.basename(p))).toEqual(['GhostPersona.png']);
+    });
+});
+
+describe('Data Maid reference scan fails closed', () => {
+    const canBlockReads = typeof process.getuid === 'function' && process.getuid() !== 0 && process.platform !== 'win32';
+    const describeWhenReadsCanBeBlocked = canBlockReads ? describe : describe.skip;
+    let tempDir = '';
+    let DataMaidService;
+    let dataMaidRouter;
+    const blockedPaths = [];
+
+    beforeAll(async () => {
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sb-datamaid-closed-'));
+        ({ DataMaidService, router: dataMaidRouter } = await import('../src/endpoints/data-maid.js'));
+    });
+
+    afterEach(() => {
+        for (const blocked of blockedPaths.splice(0)) {
+            fs.chmodSync(blocked, 0o755);
+        }
+    });
+
+    afterAll(() => {
+        if (tempDir) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    /**
+     * A user whose only chat names one image and one file, next to one loose image and one loose file.
+     * @param {string} name Folder of the user under the temp directory
+     */
+    function createUser(name) {
+        const root = path.join(tempDir, name);
+        const directories = { root };
+        for (const [key, relative] of Object.entries(USER_DIRECTORY_TEMPLATE)) {
+            directories[key] = path.join(root, relative);
+            fs.mkdirSync(directories[key], { recursive: true });
+        }
+        directories.backups = path.join(root, 'backups');
+        fs.mkdirSync(directories.backups, { recursive: true });
+
+        fs.mkdirSync(path.join(directories.chats, 'Alice'), { recursive: true });
+        fs.writeFileSync(path.join(directories.characters, 'Alice.png'), 'char');
+        const chatFile = path.join(directories.chats, 'Alice', 'session.jsonl');
+        fs.writeFileSync(chatFile, [
+            JSON.stringify({ user_name: 'User', character_name: 'Alice', chat_metadata: {} }),
+            JSON.stringify({ mes: 'hi', extra: { image: '/user/images/used.png', file: { url: '/user/files/used.txt' } } }),
+        ].join('\n') + '\n');
+        fs.writeFileSync(path.join(directories.userImages, 'used.png'), 'img');
+        fs.writeFileSync(path.join(directories.userImages, 'loose.png'), 'img');
+        fs.writeFileSync(path.join(directories.files, 'used.txt'), 'f');
+        fs.writeFileSync(path.join(directories.files, 'loose.txt'), 'f');
+        return { directories, chatFile };
+    }
+
+    function blockAccess(target) {
+        fs.chmodSync(target, 0o000);
+        blockedPaths.push(target);
+    }
+
+    const baseNames = paths => paths.map(item => path.basename(item));
+
+    test('a missing optional directory counts as empty, so the chat references still protect their files', async () => {
+        const { directories } = createUser('missing-groups');
+        fs.rmSync(directories.groups, { recursive: true, force: true });
+        fs.rmSync(directories.groupChats, { recursive: true, force: true });
+
+        const report = await new DataMaidService('closed-missing', directories).generateReport();
+
+        expect(baseNames(report.images)).toEqual(['loose.png']);
+        expect(baseNames(report.files)).toEqual(['loose.txt']);
+    });
+
+    test('a chat folder removed during the scan counts as empty', async () => {
+        const { directories } = createUser('missing-chats');
+        fs.rmSync(directories.chats, { recursive: true, force: true });
+
+        const report = await new DataMaidService('closed-missing-chats', directories).generateReport();
+
+        expect(baseNames(report.images).sort()).toEqual(['loose.png', 'used.png']);
+    });
+
+    test.each([
+        ['groups', 'groups'],
+        ['groupChats', 'group chats'],
+        ['chats', 'chats'],
+    ])('a %s directory that cannot be listed for a reason other than "missing" rejects the report', async (key) => {
+        const { directories } = createUser(`not-a-directory-${key}`);
+        fs.rmSync(directories[key], { recursive: true, force: true });
+        fs.writeFileSync(directories[key], 'a file where the directory belongs');
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+
+        try {
+            await expect(new DataMaidService(`closed-${key}`, directories).generateReport()).rejects.toMatchObject({ code: 'ENOTDIR' });
+        } finally {
+            consoleSpy.mockRestore();
+        }
+    });
+
+    describeWhenReadsCanBeBlocked('an unreadable path', () => {
+        test('an unreadable chat folder rejects the report', async () => {
+            const { directories } = createUser('blocked-folder');
+            blockAccess(path.join(directories.chats, 'Alice'));
+
+            await expect(new DataMaidService('closed-folder', directories).generateReport()).rejects.toMatchObject({ code: 'EACCES' });
+        });
+
+        test('an unreadable chat file rejects the report', async () => {
+            const { directories, chatFile } = createUser('blocked-chat');
+            blockAccess(chatFile);
+
+            await expect(new DataMaidService('closed-chat', directories).generateReport()).rejects.toMatchObject({ code: 'EACCES' });
+        });
+
+        test('an unreadable group definition rejects the report', async () => {
+            const { directories } = createUser('blocked-group');
+            const groupFile = path.join(directories.groups, 'group.json');
+            fs.writeFileSync(groupFile, JSON.stringify({ id: 'group', chats: [] }));
+            blockAccess(groupFile);
+
+            await expect(new DataMaidService('closed-group', directories).generateReport()).rejects.toMatchObject({ code: 'EACCES' });
+        });
+
+        test('an unreadable conversation chat rejects the report', async () => {
+            const { directories } = createUser('blocked-conversation');
+            const chatsDirectory = path.join(directories.conversations, 'conv_1700000000000_abcdef0123', 'chats');
+            fs.mkdirSync(chatsDirectory, { recursive: true });
+            const conversationChat = path.join(chatsDirectory, 'chat_1700000000000_abcdef0123.jsonl');
+            fs.writeFileSync(conversationChat, JSON.stringify({ extra: { media: [{ url: '/user/images/used.png' }] } }) + '\n');
+            blockAccess(conversationChat);
+
+            await expect(new DataMaidService('closed-conversation', directories).generateReport()).rejects.toMatchObject({ code: 'EACCES' });
+        });
+
+        test('an unreadable settings.json rejects the report', async () => {
+            const { directories } = createUser('blocked-settings');
+            const settingsPath = path.join(directories.root, SETTINGS_FILE);
+            fs.writeFileSync(settingsPath, JSON.stringify({ extension_settings: { attachments: [{ url: 'user/files/used.txt' }] } }));
+            blockAccess(settingsPath);
+
+            await expect(new DataMaidService('closed-settings', directories).generateReport()).rejects.toMatchObject({ code: 'EACCES' });
+        });
+    });
+
+    describe('routes', () => {
+        const handle = 'closed-routes';
+        /** @type {import('node:http').Server} */
+        let server;
+        let baseUrl = '';
+        let user;
+
+        beforeAll(async () => {
+            user = createUser('routes');
+            const { default: express } = await import('express');
+            const app = express();
+            app.use(express.json());
+            app.use((req, _res, next) => {
+                req.user = { profile: { handle }, directories: user.directories };
+                next();
+            });
+            app.use('/api/data-maid', dataMaidRouter);
+            await new Promise(resolve => {
+                server = app.listen(0, '127.0.0.1', resolve);
+            });
+            baseUrl = `http://127.0.0.1:${server.address().port}/api/data-maid`;
+        });
+
+        afterAll(async () => {
+            server?.closeAllConnections?.();
+            await new Promise(resolve => server.close(resolve));
+        });
+
+        const post = (route, body) => fetch(`${baseUrl}/${route}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body ?? {}),
+        });
+
+        test('answers a failed scan with an error, no list of loose files and no deletable token', async () => {
+            const groupsBackup = `${user.directories.groups}.moved`;
+            fs.renameSync(user.directories.groups, groupsBackup);
+            fs.writeFileSync(user.directories.groups, 'a file where the directory belongs');
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+            try {
+                const response = await post('report');
+                const text = await response.text();
+                expect(response.status).toBe(500);
+                expect(text).not.toMatch(/used|loose|token|report/i);
+                expect([...DataMaidService.TOKENS.values()].some(entry => entry.handle === handle)).toBe(false);
+
+                // A token that the failed scan never made must not delete anything.
+                const deleteResponse = await post('delete', { token: 'a'.repeat(64), hashes: ['0'.repeat(64)] });
+                expect(deleteResponse.status).toBe(403);
+                expect(fs.existsSync(path.join(user.directories.userImages, 'used.png'))).toBe(true);
+                expect(fs.existsSync(path.join(user.directories.files, 'used.txt'))).toBe(true);
+            } finally {
+                consoleSpy.mockRestore();
+                fs.rmSync(user.directories.groups);
+                fs.renameSync(groupsBackup, user.directories.groups);
+            }
+        });
+
+        test('keeps the files that a chat names out of the report when the optional groups folder is missing', async () => {
+            fs.rmSync(user.directories.groups, { recursive: true, force: true });
+            const response = await post('report');
+            expect(response.status).toBe(200);
+            const { report, token } = await response.json();
+            fs.mkdirSync(user.directories.groups, { recursive: true });
+
+            expect(report.images.map(item => item.name)).toEqual(['loose.png']);
+            expect(report.files.map(item => item.name)).toEqual(['loose.txt']);
+            expect(typeof token).toBe('string');
+        });
     });
 });

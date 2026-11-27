@@ -50,14 +50,18 @@ async function readChatRecords(filePath) {
 }
 
 /**
- * Reads every chat file of every conversation of a user. Never throws: Data Maid reads the roleplay chats and these in
- * one pass, and a failure here would make it forget the files that the roleplay chats name. A chat that cannot be read
- * is logged and left out, as Data Maid does for a roleplay chat.
+ * Reads every chat file of every conversation of a user.
+ *
+ * By default this never throws: a chat that cannot be read is logged and left out, as Data Maid does for a roleplay
+ * chat. A caller that lists loose files from the result passes `strict`, because a chat that is left out makes the
+ * files that only it names look loose. A read failure then rejects. A folder or file that does not exist, and a chat
+ * that the path check refuses, count as empty.
  * @param {{ conversations?: string }} directories The user's directories.
+ * @param {{ strict?: boolean }} [options] `strict` rethrows a read failure instead of logging it.
  * @returns {Promise<object[]>} The header and the messages of every chat file, one after the other. Empty for a user
  * without a conversations folder.
  */
-export async function readConversationChatMessages(directories) {
+export async function readConversationChatMessages(directories, options = {}) {
     const root = directories?.conversations;
     const records = [];
     if (typeof root !== 'string' || root === '') {
@@ -78,13 +82,21 @@ export async function readConversationChatMessages(directories) {
                     // The path check refuses a `chats` folder that is a link to a place outside the conversations folder.
                     records.push(...await readChatRecords(getChatFilePath(directories, folder.name, chatId)));
                 } catch (error) {
-                    if (!(error instanceof ConversationPathError)) {
+                    if (error instanceof ConversationPathError) {
+                        continue;
+                    }
+                    if (!options.strict) {
                         console.error(`[Data Maid] Error reading conversation chat ${folder.name}/${file.name}:`, error);
+                    } else if (error?.code !== 'ENOENT') {
+                        throw error;
                     }
                 }
             }
         }
     } catch (error) {
+        if (options.strict) {
+            throw error;
+        }
         console.error('[Data Maid] Error listing the conversation chats:', error);
     }
     return records;
