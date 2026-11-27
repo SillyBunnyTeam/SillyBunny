@@ -954,6 +954,20 @@ This is the largest class by a wide margin.
   - **Known limit:** a Text Completion, Kobold or Novel check that a newer check supersedes catches its abort, sets `no_connection` and calls `resultCheckStatus()` (`getStatusTextgen` in `public/scripts/textgen-settings.js`, `getStatusKobold`, `getStatusNovel`), which clears the pending state while the newer check is still in flight. The state then reads `offline`, so the button can appear and vanish. It takes a change of type or URL, or a second Connect, during an open check; it never happens at boot. It is not fixed.
   - **Tests:** `tests/unit/sillybunny-connection-state.test.js` (the rule, the attribute writes, no listener), `tests/home-offline-link.e2e.js` (a held status request: no frame shows the button while the check is open, it shows after a failed check, never when the check connects, and a user with no key sees it from the first frame that has it; the Horde start; Cancel; a check superseded by a change of `#main_api`; the 44 px touch target).
 
+### Provider backend contracts
+
+- **Breaks:** changes to one Chat Completion source or Text Completion type can break request shape, auth headers, streaming relay, error reporting or client-abort propagation on another provider, and newly added constants can ship without tests.
+- **Files:** `src/constants.js`, `src/endpoints/backends/chat-completions.js`, `src/endpoints/backends/text-completions.js`, `src/endpoints/backends/kobold.js`, `src/endpoints/novelai.js`, `src/endpoints/horde.js`, `src/additional-headers.js`, `src/util.js`.
+- **Guards:**
+  - `tests/provider-contract-chat-completions.test.js` asserts 100% coverage of `CHAT_COMPLETION_SOURCES` (all 30 entries: 29 active sources plus the disabled `cometapi` contract) and checks request shape, auth placement, non-streamed reply, chunked SSE relay, upstream errors (401, 429, 500, malformed non-JSON) and client-abort propagation (including KoboldCpp `/api/extra/abort` and pre-header disconnects) against a local loopback fake HTTP server.
+  - `tests/provider-contract-text-completions.test.js` asserts 100% coverage of `TEXTGEN_TYPES` (all 15 entries) routed natively via `api_server` with a fail-closed loopback-only `node-fetch` guard, checking `/generate` request shape/key whitelists, chunked streaming, upstream errors, client abort (including KoboldCpp `/api/extra/abort`) and `/status` discovery.
+  - `tests/provider-contract-standalone-backends.test.js` covers the remaining completion routers: KoboldAI native (`/api/backends/kobold/generate`), NovelAI (`/api/novelai/generate` on both `api.novelai.net` and `text.novelai.net`) and AI Horde (`/api/horde/generate-text`, `/task-status`, `/cancel-task`).
+  - `tests/util/provider-contract-harness.js` sets `SILLYTAVERN_PERFORMANCE_STREAMING_ENABLECONNECTIONPOLLING=false` during tests so `pollSocketConnection()` does not spawn `netstat` on Windows/macOS; native socket close events verify abort propagation without open handles.
+- **Open:**
+  - `parseOllamaStream()` (`src/endpoints/backends/text-completions.js:32-129`, called at line 472) does not check `jsonStream.ok` or copy the upstream HTTP status, so streaming 401/429/500/non-JSON errors from Ollama reach the client as HTTP 200 ending in `data: [DONE]`. It also parses `partialData` with `JSON.parse()` without splitting on newlines, so multiple NDJSON lines arriving in one TCP chunk are silently dropped.
+  - `forwardResponsesApiStream()` (`src/endpoints/backends/chat-completions.js:2674-2676`), `forwardInteractionStream()` (`chat-completions.js:3211-3213`) and non-streaming `sendClaudeRequest()` (`chat-completions.js:544`) remap upstream 401 to 400 without setting `X-Upstream-Status: 401`, unlike `forwardFetchResponse()` (`src/util.js:848-852`).
+  - `POST /api/horde/generate-text` (`src/endpoints/horde.js:183-212`) does not wire `abortOnRequestClose()` or pass a `signal` to `fetch()`, so a client disconnect before AI Horde answers does not abort the upstream submission.
+
 ### Connection profiles and Custom endpoint profiles
 
 - **Breaks:** a connection profile or a Custom endpoint profile selects the wrong endpoint, key or Additional Parameters.
