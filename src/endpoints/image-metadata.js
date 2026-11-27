@@ -223,6 +223,15 @@ async function getAverageColorWithJimp(buffer) {
 }
 
 /**
+ * Gets the time at which a file counts as added: its creation time, or its modification time where the file system has none.
+ * @param {import('node:fs').Stats} stats Stats of the file
+ * @returns {number} Milliseconds since the epoch
+ */
+function getAddedTimestamp(stats) {
+    return Math.floor(stats.birthtimeMs || stats.mtimeMs);
+}
+
+/**
  * Generates metadata for a single image file.
  * @param {string} filePath - The full path to the image file.
  * @param {ThumbnailType} type - The thumbnail type for resolution calculation.
@@ -261,8 +270,7 @@ export async function generateImageMetadata(filePath, type) {
 
     let addedTimestamp;
     try {
-        const stats = await fs.stat(filePath);
-        addedTimestamp = Math.floor(stats.birthtimeMs || stats.mtimeMs);
+        addedTimestamp = getAddedTimestamp(await fs.stat(filePath));
     } catch {
         addedTimestamp = Date.now();
     }
@@ -430,6 +438,62 @@ export async function getOrGenerateMetadataBatch(userDataRoot, relativePaths, ty
     }
 
     return { results, generatedCount: generated.size };
+}
+
+/**
+ * Records the added time of every listed image that has none in the index, so that a client that sorts by it gets
+ * it in the same load. The time comes from one `stat`, so this does not decode the image. An image without an entry
+ * gets a stub with no `mtime`, which stays stale for `getOrGenerateMetadataBatch`, so the hash and the dominant color
+ * are still generated in full later.
+ * @param {string} userDataRoot - Path to the user data directory root
+ * @param {string[]} relativePaths - Relative paths from userDataRoot
+ * @returns {Promise<number>} How many entries received a time
+ */
+export async function ensureAddedTimestamps(userDataRoot, relativePaths) {
+    const index = await readMetadataIndexCached(userDataRoot);
+    const toPosix = relativePath => relativePath.replaceAll(path.sep, path.posix.sep);
+    const missing = relativePaths.filter(relativePath => typeof index.images[toPosix(relativePath)]?.addedTimestamp !== 'number');
+    if (missing.length === 0) {
+        return 0;
+    }
+
+    /** @type {Map<string, number>} */
+    const timestamps = new Map();
+    let nextIndex = 0;
+    const worker = async () => {
+        while (nextIndex < missing.length) {
+            const relativePath = missing[nextIndex++];
+            try {
+                timestamps.set(toPosix(relativePath), getAddedTimestamp(await fs.stat(path.join(userDataRoot, relativePath))));
+            } catch {
+                // The file is gone, so there is nothing to sort.
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(ANIMATION_SCAN_CONCURRENCY, missing.length) }, worker));
+    if (timestamps.size === 0) {
+        return 0;
+    }
+
+    // Merge into a fresh read, so folder changes saved while the files were read are kept.
+    const latestIndex = await readMetadataIndex(userDataRoot);
+    let changed = 0;
+    for (const [posixPath, addedTimestamp] of timestamps) {
+        const entry = latestIndex.images[posixPath];
+        if (typeof entry?.addedTimestamp === 'number') {
+            continue;
+        }
+        if (entry) {
+            entry.addedTimestamp = addedTimestamp;
+        } else {
+            latestIndex.images[posixPath] = { folderIds: [], addedTimestamp };
+        }
+        changed++;
+    }
+    if (changed > 0) {
+        await writeMetadataIndex(userDataRoot, latestIndex);
+    }
+    return changed;
 }
 
 /** @type {Map<string, {pending: Map<string, ThumbnailType>, running: Promise<void>|null}>} */

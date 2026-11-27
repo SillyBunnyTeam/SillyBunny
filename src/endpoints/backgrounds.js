@@ -6,7 +6,7 @@ import mime from 'mime-types';
 import sanitize from 'sanitize-filename';
 
 import { invalidateThumbnail } from './thumbnails.js';
-import { thumbnailDimensions, readMetadataIndexCached, renameMetadata, removeMetadata, getOrGenerateMetadataBatch, getAnimationFlagsBatch, queueMetadataGeneration } from './image-metadata.js';
+import { thumbnailDimensions, readMetadataIndexCached, renameMetadata, removeMetadata, getOrGenerateMetadataBatch, getAnimationFlagsBatch, queueMetadataGeneration, ensureAddedTimestamps } from './image-metadata.js';
 import { getImages } from '../util.js';
 import { MEDIA_REQUEST_TYPE } from '../constants.js';
 import { getFileNameValidationFunction } from '../middleware/validateFileName.js';
@@ -22,9 +22,11 @@ router.post('/all', async function (request, response) {
         const imageFiles = files.filter(file => String(mime.lookup(file) || '').startsWith('image/'));
         const relativePaths = imageFiles.map(file => path.join('backgrounds', file));
         // SillyBunny: the list only needs isAnimated, which a header sniff answers without decoding.
-        // Missing or stale metadata (hash, dominant color) is generated after the response is sent.
+        // Missing or stale metadata (hash, dominant color) is generated after the response is sent. The added time
+        // comes from one stat and is written first, because the client sorts by it as soon as it has the list.
         const { animated: animatedMap, stalePaths } = await getAnimationFlagsBatch(request.user.directories.root, relativePaths, 'bg');
         if (stalePaths.length > 0) {
+            await ensureAddedTimestamps(request.user.directories.root, stalePaths);
             queueMetadataGeneration(request.user.directories.root, stalePaths, 'bg');
         }
 

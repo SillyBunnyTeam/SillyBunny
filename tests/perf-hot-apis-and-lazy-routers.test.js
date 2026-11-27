@@ -107,6 +107,7 @@ const {
     setThumbnailRuntimeSettings,
 } = await import('../src/endpoints/thumbnails.js');
 const {
+    ensureAddedTimestamps,
     getThumbnailDimensions,
     getThumbnailMobileDimensions,
     isAnimatedImageHeader,
@@ -114,6 +115,7 @@ const {
     readIsAnimatedFromHeader,
     readMetadataIndex,
     readMetadataIndexCached,
+    getThumbnailResolution,
     setThumbnailDimensions,
     setThumbnailMobileDimensions,
     writeMetadataIndex,
@@ -1706,6 +1708,93 @@ describe('PR6 hot APIs media & extension optimizations', () => {
             const cached4 = await readMetadataIndexCached(tempRoot);
             expect(cached4.folders).toEqual([{ id: 'ext', name: 'External', thumbnailFile: '' }]);
             expect(parseSpy).toHaveBeenCalledTimes(3);
+        });
+
+        describe('the added time that the Newest and Oldest sort reads', () => {
+            const postBackgrounds = () => fetch(`${baseUrl}/api/backgrounds/all`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+            });
+            const addedTimestampOf = file => {
+                const stats = fs.statSync(path.join(directories.backgrounds, file));
+                return Math.floor(stats.birthtimeMs || stats.mtimeMs);
+            };
+
+            test('is in the index when the list is answered, for files that have no metadata yet', async () => {
+                fs.writeFileSync(path.join(directories.backgrounds, 'first.png'), STATIC_PNG);
+                fs.writeFileSync(path.join(directories.backgrounds, 'second.png'), STATIC_PNG);
+
+                const response = await postBackgrounds();
+                expect(response.status).toBe(200);
+
+                // The queue has not been drained here: this is what the client's next request sees.
+                const { images } = await readMetadataIndexCached(tempRoot);
+                expect(images['backgrounds/first.png'].addedTimestamp).toBe(addedTimestampOf('first.png'));
+                expect(images['backgrounds/second.png'].addedTimestamp).toBe(addedTimestampOf('second.png'));
+            });
+
+            test('leaves the hash and the dominant color to the queue, which keeps the time', async () => {
+                fs.writeFileSync(path.join(directories.backgrounds, 'first.png'), STATIC_PNG);
+
+                await postBackgrounds();
+                await queueMetadataGeneration(tempRoot, [], 'bg');
+
+                const entry = (await readMetadataIndexCached(tempRoot)).images['backgrounds/first.png'];
+                expect(typeof entry.hash).toBe('string');
+                expect(typeof entry.dominantColor).toBe('string');
+                expect(entry.addedTimestamp).toBe(addedTimestampOf('first.png'));
+            });
+
+            test('is added to a folder stub without losing its folders, and a complete entry is not touched', async () => {
+                fs.writeFileSync(path.join(directories.backgrounds, 'stub.png'), STATIC_PNG);
+                fs.writeFileSync(path.join(directories.backgrounds, 'known.png'), STATIC_PNG);
+                const knownMtime = fs.statSync(path.join(directories.backgrounds, 'known.png')).mtimeMs;
+                await writeMetadataIndex(tempRoot, {
+                    version: 1,
+                    folders: [{ id: 'f1', name: 'Nature', thumbnailFile: '' }],
+                    images: {
+                        'backgrounds/stub.png': { folderIds: ['f1'] },
+                        'backgrounds/known.png': {
+                            hash: 'h', aspectRatio: 1, isAnimated: false, dominantColor: '#101010', folderIds: [],
+                            addedTimestamp: 12345, mtime: knownMtime, thumbnailResolution: getThumbnailResolution('bg'),
+                        },
+                    },
+                });
+
+                await postBackgrounds();
+
+                const { images } = await readMetadataIndexCached(tempRoot);
+                expect(images['backgrounds/stub.png'].folderIds).toEqual(['f1']);
+                expect(images['backgrounds/stub.png'].addedTimestamp).toBe(addedTimestampOf('stub.png'));
+                expect(images['backgrounds/known.png'].addedTimestamp).toBe(12345);
+                expect(images['backgrounds/known.png'].dominantColor).toBe('#101010');
+            });
+
+            test('does not write the index again for files that already have a time', async () => {
+                fs.writeFileSync(path.join(directories.backgrounds, 'first.png'), STATIC_PNG);
+                await postBackgrounds();
+                await queueMetadataGeneration(tempRoot, [], 'bg');
+
+                const indexPath = path.join(tempRoot, 'image-metadata.json');
+                const before = fs.statSync(indexPath, { bigint: true });
+                await postBackgrounds();
+                await queueMetadataGeneration(tempRoot, [], 'bg');
+                const after = fs.statSync(indexPath, { bigint: true });
+
+                expect(after.mtimeNs).toBe(before.mtimeNs);
+                expect(after.ino).toBe(before.ino);
+            });
+
+            test('ensureAddedTimestamps skips a path whose file is missing and keeps going', async () => {
+                fs.writeFileSync(path.join(directories.backgrounds, 'first.png'), STATIC_PNG);
+
+                await ensureAddedTimestamps(tempRoot, ['backgrounds/gone.png', 'backgrounds/first.png']);
+
+                const { images } = await readMetadataIndexCached(tempRoot);
+                expect(images['backgrounds/gone.png']).toBeUndefined();
+                expect(images['backgrounds/first.png'].addedTimestamp).toBe(addedTimestampOf('first.png'));
+            });
         });
 
         test('detects APNG, GIF, animated WebP, and static formats from header bytes alone', async () => {
