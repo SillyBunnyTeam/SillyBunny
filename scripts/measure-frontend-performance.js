@@ -341,36 +341,47 @@ export async function measureStreamingWithReasoning(page, fixture = createStream
         const context = browserGlobal.SillyTavern?.getContext?.();
         const chatElement = browserGlobal.document?.querySelector('#chat');
 
-        if (!context || !Array.isArray(context.chat) || typeof context.messageFormatting !== 'function') {
+        if (!context || !chatElement || !Array.isArray(context.chat) || typeof context.messageFormatting !== 'function') {
             return { available: false, reason: 'chat-formatting-unavailable' };
         }
 
+        // `updateReasoningUI` is an ES module export and is not a window global. The app context exposes the same
+        // function. A missing function must stop the measurement: a loop that skips it would record the counters of
+        // a run that never touched the reasoning UI, and those would pass any budget.
+        const { updateReasoningUI } = context;
+        if (typeof updateReasoningUI !== 'function') {
+            throw new Error('The app context does not expose updateReasoningUI, so the reasoning UI cannot be driven.');
+        }
+
+        // The message element comes from the app's own template so that the markup the reasoning UI reads and writes
+        // is the markup of a real message.
+        const template = browserGlobal.document.querySelector('#message_template .mes');
+        if (!template) {
+            throw new Error('The #message_template .mes element is missing, so no message element can be built.');
+        }
+        const host = template.cloneNode(true);
+        const target = host.querySelector('.mes_text');
+        const reasoningContent = host.querySelector('.mes_reasoning');
+        for (const selector of ['.mes_text', '.mes_reasoning_details', '.mes_reasoning', '.mes_reasoning_header_title', '.mes_edit_add_reasoning']) {
+            if (!host.querySelector(selector)) {
+                throw new Error(`The message template has no ${selector} element, which the reasoning UI needs.`);
+            }
+        }
+
         const previousChat = context.chat.slice();
-        const host = browserGlobal.document.createElement('div');
-        const reasoningDetails = browserGlobal.document.createElement('details');
-        const reasoningSummary = browserGlobal.document.createElement('summary');
-        const reasoningContent = browserGlobal.document.createElement('div');
-        const target = browserGlobal.document.createElement('div');
         const messageId = 1;
         const message = {
             name: 'Seraphina',
             is_user: false,
             is_system: false,
             mes: '',
+            gen_started: new Date().toISOString(),
             extra: { reasoning: reasoningText, reasoning_duration: 1200 },
         };
 
-        host.className = 'mes';
         host.setAttribute('mesid', String(messageId));
-        reasoningDetails.className = 'mes_reasoning_details';
-        reasoningSummary.className = 'mes_reasoning_header';
-        reasoningSummary.textContent = 'Thought for 1s';
-        reasoningContent.className = 'mes_reasoning';
-        reasoningContent.textContent = reasoningText;
-        reasoningDetails.append(reasoningSummary, reasoningContent);
-        target.className = 'mes_text';
-        host.append(reasoningDetails, target);
 
+        let reasoningUpdateCount = 0;
         let getBoundingClientRectCount = 0;
         let querySelectorAllCount = 0;
         const originalGbcr = browserGlobal.Element?.prototype?.getBoundingClientRect;
@@ -405,7 +416,7 @@ export async function measureStreamingWithReasoning(page, fixture = createStream
                 mes: 'seed prompt',
                 extra: {},
             }, message);
-            (chatElement ?? browserGlobal.document.body).appendChild(host);
+            chatElement.appendChild(host);
 
             let maxStepMs = 0;
             const start = browserGlobal.performance.now();
@@ -413,12 +424,9 @@ export async function measureStreamingWithReasoning(page, fixture = createStream
                 const stepStart = browserGlobal.performance.now();
                 message.mes = step;
                 target.innerHTML = context.messageFormatting(step, message.name, message.is_system, message.is_user, messageId, {}, false);
-                if (typeof browserGlobal.updateReasoningUI === 'function') {
-                    browserGlobal.updateReasoningUI(messageId);
-                }
-                if (chatElement) {
-                    chatElement.scrollTop = chatElement.scrollHeight;
-                }
+                updateReasoningUI(messageId);
+                reasoningUpdateCount++;
+                chatElement.scrollTop = chatElement.scrollHeight;
                 await new Promise(resolve => browserGlobal.requestAnimationFrame(resolve));
                 maxStepMs = Math.max(maxStepMs, browserGlobal.performance.now() - stepStart);
             }
@@ -428,6 +436,8 @@ export async function measureStreamingWithReasoning(page, fixture = createStream
                 available: true,
                 stepCount,
                 reasoningBytes: new TextEncoder().encode(reasoningText).length,
+                reasoningUpdateCount,
+                reasoningRenderedChars: reasoningContent.textContent.length,
                 totalMs: +totalMs.toFixed(2),
                 averageStepMs: +(totalMs / Math.max(1, steps.length)).toFixed(2),
                 maxStepMs: +maxStepMs.toFixed(2),

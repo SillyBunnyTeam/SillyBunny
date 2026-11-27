@@ -20,6 +20,11 @@ const coreAssetPaths = [
 const STARTUP_RESOURCE_LIMIT = 854;
 const STARTUP_JS_BYTE_LIMIT = 13 * 1024 * 1024;
 
+// `querySelectorAll` calls over a 20-step stream that follows a large reasoning block. Page timers and observers run
+// during the stream, so the count is page-wide. The limit lies between the count of a build that re-queries the
+// message DOM on every streamed update and the count of a build that does not, with room for run-to-run variation.
+const STREAMING_QUERY_SELECTOR_ALL_LIMIT = 800;
+
 // The first start of a day for an admin account asks the server for the install type and then saves the notice stamp
 // to the account settings (`sillybunny-install-notice.js`), so a start that runs before any other start of that
 // account makes two more requests (`/api/server-admin/install-type`, `/api/settings/save`). Which test sees them
@@ -192,9 +197,14 @@ test.describe('frontend performance smoke', () => {
         try {
             const fixture = createStreamingReasoningFixture({ stepCount: 20, reasoningRepeat: 320, responseRepeat: 24 });
             const stream = await measureStreamingWithReasoning(page, fixture, { cdpSession });
-            expect(stream.available).toBe(true);
+            expect(stream.available, `streaming measurement unavailable: ${stream.reason}`).toBe(true);
             expect(stream.reasoningBytes).toBeGreaterThan(8000);
+            // The reasoning UI must have run on every step and rendered the reasoning, or the counters below measure
+            // a loop that never reached the code under guard.
+            expect(stream.reasoningUpdateCount).toBe(fixture.stepCount);
+            expect(stream.reasoningRenderedChars).toBeGreaterThan(8000);
             expect(stream.getBoundingClientRectCount).toBeLessThanOrEqual(250);
+            expect(stream.querySelectorAllCount).toBeLessThanOrEqual(STREAMING_QUERY_SELECTOR_ALL_LIMIT);
             expect(stream.cdp?.recalcStyleCount ?? 0).toBeLessThanOrEqual(120);
             expect(pageErrors).toEqual([]);
         } finally {

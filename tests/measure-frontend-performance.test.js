@@ -834,7 +834,7 @@ describe('runtime regression measurement helpers and budget preset', () => {
                     cold: {
                         metrics: {
                             resourceCount: 500,
-                            chatRender: { streamingReasoning: { getBoundingClientRectCount: 40, cdp: { recalcStyleCount: 30 } } },
+                            chatRender: { streamingReasoning: { getBoundingClientRectCount: 40, querySelectorAllCount: 300, cdp: { recalcStyleCount: 30 } } },
                             settingsInteractions: { idleBehindSettings: { runningAnimations: 0, mutationCallbacks: 1, cdp: { recalcStyleCount: 0, layoutCount: 0 } } },
                         },
                     },
@@ -843,7 +843,7 @@ describe('runtime regression measurement helpers and budget preset', () => {
                     cold: {
                         metrics: {
                             resourceCount: 500,
-                            chatRender: { streamingReasoning: { getBoundingClientRectCount: 40, cdp: { recalcStyleCount: 30 } } },
+                            chatRender: { streamingReasoning: { getBoundingClientRectCount: 40, querySelectorAllCount: 300, cdp: { recalcStyleCount: 30 } } },
                             settingsInteractions: { idleBehindSettings: { runningAnimations: 0, mutationCallbacks: 1, cdp: { recalcStyleCount: 0, layoutCount: 0 } } },
                         },
                     },
