@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,7 +23,8 @@ const ROOT_DIRECTORY_KEYS = Object.freeze({
     conversation: 'conversationsDirectory',
 });
 const RECOVERY_STATE_FILE_REGEXP = /^([a-f0-9]{64})\.(?:latest\.jsonl|deleted|corrupt-\d+\.jsonl)$/;
-const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+// A BOM in the middle of the file is not a BOM: the decoder keeps it, so that JSON.parse refuses the line. parseChatJsonl() strips the one at the start of the file.
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const rekeyTransactions = new WeakMap();
 
 function acquireRecoveryStateLock(target) {
@@ -140,8 +142,13 @@ function toBuffer(data) {
 
 export function parseChatJsonl(data, { collectRecords = true } = {}) {
     const buffer = toBuffer(data);
+    // Invalid UTF-8 anywhere in the file is reported before a JSON error on an earlier line, so the reason does not depend on where the bad bytes are.
+    if (!isUtf8(buffer)) {
+        return corruptResult('invalid-utf8', data);
+    }
     const records = collectRecords ? [] : null;
     let recordCount = 0;
+    let headerRecognized = false;
     let lineNumber = 0;
     let offset = 0;
 
@@ -156,7 +163,11 @@ export function parseChatJsonl(data, { collectRecords = true } = {}) {
             try {
                 line = utf8Decoder.decode(buffer.subarray(offset, end));
             } catch {
+                // Stays fatal so that a disagreement with isUtf8() cannot turn bad bytes into U+FFFD.
                 return corruptResult('invalid-utf8', data);
+            }
+            if (lineNumber === 1 && line.charCodeAt(0) === 0xfeff) {
+                line = line.slice(1);
             }
 
             if (line.trim() !== '') {
@@ -170,9 +181,8 @@ export function parseChatJsonl(data, { collectRecords = true } = {}) {
                     return corruptResult('non-object', data, { line: lineNumber });
                 }
                 if (recordCount === 0) {
-                    if (!isRecognizedChatHeader(record)) {
-                        return corruptResult('missing-chat-metadata', data);
-                    }
+                    // A JSON error on a later line outranks an unrecognised header, so the verdict waits for the end of the file.
+                    headerRecognized = isRecognizedChatHeader(record);
                     if (collectRecords && !isPlainObject(record.chat_metadata)) {
                         record = { ...record, chat_metadata: {} };
                     }
@@ -192,6 +202,9 @@ export function parseChatJsonl(data, { collectRecords = true } = {}) {
 
     if (recordCount === 0) {
         return corruptResult('empty', data);
+    }
+    if (!headerRecognized) {
+        return corruptResult('missing-chat-metadata', data);
     }
 
     return {
