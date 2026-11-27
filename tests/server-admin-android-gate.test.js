@@ -10,6 +10,7 @@ const LOCAL_BRANCH = 'runtime/sillybunny-server';
 const TRACKING_BRANCH = 'origin/staging';
 const UPSTREAM = '0123456789abcdef0123456789abcdef01234567';
 const RELEASE_UPSTREAM = '2222222222222222222222222222222222222222';
+const LOCAL_BRANCH_COMMIT = '3333333333333333333333333333333333333333';
 const MOVED_UPSTREAM = 'fedcba9876543210fedcba9876543210fedcba98';
 const ENV_KEYS = [
     'SILLYBUNNY_ANDROID_APP',
@@ -36,8 +37,18 @@ const branchSwitchPaths = [
             [['branch', '--set-upstream-to=origin/release', LOCAL_BRANCH]],
         ],
         checkoutCalls: [],
+        apkCheckoutCalls: [],
     },
-    { branch: 'staging', rawCalls: [], apkRawCalls: [], checkoutCalls: [['release']] },
+    {
+        branch: 'staging',
+        rawCalls: [],
+        apkRawCalls: [
+            [['checkout', '-b', 'release', RELEASE_UPSTREAM]],
+            [['branch', '--set-upstream-to=origin/release', 'release']],
+        ],
+        checkoutCalls: [['release']],
+        apkCheckoutCalls: [],
+    },
 ];
 let fixture;
 let configDirectory;
@@ -101,6 +112,9 @@ function createRepository({ branch = LOCAL_BRANCH, dirty = false, required = '2\
             if (args[0] === '--short') {
                 return resolveCommit(args[1]).slice(0, 7);
             }
+            if (args[0] === '--verify') {
+                return resolveCommit(args[1]);
+            }
             if (args.length === 1) {
                 return resolveCommit(args[0]);
             }
@@ -135,8 +149,13 @@ function createRepository({ branch = LOCAL_BRANCH, dirty = false, required = '2\
                     state.behind = state.commit === resolveCommit(state.trackingBranch) ? 0 : 1;
                     return '';
                 case 'checkout':
-                    state.branch = args[2];
-                    state.commit = resolveCommit(args[3]);
+                    if (args[1] === '--detach') {
+                        state.branch = 'HEAD';
+                        state.commit = resolveCommit(args[2]);
+                    } else {
+                        state.branch = args[2];
+                        state.commit = resolveCommit(args[3]);
+                    }
                     return '';
                 case 'branch':
                     state.trackingBranch = args[1].replace('--set-upstream-to=', '');
@@ -543,7 +562,7 @@ describe('server admin Android branch-switch gate', () => {
         expect(response.listenerCount('finish')).toBe(0);
     });
 
-    test.each(branchSwitchPaths)('/switch-branch continues its allowed checkout path from $branch', async ({ branch, apkRawCalls, checkoutCalls }) => {
+    test.each(branchSwitchPaths)('/switch-branch continues its allowed checkout path from $branch', async ({ branch, apkRawCalls, apkCheckoutCalls }) => {
         fixture = createRepository({ branch, dirty: true, required: '1\n' });
 
         const response = await invoke('/switch-branch', { branch: 'release', autoStash: true });
@@ -552,7 +571,7 @@ describe('server admin Android branch-switch gate', () => {
         expect(response.body).toMatchObject({ ok: true, branch: 'release', stashed: true, stashRestored: true, restarting: true });
         const { minimumReadOrder } = expectPinnedMinimumRead('origin/release', RELEASE_UPSTREAM);
         expect(fixture.git.raw.mock.calls).toEqual(apkRawCalls);
-        expect(fixture.git.checkout.mock.calls).toEqual(checkoutCalls);
+        expect(fixture.git.checkout.mock.calls).toEqual(apkCheckoutCalls);
         const checkoutOrder = fixture.git.raw.mock.invocationCallOrder[0] ?? fixture.git.checkout.mock.invocationCallOrder[0];
         expect(minimumReadOrder).toBeLessThan(checkoutOrder);
         expect(fixture.state.commit).toBe(RELEASE_UPSTREAM);
@@ -688,17 +707,118 @@ describe('server admin Android branch-switch gate', () => {
         expect(response.body).toEqual({
             error: 'TODO(copy)', code: 'android_app_update_required', required: null, installed: 1, reason: 'missing', branch: 'release', stashed: true, stashPopWarning: null,
         });
-        expect(fixture.git.revparse.mock.calls).toEqual([[['--abbrev-ref', 'HEAD']], [['origin/release']]]);
-        expect(fixture.git.revparse.mock.invocationCallOrder[1]).toBeGreaterThan(fixture.git.branch.mock.invocationCallOrder[0]);
+        const expectedRevparse = branch === LOCAL_BRANCH
+            ? [[['--abbrev-ref', 'HEAD']], [['origin/release']]]
+            : [[['--abbrev-ref', 'HEAD']], [['--verify', 'refs/heads/release']], [['origin/release']]];
+        expect(fixture.git.revparse.mock.calls).toEqual(expectedRevparse);
+        const resolutionOrder = fixture.git.revparse.mock.invocationCallOrder.at(-1);
+        expect(resolutionOrder).toBeGreaterThan(fixture.git.branch.mock.invocationCallOrder[0]);
         expect(fixture.git.show).not.toHaveBeenCalled();
         expect(fs.readFileSync(statusPath, 'utf8')).toBe(`{"required":null,"installed":1,"reason":"missing","upstream":null,"branch":"${branch}"}\n`);
         expectNoCheckoutOrMerge();
         expectStashRoundTrip();
-        expect(fixture.git.stash.mock.invocationCallOrder[1]).toBeGreaterThan(fixture.git.revparse.mock.invocationCallOrder[1]);
+        expect(fixture.git.stash.mock.invocationCallOrder[1]).toBeGreaterThan(resolutionOrder);
         expect(fixture.state.branch).toBe(branch);
         expect(fixture.state.dirty).toBe(true);
         expect(fixture.state.stashed).toBe(false);
         expect(response.listenerCount('finish')).toBe(0);
+    });
+
+    test.each([
+        { currentBranch: 'staging', targetBranch: 'release', remoteRef: 'origin/release', localRequired: '2\n', expectedReason: 'newer', expectedRequired: 2 },
+        { currentBranch: 'staging', targetBranch: 'release', remoteRef: 'origin/release', localRequired: new Error('missing minimum version file'), expectedReason: 'missing', expectedRequired: null },
+        { currentBranch: 'release', targetBranch: 'staging', remoteRef: TRACKING_BRANCH, localRequired: '2\n', expectedReason: 'newer', expectedRequired: 2 },
+    ])('/switch-branch from $currentBranch blocks an incompatible existing local branch $targetBranch ($expectedReason) even when $remoteRef passes', async ({
+        currentBranch,
+        targetBranch,
+        localRequired,
+        expectedReason,
+        expectedRequired,
+    }) => {
+        const statusPath = enableStatusFile();
+        fixture = createRepository({ branch: currentBranch, dirty: true, required: '1\n' });
+        fixture.state.refs[`refs/heads/${targetBranch}`] = LOCAL_BRANCH_COMMIT;
+        fixture.state.minimumVersions[LOCAL_BRANCH_COMMIT] = localRequired;
+
+        const response = await invoke('/switch-branch', { branch: targetBranch, autoStash: true });
+
+        expect(response.statusCode).toBe(409);
+        expect(response.body).toEqual({
+            error: 'TODO(copy)',
+            code: 'android_app_update_required',
+            required: expectedRequired,
+            installed: 1,
+            reason: expectedReason,
+            branch: targetBranch,
+            stashed: true,
+            stashPopWarning: null,
+        });
+        expectPinnedMinimumRead(`refs/heads/${targetBranch}`, LOCAL_BRANCH_COMMIT);
+        expect(JSON.parse(fs.readFileSync(statusPath, 'utf8'))).toEqual({
+            required: expectedRequired,
+            installed: 1,
+            reason: expectedReason,
+            upstream: LOCAL_BRANCH_COMMIT,
+            branch: currentBranch,
+        });
+        expectNoCheckoutOrMerge();
+        expectStashRoundTrip();
+        expect(fixture.state.branch).toBe(currentBranch);
+        expect(response.listenerCount('finish')).toBe(0);
+    });
+
+    test.each([
+        { currentBranch: 'staging', targetBranch: 'release', remoteRef: 'origin/release', remoteCommit: RELEASE_UPSTREAM },
+        { currentBranch: 'release', targetBranch: 'staging', remoteRef: TRACKING_BRANCH, remoteCommit: UPSTREAM },
+    ])('/switch-branch from $currentBranch pins the checked SHA when $remoteRef moves during the minimum read', async ({
+        currentBranch,
+        targetBranch,
+        remoteRef,
+        remoteCommit,
+    }) => {
+        fixture = createRepository({ branch: currentBranch, dirty: true, required: '1\n' });
+        fixture.state.onMinimumRead = () => { fixture.state.refs[remoteRef] = MOVED_UPSTREAM; };
+
+        const response = await invoke('/switch-branch', { branch: targetBranch, autoStash: true });
+
+        expect(response.statusCode).toBe(202);
+        expect(response.body).toMatchObject({ ok: true, branch: targetBranch, stashed: true, stashRestored: true, restarting: true });
+        const { minimumReadOrder } = expectPinnedMinimumRead(remoteRef, remoteCommit);
+        expect(fixture.git.raw.mock.calls).toEqual([
+            [['checkout', '-b', targetBranch, remoteCommit]],
+            [['branch', `--set-upstream-to=${remoteRef}`, targetBranch]],
+        ]);
+        expect(minimumReadOrder).toBeLessThan(fixture.git.raw.mock.invocationCallOrder[0]);
+        expect(fixture.git.checkout).not.toHaveBeenCalled();
+        expect(fixture.state.refs[remoteRef]).toBe(MOVED_UPSTREAM);
+        expect(fixture.state.commit).toBe(remoteCommit);
+        expect(fixture.state.branch).toBe(targetBranch);
+        expect(fixture.state.trackingBranch).toBe(remoteRef);
+        expectStashRoundTrip();
+        expect(response.listenerCount('finish')).toBe(1);
+    });
+
+    test('/switch-branch from staging pins an allowed existing local branch to its checked SHA when the local ref moves during the minimum read', async () => {
+        fixture = createRepository({ branch: 'staging', dirty: true, required: '1\n' });
+        fixture.state.refs['refs/heads/release'] = LOCAL_BRANCH_COMMIT;
+        fixture.state.minimumVersions[LOCAL_BRANCH_COMMIT] = '1\n';
+        fixture.state.onMinimumRead = () => { fixture.state.refs['refs/heads/release'] = MOVED_UPSTREAM; };
+
+        const response = await invoke('/switch-branch', { branch: 'release', autoStash: true });
+
+        expect(response.statusCode).toBe(202);
+        expect(response.body).toMatchObject({ ok: true, branch: 'release', stashed: true, stashRestored: true, restarting: true });
+        const { minimumReadOrder } = expectPinnedMinimumRead('refs/heads/release', LOCAL_BRANCH_COMMIT);
+        expect(fixture.git.raw.mock.calls).toEqual([
+            [['checkout', '-B', 'release', LOCAL_BRANCH_COMMIT]],
+        ]);
+        expect(minimumReadOrder).toBeLessThan(fixture.git.raw.mock.invocationCallOrder[0]);
+        expect(fixture.git.checkout).not.toHaveBeenCalled();
+        expect(fixture.state.refs['refs/heads/release']).toBe(MOVED_UPSTREAM);
+        expect(fixture.state.commit).toBe(LOCAL_BRANCH_COMMIT);
+        expect(fixture.state.branch).toBe('release');
+        expectStashRoundTrip();
+        expect(response.listenerCount('finish')).toBe(1);
     });
 });
 

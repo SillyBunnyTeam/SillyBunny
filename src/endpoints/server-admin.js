@@ -10,7 +10,7 @@ import { sync as commandExistsSync } from 'command-exists';
 import { simpleGit } from 'simple-git';
 
 // SillyBunny: share the APK runtime gate between Server Tools update paths.
-import { ANDROID_APP_UPDATE_REQUIRED, checkAndroidAppGate, getAndroidAppGitOptions } from '../android-app-gate.js';
+import { ANDROID_APP_UPDATE_REQUIRED, checkAndroidAppGate, getAndroidAppGitOptions, isAndroidApp } from '../android-app-gate.js';
 import { APP_NAME, formatRuntimeLabel, isBunRuntime, isNativeTermuxEnvironment } from '../runtime.js';
 import {
     getBranchDisplayNames,
@@ -1313,9 +1313,16 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
         }
 
         const currentBranch = toTrimmedString(await git.revparse(['--abbrev-ref', 'HEAD']).catch(() => ''));
+        const useRuntimeBranch = Boolean(remoteBranch && isRuntimeBranch(currentBranch));
+        const androidApp = isAndroidApp();
+        // SillyBunny: check whether a local branch already exists before gating non-runtime APK switches.
+        const hasLocalBranch = androidApp && !useRuntimeBranch
+            ? Boolean(await git.revparse(['--verify', `refs/heads/${branch}`]).catch(() => ''))
+            : false;
+        const gateRef = hasLocalBranch ? `refs/heads/${branch}` : (remoteBranch || branch);
 
         // SillyBunny: gate the resolved APK branch before either checkout path.
-        const androidAppGate = await checkAndroidAppGate(git, { ref: remoteBranch || branch, branch: currentBranch });
+        const androidAppGate = await checkAndroidAppGate(git, { ref: gateRef, branch: currentBranch });
         if (androidAppGate.blocked) {
             const stashed = hasLocalChanges && autoStash;
             let stashPopWarning = null;
@@ -1334,10 +1341,20 @@ router.post('/switch-branch', requireAdminMiddleware, async (request, response) 
             });
         }
 
-        if (remoteBranch && isRuntimeBranch(currentBranch)) {
+        if (useRuntimeBranch) {
             // SillyBunny: keep runtime APK checkouts pinned to the checked commit.
             await git.raw(['checkout', '-B', currentBranch, androidAppGate.commit ?? remoteBranch]);
             await git.raw(['branch', `--set-upstream-to=${remoteBranch}`, currentBranch]);
+        } else if (androidApp) {
+            // SillyBunny: pin non-runtime APK checkouts to the exact commit approved by the Android gate.
+            if (hasLocalBranch) {
+                await git.raw(['checkout', '-B', branch, androidAppGate.commit]);
+            } else if (remoteBranch && remoteBranch !== branch) {
+                await git.raw(['checkout', '-b', branch, androidAppGate.commit]);
+                await git.raw(['branch', `--set-upstream-to=${remoteBranch}`, branch]);
+            } else {
+                await git.raw(['checkout', '--detach', androidAppGate.commit]);
+            }
         } else {
             await git.checkout(branch);
         }

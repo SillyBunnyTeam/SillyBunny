@@ -1452,7 +1452,11 @@ describe('run-smoke.js command line', () => {
             expect([args.join(' '), result.code]).toEqual([args.join(' '), 2]);
             expect(JSON.parse(result.stdout)).toEqual({ ok: false, error: 'Android smoke command failed', ...expected });
         }
-        expect(runCli(['help'])).toMatchObject({ code: 0, stdout: 'Android smoke command failed\n' });
+        const expectedUsage = 'Usage: node tests/android-smoke/run-smoke.js guard|gradle-args|apk-check|preflight|probe|run|steps [options]\n';
+        expect(runCli(['help'])).toMatchObject({ code: 0, stdout: expectedUsage });
+        expect(runCli(['--help'])).toMatchObject({ code: 0, stdout: expectedUsage });
+        expect(runCli(['run', '--help'])).toMatchObject({ code: 0, stdout: expectedUsage });
+        expect(runCli([])).toMatchObject({ code: 0, stdout: expectedUsage });
     });
 
     test('lists the steps', () => {

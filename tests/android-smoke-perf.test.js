@@ -80,6 +80,7 @@ describe('Android smoke performance collector and budget evaluator', () => {
             count: 2,
             firstMs: 37695,
             lastMs: 3288,
+            warmMs: 3288,
             minMs: 3288,
             maxMs: 37695,
             samples: [37695, 3288],
@@ -118,6 +119,40 @@ describe('Android smoke performance collector and budget evaluator', () => {
         const markdown = formatPerfSummaryMarkdown(regressedSnapshot, evaluation).join('\n');
         expect(markdown).toContain('### Android Performance Snapshot');
         expect(markdown).toContain('Performance budget violations:');
+    });
+
+    test('evaluates serverHealthy.warmMs from warm restarts rather than a slow post-Repair final cold start', () => {
+        const postRepairHealthy = parseHealthyAfterMs([
+            '[sillybunny-android] healthy afterMs=37695',
+            '[sillybunny-android] healthy afterMs=3410',
+            '[sillybunny-android] healthy afterMs=3120',
+            '[sillybunny-android] healthy afterMs=28400',
+        ].join('\n'));
+        expect(postRepairHealthy.warmMs).toBe(3120);
+        expect(postRepairHealthy.lastMs).toBe(28400);
+        expect(evaluateAndroidPerfBudgets({ serverHealthy: postRepairHealthy }, DEFAULT_ANDROID_PERF_BUDGETS)).toEqual({
+            ok: true,
+            violations: [],
+        });
+
+        // Hand-built snapshots with samples but without precomputed warmMs use the same warm-sample rule.
+        expect(evaluateAndroidPerfBudgets({
+            serverHealthy: { count: 4, firstMs: 37695, lastMs: 28400, samples: [37695, 3410, 3120, 28400] },
+        }, DEFAULT_ANDROID_PERF_BUDGETS)).toEqual({
+            ok: true,
+            violations: [],
+        });
+
+        // If every restart after the initial boot is slow, the warm budget still flags the regression.
+        const slowRestarts = parseHealthyAfterMs([
+            '[sillybunny-android] healthy afterMs=37695',
+            '[sillybunny-android] healthy afterMs=14200',
+            '[sillybunny-android] healthy afterMs=28400',
+        ].join('\n'));
+        expect(evaluateAndroidPerfBudgets({ serverHealthy: slowRestarts }, DEFAULT_ANDROID_PERF_BUDGETS)).toEqual({
+            ok: false,
+            violations: [{ metric: 'serverHealthy.warmMs', actual: 14200, max: DEFAULT_ANDROID_PERF_BUDGETS.maxWarmServerHealthyMs }],
+        });
     });
 
     test('collects a non-fatal device snapshot through the injected adb client', async () => {

@@ -170,6 +170,16 @@ class ServerManagerTest {
         }
     }
 
+    /** Polls [probe] without idling the main looper, to pause inside a `main.post` handoff. */
+    private fun <T : Any> awaitWithoutMain(what: String, timeoutMillis: Long = 20_000, probe: () -> T?): T {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        while (true) {
+            probe()?.let { return it }
+            if (System.nanoTime() - deadline > 0) fail("timed out waiting for $what; state=${manager.state.value}")
+            Thread.sleep(5)
+        }
+    }
+
     private fun awaitState(what: String, predicate: (ServerState) -> Boolean): ServerState =
         await(what) { manager.state.value.takeIf(predicate) }
 
@@ -596,6 +606,112 @@ class ServerManagerTest {
         assertTrue(failed.canRestart)
         Thread.sleep(100)
         assertTrue(servers.isEmpty())
+    }
+
+    @Test
+    fun stopDuringStickyRecreationLeavesServerStoppedAndAllowsSetup() {
+        ServerStateStore(context).savePolicy(PolicyState(RunIntent.RUN, emptyList()))
+        build()
+
+        assertEquals(Service.START_STICKY, deliver(null))
+        awaitWithoutMain("recreated marker") {
+            manager.recentLogLines().takeIf { it.contains("${ServerManager.MARKER} recreated decision=restart attempt=2") }
+        }
+
+        // Stop races before the sticky recreation's main-thread promotion runs.
+        assertTrue(manager.stop(10_000))
+        idleMain()
+        settle()
+
+        assertEquals(ServerState.Stopped(userStopped = true), manager.state.value)
+        assertEquals(RunIntent.USER_STOPPED, policy().intent)
+        assertNull(shadowService().lastForegroundNotification)
+        assertEquals(startId, shadowService().stopSelfResultId)
+        assertTrue(servers.isEmpty())
+
+        // Setup (e.g. Repair) must not be blocked by a stranded Starting state.
+        configureScript = { it.exit(0) }
+        assertTrue(manager.runSetup(context, job()))
+        val finished = await("finished") { manager.setup.value as? SetupState.Finished }
+        assertEquals(0, finished.exitCode)
+    }
+
+    @Test
+    fun stopAndRunSetupDuringStickyRecreationKeepsSetupForegroundNotification() {
+        ServerStateStore(context).savePolicy(PolicyState(RunIntent.RUN, emptyList()))
+        build()
+
+        assertEquals(Service.START_STICKY, deliver(null))
+        awaitWithoutMain("recreated marker") {
+            manager.recentLogLines().takeIf { it.contains("${ServerManager.MARKER} recreated decision=restart attempt=2") }
+        }
+
+        assertTrue(manager.stop(10_000))
+        configureScript = { process -> Thread { process.print("repairing") }.start() }
+        assertTrue(manager.runSetup(context, job()))
+        awaitWithoutMain("script") { scripts.firstOrNull() }
+
+        // Draining the main looper must not overwrite the SETUP notification with SERVER.
+        idleMain()
+        settle()
+
+        val action = foregroundNotification().actions.single()
+        assertEquals(ServerService.ACTION_CANCEL_SETUP, shadowOf(action.actionIntent).savedIntent.action)
+        assertTrue(inForeground())
+        assertEquals(ServerState.Stopped(userStopped = true), manager.state.value)
+        assertTrue(servers.isEmpty())
+
+        manager.cancelSetup()
+        val finished = await("finished") { manager.setup.value as? SetupState.Finished }
+        assertTrue(finished.cancelled)
+    }
+
+    @Test
+    fun startDuringStickyRecreationIsNotClobberedByStaleRestart() {
+        ServerStateStore(context).savePolicy(PolicyState(RunIntent.RUN, emptyList()))
+        build()
+
+        assertEquals(Service.START_STICKY, deliver(null))
+        awaitWithoutMain("recreated marker") {
+            manager.recentLogLines().takeIf { it.contains("${ServerManager.MARKER} recreated decision=restart attempt=2") }
+        }
+
+        // An explicit start launches and reaches Running before the stale recreation's main.post runs.
+        manager.start(context)
+        val running = awaitWithoutMain("running") { manager.state.value as? ServerState.Running }
+
+        idleMain()
+        settle()
+
+        assertEquals(running, manager.state.value)
+        assertTrue(inForeground())
+        assertEquals(1, servers.size)
+        assertFalse(manager.recentLogLines().any { it.contains("restart attempt=") })
+    }
+
+    @Test
+    fun startDuringStickyRecreationSurvivesRefusedStalePromotion() {
+        ServerStateStore(context).savePolicy(PolicyState(RunIntent.RUN, emptyList()))
+        build()
+
+        assertEquals(Service.START_STICKY, deliver(null))
+        awaitWithoutMain("recreated marker") {
+            manager.recentLogLines().takeIf { it.contains("${ServerManager.MARKER} recreated decision=restart attempt=2") }
+        }
+
+        manager.start(context)
+        val running = awaitWithoutMain("running") { manager.state.value as? ServerState.Running }
+        assertTrue(inForeground())
+
+        // The stale recreation's late promotion fails; it must not overwrite Running or strip foreground status.
+        shadowService().setThrowInStartForeground(IllegalStateException("not allowed"))
+        idleMain()
+        settle()
+
+        assertEquals(running, manager.state.value)
+        assertTrue(inForeground())
+        assertEquals(1, servers.size)
+        assertFalse(manager.recentLogLines().any { it.contains("recreate-refused") })
     }
 
     @Test

@@ -159,21 +159,39 @@ export function parseDiskUsageMb(raw) {
 /**
  * Extracts `[sillybunny-android] healthy afterMs=<N>` markers from `server.log`.
  * @param {string} serverLog Contents of `server.log`.
- * @returns {{count: number, firstMs: number|null, lastMs: number|null, minMs: number|null, maxMs: number|null, samples: number[]}} Timings.
+ * @returns {{count: number, firstMs: number|null, lastMs: number|null, warmMs: number|null, minMs: number|null, maxMs: number|null, samples: number[]}} Timings.
  */
 export function parseHealthyAfterMs(serverLog) {
     const samples = [];
     for (const match of String(serverLog ?? '').matchAll(/\[sillybunny-android\]\s+healthy\s+afterMs=(\d+)/g)) {
         samples.push(Number(match[1]));
     }
+    const warmSamples = samples.slice(1);
     return {
         count: samples.length,
         firstMs: samples[0] ?? null,
         lastMs: samples.at(-1) ?? null,
+        warmMs: warmSamples.length > 0 ? Math.min(...warmSamples) : null,
         minMs: samples.length > 0 ? Math.min(...samples) : null,
         maxMs: samples.length > 0 ? Math.max(...samples) : null,
         samples,
     };
+}
+
+function resolveWarmServerHealthyMs(serverHealthy) {
+    if (!serverHealthy) {
+        return null;
+    }
+    if (typeof serverHealthy.warmMs === 'number' && Number.isFinite(serverHealthy.warmMs)) {
+        return serverHealthy.warmMs;
+    }
+    if (Array.isArray(serverHealthy.samples) && serverHealthy.samples.length > 1) {
+        const warmSamples = serverHealthy.samples.slice(1).filter(value => typeof value === 'number' && Number.isFinite(value));
+        if (warmSamples.length > 0) {
+            return Math.min(...warmSamples);
+        }
+    }
+    return serverHealthy.count > 1 ? serverHealthy.lastMs : null;
 }
 
 /**
@@ -190,7 +208,7 @@ export function evaluateAndroidPerfBudgets(snapshot, budgets = DEFAULT_ANDROID_P
         ['meminfo.totalPssMb', snapshot?.meminfo?.totalPssMb, budgets.maxAppPssMb],
         ['gfxinfo.jankyPct', snapshot?.gfxinfo?.jankyPct, budgets.maxJankyPct],
         ['gfxinfo.maxCpuMs', snapshot?.gfxinfo?.maxCpuMs, budgets.maxCpuFrameMs],
-        ['serverHealthy.warmMs', snapshot?.serverHealthy?.count > 1 ? snapshot.serverHealthy.lastMs : null, budgets.maxWarmServerHealthyMs],
+        ['serverHealthy.warmMs', resolveWarmServerHealthyMs(snapshot?.serverHealthy), budgets.maxWarmServerHealthyMs],
     ];
     const violations = [];
     for (const [metric, actual, max] of checks) {

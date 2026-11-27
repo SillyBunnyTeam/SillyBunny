@@ -566,14 +566,24 @@ class ServerManager internal constructor(
             return
         }
         main.post {
-            val promoted = service?.get()?.promote(ServiceMode.SERVER) == true
-            execute {
-                if (promoted) {
-                    scheduleRestart(decision)
-                } else {
-                    marker("recreate-refused reason=foreground-promotion")
-                    publish(ServerState.Stopped(userStopped = false))
-                    endServerMode()
+            if (currentMode() != ServiceMode.SERVER) {
+                requestRelease()
+            } else {
+                val promoted = service?.get()?.promote(ServiceMode.SERVER) == true
+                execute {
+                    val stale = run != null ||
+                        scheduledRestart != null ||
+                        policyState.intent != RunIntent.RUN ||
+                        synchronized(lock) { mode != ServiceMode.SERVER || pendingServerRequests > 0 }
+                    if (stale) {
+                        requestRelease()
+                    } else if (promoted) {
+                        scheduleRestart(decision)
+                    } else {
+                        marker("recreate-refused reason=foreground-promotion")
+                        publish(ServerState.Stopped(userStopped = false))
+                        endServerMode()
+                    }
                 }
             }
         }

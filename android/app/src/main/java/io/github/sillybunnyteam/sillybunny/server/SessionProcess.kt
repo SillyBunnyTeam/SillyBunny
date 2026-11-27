@@ -2,6 +2,7 @@ package io.github.sillybunnyteam.sillybunny.server
 
 import android.system.ErrnoException
 import android.system.Os
+import androidx.annotation.VisibleForTesting
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -98,12 +99,18 @@ internal class ProcStat(
     }
 }
 
-internal object Procfs {
+internal interface ProcReader {
+    fun read(pid: Int): ProcStat?
+    fun argv(pid: Int): List<String>?
+    fun snapshot(uid: Int): Procfs.Snapshot
+}
+
+internal object Procfs : ProcReader {
     class Snapshot(val processes: Map<Int, ProcStat>, val unreadable: List<Int>) {
         fun liveInGroup(pgid: Int): List<ProcStat> = processes.values.filter { it.live && it.pgid == pgid }
     }
 
-    fun read(pid: Int): ProcStat? = try {
+    override fun read(pid: Int): ProcStat? = try {
         ProcStat.parse(pid, Os.stat("/proc/$pid").st_uid, readText(File("/proc/$pid/stat"), 4096))
     } catch (_: ErrnoException) {
         null
@@ -112,14 +119,14 @@ internal object Procfs {
     }
 
     /** The NUL-separated argument vector from `/proc/<pid>/cmdline`, or null once the process is gone. */
-    fun argv(pid: Int): List<String>? = try {
+    override fun argv(pid: Int): List<String>? = try {
         readText(File("/proc/$pid/cmdline"), 16_384).split('\u0000').dropLastWhile { it.isEmpty() }
     } catch (_: IOException) {
         null
     }
 
     /** Every process owned by [uid]; same-UID entries that vanish mid-read are reported as unreadable. */
-    fun snapshot(uid: Int): Snapshot {
+    override fun snapshot(uid: Int): Snapshot {
         val names = File("/proc").list() ?: throw IOException("proc")
         val processes = LinkedHashMap<Int, ProcStat>()
         val unreadable = ArrayList<Int>()
@@ -179,6 +186,7 @@ internal class SessionProcess private constructor(
     private val command: ProcStat?,
     private val files: HandshakeFiles,
     private val supervisorMarker: String?,
+    private val procfs: ProcReader = Procfs,
 ) : ServerProcess {
     private val uid = leader.uid
     private val pgid = leader.pid
@@ -237,7 +245,7 @@ internal class SessionProcess private constructor(
         // a descendant that left it could no longer be traced to this run.
         snapshotOrNull()?.let(::remember)
         val target = findSupervisor() ?: return false
-        val current = Procfs.read(target.pid) ?: return false
+        val current = procfs.read(target.pid) ?: return false
         if (!target.same(current) || !current.live || current.pgid != pgid) return false
         return kill(target.pid, signal)
     }
@@ -277,22 +285,25 @@ internal class SessionProcess private constructor(
     }
 
     override fun servingProcess(): ProcStat? {
-        val supervisor = findSupervisor()
+        val marker = supervisorMarker
+        val supervisor = if (marker != null) findSupervisor() else null
         val snapshot = snapshotOrNull() ?: return null
         remember(snapshot)
-        if (supervisor == null) {
+        if (marker == null) {
             // No supervisor to ask (a launch without one): the command itself stands in for the server.
             return command?.takeIf { known -> snapshot.processes[known.pid]?.let { known.same(it) && it.live } == true }
         }
-        val children = snapshot.liveInGroup(pgid).filter { it.ppid == supervisor.pid && it.session == pgid }
-        val marker = supervisorMarker
+        val liveSupervisor = supervisor?.takeIf { known ->
+            snapshot.processes[known.pid]?.let { known.same(it) && it.live } == true
+        } ?: return null
+        val children = snapshot.liveInGroup(pgid).filter { it.ppid == liveSupervisor.pid && it.session == pgid }
         // Node's supervisor runs its child with the same `server.js` argv; without one, a lone child is the server.
-        val servers = if (marker == null) emptyList() else children.filter { namesMarker(it.pid, marker) }
-        return servers.maxByOrNull { it.startTime } ?: children.singleOrNull() ?: supervisor
+        val servers = children.filter { namesMarker(it.pid, marker) }
+        return servers.maxByOrNull { it.startTime } ?: children.singleOrNull() ?: liveSupervisor
     }
 
     override fun stillRunning(server: ProcStat): Boolean =
-        Procfs.read(server.pid)?.let { server.same(it) && it.live } == true
+        procfs.read(server.pid)?.let { server.same(it) && it.live } == true
 
     override fun release() {
         files.delete()
@@ -333,12 +344,12 @@ internal class SessionProcess private constructor(
         }
     }
 
-    private fun leaderAlive(): Boolean = Procfs.read(leader.pid)?.let { leader.same(it) && it.live } == true
+    private fun leaderAlive(): Boolean = procfs.read(leader.pid)?.let { leader.same(it) && it.live } == true
 
     /** The supervisor: a direct child of the command whose argv names [supervisorMarker] (`server.js`). */
     private fun findSupervisor(): ProcStat? {
         supervisor?.let { known ->
-            if (Procfs.read(known.pid)?.let { known.same(it) && it.live } == true) return known
+            if (procfs.read(known.pid)?.let { known.same(it) && it.live } == true) return known
         }
         val marker = supervisorMarker ?: return null
         val snapshot = snapshotOrNull() ?: return null
@@ -352,10 +363,10 @@ internal class SessionProcess private constructor(
 
     /** True when an element of the process's argv is [marker] or a path ending in it. */
     private fun namesMarker(pid: Int, marker: String): Boolean =
-        Procfs.argv(pid)?.any { it == marker || it.endsWith("/$marker") } == true
+        procfs.argv(pid)?.any { it == marker || it.endsWith("/$marker") } == true
 
     private fun snapshotOrNull(): Procfs.Snapshot? = try {
-        Procfs.snapshot(uid)
+        procfs.snapshot(uid)
     } catch (_: IOException) {
         null
     }
@@ -475,6 +486,16 @@ internal class SessionProcess private constructor(
 
         internal fun trackIntervalMillis(elapsedMillis: Long): Long =
             if (elapsedMillis >= STEADY_TRACK_AFTER_MILLIS) STEADY_TRACK_INTERVAL_MILLIS else INITIAL_TRACK_INTERVAL_MILLIS
+
+        @VisibleForTesting
+        internal fun forTest(
+            process: Process,
+            leader: ProcStat,
+            command: ProcStat?,
+            files: HandshakeFiles,
+            supervisorMarker: String?,
+            procfs: ProcReader = Procfs,
+        ): SessionProcess = SessionProcess(process, leader, command?.pid ?: leader.pid, command, files, supervisorMarker, procfs)
 
         /**
          * The session shell, adapted from S2.5: `$1` PID file, `$2` gate, `$3` exit file, `$4` command PID file,

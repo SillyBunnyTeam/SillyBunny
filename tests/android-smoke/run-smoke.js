@@ -65,10 +65,11 @@ import { collectDevicePerfSnapshot, DEFAULT_ANDROID_PERF_BUDGETS, evaluateAndroi
 import { parseStepSelection, runSteps, STEPS, summarize, summaryTable } from './smoke-runner.js';
 
 /**
- * The error text of every failed command, the help output and the lead of the summary's failure line.
+ * The error text of every failed command and the lead of the summary's failure line.
  * The summary adds a colon after it, so it takes no final punctuation.
  */
 const MESSAGE = 'Android smoke command failed';
+const USAGE = 'Usage: node tests/android-smoke/run-smoke.js guard|gradle-args|apk-check|preflight|probe|run|steps [options]';
 
 /** A command-line mistake: a machine code and the offending option, never prose. */
 export class UsageError extends Error {
@@ -719,11 +720,15 @@ const COMMANDS = Object.freeze({
  * @returns {Promise<void>}
  */
 export async function main(argv) {
-    const [command, ...args] = argv;
+    let command;
+    let args = argv;
+    if (argv[0] && !argv[0].startsWith('-')) {
+        [command, ...args] = argv;
+    }
     try {
         const { values } = parseArgs({ args, options: OPTIONS, strict: true, allowPositionals: false });
         if (values.help || command === 'help' || command === undefined) {
-            process.stdout.write(`${MESSAGE}\n`);
+            process.stdout.write(`${USAGE}\n`);
             return;
         }
         const handler = Object.hasOwn(COMMANDS, command) ? COMMANDS[command] : null;
