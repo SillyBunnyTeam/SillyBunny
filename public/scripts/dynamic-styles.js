@@ -15,13 +15,32 @@ function getAbsoluteAssetUrl(href) {
     }
 }
 
+function stripQueryAndFragment(absoluteHref) {
+    try {
+        const url = new URL(absoluteHref);
+        url.search = '';
+        url.hash = '';
+        return url.href;
+    } catch {
+        return absoluteHref;
+    }
+}
+
 function matchesLinkHref(link, absoluteHref) {
     const candidates = [
         link.getAttribute('href') ? link.href : '',
         link.getAttribute('data-sb-href') || '',
         link.getAttribute('data-sb-source-href') || '',
     ];
-    return candidates.some(candidate => candidate && getAbsoluteAssetUrl(candidate) === absoluteHref);
+    // SillyBunny: the frontend build rewrites a placeholder to a hashed path and keeps only the unversioned source path in data-sb-source-href, while callers pass a ?v= key. A deferred placeholder therefore also matches with the query and fragment removed on both sides. Plain links keep the exact comparison, so a changed ?v= key still loads the new URL.
+    const ignoresQuery = link.hasAttribute('data-sb-deferred-style');
+    const wanted = stripQueryAndFragment(absoluteHref);
+    return candidates.some(candidate => {
+        if (!candidate) return false;
+        const absoluteCandidate = getAbsoluteAssetUrl(candidate);
+        return absoluteCandidate === absoluteHref
+            || (ignoresQuery && stripQueryAndFragment(absoluteCandidate) === wanted);
+    });
 }
 
 function findStylesheetLink(absoluteHref, id = '') {
