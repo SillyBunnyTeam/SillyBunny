@@ -521,4 +521,124 @@ describe('TTS Conversation integration', () => {
         // Direct import of the QIG entrypoint stays banned in the shared registry world.
         expect(ttsSource).toContain('registerExtensionCapability(\'tts\'');
     });
+
+    test('createTtsVoiceMapInitializer exposes pending() while in flight and clears it on settle', async () => {
+        const createTtsVoiceMapInitializer = evaluateFunction('createTtsVoiceMapInitializer', { Promise, Set, Array, Boolean, String });
+        let releaseFirst;
+        let runs = 0;
+        const initialize = jest.fn(async () => {
+            runs++;
+            if (runs === 1) {
+                await new Promise(resolve => { releaseFirst = resolve; });
+            }
+        });
+        const requestInit = createTtsVoiceMapInitializer(initialize);
+
+        expect(requestInit.pending()).toBeNull();
+        const first = requestInit(false, ['Alice']);
+        expect(requestInit.pending()).toBe(first);
+        const coalesced = requestInit(true, ['Bob']);
+        expect(coalesced).toBe(first);
+
+        releaseFirst();
+        await first;
+        expect(requestInit.pending()).toBeNull();
+        expect(initialize).toHaveBeenCalledTimes(2);
+    });
+
+    test('processTtsQueue holds unmapped speakers while voice map init is pending, wakes on settle, and warns after timeout', async () => {
+        let nowMs = 1000;
+        let resolveInit;
+        let pendingPromise = new Promise(resolve => { resolveInit = resolve; });
+        const scheduleTtsQueueWakeup = jest.fn();
+        const warn = jest.fn();
+        const voiceMap = { MappedChar: 'voice-mapped' };
+        const ttsJobQueue = [{ name: 'UnmappedChar', mes: 'Hello' }];
+
+        const context = createTtsContext({
+            Date: { now: () => nowMs },
+            WeakSet,
+            VOICE_MAP_INIT_TIMEOUT: 10000,
+            voiceMapWakeupAttachedPromises: new WeakSet(),
+            currentTtsJob: null,
+            ttsJobQueue,
+            audioPaused: false,
+            voiceMap,
+            requestVoiceMapInitialization: { pending: () => pendingPromise },
+            hasVoiceMapForSpeaker: name => Boolean(voiceMap[name]),
+            scheduleTtsQueueWakeup,
+            console: { debug: jest.fn(), log: jest.fn(), warn, error: jest.fn() },
+            extension_settings: { tts: { multi_voice_enabled: false } },
+            DEFAULT_VOICE_MARKER: '[Default Voice]',
+            DISABLED_VOICE_MARKER: 'disabled',
+            processTtsJob: jest.fn(),
+            completeTtsJob: jest.fn(),
+            resetTtsPlayback: jest.fn(),
+            toastr: { error: jest.fn(), info: jest.fn() },
+        });
+        const processTtsQueue = evaluateInContext('processTtsQueue', context);
+
+        // Unmapped speaker stays queued while init is pending and attaches wakeup once.
+        await processTtsQueue();
+        expect(ttsJobQueue).toHaveLength(1);
+        expect(context.currentTtsJob).toBeNull();
+        await processTtsQueue();
+        expect(ttsJobQueue).toHaveLength(1);
+
+        // Resolving init triggers scheduleTtsQueueWakeup exactly once.
+        resolveInit();
+        await pendingPromise;
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(scheduleTtsQueueWakeup).toHaveBeenCalledTimes(1);
+
+        // Mapped speaker is never held even while a new init is pending.
+        pendingPromise = new Promise(() => {});
+        ttsJobQueue.length = 0;
+        ttsJobQueue.push({ name: 'MappedChar', mes: 'Immediate', segmentType: 'dialogue', segmentText: 'Immediate' });
+        context.tts = jest.fn(async () => {});
+        context.accountStorage = { getItem: () => null, setItem: jest.fn() };
+        context.ttsProvider = { getVoice: jest.fn(async () => ({ voice_id: 'v1' })) };
+        await processTtsQueue();
+        expect(ttsJobQueue).toHaveLength(0);
+        expect(warn).not.toHaveBeenCalled();
+
+        // After VOICE_MAP_INIT_TIMEOUT elapses, an unmapped speaker proceeds with a warning.
+        context.currentTtsJob = null;
+        ttsJobQueue.push({ name: 'StillUnmapped', mes: 'Late', segmentType: 'dialogue', segmentText: 'Late' });
+        await processTtsQueue();
+        expect(ttsJobQueue).toHaveLength(1);
+        nowMs += 10000;
+        await processTtsQueue();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('10000ms'));
+        expect(ttsJobQueue).toHaveLength(0);
+    });
+
+    test('onChatChanged still returns within the relaxed timeout when initVoiceMap hangs', async () => {
+        jest.useFakeTimers();
+        try {
+            const context = createTtsContext({
+                Promise,
+                delay: ms => new Promise(resolve => setTimeout(resolve, ms)),
+                debounce_timeout: { relaxed: 1000 },
+                VOICE_MAP_INIT_TIMEOUT: 10000,
+                onGenerationEnded: jest.fn(async () => {}),
+                resetTtsPlayback: jest.fn(),
+                initVoiceMap: jest.fn(() => new Promise(() => {})),
+                lastMessage: 'previous',
+            });
+            evaluateInContext('waitForVoiceMapInit', context);
+            const onChatChanged = evaluateInContext('onChatChanged', context);
+
+            let settled = false;
+            const run = onChatChanged().then(() => { settled = true; });
+            await jest.advanceTimersByTimeAsync(999);
+            expect(settled).toBe(false);
+            await jest.advanceTimersByTimeAsync(1);
+            await run;
+            expect(settled).toBe(true);
+            expect(context.lastMessage).toBeNull();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
 });

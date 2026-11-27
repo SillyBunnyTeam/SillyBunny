@@ -90,6 +90,7 @@ This is the largest class by a wide margin.
 - **Chat view header bars are 56px at every width:** `--sb-conv-headerbar-height` in `public/css/sillybunny-conversation.css` is 56px for the content, group, settings and sidebar headers. The 1px bottom shade sits inside the border box, so the block padding is `--sb-conv-headerbar-pad-block`, which shrinks to 5.5px when the buttons are 44px, to keep the bar at 56px instead of 57px.
 
 ### Scroll, streaming and cancellation
+- Never `await` a slow `initVoiceMap()` promise inside `processTtsQueue()` because `moduleWorker` runs under `SimpleMutex` and would stall `processAudioJobQueue()` and `updateUiAudioPlayState()`; hold unmapped auto-narration jobs non-blockingly at the top of `processTtsQueue()` up to `VOICE_MAP_INIT_TIMEOUT` (10 s) and wake via `.finally(scheduleTtsQueueWakeup)` while keeping the 1 s cap in `onChatChanged()` (`public/scripts/extensions/tts/index.js`, adapted from upstream ST #6097; guarded by `tests/tts-conversation-integration.test.js`).
 
 - **Breaks:** rendering or resizing moves the reader's position; cancelling leaves stream state behind.
 - **Files:** `public/script.js`, `public/scripts/chat-render-lifecycle/`, `public/scripts/chats.js`, `src/request-cancellation.js`.

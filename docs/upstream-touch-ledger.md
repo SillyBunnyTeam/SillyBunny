@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/extensions/tts/index.js` - non-blocking auto-narration wait for TTS voice map
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/tts/index.js` (`createTtsVoiceMapInitializer`, `waitForVoiceMapInit`, `processTtsQueue`, `onChatChanged`). |
+| Area | TTS auto narration after a chat switch when a slow provider's `checkReady()` exceeds the `onChatChanged` wait cap. |
+| Divergence reason | Adapted early port of upstream SillyTavern PR #6097 before the next full upstream sync. Waiting for the in-flight `requestVoiceMapInitialization` promise before shifting items from `ttsJobQueue` prevents auto-narration from falling back to the default voice when `checkReady()` exceeds the 1-second chat-change race timeout, while staying non-blocking inside `processTtsQueue` so SillyBunny's `SimpleMutex` never deadlocks. |
+| Target seam | `createTtsVoiceMapInitializer()` and `processTtsQueue()` in `public/scripts/extensions/tts/index.js` (adapted early port of upstream SillyTavern PR #6097, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Keep the 1 s `debounce_timeout.relaxed` cap in `onChatChanged` via `waitForVoiceMapInit`, expose `requestVoiceMapInitialization.pending()`, and hold unmapped head jobs at the top of `processTtsQueue` up to `VOICE_MAP_INIT_TIMEOUT` (10 s) using `.finally(scheduleTtsQueueWakeup)` instead of awaiting inside `SimpleMutex`. |
+| Protecting tests | `tests/tts-conversation-integration.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- tts-conversation-integration.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove `requestVoiceMapInitialization.pending`, `VOICE_MAP_INIT_TIMEOUT`, `voiceMapWakeupAttachedPromises`, `waitForVoiceMapInit()`, and the pending-voice-map gate at the top of `processTtsQueue()` in `public/scripts/extensions/tts/index.js`, and remove the three voice-map wait tests from `tests/tts-conversation-integration.test.js`. Saved TTS settings and voice maps are unaffected. Reconcile or drop this entry on the upstream sync that brings ST #6097. |
+| Last reviewed | 2026-11-27 (adapted early port of ST #6097). |
+| Owner | Built-in extensions and TTS integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
