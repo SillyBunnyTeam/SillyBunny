@@ -9,7 +9,8 @@ const lockfile = require('proper-lockfile');
 
 const LOCK_RETRY_DELAY_MS = 25;
 const ASYNC_LOCK_RETRY_LIMIT = 200;
-const SYNC_LOCK_MAX_WAIT_MS = 1500;
+// Another process (a second server on the same data folder) can hold a chat lock for the length of a large save, so the synchronous path keeps a multi-second budget.
+const SYNC_LOCK_MAX_WAIT_MS = 5000;
 const LOCK_STALE_MS = 300_000;
 const activeLocks = new Set();
 const inProcessMutexQueues = new Map();

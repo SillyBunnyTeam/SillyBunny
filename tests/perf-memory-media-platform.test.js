@@ -2,6 +2,7 @@
 /* global globalThis, Atomics */
 import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -21,7 +22,9 @@ import {
     SQLITE_CACHE_SIZE_KIB,
 } from '../src/character-index.js';
 import {
+    acquireChatFileLock,
     acquireChatFileLockAsync,
+    getChatFileLockPath,
     withChatFileLockAsync,
 } from '../src/chat-file-lock.js';
 import {
@@ -805,6 +808,43 @@ describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', 
         expect(readFileSpy).not.toHaveBeenCalled();
         expect(atomicsWaitSpy).not.toHaveBeenCalled();
     });
+
+    test('the synchronous chat file lock waits for another process that holds the lock for a few seconds', async () => {
+        const chatPath = path.join(tempRoot, 'chats', 'held-elsewhere.jsonl');
+        fs.mkdirSync(path.dirname(chatPath), { recursive: true });
+        const holdMs = 2500;
+        const holderScript = `
+            const { createRequire } = require('node:module');
+            const lockfile = createRequire(${JSON.stringify(path.join(repoRoot, 'package.json'))})('proper-lockfile');
+            const release = lockfile.lockSync(${JSON.stringify(chatPath)}, {
+                lockfilePath: ${JSON.stringify(getChatFileLockPath(chatPath))},
+                realpath: false,
+                stale: 300000,
+            });
+            process.stdout.write('held\\n');
+            setTimeout(() => { release(); process.exit(0); }, ${holdMs});
+        `;
+        const holder = spawn(process.execPath, ['-e', holderScript], { stdio: ['ignore', 'pipe', 'inherit'] });
+        const holderExit = new Promise(resolve => holder.once('exit', resolve));
+
+        try {
+            await new Promise((resolve, reject) => {
+                holder.stdout.once('data', resolve);
+                holder.once('error', reject);
+                holder.once('exit', () => reject(new Error('The lock holder exited before it held the lock')));
+            });
+
+            const startedAt = Date.now();
+            const release = acquireChatFileLock(chatPath);
+            const waitedMs = Date.now() - startedAt;
+            release();
+
+            expect(waitedMs).toBeGreaterThan(holdMs - 500);
+        } finally {
+            holder.kill('SIGKILL');
+            await holderExit;
+        }
+    }, 20_000);
 
     test('CharacterIndex tunes SQLite pragmas and wraps prune deletes in transactions with capped vacuum', async () => {
         const desktopPragmas = getCharacterIndexPragmas({ isAndroid: false });
