@@ -8,6 +8,7 @@ import vm from 'node:vm';
 import zlib from 'node:zlib';
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from '@jest/globals';
+import fullHljs from 'highlight.js';
 
 import {
     createDeterministicTarGz,
@@ -624,11 +625,9 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         }
     });
 
-    test('(f) slim lib.js reduces bundle size, registers core hljs languages/aliases with safe unknown fallback, and preserves all exports & shims', async () => {
+    test('(f) built lib.js keeps the full highlight.js language set and preserves all exports & shims', async () => {
         const libEntry = manifest.assets['lib.js'];
         expect(libEntry).toBeDefined();
-        // Baseline Node lib.js was ~2060 KiB (2.01 MiB); slim build must drop by >45%.
-        expect(libEntry.bytes).toBeLessThan(1100 * 1024);
 
         const webpackSource = fs.readFileSync(webpackConfigPath, 'utf8');
         expect(webpackSource).toContain('ContextReplacementPlugin');
@@ -712,50 +711,31 @@ describe('PR 13: extension-safe ESM importmap, flattened CSS, and slim lib.js', 
         expectSameNamespace(mockWindow.Popper, libModule.Popper);
         expect(mockWindow.droll).toBe(libModule.droll);
 
-        // Verify highlight.js uses core + ~31 languages (not 194) and all standard aliases work.
+        // highlight.js must keep every language of the installed package, with the same API surface as the package itself.
         const { hljs, moment } = libModule;
-        expect(hljs.listLanguages().length).toBeGreaterThanOrEqual(30);
-        expect(hljs.listLanguages().length).toBeLessThan(40);
+        expect(hljs.listLanguages().sort()).toEqual(fullHljs.listLanguages().sort());
+        expect(Object.keys(hljs).sort()).toEqual(Object.keys(fullHljs).sort());
 
-        for (const langOrAlias of [
-            'javascript', 'js', 'typescript', 'ts', 'python', 'py', 'json',
-            'bash', 'sh', 'shell', 'xml', 'html', 'css', 'scss', 'sql',
-            'yaml', 'yml', 'markdown', 'md', 'c', 'cpp', 'c++', 'csharp', 'cs',
-            'java', 'kotlin', 'kt', 'go', 'rust', 'ruby', 'rb', 'php', 'swift',
-            'diff', 'ini', 'plaintext', 'txt', 'lua', 'dockerfile', 'powershell',
-            'ps1', 'makefile', 'regex', 'graphql', 'dos',
-        ]) {
-            expect(hljs.getLanguage(langOrAlias)).toBeTruthy();
+        for (const languageName of fullHljs.listLanguages()) {
+            expect(hljs.getLanguage(languageName)).toBeTruthy();
+            for (const alias of fullHljs.getLanguage(languageName).aliases ?? []) {
+                expect(hljs.getLanguage(alias)).toBeTruthy();
+            }
         }
 
-        // Unknown fence tags must never throw in highlight() or highlightElement().
-        const unknownResult = hljs.highlight('fn main() { 1 < 2 }', { language: 'nonexistent-rare-fence' });
-        expect(unknownResult.language).toBe('plaintext');
-        expect(unknownResult.value).toContain('&lt;');
+        for (const [languageName, sample] of [
+            ['haskell', 'main :: IO ()\nmain = print (1 < 2)'],
+            ['latex', '\\begin{document}\n\\section{Intro} $x < y$\n\\end{document}'],
+            ['perl', 'use strict;\nmy $x = 1;\nprint "$x\\n";'],
+            ['r', 'x <- c(1, 2, 3)\nmean(x)'],
+        ]) {
+            const highlighted = hljs.highlight(sample, { language: languageName });
+            expect(highlighted.language).toBe(languageName);
+            expect(highlighted.value).toContain('<span class="hljs-');
+        }
 
-        const fakeCodeElement = {
-            textContent: 'SELECT 1 < 2;',
-            children: [],
-            className: 'language-nonexistent-rare-fence',
-            classList: { contains: () => false, add: () => {} },
-            dataset: {},
-            innerHTML: '',
-        };
-        expect(() => hljs.highlightElement(fakeCodeElement)).not.toThrow();
-        expect(fakeCodeElement.innerHTML).toContain('&lt;');
-
-        // Standalone nohighlight class must still skip highlighting even alongside an unknown language-* tag.
-        const noHighlightElement = {
-            textContent: 'SELECT 1 < 2;',
-            children: [],
-            className: 'nohighlight language-nonexistent-rare-fence',
-            classList: { contains: () => false, add: () => {} },
-            dataset: {},
-            innerHTML: '',
-        };
-        expect(() => hljs.highlightElement(noHighlightElement)).not.toThrow();
-        expect(noHighlightElement.innerHTML).toBe('');
-        expect(noHighlightElement.dataset.highlighted).toBeUndefined();
+        // An unknown language keeps throwing as in upstream, so extension code that wraps hljs.highlight() in try/catch behaves the same.
+        expect(() => hljs.highlight('a < b', { language: 'nonexistent-rare-fence' })).toThrow();
 
         // Runtime custom language registration (e.g. STscript) still works.
         hljs.registerLanguage('stscript-test', () => ({ keywords: 'echo' }));

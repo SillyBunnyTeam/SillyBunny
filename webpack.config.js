@@ -8,7 +8,7 @@ import { isBunRuntime } from './src/runtime.js';
 import { serverDirectory } from './src/server-directory.js';
 import { getVersion, color } from './src/util.js';
 
-// SillyBunny: cache signatures and input hashing cover Bun pre-minified aliases, slim hljs, and UI moment locales.
+// SillyBunny: cache signatures and input hashing cover Bun pre-minified aliases and UI moment locales.
 const BUN_LIB_BUNDLE_SIGNATURE = 'bun-premin-vendors-v3';
 const PUBLIC_LIB_CONFIG_SIGNATURE = 'slim-hljs-moment-ui-locales-v3';
 const WEBPACK_CACHE_KEEP_COUNT = 3;
