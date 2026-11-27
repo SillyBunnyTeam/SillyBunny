@@ -1921,6 +1921,13 @@ This is the largest class by a wide margin.
 - **Limit:** a file written less than `RACY_WINDOW_MS` before a request is read again by that request and by the next one that follows, which is the cost of not trusting a stamp that a second write can reproduce. A test that expects a cache hit right after it writes its fixture waits for the window first. `chatSizeCache` and the thumbnail content-type cache keep their own keys: the first stores only values that are a function of `(size, mtimeMs)`, so a stale hit cannot differ, and the second stores a type that only a changed format of the same length could make wrong. The character index stores `(size, mtime)` in its database, so a stronger stamp there needs a schema change.
 - **Tests:** `tests/file-stamp-caches.test.js`, `tests/secrets-cache.test.js`.
 
+### Token count estimates that the server answers
+
+- **Breaks:** `POST /api/tokenizers/count-batch` and `POST /api/tokenizers/openai/count?per_message=1` answered a length estimate (`guesstimate()`, bytes over 3.35) as a plain number when a tokenizer could not be loaded, when counting a batch failed, or when one entry could not be encoded, so a caller could not tell it from an exact count and kept it as one.
+- **Guards:** both answers carry `estimated`, an array with one boolean for each entry of `counts` or `token_counts`, when at least one entry is not an exact count; an answer with only exact counts has no `estimated` field and is as it was, and `counts` and `token_counts` keep their type and meaning. Estimates are the entry that fell back in `countBatchEntry()`, every entry when the tokenizer is not available or the batch failed, a Sentencepiece prompt counted without its tokenizer, and a Tiktoken message with a value that `encode()` rejected (the count then leaves that text out). The total count of `/openai/count` without `per_message` is unchanged.
+- **Limit:** the client in `public/scripts/tokenizers.js` does not read the field yet, so it still caches these counts as exact ones.
+- **Tests:** `tests/perf-hot-apis-and-lazy-routers.test.js` ("answers that a count is an estimate").
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

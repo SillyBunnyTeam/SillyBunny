@@ -1353,6 +1353,98 @@ describe('PR 6 hot APIs: tokenizers lazy loading, coalescing, encoding cache, LR
         expect(upperGpt2.status).toBe(200);
         expect(upperGpt2.body.counts).toEqual([gpt2.encode(normalA).length]);
     });
+
+
+    describe('answers that a count is an estimate', () => {
+        const guesstimateOf = text => Math.ceil(Buffer.byteLength(text, 'utf8') / 3.35);
+        const messages = [
+            { role: 'user', content: 'A first ordinary message.' },
+            { role: 'assistant', content: 'A second ordinary message.' },
+        ];
+
+        beforeEach(() => {
+            jest.spyOn(console, 'warn').mockImplementation(() => {});
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+        });
+
+        test('count-batch names the entry that fell back to an estimate, and leaves exact answers as they were', async () => {
+            const o200k = getTiktokenTokenizer('gpt-4o');
+            const exact = ['The quick brown fox jumps over the lazy dog.', 'Another ordinary sentence.'];
+            const special = 'prefix <|endoftext|> suffix';
+
+            const mixed = await post('/count-batch', { model: 'gpt-4o', texts: [exact[0], special, exact[1]] });
+            expect(mixed.status).toBe(200);
+            expect(mixed.body.counts).toEqual([o200k.encode(exact[0]).length, guesstimateOf(special), o200k.encode(exact[1]).length]);
+            expect(mixed.body.estimated).toEqual([false, true, false]);
+
+            const allExact = await post('/count-batch', { model: 'gpt-4o', texts: exact });
+            expect(allExact.body).toEqual({ counts: exact.map(text => o200k.encode(text).length) });
+        });
+
+        test('count-batch names every entry when the tokenizer cannot be loaded', async () => {
+            jest.spyOn(getSentencepiceTokenizer('llama'), 'get').mockResolvedValue(null);
+
+            const unavailable = await post('/count-batch', { model: 'llama', texts: ['alpha beta', 'gamma'] });
+            expect(unavailable.body).toEqual({
+                counts: [guesstimateOf('alpha beta'), guesstimateOf('gamma')],
+                estimated: [true, true],
+            });
+        });
+
+        test('count-batch names every entry when counting the batch fails', async () => {
+            jest.spyOn(getWebTokenizer('llama3'), 'get').mockRejectedValue(new Error('boom'));
+
+            const failed = await post('/count-batch', { model: 'llama3', texts: ['alpha beta', 'gamma'] });
+            expect(failed.body).toEqual({
+                counts: [guesstimateOf('alpha beta'), guesstimateOf('gamma')],
+                estimated: [true, true],
+            });
+        });
+
+        test('per_message leaves an exact answer as it was', async () => {
+            const o200k = getTiktokenTokenizer('gpt-4o');
+            const result = await post('/openai/count?model=gpt-4o&per_message=1', messages);
+            expect(result.status).toBe(200);
+            expect(Object.keys(result.body)).toEqual(['token_counts']);
+            expect(result.body.token_counts).toHaveLength(2);
+            for (const count of result.body.token_counts) {
+                expect(count).toBeGreaterThan(o200k.encode('A first ordinary message.').length);
+            }
+        });
+
+        test('per_message names the message that Tiktoken could not count in full', async () => {
+            const result = await post('/openai/count?model=gpt-4o&per_message=1', [
+                messages[0],
+                { role: 'user', content: 'prefix <|endoftext|> suffix' },
+            ]);
+            expect(result.status).toBe(200);
+            expect(result.body.estimated).toEqual([false, true]);
+        });
+
+        test('per_message names every message when the tokenizer cannot be loaded', async () => {
+            jest.spyOn(getWebTokenizer('llama3'), 'get').mockResolvedValue(null);
+
+            const result = await post('/openai/count?model=llama3&per_message=1', messages);
+            expect(result.body).toEqual({
+                token_counts: messages.map(message => guesstimateOf(JSON.stringify(message))),
+                estimated: [true, true],
+            });
+        });
+
+        test('per_message names every message when a Sentencepiece tokenizer cannot be loaded', async () => {
+            jest.spyOn(getSentencepiceTokenizer('llama'), 'get').mockResolvedValue(null);
+
+            const result = await post('/openai/count?model=llama&per_message=1', messages);
+            expect(result.status).toBe(200);
+            expect(result.body.token_counts).toHaveLength(2);
+            expect(result.body.estimated).toEqual([true, true]);
+        });
+
+        test('the total count of /openai/count keeps its answer', async () => {
+            const result = await post('/openai/count?model=gpt-4o', messages);
+            expect(Object.keys(result.body)).toEqual(['token_count']);
+        });
+    });
 });
 
 const originalThumbnailSettings = getThumbnailRuntimeSettings();

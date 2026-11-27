@@ -754,7 +754,7 @@ export function getWebTokenizer(model) {
  * Counts the token ids for the given text using the Sentencepiece tokenizer.
  * @param {SentencePieceTokenizer} tokenizer Sentencepiece tokenizer
  * @param {string} text Text to tokenize
- * @returns { Promise<{ids: number[], count: number}> } Tokenization result
+ * @returns { Promise<{ids: number[], count: number, estimated?: boolean}> } Tokenization result. `estimated` is true when the count is a length estimate because the tokenizer is not available.
  */
 async function countSentencepieceTokens(tokenizer, text) {
     const instance = await tokenizer?.get();
@@ -764,6 +764,7 @@ async function countSentencepieceTokens(tokenizer, text) {
         return {
             ids: [],
             count: guesstimate(text),
+            estimated: true,
         };
     }
 
@@ -782,15 +783,15 @@ async function countSentencepieceTokens(tokenizer, text) {
  * @param {string} namespace Cache namespace for this tokenizer
  * @param {SentencePieceTokenizer} tokenizer Sentencepiece tokenizer
  * @param {string} text Text to count
- * @returns {Promise<number>} Token count
+ * @returns {Promise<{count: number, estimated: boolean}>} Token count, and whether it is an estimate
  */
 async function countCachedSentencepieceText(namespace, tokenizer, text) {
     const instance = await tokenizer?.get();
     if (!instance) {
-        return guesstimate(text);
+        return { count: guesstimate(text), estimated: true };
     }
 
-    return getCachedTokenCount(namespace, text, async () => instance.encodeIds(text).length);
+    return { count: await getCachedTokenCount(namespace, text, async () => instance.encodeIds(text).length), estimated: false };
 }
 
 /**
@@ -798,7 +799,7 @@ async function countCachedSentencepieceText(namespace, tokenizer, text) {
  * @param {SentencePieceTokenizer} tokenizer
  * @param {object[]} array Array of objects to tokenize
  * @param {string} [namespace] Optional cache namespace for LRU token-count caching
- * @returns {Promise<number>} Number of tokens
+ * @returns {Promise<{count: number, estimated: boolean}>} Number of tokens, and whether it is an estimate
  */
 async function countSentencepieceArrayTokens(tokenizer, array, namespace = undefined) {
     // SillyBunny: Use convertClaudePrompt for consistent token counting across all tokenizers.
@@ -810,7 +811,7 @@ async function countSentencepieceArrayTokens(tokenizer, array, namespace = undef
         return await countCachedSentencepieceText(namespace, tokenizer, convertedPrompt);
     }
     const result = await countSentencepieceTokens(tokenizer, convertedPrompt);
-    return result.count;
+    return { count: result.count, estimated: result.estimated === true };
 }
 
 /**
@@ -1030,15 +1031,15 @@ export function countWebTokenizerTokens(tokenizer, messages) {
  * @param {string} namespace Cache namespace for this web tokenizer
  * @param {import('@agnai/web-tokenizers').Tokenizer|ClaudeTokenizerInstance} tokenizer Loaded web tokenizer
  * @param {object[]} messages Array of messages
- * @returns {Promise<number>}
+ * @returns {Promise<{count: number, estimated: boolean}>} Token count, and whether it is an estimate
  */
 async function countCachedWebTokenizerTokens(namespace, tokenizer, messages) {
     const jsonBody = messages.flatMap(x => Object.values(x)).join('\n\n');
     if (!tokenizer) {
-        return guesstimate(jsonBody);
+        return { count: guesstimate(jsonBody), estimated: true };
     }
 
-    return getCachedTokenCount(namespace, jsonBody, async () => tokenizer.encode(jsonBody).length);
+    return { count: await getCachedTokenCount(namespace, jsonBody, async () => tokenizer.encode(jsonBody).length), estimated: false };
 }
 
 /**
@@ -1410,7 +1411,8 @@ router.post('/openai/decode', async function (req, res) {
  * @param {string} model Resolved tokenizer model
  * @param {string} queryModel Raw model string from the request query
  * @param {object[]} messages Messages to count
- * @returns {Promise<number>} Token count
+ * @returns {Promise<{count: number, estimated: boolean}>} Token count, and whether it is not an exact count: a length
+ * estimate, or a count that leaves out text that the tokenizer could not encode
  */
 async function countOpenAIChatTokens(model, queryModel, messages) {
     if (model === 'claude') {
@@ -1483,6 +1485,7 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
     const cacheNamespace = `tiktoken:${encoding}`;
 
     let num_tokens = 0;
+    let estimated = false;
 
     for (const msg of messages) {
         try {
@@ -1499,6 +1502,7 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
             }
         } catch {
             console.warn('Error tokenizing message:', msg);
+            estimated = true;
         }
     }
     num_tokens += tokensPadding;
@@ -1512,7 +1516,7 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
     // not needed for cached tokenizers
     //tokenizer.free();
 
-    return num_tokens;
+    return { count: num_tokens, estimated };
 }
 
 /**
@@ -1522,22 +1526,31 @@ async function countOpenAIChatTokens(model, queryModel, messages) {
  * @param {string} namespace Canonical cache namespace
  * @param {string} text Text to count
  * @param {() => Promise<number>} compute Async token-count computation
- * @returns {Promise<number>}
+ * @returns {Promise<{count: number, estimated: boolean}>} Token count, and whether it is an estimate
  */
 async function countBatchEntry(namespace, text, compute) {
     try {
-        return await getCachedTokenCount(namespace, text, compute);
+        return { count: await getCachedTokenCount(namespace, text, compute), estimated: false };
     } catch (error) {
         console.warn('Error counting batch token entry, using fallback estimation:', error?.message ?? error);
-        return guesstimate(text);
+        return { count: guesstimate(text), estimated: true };
     }
+}
+
+/**
+ * Estimates the count of every text, for a tokenizer that is not available.
+ * @param {string[]} texts Texts to count
+ * @returns {{count: number, estimated: boolean}[]}
+ */
+function estimateBatchTexts(texts) {
+    return texts.map(text => ({ count: guesstimate(text), estimated: true }));
 }
 
 /**
  * Counts tokens for a batch of plain text strings for a requested model using the bounded LRU cache.
  * @param {string} rawModel Requested model string
  * @param {string[]} texts Texts to count
- * @returns {Promise<number[]>} Token counts in input order
+ * @returns {Promise<{count: number, estimated: boolean}[]>} Token counts in input order, each with whether it is an estimate
  */
 async function countBatchTexts(rawModel, texts) {
     if (texts.length === 0) {
@@ -1548,12 +1561,12 @@ async function countBatchTexts(rawModel, texts) {
     const lowerRaw = normalizedRaw.toLowerCase();
     if (lowerRaw === 'nerdstash_v2') {
         const instance = await spp_nerd_v2.get();
-        if (!instance) return texts.map(t => guesstimate(t));
+        if (!instance) return estimateBatchTexts(texts);
         return Promise.all(texts.map(text => countBatchEntry('sp:nerdstash_v2', text, async () => instance.encodeIds(text).length)));
     }
     if (lowerRaw === 'nerdstash') {
         const instance = await spp_nerd.get();
-        if (!instance) return texts.map(t => guesstimate(t));
+        if (!instance) return estimateBatchTexts(texts);
         return Promise.all(texts.map(text => countBatchEntry('sp:nerdstash', text, async () => instance.encodeIds(text).length)));
     }
     if (lowerRaw === 'gpt2') {
@@ -1578,7 +1591,7 @@ async function countBatchTexts(rawModel, texts) {
         const canonical = model === 'gemini' ? 'gemma' : model;
         const instance = await spTokenizer.get();
         if (!instance) {
-            return texts.map(t => guesstimate(t));
+            return estimateBatchTexts(texts);
         }
         const namespace = `sp:${canonical}`;
         return Promise.all(texts.map(text => countBatchEntry(namespace, text, async () => instance.encodeIds(text).length)));
@@ -1600,7 +1613,7 @@ async function countBatchTexts(rawModel, texts) {
         const canonical = model === 'llama-3' ? 'llama3' : model;
         const instance = await webTokenizer.get();
         if (!instance) {
-            return texts.map(t => guesstimate(t));
+            return estimateBatchTexts(texts);
         }
         const namespace = `web:${canonical}`;
         return Promise.all(texts.map(text => countBatchEntry(namespace, text, async () => instance.encode(text).length)));
@@ -1609,6 +1622,18 @@ async function countBatchTexts(rawModel, texts) {
     const { tokenizer, encoding } = await getTiktokenTokenizerAsync(model);
     const namespace = `tiktoken:${encoding}`;
     return Promise.all(texts.map(text => countBatchEntry(namespace, text, async () => tokenizer.encode(text).length)));
+}
+
+/**
+ * Builds the answer of `/openai/count?per_message=1`. `estimated` is added only when a count is an estimate.
+ * @param {{count: number, estimated: boolean}[]} results Count of each message, and whether it is an estimate
+ * @returns {{token_counts: number[], estimated?: boolean[]}}
+ */
+function createPerMessageAnswer(results) {
+    const answer = { 'token_counts': results.map(result => result.count) };
+    return results.some(result => result.estimated)
+        ? { ...answer, estimated: results.map(result => result.estimated) }
+        : answer;
 }
 
 router.post('/openai/count', async function (req, res) {
@@ -1623,21 +1648,22 @@ router.post('/openai/count', async function (req, res) {
         // history one message at a time can prime its cache in a single request. Each entry
         // is counted exactly as a single-message request would be, which keeps the values
         // interchangeable with the ones the unbatched path caches.
+        // The answer also carries `estimated`, one boolean per count, when a count is an estimate and not an exact
+        // count, so a caller does not keep it as an exact one. A caller that does not know the field ignores it.
         if (req.query.per_message) {
-            const token_counts = [];
+            const results = [];
             for (const message of req.body) {
-                token_counts.push(await countOpenAIChatTokens(model, queryModel, [message]));
+                results.push(await countOpenAIChatTokens(model, queryModel, [message]));
             }
-            return res.send({ 'token_counts': token_counts });
+            return res.send(createPerMessageAnswer(results));
         }
 
-        const num_tokens = await countOpenAIChatTokens(model, queryModel, req.body);
+        const { count: num_tokens } = await countOpenAIChatTokens(model, queryModel, req.body);
         res.send({ 'token_count': num_tokens });
     } catch (error) {
         console.error('An error counting tokens, using fallback estimation method', error);
         if (req.query.per_message && Array.isArray(req.body)) {
-            const token_counts = req.body.map(message => guesstimate(JSON.stringify(message)));
-            return res.send({ 'token_counts': token_counts });
+            return res.send(createPerMessageAnswer(req.body.map(message => ({ count: guesstimate(JSON.stringify(message)), estimated: true }))));
         }
         const jsonBody = JSON.stringify(req.body);
         const num_tokens = guesstimate(jsonBody);
@@ -1680,12 +1706,17 @@ router.post('/count-batch', async function (req, res) {
         }
     }
 
+    // `estimated` holds one boolean per count and is added only when a count is an estimate and not an exact count,
+    // so a caller does not keep it as an exact one. A caller that does not know the field ignores it.
+    const createAnswer = results => results.some(result => result.estimated)
+        ? { counts: results.map(result => result.count), estimated: results.map(result => result.estimated) }
+        : { counts: results.map(result => result.count) };
+
     try {
-        const counts = await countBatchTexts(model || '', texts);
-        return res.send({ counts });
+        return res.send(createAnswer(await countBatchTexts(model || '', texts)));
     } catch (error) {
         console.error('An error counting batch tokens, using fallback estimation method', error);
-        return res.send({ counts: texts.map(text => guesstimate(text)) });
+        return res.send(createAnswer(estimateBatchTexts(texts)));
     }
 });
 
