@@ -944,7 +944,7 @@ describe('Track A: Parallel independent pre-reply In-Chat Agents', () => {
 });
 
 describe('Track A: Server TTFT, Vertex OAuth2 cache, OpenRouter SWR, KV cache alignment, async journal, UTF-8, netstat skip', () => {
-    test('Vertex AI OAuth2 cache reuses access token + projectId with 60s expiry margin, evicts on invalidate, and bounds at 16 entries', async () => {
+    test('Vertex AI OAuth2 cache reuses access token + projectId within its expiry margin, evicts on invalidate, and bounds at 16 entries', async () => {
         const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
         const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 
@@ -990,7 +990,7 @@ describe('Track A: Server TTFT, Vertex OAuth2 cache, OpenRouter SWR, KV cache al
             expect(auth1.projectId).toBe('proj-alpha');
             expect(fetchImpl).toHaveBeenCalledTimes(1);
 
-            // Within 60-second safety margin before 3600s expiry (at 3541s), token refreshes.
+            // Inside the safety margin before the 3600s expiry (at 3541s), the token refreshes.
             nowMs += 3541 * 1000;
             const auth3 = await getVertexAIAuth(req, { fetchImpl, now: () => nowMs });
             expect(auth3.authHeader).toBe('Bearer tok-2');

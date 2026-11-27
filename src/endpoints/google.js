@@ -77,9 +77,11 @@ function createCompleteWavFile(pcmData, sampleRate) {
 }
 
 // SillyBunny: cache Vertex AI Service Account OAuth2 access tokens and projectId by sha256(saJson)
-// with a 60-second safety margin and bounded 16-entry LRU so generations skip signing and OAuth2 round trips.
+// with an expiry safety margin and a bounded LRU so generations skip signing and OAuth2 round trips.
 const VERTEX_OAUTH_CACHE_MAX = 16;
-const VERTEX_OAUTH_EXPIRY_MARGIN_MS = 60 * 1000;
+// The token that a request reads at its start also signs every later hop of a Gemini long decode reply.
+// The Gemini long decode documentation sets 20 minutes as the limit of a streaming request, so a cached token needs more life than one full hop.
+const VERTEX_OAUTH_EXPIRY_MARGIN_MS = 21 * 60 * 1000;
 const VERTEX_OAUTH_DEFAULT_EXPIRES_IN_SEC = 3600;
 /** @type {Map<string, { accessToken: string, expiresAtMs: number, projectId: string | null }>} */
 const vertexOAuthCache = new Map();
