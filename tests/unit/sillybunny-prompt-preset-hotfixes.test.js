@@ -268,9 +268,16 @@ describe('Slice 1D: PromptManager deferred hidden renders and owned-tab DOM skip
         expect(pm.pendingDeferredRender).toEqual({ afterTryGenerate: true });
         expect(pm.tryGenerate).not.toHaveBeenCalled();
 
+        // Opening Character Editor dispatches tabId: 'editor' under shellKey: 'characters' and must not flush PromptManager.
+        document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', { detail: { shellKey: 'characters', tabId: 'editor' } }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(pm.pendingDeferredRender).toEqual({ afterTryGenerate: true });
+        expect(pm.tryGenerate).not.toHaveBeenCalled();
+
         // Simulate openSettingsPage firing sb:shell-tab-activated before removing page.hidden.
         document.querySelector('.sb-shell-panel').classList.add('sb-shell-panel-active');
-        document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', { detail: { tabId: 'editor' } }));
+        document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', { detail: { shellKey: 'left', tabId: 'editor' } }));
         await new Promise(resolve => setTimeout(resolve, 0));
 
         expect(pm.pendingDeferredRender).toBeNull();
@@ -310,6 +317,7 @@ describe('Slice 1D: prompt editor indexing and OpenAI preset save batching', () 
         expect(source).toContain('function ensureStateIndex()');
         expect(source).toContain('promptsById = new Map(');
         expect(source).toContain('orderedIdSet = new Set(');
+        expect(source).toContain('knownCount(state.runtime)');
         expect(source).toContain('promptManager?.flushDeferredRender?.({ force: true });');
         expect(source).not.toContain('JSON.stringify([state.scope, state.prompts');
         expect(source).not.toContain('JSON.stringify([prompt,');

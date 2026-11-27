@@ -9,7 +9,8 @@ await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
 await jest.unstable_mockModule('../../public/script.js', () => ({
     eventSource: { on: jest.fn() }, event_types: { APP_READY: 'app_ready' }, getRequestHeaders: () => ({}), main_api: 'openai',
 }));
-await jest.unstable_mockModule('../../public/scripts/openai.js', () => ({ promptManager: { serviceSettings: {} } }));
+const flushDeferredRender = jest.fn();
+await jest.unstable_mockModule('../../public/scripts/openai.js', () => ({ promptManager: { serviceSettings: {}, flushDeferredRender } }));
 await jest.unstable_mockModule('../../public/scripts/user.js', () => ({ getCurrentUserHandle: () => 'test-user' }));
 const accountItems = new Map();
 await jest.unstable_mockModule('../../public/scripts/util/AccountStorage.js', () => ({
@@ -81,6 +82,7 @@ const { initializePromptEditor, promptDraftKey } = await import('../../public/sc
 
 let recoveryActions;
 let pagehideListeners;
+let documentListeners;
 const flush = () => jest.advanceTimersByTimeAsync(0);
 
 function record(identifier, name, overrides = {}) {
@@ -161,17 +163,26 @@ beforeEach(() => {
     global.toastr = { error: jest.fn(), clear: jest.fn(), info: jest.fn(() => ({
         find: selector => ({ on: (_type, handler) => recoveryActions.set(selector, handler) }),
     })) };
-    // Each mounted editor listens for pagehide on the window; only the editor under test may answer it.
+    // Each mounted editor listens on window and document; only the editor under test may answer.
     pagehideListeners = [];
+    documentListeners = [];
     const add = window.addEventListener.bind(window);
     jest.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
         if (type === 'pagehide') pagehideListeners.push(listener);
         return add(type, listener, options);
     });
+    const addDoc = document.addEventListener.bind(document);
+    jest.spyOn(document, 'addEventListener').mockImplementation((type, listener, options) => {
+        if (type === 'sb:shell-tab-activated' || type === 'sb:prompt-manager-rendered') {
+            documentListeners.push([type, listener, options]);
+        }
+        return addDoc(type, listener, options);
+    });
 });
 
 afterEach(() => {
     for (const listener of pagehideListeners) window.removeEventListener('pagehide', listener);
+    for (const [type, listener, options] of documentListeners) document.removeEventListener(type, listener, options);
     jest.restoreAllMocks();
     jest.useRealTimers();
 });
@@ -852,5 +863,70 @@ describe('Prompt editor draft', () => {
         second.querySelector('.sb-prompt-save').click();
         expect(fakeModel.save.mock.calls.at(-1)[0]).toMatchObject({ name: 'Brand new', content: 'New content' });
         expect(stored('prompt:new')).toBeNull();
+    });
+
+    test('row action menu Edit and Preview load live saved edits even when the row node is reused', async () => {
+        const column = await mountEditor();
+        const initialRow = column.querySelector('[data-prompt-id="main"]');
+        await openPrompt(column, 'main');
+        typeContent(column, 'Updated main body');
+        const forbidToggle = column.querySelector('.sb-prompt-properties input[aria-label="Forbid Overrides"]');
+        forbidToggle.checked = true;
+        forbidToggle.dispatchEvent(new Event('change', { bubbles: true }));
+        column.querySelector('.sb-prompt-save').click();
+        await flush();
+
+        // Slim signature omits content and forbid_overrides, so the DOM row node is reused.
+        expect(column.querySelector('[data-prompt-id="main"]')).toBe(initialRow);
+
+        column.querySelector('.sb-prompt-back').click();
+        await flush();
+        await flush();
+
+        initialRow.querySelector('.sb-prompt-row-menu').click();
+        const editItems = openActionMenu.mock.calls.at(-1)[0].sections.flatMap(section => section.items);
+        editItems.find(item => item.label === 'Edit').onSelect();
+        await flush();
+        await flush();
+
+        expect(column.querySelector('#sb-prompt-form_prompt').value).toBe('Updated main body');
+        expect(column.querySelector('.sb-prompt-properties input[aria-label="Forbid Overrides"]').checked).toBe(true);
+
+        column.querySelector('.sb-prompt-back').click();
+        await flush();
+        await flush();
+
+        initialRow.querySelector('.sb-prompt-row-menu').click();
+        const previewItems = openActionMenu.mock.calls.at(-1)[0].sections.flatMap(section => section.items);
+        previewItems.find(item => item.label === 'Preview').onSelect();
+        await flush();
+        await flush();
+
+        expect(column.querySelector('.sb-prompt-preview').textContent).toBe('Updated main body');
+    });
+
+    test('runtime In-Chat Agents token count updates alone re-render the runtime row badge', async () => {
+        const column = await mountEditor();
+        expect(column.querySelector('[data-prompt-id="runtimeAgents"] .sb-prompt-token').textContent).toBe('-');
+
+        counts = { runtimeAgents: 42 };
+        document.dispatchEvent(new CustomEvent('sb:prompt-manager-rendered'));
+        await jest.advanceTimersByTimeAsync(20);
+
+        expect(column.querySelector('[data-prompt-id="runtimeAgents"] .sb-prompt-token').textContent).toBe('42');
+    });
+
+    test('sb:shell-tab-activated flushes PromptManager only for the backend left editor tab, not Character Editor', async () => {
+        await mountEditor();
+        flushDeferredRender.mockClear();
+
+        document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', { detail: { shellKey: 'characters', tabId: 'editor' } }));
+        await flush();
+        expect(flushDeferredRender).not.toHaveBeenCalled();
+
+        document.dispatchEvent(new CustomEvent('sb:shell-tab-activated', { detail: { shellKey: 'left', tabId: 'editor' } }));
+        await flush();
+        expect(flushDeferredRender).toHaveBeenCalledTimes(1);
+        expect(flushDeferredRender).toHaveBeenCalledWith({ force: true });
     });
 });

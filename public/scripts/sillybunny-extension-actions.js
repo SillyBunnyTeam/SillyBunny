@@ -1,7 +1,7 @@
 import { openActionMenu } from './sillybunny-action-menu.js';
 
-const EXTENSION_CONTAINER_SELECTOR = '.extensions_info';
-const EXTENSION_ROW_SELECTOR = '.extensions_info .extension_block';
+const EXTENSION_CONTAINER_SELECTOR = 'div.extensions_info';
+const EXTENSION_ROW_SELECTOR = 'div.extensions_info .extension_block';
 const ACTION_SELECTOR = ':scope > button:not(.sb-extension-actions-menu)';
 const NARROW_VIEWPORT = 450;
 
@@ -132,7 +132,9 @@ export function unobserveRemovedRows(node, observer = resizeObserver) {
     node.querySelectorAll(EXTENSION_ROW_SELECTOR).forEach(row => observer?.unobserve(row));
 }
 
-function disposeExtensionRowActions() {
+function disposeExtensionRowActions(event) {
+    const detailContainer = event?.detail?.container;
+    if (detailContainer instanceof Element && observedContainer && detailContainer !== observedContainer) return;
     rowObserver?.disconnect();
     resizeObserver?.disconnect();
     rowObserver = null;
@@ -140,8 +142,11 @@ function disposeExtensionRowActions() {
     observedContainer = null;
 }
 
-function initializeExtensionRowActions() {
-    const container = document.querySelector(EXTENSION_CONTAINER_SELECTOR);
+function initializeExtensionRowActions(event) {
+    const detailContainer = event?.detail?.container;
+    const container = detailContainer instanceof Element && detailContainer.isConnected
+        ? detailContainer
+        : document.querySelector(EXTENSION_CONTAINER_SELECTOR);
     if (!(container instanceof Element)) return;
     if (rowObserver && observedContainer === container) {
         updateRows(container);

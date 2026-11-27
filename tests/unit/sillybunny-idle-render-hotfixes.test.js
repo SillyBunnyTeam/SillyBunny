@@ -33,14 +33,38 @@ describe('idle rendering and GPU layer hotfix contracts', () => {
         expect(bodyRule).not.toContain('optimizeLegibility');
     });
 
-    test('guards the expressions 2s poll against hidden tabs and repeated empty-chat style queries', () => {
+    test('guards the expressions 2s poll against hidden tabs, preserves pendingNewChat, and avoids repeated empty-chat style queries', () => {
         const expressionsJs = readRepoFile('public', 'scripts', 'extensions', 'expressions', 'index.js');
 
+        expect(expressionsJs).toContain('let pendingNewChat = false;');
         expect(expressionsJs).toContain('if (document.hidden)');
         expect(expressionsJs).toContain('expressionRemovedForEmptyChat');
         expect(expressionsJs).toContain('vnWrapperInitialized');
         expect(expressionsJs).toContain('lastOfflineModeDisplayed');
         expect(expressionsJs).not.toContain('$(\'#visual-novel-wrapper\').is(\':visible\')');
         expect(expressionsJs).not.toContain('offlineMode.is(\':visible\')');
+
+        const workerStart = expressionsJs.indexOf('async function moduleWorker({ newChat = false } = {})');
+        const nextFnIdx = expressionsJs.indexOf('\nasync function ', workerStart + 1);
+        const workerSlice = expressionsJs.slice(workerStart, nextFnIdx > workerStart ? nextFnIdx : workerStart + 8000);
+        const setPendingIdx = workerSlice.indexOf('pendingNewChat = true;');
+        const hiddenCheckIdx = workerSlice.indexOf('if (document.hidden)');
+        const consumeIdx = workerSlice.indexOf('const isNewChat = newChat || pendingNewChat;');
+        const resetPendingIdx = workerSlice.indexOf('pendingNewChat = false;');
+        const vnRefreshIdx = workerSlice.indexOf('if (context.groupId && vnMode && isNewChat)');
+
+        expect(setPendingIdx).toBeGreaterThan(0);
+        expect(hiddenCheckIdx).toBeGreaterThan(setPendingIdx);
+        expect(consumeIdx).toBeGreaterThan(hiddenCheckIdx);
+        expect(resetPendingIdx).toBeGreaterThan(consumeIdx);
+        expect(vnRefreshIdx).toBeGreaterThan(resetPendingIdx);
+        expect(workerSlice).not.toContain('if (context.groupId && vnMode && newChat)');
+    });
+
+    test('marks the modified icon-control selector block in mobile-styles.css with exact /* SillyBunny: ... */ syntax', () => {
+        const mobileCss = readRepoFile('public', 'css', 'mobile-styles.css');
+
+        expect(mobileCss).toContain('/* SillyBunny: text-labelled icon controls may expand beyond upstream square sizing; collapsed :has() avoids chained selector scans. */');
+        expect(mobileCss).not.toContain('/* SillyBunny divergence: text-labelled icon controls');
     });
 });

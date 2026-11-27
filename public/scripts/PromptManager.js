@@ -1261,6 +1261,7 @@ class PromptManager {
         return renderRequestId === this.renderRequestId;
     }
 
+    // SillyBunny: detect owned/hidden prompt surfaces and defer hidden renders until the backend editor tab activates.
     #isPromptEditorOwned() {
         return Boolean(this.containerElement?.closest?.('.sb-prompt-owned'));
     }
@@ -1288,8 +1289,9 @@ class PromptManager {
             return;
         }
         this.deferredRenderTabListenerBound = true;
+        // SillyBunny: flush deferred prompt renders only when the backend prompt editor tab activates.
         document.addEventListener('sb:shell-tab-activated', (event) => {
-            if (event?.detail?.tabId === 'editor') {
+            if (event?.detail?.tabId === 'editor' && (!event?.detail?.shellKey || event.detail.shellKey === 'left')) {
                 this.flushDeferredRender({ force: true });
             }
         });

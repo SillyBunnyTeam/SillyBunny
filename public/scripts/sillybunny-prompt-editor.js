@@ -557,12 +557,13 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
 
     async function rename(prompt) {
         if (draft && !(await allowLeave())) return;
-        const row = rowFor(prompt.identifier);
+        const livePrompt = promptFor(prompt.identifier) ?? prompt;
+        const row = rowFor(livePrompt.identifier);
         const name = row?.querySelector('.sb-prompt-row-name');
-        if (!name || !model.permissions(prompt).rename) return;
+        if (!name || !model.permissions(livePrompt).rename) return;
         const expectedScope = state.scope;
         const input = element('input', 'sb-prompt-rename');
-        input.value = prompt.name;
+        input.value = livePrompt.name;
         input.setAttribute('aria-label', t`Prompt Name`);
         name.replaceWith(input);
         input.focus();
@@ -572,14 +573,14 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
             if (finished) return;
             finished = true;
             input.replaceWith(name);
-            if (save) run(() => model.rename(prompt.identifier, input.value, expectedScope));
-            if (draft?.identifier === prompt.identifier && save) {
+            if (save) run(() => model.rename(livePrompt.identifier, input.value, expectedScope));
+            if (draft?.identifier === livePrompt.identifier && save) {
                 draft.name = input.value;
                 session.rebase();
                 renderEditor();
             }
             synchronize();
-            rowFor(prompt.identifier)?.focus({ preventScroll: true });
+            rowFor(livePrompt.identifier)?.focus({ preventScroll: true });
         };
         input.addEventListener('keydown', event => {
             event.stopPropagation();
@@ -591,12 +592,13 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     }
 
     function promptMenu(trigger, prompt, available) {
-        const id = prompt.identifier;
-        const permission = model.permissions(prompt);
-        menu(trigger, prompt.name, [
-            [permission.edit && menuItem(t`Edit`, 'pen', () => openPrompt(prompt)), permission.rename && menuItem(t`Rename`, 'i-cursor', () => rename(prompt)), menuItem(t`Preview`, 'eye', () => openPrompt(prompt, 'preview'))],
+        const livePrompt = promptFor(prompt.identifier) ?? prompt;
+        const id = livePrompt.identifier;
+        const permission = model.permissions(livePrompt);
+        menu(trigger, livePrompt.name, [
+            [permission.edit && menuItem(t`Edit`, 'pen', () => openPrompt(promptFor(id) ?? livePrompt)), permission.rename && menuItem(t`Rename`, 'i-cursor', () => rename(promptFor(id) ?? livePrompt)), menuItem(t`Preview`, 'eye', () => openPrompt(promptFor(id) ?? livePrompt, 'preview'))],
             available ? [] : moveItems(id),
-            [!prompt.marker && menuItem(t`Send to Agents`, 'robot', () => model.sendToAgents(id))],
+            [!livePrompt.marker && menuItem(t`Send to Agents`, 'robot', () => model.sendToAgents(id))],
             [!available && permission.remove && menuItem(t`Remove From List`, 'minus', () => remove(id), true), permission.delete && menuItem(t`Delete`, 'trash', () => deletePrompt(id), true)],
         ]);
     }
@@ -645,7 +647,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
                 ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openTextCompletion(prompt)), menuItem(t`Preview`, 'eye', () => openTextCompletion(prompt, 'preview'))]])
                 : utility
                     ? menu(trigger, nameText, [[menuItem(t`Edit`, 'pen', () => openUtility(prompt)), model.canRestoreUtility(id) && menuItem(t`Restore Default`, 'rotate-left', () => restoreUtility(id))]])
-                    : promptMenu(trigger, prompt, available), 'sb-prompt-row-menu');
+                    : promptMenu(trigger, promptFor(id) ?? prompt, available), 'sb-prompt-row-menu');
             more.setAttribute('aria-haspopup', 'menu');
             more.setAttribute('aria-expanded', 'false');
             suffix.push(more);
@@ -684,7 +686,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
         }
         if (!utility && !textCompletion && !prompt.marker) entity.slots.title.addEventListener('dblclick', event => {
             event.stopPropagation();
-            void rename(prompt);
+            void rename(promptFor(id) ?? prompt);
         });
         return row;
     }
@@ -754,7 +756,8 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     function openEntry({ prompt, utility = false }) {
         if (textCompletionView()) return openTextCompletion(prompt);
         if (utility) return openUtility(prompt);
-        return openPrompt(prompt, prompt.runtime ? 'inspect' : null);
+        const livePrompt = promptFor(prompt.identifier) ?? prompt;
+        return openPrompt(livePrompt, livePrompt.runtime ? 'inspect' : null);
     }
 
     bindListKeyboard(listBody, {
@@ -829,6 +832,8 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
             state.scope,
             state.error ?? '',
             state.runtime?.name ?? '',
+            state.runtime ? knownCount(state.runtime) : '',
+            state.runtime ? state.sources?.[state.runtime.identifier] ?? '' : '',
             state.character?.name ?? '',
             filter,
             selectedId() ?? '',
@@ -1135,8 +1140,9 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
     async function openPrompt(prompt, requestedMode = null) {
         if (draft?.identifier === prompt.identifier && requestedMode === null) return closeEditor();
         if (!(await allowLeave())) return;
-        const nextMode = requestedMode ?? (model.permissions(prompt).edit ? 'edit' : 'preview');
-        await openDraft(prompt, 'prompt', nextMode);
+        const livePrompt = promptFor(prompt.identifier) ?? prompt;
+        const nextMode = requestedMode ?? (model.permissions(livePrompt).edit ? 'edit' : 'preview');
+        await openDraft(livePrompt, 'prompt', nextMode);
     }
 
     async function openUtility(prompt) {
@@ -1764,7 +1770,7 @@ export function initializePromptEditor(column, { openPresets = null } = {}) {
         replayingChange = false;
     }, true);
     document.addEventListener('sb:shell-tab-activated', async event => {
-        if (event.detail.tabId === 'editor') {
+        if (event?.detail?.tabId === 'editor' && (!event?.detail?.shellKey || event.detail.shellKey === 'left')) {
             promptManager?.flushDeferredRender?.({ force: true });
             synchronize();
             return;

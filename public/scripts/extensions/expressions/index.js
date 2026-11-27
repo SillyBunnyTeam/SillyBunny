@@ -155,6 +155,7 @@ let expressionRemovedForEmptyChat = false;
 let lastVnMode = false;
 let vnWrapperInitialized = false;
 let lastOfflineModeDisplayed = null;
+let pendingNewChat = false;
 
 /** @type {{[characterName: string]: string}} */
 export let lastExpression = {};
@@ -552,10 +553,18 @@ async function setImage(img, path) {
 }
 
 async function moduleWorker({ newChat = false } = {}) {
+    // SillyBunny: preserve newChat across hidden-tab skips so Visual Novel group chats refresh on tab return.
+    if (newChat) {
+        pendingNewChat = true;
+    }
+
     // SillyBunny: skip periodic polling while the tab is hidden to avoid background DOM work.
     if (document.hidden) {
         return;
     }
+
+    const isNewChat = newChat || pendingNewChat;
+    pendingNewChat = false;
 
     const context = getContext();
 
@@ -637,7 +646,8 @@ async function moduleWorker({ newChat = false } = {}) {
         }
     }
 
-    if (context.groupId && vnMode && newChat) {
+    // SillyBunny: use isNewChat so a CHAT_CHANGED received while hidden still refreshes Visual Novel mode.
+    if (context.groupId && vnMode && isNewChat) {
         await forceUpdateVisualNovelMode();
     }
 
