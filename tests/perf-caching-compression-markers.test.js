@@ -89,6 +89,27 @@ function getRawHttp(url, headers = {}) {
     });
 }
 
+function getRawPath(port, rawPath, headers = {}) {
+    return new Promise((resolve, reject) => {
+        // `http.get(url)` would normalize dot segments and double slashes, so the request line is built by hand.
+        const req = http.request({ host: '127.0.0.1', port, path: rawPath, method: 'GET', headers });
+        req.setTimeout(3000, () => req.destroy(new Error(`Timeout: ${rawPath}`)));
+        req.once('error', reject);
+        req.once('response', async (res) => {
+            const chunks = [];
+            for await (const chunk of res) {
+                chunks.push(chunk);
+            }
+            resolve({
+                statusCode: res.statusCode,
+                headers: res.headers,
+                body: Buffer.concat(chunks),
+            });
+        });
+        req.end();
+    });
+}
+
 function createSwHarness(origin = 'http://127.0.0.1:4444') {
     const listeners = new Map();
     const cacheStores = new Map();
@@ -566,6 +587,98 @@ describe('3. Loopback compression bypass and bounded static LRU', () => {
             expect(afterMutate.body.toString('utf8')).toBe(updatedSource);
         } finally {
             await new Promise(resolve => server.close(resolve));
+        }
+    });
+
+    test('compressed static cache answers every request path like express.static, whether the cache is cold or warm', async () => {
+        const parentRoot = makeTempDir('sb-static-parity-');
+        const staticRoot = path.join(parentRoot, 'public');
+        const body = `export const value = "${'parity-'.repeat(800)}";\n`;
+        const realFiles = ['a.js', '.dot.js', 'sub/b.css', '.hidden/secret.json', 'sub/index.html'];
+        for (const relative of realFiles) {
+            fs.mkdirSync(path.dirname(path.join(staticRoot, relative)), { recursive: true });
+            fs.writeFileSync(path.join(staticRoot, relative), body);
+        }
+
+        const cache = createStaticCompressionCache({ maxBytes: 4 * 1024 * 1024 });
+        const cachedApp = express();
+        cachedApp.use(createCompressedStaticMiddleware(staticRoot, { cache, loopbackBypass: false, env: {} }));
+        cachedApp.use(express.static(staticRoot));
+        const referenceApp = express();
+        referenceApp.use(express.static(staticRoot));
+
+        const listen = app => new Promise(resolve => {
+            const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
+        });
+        const cachedServer = await listen(cachedApp);
+        const referenceServer = await listen(referenceApp);
+
+        const rootName = path.basename(staticRoot);
+        const requestPaths = [
+            '/a.js',
+            '//a.js',
+            '/./a.js',
+            '/sub/../a.js',
+            '/a.js?cache=1',
+            '/.dot.js',
+            '/sub/.dot.js',
+            '/.hidden/secret.json',
+            '/a.js/',
+            '/a.js%2F',
+            '/.dot.js/',
+            '/.dot.js%2F',
+            '/sub/b.css',
+            '/sub/b.css/',
+            '/sub/index.html',
+            '/sub/index.html/',
+            '/sub/',
+            '/missing.js',
+            '/../a.js',
+            '/%2e%2e/a.js',
+            '/sub/..%2f..%2fa.js',
+            `/sub/../../${rootName}/a.js`,
+            `/sub/..%2f..%2f${rootName}%2fa.js`,
+            '/a%5C..%5Ca.js',
+            '/a.js%00',
+            '/%E0%A4%A.js',
+        ];
+
+        const readAll = async (port, headers) => {
+            const results = [];
+            for (const requestPath of requestPaths) {
+                const response = await getRawPath(port, requestPath, headers);
+                const decoded = response.headers['content-encoding'] === 'gzip' ? gunzipSync(response.body) : response.body;
+                results.push({ requestPath, statusCode: response.statusCode, servedBody: response.statusCode === 200 ? decoded.equals(Buffer.from(body)) : null });
+            }
+            return results;
+        };
+
+        try {
+            const headers = { 'Accept-Encoding': 'gzip' };
+            const expected = await readAll(referenceServer.address().port, headers);
+            expect(expected.find(r => r.requestPath === '/a.js').statusCode).toBe(200);
+            expect(expected.find(r => r.requestPath === '/.dot.js').statusCode).toBe(404);
+
+            const cold = await readAll(cachedServer.address().port, headers);
+            expect(cold).toEqual(expected);
+
+            for (const relative of realFiles) {
+                const filePath = path.join(staticRoot, relative);
+                await cache.warm(filePath, fs.statSync(filePath), 'gzip');
+            }
+            const warm = await readAll(cachedServer.address().port, headers);
+            expect(warm).toEqual(expected);
+
+            const warmHit = await getRawPath(cachedServer.address().port, '/a.js', headers);
+            expect(warmHit.headers['content-encoding']).toBe('gzip');
+
+            const failedPrecondition = await getRawPath(cachedServer.address().port, '/a.js', { ...headers, 'If-Match': '"not-the-etag"' });
+            const referencePrecondition = await getRawPath(referenceServer.address().port, '/a.js', { ...headers, 'If-Match': '"not-the-etag"' });
+            expect(referencePrecondition.statusCode).toBe(412);
+            expect(failedPrecondition.statusCode).toBe(412);
+        } finally {
+            await new Promise(resolve => cachedServer.close(resolve));
+            await new Promise(resolve => referenceServer.close(resolve));
         }
     });
 

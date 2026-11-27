@@ -1904,6 +1904,12 @@ This is the largest class by a wide margin.
 - **Guards:** `src/server-main.js` mounts `createCompressedStaticMiddleware(FRONTEND_DIST_ROOT, ...)` ahead of both `frontendAssetMiddleware.immutableAssets` and `frontendAssetMiddleware.publicAssets`, and `src/middleware/webpack-serve.js` mounts `createCompressedStaticMiddleware(outputPath, ...)` inside `sendPublicLib()` ahead of `res.sendFile` while preserving `Cache-Control: no-cache`, direct-loopback bypass, and `ENOENT` auto-rebuild recovery.
 - **Tests:** `tests/perf-caching-compression-markers.test.js`, `tests/response-compression.test.js`.
 
+### Compressed static cache path rules
+
+- **Breaks:** The compressed static cache mapped a request path to a file with its own rules, so a request that `express.static` refuses was refused on the first request and served once the file was warm: a file whose last segment starts with a dot (`/.dot.js`), a path that ends in `/` (also as `%2F`), and `/x/../../<root name>/file`, which re-enters the root after leaving it.
+- **Guards:** `resolveStaticTargetPath()` in `src/middleware/response-compression.js` normalizes the decoded path the way `send` does, refuses a leftover `..` segment, a trailing separator and a dotted last segment before it looks at the file system, and `createCompressedStaticMiddleware()` passes `Range`, `If-Match` and `If-Unmodified-Since` requests to `express.static`, which answers 206 or 412. Any new rule of `send` that decides which file is served or with which status belongs in these two places, and in the request-path list of the parity test.
+- **Tests:** `tests/perf-caching-compression-markers.test.js` ("compressed static cache answers every request path like express.static") runs the same raw request paths against the cache plus `express.static` and against `express.static` alone, cold and warm, and compares status and body.
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.

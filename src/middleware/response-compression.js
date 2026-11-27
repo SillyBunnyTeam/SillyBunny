@@ -429,6 +429,18 @@ export function getDefaultStaticCompressionCache() {
     return defaultStaticCompressionCache;
 }
 
+// Same pattern that `send` (behind `express.static`) uses to refuse a path that climbs out of the root.
+const PARENT_SEGMENT_RE = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
+
+/**
+ * Maps a request path to a file under `rootDir`, or returns `null` for any path that
+ * `express.static` with default options would not serve as that file. The cache must not
+ * answer where the static handler refuses, or the answer would depend on whether the
+ * cache is warm.
+ * @param {string} rootDir Static root directory
+ * @param {string} requestPath Request path relative to the mount point
+ * @returns {string | null}
+ */
 function resolveStaticTargetPath(rootDir, requestPath) {
     let decodedPath;
     try {
@@ -441,8 +453,26 @@ function resolveStaticTargetPath(rootDir, requestPath) {
         return null;
     }
 
+    // A trailing slash asks `send` for `<path>/index.html`, never for the file itself.
+    if (decodedPath.endsWith('/') || decodedPath.endsWith(path.sep)) {
+        return null;
+    }
+
+    // Normalize first and refuse what is left of `..`, as `send` does. Resolving against the
+    // root and then checking containment would accept `/x/../../<root name>/file`.
+    const relativePath = path.normalize(`.${path.sep}${decodedPath}`);
+    if (PARENT_SEGMENT_RE.test(relativePath)) {
+        return null;
+    }
+
+    // `send` hides a file whose last segment starts with a dot (the legacy dotfile rule); a
+    // dot in a directory name is allowed.
+    if (path.basename(relativePath).startsWith('.')) {
+        return null;
+    }
+
     const resolvedRoot = path.resolve(rootDir);
-    const candidate = path.resolve(resolvedRoot, `.${decodedPath.startsWith('/') ? decodedPath : `/${decodedPath}`}`);
+    const candidate = path.normalize(path.join(resolvedRoot, relativePath));
     const relative = path.relative(resolvedRoot, candidate);
     if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
         return null;
@@ -540,7 +570,14 @@ export function createCompressedStaticMiddleware(rootDir, {
     setHeaders,
 } = {}) {
     return function compressedStaticMiddleware(request, response, next) {
-        if ((request.method !== 'GET' && request.method !== 'HEAD') || request.headers?.range) {
+        if (request.method !== 'GET' && request.method !== 'HEAD') {
+            return next();
+        }
+
+        // Range and the two preconditions that can answer 206 or 412 are decided by `send`;
+        // the cache would answer 200 for them.
+        const requestHeaders = request.headers ?? {};
+        if (requestHeaders.range || requestHeaders['if-match'] || requestHeaders['if-unmodified-since']) {
             return next();
         }
 
