@@ -12647,6 +12647,41 @@ function measureBottomChatBarThresholds(bar, buttons, overflow, cacheKey) {
     return cache;
 }
 
+// The cache key holds the settings that script knows about. A theme, a custom CSS rule or a font scale can change the width
+// of a button without any of them, so the buttons report their own width changes. A button that folds reports no size, and
+// the size it has when it comes back is the one it had, so neither counts as a change.
+function observeBottomChatBarButtons(buttons) {
+    if (typeof ResizeObserver !== 'function') {
+        return;
+    }
+
+    const fitState = getBottomChatBarState();
+    if (!fitState.buttonObserver) {
+        const lastWidths = new WeakMap();
+        fitState.buttonObserver = new ResizeObserver(entries => {
+            let widthChanged = false;
+            for (const entry of entries) {
+                const width = entry.borderBoxSize?.[0]?.inlineSize ?? entry.target.offsetWidth;
+                if (!(width > 0)) {
+                    continue;
+                }
+                const previous = lastWidths.get(entry.target);
+                lastWidths.set(entry.target, width);
+                if (previous !== undefined && previous !== width) {
+                    widthChanged = true;
+                }
+            }
+            if (widthChanged) {
+                invalidateBottomChatBarFitCache();
+            }
+        });
+    }
+
+    for (const button of buttons) {
+        fitState.buttonObserver.observe(button);
+    }
+}
+
 // SillyBunny: the bottom bar keeps one row (DESIGN.md, Header Bars and Toolbars). CSS shrinks the picker to its floor; this
 // decides the next two steps from what overflows: first the search field folds into its icon, then the trailing buttons
 // move into the overflow menu one at a time. Thresholds are measured in one read pass per scale and reused across resizes.
@@ -12680,6 +12715,8 @@ function fitBottomChatBar() {
     if (clientWidth <= 0) {
         return;
     }
+
+    observeBottomChatBarButtons(buttons);
 
     const rootInlineStyle = document.documentElement.style;
     const fontScale = rootInlineStyle?.getPropertyValue?.('--fontScale')?.trim() ?? '';

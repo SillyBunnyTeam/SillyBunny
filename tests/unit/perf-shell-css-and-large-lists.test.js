@@ -272,6 +272,7 @@ describe('PR 7 fitBottomChatBar single-read width cache & observer diet', () => 
             [
                 extractFunctionSource(tabsSource, 'invalidateBottomChatBarFitCache'),
                 extractFunctionSource(tabsSource, 'measureBottomChatBarThresholds'),
+                extractFunctionSource(tabsSource, 'observeBottomChatBarButtons'),
                 extractFunctionSource(tabsSource, 'fitBottomChatBar'),
                 extractFunctionSource(tabsSource, 'observeBottomChatBarFit'),
                 'return { fitBottomChatBar, observeBottomChatBarFit, invalidateBottomChatBarFitCache };',
@@ -321,6 +322,129 @@ describe('PR 7 fitBottomChatBar single-read width cache & observer diet', () => 
         rootInlineProps.set('--fontScale', '1.4');
         harness.fitBottomChatBar();
         expect(rectReads + styleReads).toBeGreaterThan(readsAfterCold);
+    });
+
+    test('measures the thresholds again when a button changes width, and not when one folds or unfolds', () => {
+        const observers = [];
+        class FakeResizeObserver {
+            constructor(callback) {
+                this.callback = callback;
+                this.targets = new Set();
+                observers.push(this);
+            }
+            observe(target) {
+                this.targets.add(target);
+            }
+        }
+        class FakeElement {
+            constructor({ width = 28, classNames = [] } = {}) {
+                this.width = width;
+                this.hidden = false;
+                this._classes = new Set(classNames);
+                this.classList = {
+                    contains: cls => this._classes.has(cls),
+                    add: cls => this._classes.add(cls),
+                    remove: cls => this._classes.delete(cls),
+                    toggle: (cls, force) => {
+                        const next = force === undefined ? !this._classes.has(cls) : Boolean(force);
+                        if (next) this._classes.add(cls);
+                        else this._classes.delete(cls);
+                        return next;
+                    },
+                };
+            }
+            getBoundingClientRect() {
+                return { width: this.width };
+            }
+            get offsetWidth() {
+                return this.width;
+            }
+        }
+
+        const navButtons = [new FakeElement({ width: 30 }), new FakeElement({ width: 30 })];
+        const mgmtButtons = Array.from({ length: 8 }, (_, index) => new FakeElement({
+            width: 30,
+            classNames: index === 5 ? ['sb-bottom-chat-search-toggle'] : [],
+        }));
+        const allButtons = [...navButtons, ...mgmtButtons];
+        const navCluster = new FakeElement();
+        navCluster.querySelectorAll = () => navButtons;
+        const bar = new FakeElement();
+        bar.clientWidth = 430;
+        bar.querySelector = sel => (sel === '.sb-bottom-chat-nav-actions' ? navCluster : null);
+        const overflow = new FakeElement({ width: 30 });
+        overflow.hidden = true;
+        const fitState = {
+            overflowButton: overflow,
+            personaBubble: new FakeElement({ width: 32 }),
+            chatSelect: new FakeElement(),
+            searchField: new FakeElement(),
+            searchOpen: false,
+            widthCache: null,
+            scheduleFit: jest.fn(),
+        };
+        const sbState = { bottomBarScale: 100, desktopButtonScale: 100, compactMode: false };
+        const styleOf = el => {
+            if (el === bar) return { columnGap: '4px', paddingInlineStart: '8px', paddingInlineEnd: '8px' };
+            if (el === navCluster) return { columnGap: '2px', paddingInlineEnd: '4px', borderInlineEndWidth: '1px' };
+            return { minWidth: el === fitState.searchField ? '140px' : '160px' };
+        };
+
+        const { fitBottomChatBar, invalidateBottomChatBarFitCache } = new Function(
+            'window',
+            'document',
+            'HTMLElement',
+            'ResizeObserver',
+            'getComputedStyle',
+            'sbState',
+            'getBottomChatBarState',
+            'getBottomChatFoldableButtons',
+            [
+                extractFunctionSource(tabsSource, 'invalidateBottomChatBarFitCache'),
+                extractFunctionSource(tabsSource, 'measureBottomChatBarThresholds'),
+                extractFunctionSource(tabsSource, 'observeBottomChatBarButtons'),
+                extractFunctionSource(tabsSource, 'fitBottomChatBar'),
+                'return { fitBottomChatBar, invalidateBottomChatBarFitCache };',
+            ].join('\n'),
+        )(
+            {},
+            { documentElement: { dataset: {}, style: { getPropertyValue: () => '' } }, getElementById: id => (id === 'sb-bottom-chat-bar' ? bar : null) },
+            FakeElement,
+            FakeResizeObserver,
+            styleOf,
+            sbState,
+            () => fitState,
+            () => allButtons,
+        );
+        const entriesFor = buttons => buttons.map(button => ({ target: button, borderBoxSize: [{ inlineSize: button.hidden ? 0 : button.width }], contentRect: { width: button.hidden ? 0 : button.width } }));
+        const visibleCount = () => allButtons.filter(button => !button.hidden).length;
+
+        fitBottomChatBar();
+        const visibleAtFirstFit = visibleCount();
+        expect(visibleAtFirstFit).toBeGreaterThan(0);
+        expect(visibleAtFirstFit).toBeLessThan(allButtons.length);
+        const observer = observers[0];
+        expect(observer).toBeDefined();
+        expect([...observer.targets]).toEqual(expect.arrayContaining(allButtons));
+
+        // The first report of each size, a button that folded to no size and one that came back are not width changes.
+        observer.callback(entriesFor(allButtons));
+        fitBottomChatBar();
+        observer.callback(entriesFor(allButtons));
+        expect(fitState.widthCache).not.toBeNull();
+        expect(fitState.scheduleFit).not.toHaveBeenCalled();
+
+        // A style change that widens every button leaves the old thresholds in the cache until the observer reports it.
+        for (const button of allButtons) button.width = 44;
+        fitBottomChatBar();
+        expect(visibleCount()).toBe(visibleAtFirstFit);
+        observer.callback(entriesFor(allButtons.filter(button => !button.hidden)));
+        expect(fitState.widthCache).toBeNull();
+        expect(fitState.scheduleFit).toHaveBeenCalledTimes(1);
+
+        fitBottomChatBar();
+        expect(visibleCount()).toBeLessThan(visibleAtFirstFit);
+        expect(invalidateBottomChatBarFitCache).toBeInstanceOf(Function);
     });
 });
 
