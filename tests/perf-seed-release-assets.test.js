@@ -166,7 +166,7 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
         expect(staticSpecifiers.length).toBeGreaterThan(0);
         expect(staticSpecifiers.every(specifier => specifier.startsWith('node:'))).toBe(true);
 
-        // Dockerfile layer-caches dependencies ahead of full repo copy and conditionally builds dist assets.
+        // Dockerfile layer-caches dependencies ahead of full repo copy and conditionally builds the prebuilt lib.
         const copyPkgIdx = dockerfile.indexOf('COPY --chown=bun:bun package.json bun.lock .npmrc ./');
         const bunInstallIdx = dockerfile.indexOf('bun install --frozen-lockfile --production');
         const copyAllIdx = dockerfile.indexOf('COPY --chown=bun:bun . ./');
@@ -175,12 +175,59 @@ describe('release tarball seeder, Dockerfile layer caching, and direct Docker in
         expect(copyAllIdx).toBeGreaterThan(bunInstallIdx);
         expect(dockerfile).toContain('node "./scripts/build-prebuilt-lib.js"');
         expect(dockerfile).toContain('bun "./docker/build-lib.js"');
-        expect(dockerfile).toContain('node "./scripts/build-frontend-assets.js"');
         expect(dockerfile).toContain('chown -R bun:bun dist');
 
         // docker-entrypoint.sh runs server-init.js directly.
         expect(entrypoint).toContain('$PREFIX bun src/server-init.js');
         expect(entrypoint).not.toContain('bun run init');
+    });
+
+    describe('the Dockerfile step that builds the prebuilt assets', () => {
+        // Runs the real RUN chain from the Dockerfile with stub node, bun and chown commands.
+        function runBuildStep({ failing = [] }) {
+            const dockerfile = fs.readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8');
+            const block = dockerfile.split('\n\n').find(part => part.includes('build-lib.js'));
+            const chain = block.slice(block.indexOf('RUN ') + 'RUN '.length).replace(/\\\n/g, ' ');
+
+            const appDir = fs.mkdtempSync(path.join(tempDir, 'docker-step-'));
+            const binDir = path.join(appDir, 'stub-bin');
+            fs.mkdirSync(binDir);
+            fs.mkdirSync(path.join(appDir, 'scripts'));
+            fs.mkdirSync(path.join(appDir, 'docker'));
+            for (const script of ['scripts/build-prebuilt-lib.js', 'scripts/build-frontend-assets.js', 'docker/build-lib.js']) {
+                fs.writeFileSync(path.join(appDir, script), '');
+            }
+            const failCases = failing.map(name => `*${name}*) exit 3 ;;`).join('\n');
+            for (const command of ['node', 'bun']) {
+                fs.writeFileSync(
+                    path.join(binDir, command),
+                    `#!/bin/sh\necho "${command} $*" >> "${appDir}/calls.log"\ncase "$*" in\n${failCases}\nesac\nexit 0\n`,
+                );
+                fs.chmodSync(path.join(binDir, command), 0o755);
+            }
+            fs.writeFileSync(path.join(binDir, 'chown'), '#!/bin/sh\nexit 0\n');
+            fs.chmodSync(path.join(binDir, 'chown'), 0o755);
+
+            const result = spawnSync('/bin/sh', ['-c', `set -e; ${chain}`], {
+                cwd: appDir,
+                env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}` },
+                encoding: 'utf8',
+            });
+            const calls = fs.existsSync(path.join(appDir, 'calls.log')) ? fs.readFileSync(path.join(appDir, 'calls.log'), 'utf8') : '';
+            return { status: result.status, calls };
+        }
+
+        test('a failed build of the prebuilt library fails the image build', () => {
+            const { status, calls } = runBuildStep({ failing: ['build-prebuilt-lib.js', 'build-lib.js'] });
+            expect(status).not.toBe(0);
+            expect(calls).toMatch(/build-(?:prebuilt-)?lib\.js/);
+        });
+
+        test('the frontend asset build is not part of the image, so its failure cannot be hidden', () => {
+            const { status, calls } = runBuildStep({ failing: ['build-frontend-assets.js'] });
+            expect(status).toBe(0);
+            expect(calls).not.toContain('build-frontend-assets.js');
+        });
     });
 
     test('parseSha256Sums handles standard and binary-mode GNU sha256sum lines', () => {
