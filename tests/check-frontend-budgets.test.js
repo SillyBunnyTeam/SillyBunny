@@ -48,7 +48,7 @@ describe('frontend static asset and CSS hazard budgets', () => {
             errors: [],
             blockingStylesheets: Array.from({ length: 17 }, (_, i) => ({ href: `a${i}.css`, size: 10 })),
             blockingStylesheetBytes: FRONTEND_BUDGETS.blockingStylesheetBytes + 1,
-            widthMediaStylesheets: Array.from({ length: 4 }, (_, i) => ({ href: `m${i}.css`, size: 10 })),
+            widthMediaStylesheets: Array.from({ length: FRONTEND_BUDGETS.widthMediaStylesheetCount + 1 }, (_, i) => ({ href: `m${i}.css`, size: 10 })),
             widthMediaStylesheetBytes: FRONTEND_BUDGETS.widthMediaStylesheetBytes + 1,
             importedStylesheets: Array.from({ length: 20 }, (_, i) => ({ href: `i${i}.css`, size: 10 })),
             importedStylesheetBytes: FRONTEND_BUDGETS.importedStylesheetBytes + 1,
@@ -73,6 +73,30 @@ describe('frontend static asset and CSS hazard budgets', () => {
             expect.stringContaining('Fork CSS backdrop-filter declarations'),
             expect.stringContaining('big.js'),
         ]));
+    });
+
+    test('allows four width-media sheets of 108.4 KiB and rejects a fifth sheet or a set over the byte budget', () => {
+        const widthMediaSnapshot = (count, bytes) => ({
+            errors: [],
+            blockingStylesheets: [],
+            blockingStylesheetBytes: 0,
+            widthMediaStylesheets: Array.from({ length: count }, (_, i) => ({ href: `m${i}.css`, size: bytes / count })),
+            widthMediaStylesheetBytes: bytes,
+            importedStylesheets: [],
+            importedStylesheetBytes: 0,
+            startupScripts: [],
+            startupScriptBytes: 0,
+            largeExtensionAssets: [],
+            forkCssHazards: { willChange: 0, backdropFilter: 0, files: [] },
+        });
+
+        expect(evaluateFrontendBudgets(widthMediaSnapshot(4, 108.4 * 1024))).toEqual([]);
+        expect(evaluateFrontendBudgets(widthMediaSnapshot(5, 108.4 * 1024))).toEqual([
+            expect.stringContaining('Width-media stylesheet count 5'),
+        ]);
+        expect(evaluateFrontendBudgets(widthMediaSnapshot(4, FRONTEND_BUDGETS.widthMediaStylesheetBytes + 1))).toEqual([
+            expect.stringContaining('Width-media stylesheet bytes'),
+        ]);
     });
 
     test('current repository passes every frontend budget without errors', () => {

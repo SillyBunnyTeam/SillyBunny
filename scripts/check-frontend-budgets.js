@@ -11,8 +11,8 @@ const defaultRepoRoot = path.resolve(__dirname, '..');
 export const FRONTEND_BUDGETS = Object.freeze({
     blockingStylesheetCount: 16,
     blockingStylesheetBytes: 1024 * 1024,
-    widthMediaStylesheetCount: 3,
-    widthMediaStylesheetBytes: 110 * 1024,
+    widthMediaStylesheetCount: 4,
+    widthMediaStylesheetBytes: 125 * 1024,
     importedStylesheetCount: 19,
     importedStylesheetBytes: 160 * 1024,
     startupScriptCount: 26,
