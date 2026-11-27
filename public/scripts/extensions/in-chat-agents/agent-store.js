@@ -175,6 +175,7 @@ let globalSettings = {
     promptTransformShowNotifications: true,
     postMainInterceptShowMessageFirst: true,
     appendAgentsExecutionMode: 'parallel',
+    patchAgentsExecutionMode: 'sequential',
     companionExecutionMode: 'parallel',
     companionConcurrentWithPostGen: false,
     helperPrefillMessages: '',
@@ -183,7 +184,7 @@ let globalSettings = {
 
 /**
  * Returns the global settings.
- * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, postMainInterceptShowMessageFirst: boolean, appendAgentsExecutionMode: 'parallel'|'sequential', helperPrefillMessages: string, hiddenCompanionAgentIds: string[] }}
+ * @returns {{ enabled: boolean, pathfinderEnabled: boolean, separateRecentChats: boolean, enabledAgentIdsByChatType: Record<string, string[]>, scopedEnabledAgentIdsInitialized: boolean, connectionProfile: string, promptTransformShowNotifications: boolean, postMainInterceptShowMessageFirst: boolean, appendAgentsExecutionMode: 'parallel'|'sequential', patchAgentsExecutionMode: 'parallel'|'sequential', helperPrefillMessages: string, hiddenCompanionAgentIds: string[] }}
  */
 export function getGlobalSettings() {
     return globalSettings;
@@ -201,6 +202,8 @@ export function setGlobalSettings(update) {
     Object.assign(globalSettings, update);
     globalSettings.pathfinderEnabled = globalSettings.pathfinderEnabled !== false;
     globalSettings.postMainInterceptShowMessageFirst = globalSettings.postMainInterceptShowMessageFirst !== false;
+    // Saved settings from before this key existed have none, and only an explicit 'parallel' turns it on.
+    globalSettings.patchAgentsExecutionMode = globalSettings.patchAgentsExecutionMode === 'parallel' ? 'parallel' : 'sequential';
     globalSettings.enabledAgentIdsByChatType = normalizeScopedEnabledAgentIds(globalSettings.enabledAgentIdsByChatType);
     globalSettings.helperPrefillMessages = typeof globalSettings.helperPrefillMessages === 'string'
         ? globalSettings.helperPrefillMessages

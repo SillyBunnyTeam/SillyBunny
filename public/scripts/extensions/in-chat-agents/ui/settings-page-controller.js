@@ -5,6 +5,7 @@ const groups = [
     ]],
     ['running-agents', [
         ['appendAgentsExecutionMode', 'appendAgentsExecutionMode', 'parallel', 'toggle'],
+        ['patchAgentsExecutionMode', 'patchAgentsExecutionMode', 'sequential', 'toggle'],
         ['companionExecutionMode', 'companionExecutionMode', 'parallel', 'toggle'],
         ['companionConcurrent', 'companionConcurrentWithPostGen', false, 'switch'],
     ]],

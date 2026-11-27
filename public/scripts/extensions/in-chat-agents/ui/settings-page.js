@@ -50,7 +50,9 @@ export function mountAgentSettings({ host, services, onClose, preparePopup }) {
             if (!descriptor || !input) throw new Error(`Missing Agents setting: ${field.id}`);
             originals.push({ input, attributes: [...input.attributes].map(attribute => [attribute.name, attribute.value]) });
             const staleCaption = field.id === 'ica--appendAgentsExecutionMode';
-            const options = { label: translate(descriptor.label), subtitle: staleCaption ? t`lorum ipsum` : translate(descriptor.caption || descriptor.title), field: field.key };
+            const unwrittenCaption = field.id === 'ica--patchAgentsExecutionMode';
+            const subtitle = staleCaption ? t`lorum ipsum` : unwrittenCaption ? t`TODO(copy)` : translate(descriptor.caption || descriptor.title);
+            const options = { label: translate(descriptor.label), subtitle, field: field.key };
             let row;
             let target = input;
             if (field.kind === 'profile') {
@@ -81,8 +83,8 @@ export function mountAgentSettings({ host, services, onClose, preparePopup }) {
             } else {
                 row = createTextAreaField({ ...options, input, rows: 6, expandLabel: t`Expand the Editor` });
             }
-            row.row.title = translate(descriptor.title);
-            if (staleCaption) row.row.querySelector('.ds-row-subtitle').dataset.sbCopyPlaceholder = 'true';
+            row.row.title = unwrittenCaption ? '' : translate(descriptor.title);
+            if (staleCaption || unwrittenCaption) row.row.querySelector('.ds-row-subtitle').dataset.sbCopyPlaceholder = 'true';
             rows.set(field.id, { row, input, target, field });
             return row.row;
         });

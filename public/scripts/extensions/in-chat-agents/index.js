@@ -3267,6 +3267,7 @@ function populatePathfinderSubmoduleToggle() {
 
 function populateGlobalExecutionModeDropdown() {
     $('#ica--appendAgentsExecutionMode').val(getGlobalSettings().appendAgentsExecutionMode || 'parallel');
+    $('#ica--patchAgentsExecutionMode').val(getGlobalSettings().patchAgentsExecutionMode === 'parallel' ? 'parallel' : 'sequential');
     $('#ica--companionExecutionMode').val(getGlobalSettings().companionExecutionMode || 'parallel');
     $('#ica--companionConcurrent').prop('checked', Boolean(getGlobalSettings().companionConcurrentWithPostGen));
 }
@@ -3806,6 +3807,10 @@ async function resetBundledAgentsFromSettings() {
     });
     $('#ica--appendAgentsExecutionMode').on('change', function () {
         setGlobalSettings({ appendAgentsExecutionMode: this.value });
+        persistExtensionState();
+    });
+    $('#ica--patchAgentsExecutionMode').on('change', function () {
+        setGlobalSettings({ patchAgentsExecutionMode: this.value });
         persistExtensionState();
     });
     $('#ica--companionExecutionMode').on('change', function () {

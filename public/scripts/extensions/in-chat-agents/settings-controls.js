@@ -18,6 +18,10 @@ const fields = [
         caption: 'Sequential runs append-mode agents one after another in Order ascending. Order is shown on each agent card.',
     },
     {
+        id: 'patchAgentsExecutionMode', label: 'Patch Agents Execution',
+        title: 'TODO(copy)',
+    },
+    {
         id: 'companionExecutionMode', label: 'Companion Execution',
         title: 'Run companion agents in parallel (faster) or sequentially (rate-limit friendly), independent of the append agents setting',
     },
