@@ -42,12 +42,16 @@ if (CSS.supports('selector(:has(*))')) {
 /** Number of built-in selectors; anything pushed after this index came from registerInteractableType. */
 const builtInSelectorCount = interactableSelectors.length;
 
-// SillyBunny: streaming rewrites message prose many times a second. The chrome selectors above never match
-// inside prose, so prose only needs the generic markers (code-copy buttons carry `.interactable`) plus any
-// selector an extension registered, which may target controls it injects into a message.
+// SillyBunny: streaming rewrites message prose many times a second. The chrome selectors above are anchored to the
+// app's own markup and do not match inside prose, so prose only needs the generic markers (code-copy buttons carry
+// `.interactable`) plus any selector an extension registered, which may target controls it injects into a message.
+// A node that enters prose is scanned only when it is such a control, or holds one, which one `matches` and one
+// `querySelector` on the added node show. A tag does not decide it, because a model, a regex script or an extension
+// can put a real control inside any element of message text.
 const PROSE_SELECTOR = '.mes_text, .mes_reasoning';
 const proseCoreSelectors = ['.interactable', '.custom_interactable', '.menu_button'];
 let proseInteractableSelector = null;
+let proseControlSelector = null;
 
 function getProseInteractableSelector() {
     if (proseInteractableSelector === null) {
@@ -56,16 +60,17 @@ function getProseInteractableSelector() {
     return proseInteractableSelector;
 }
 
+/** The prose selector and the scroll reset container, which the prose scan also initializes. */
+function getProseControlSelector() {
+    proseControlSelector ??= `${getProseInteractableSelector()}, .scroll-reset-container`;
+    return proseControlSelector;
+}
+
 export const INTERACTABLE_CONTROL_CLASS = 'interactable';
 export const CUSTOM_INTERACTABLE_CONTROL_CLASS = 'custom_interactable';
 
 export const NOT_FOCUSABLE_CONTROL_CLASS = 'not_focusable';
 export const DISABLED_CONTROL_CLASS = 'disabled';
-
-const PROSE_FORMATTING_TAGS = new Set([
-    'SPAN', 'P', 'EM', 'STRONG', 'B', 'I', 'U', 'Q', 'BR',
-    'SMALL', 'SUB', 'SUP', 'DEL', 'S', 'MARK', 'CODE', 'LI', 'BLOCKQUOTE',
-]);
 
 function isProseInteractiveCandidate(node) {
     if (node.classList.contains(INTERACTABLE_CONTROL_CLASS)
@@ -94,10 +99,10 @@ const observer = new MutationObserver(mutations => {
                 if (!(node instanceof Element)) continue;
                 if (inProse) {
                     // SillyBunny: skip streaming text/span churn inside .mes_text/.mes_reasoning while still
-                    // initializing explicitly interactive nodes (e.g. .code-copy.interactable) and container widgets.
-                    if (isProseInteractiveCandidate(node)) {
-                        changed.add(node);
-                    } else if (node.childElementCount > 0 && !PROSE_FORMATTING_TAGS.has(node.tagName)) {
+                    // initializing interactive nodes (e.g. .code-copy.interactable), container widgets, and any
+                    // element that holds one.
+                    if (isProseInteractiveCandidate(node)
+                        || (node.childElementCount > 0 && node.querySelector(getProseControlSelector()) !== null)) {
                         changed.add(node);
                     }
                     continue;
@@ -188,6 +193,7 @@ function handleProseNodeChange(node) {
 export function registerInteractableType(interactableSelector, { disabledByDefault = false, notFocusableByDefault = false } = {}) {
     interactableSelectors.push(interactableSelector);
     proseInteractableSelector = null;
+    proseControlSelector = null;
 
     const interactables = document.querySelectorAll(interactableSelector);
 
