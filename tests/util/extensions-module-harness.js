@@ -185,7 +185,9 @@ export async function importExtensionsModule(options = {}) {
         setIconBusy: jest.fn(),
         spinnerMarkup: jest.fn(() => ''),
     }));
-    await jest.unstable_mockModule(pub('scripts/utils.js'), () => utilsMock);
+    if (!options.keepRealUtils) {
+        await jest.unstable_mockModule(pub('scripts/utils.js'), () => utilsMock);
+    }
     await jest.unstable_mockModule(pub('scripts/user.js'), () => ({
         isAdmin: jest.fn(() => Boolean(options.isAdmin)),
     }));

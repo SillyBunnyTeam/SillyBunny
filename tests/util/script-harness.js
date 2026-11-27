@@ -82,6 +82,8 @@ function ensureJsdomBrowserGlobals() {
     }
 }
 
+ensureJsdomBrowserGlobals();
+
 function loadWrappedJQuery() {
     ensureJsdomBrowserGlobals();
     let real$ = globalThis.window?.jQuery || globalThis.$;
@@ -220,6 +222,8 @@ export async function importScriptModule(options = {}) {
     const eventSource = options.eventSource ?? new EventEmitter();
     const storageMap = new Map();
     const accountStorage = {
+        init: jest.fn(),
+        getState: jest.fn(() => Object.fromEntries(storageMap.entries())),
         getItem: jest.fn(key => (storageMap.has(key) ? storageMap.get(key) : null)),
         setItem: jest.fn((key, value) => storageMap.set(key, String(value))),
         removeItem: jest.fn(key => storageMap.delete(key)),

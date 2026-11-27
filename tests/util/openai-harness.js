@@ -70,6 +70,7 @@ export function createNoopJQuery() {
  * @returns {Promise<{ openai: typeof import('../../public/scripts/openai.js'), mocks: Record<string, any> }>}
  */
 export async function importOpenAiModule({
+    resetModules = false,
     mockToolCalling = true,
     mockPromptManager = true,
     mockTokenizers = true,
@@ -86,6 +87,9 @@ export async function importOpenAiModule({
     templates: templatesOverrides = {},
     fetchResumable: fetchResumableOverride = null,
 } = {}) {
+    if (resetModules) {
+        jest.resetModules();
+    }
     if (typeof globalThis.structuredClone !== 'function') {
         globalThis.structuredClone = value => v8.deserialize(v8.serialize(value));
     }
@@ -199,8 +203,8 @@ export async function importOpenAiModule({
         system_message_types: { NARRATOR: 'narrator' },
         systemUserName: 'System',
         this_chid: undefined,
-        ...scriptOverrides,
     };
+    Object.defineProperties(scriptMock, Object.getOwnPropertyDescriptors(scriptOverrides));
 
     const secretState = {};
     const secretsMock = {
