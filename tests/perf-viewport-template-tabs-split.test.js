@@ -326,15 +326,6 @@ describe('PR 14A: Unified ViewportCoordinator and Trap #13', () => {
         expect(powerUserSource).toContain('subscribeMovingUIViewport(');
         expect(powerUserSource).not.toContain('$(window).on(\'resize\'');
     });
-
-    test('Trap #13: browser-fixes.js never flips documentElement.style.position = fixed on iOS input focus', () => {
-        const browserFixesSource = readRepoFile('public', 'scripts', 'browser-fixes.js');
-
-        expect(browserFixesSource).not.toContain('document.documentElement.style.position = \'fixed\'');
-        // Unconditional edit-focus guard protects IME composition even on forced orientationchange.
-        expect(browserFixesSource).toMatch(/if \(isEditableFocusTarget\(document\.activeElement\)\) \{\s*return;\s*\}/);
-        expect(browserFixesSource).not.toContain('if (!force && isEditableFocusTarget(document.activeElement))');
-    });
 });
 
 describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {

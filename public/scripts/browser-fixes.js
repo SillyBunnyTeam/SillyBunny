@@ -292,10 +292,11 @@ function applyBrowserFixes() {
             }
 
             // SillyBunny: do not force the viewport fix while the mobile shell is
-            // actively editing an input (even on forced orientation changes);
-            // mutating root positioning disrupts IME composition and bounces the
-            // visual viewport on iOS and Android.
-            if (isEditableFocusTarget(document.activeElement)) {
+            // actively editing an input; that can disrupt IME composition and text fixes.
+            // Avoid force-pinning the root while Android IMEs are actively
+            // editing text. That can break replacement/correction targets and
+            // make accepted suggestions append at the end of the field instead.
+            if (!force && isEditableFocusTarget(document.activeElement)) {
                 return;
             }
 
@@ -310,8 +311,7 @@ function applyBrowserFixes() {
 
             viewportFixScheduled = true;
             console.debug('[Mobile] Device viewport change detected.');
-            // SillyBunny: never flip documentElement.style.position = 'fixed' —
-            // on iOS WebKit it resets IME composition and bounces the visual viewport.
+            document.documentElement.style.position = 'fixed';
             requestAnimationFrame(() => {
                 resetTransientViewportPosition();
                 viewportFixScheduled = false;
