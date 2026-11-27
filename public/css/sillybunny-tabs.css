@@ -5334,6 +5334,13 @@ body.reduced-motion .ds-row-expander__toggle::after {
     margin-bottom: var(--sb-settings-heading-gap);
 }
 
+/* A flattened upstream drawer that Prompting boxes is a flat section, which is a flex column with its own row gap. The heading
+   margin above already carries the 6px gap to the box, so the row gap would add a second one. Whether the drawer is a column
+   depends on whether upstream's visibility pass left an inline `display: block` on it, which is not a state to rely on. */
+#sb-settings-page .sb-prompting-panel .sb-prompting-group.sb-settings-flat-section {
+    row-gap: 0;
+}
+
 /* The container owns category spacing so hidden groups leave no gaps or leading margins. */
 #sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-section,
 #sb-settings-page .sb-settings-mounted-shell :is(#AdvancedFormatting, #Backgrounds),
