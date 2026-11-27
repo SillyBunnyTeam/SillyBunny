@@ -498,15 +498,31 @@ export {
     getMaxPromptTokens as getMaxContextSize,
 };
 
+// SillyBunny: start boot on DOMContentLoaded instead of stalling on window.load (fonts, stylesheets, and splash frames).
 /**
- * Wait for DOM and deferred classic scripts before continuing app initialization.
+ * Resolves once DOMContentLoaded has fired, which is after the document is parsed and every deferred classic and module script has run.
+ * A module script already sees `readyState === 'interactive'` while that event is still pending, so `readyState` alone cannot tell.
+ * @returns {Promise<void>}
  */
-// SillyBunny: start boot on DOMContentLoaded readiness instead of stalling on window.load (fonts, stylesheets, and splash frames).
-if (document.readyState === 'loading') {
-    await new Promise((resolve) => {
-        document.addEventListener('DOMContentLoaded', resolve, { once: true });
+function waitForDomContentLoaded() {
+    return new Promise((resolve) => {
+        if (document.readyState === 'complete') {
+            resolve();
+            return;
+        }
+        if (document.readyState === 'interactive') {
+            // The event has started once its start time is set. Waiting for it then would never end.
+            const navigation = performance.getEntriesByType?.('navigation')?.[0];
+            if (!navigation || navigation.domContentLoadedEventStart > 0) {
+                resolve();
+                return;
+            }
+        }
+        document.addEventListener('DOMContentLoaded', () => resolve(), { once: true });
     });
 }
+
+await waitForDomContentLoaded();
 
 // Configure toast library:
 toastr.options = {

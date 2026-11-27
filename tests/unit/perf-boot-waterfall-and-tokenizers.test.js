@@ -778,6 +778,60 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(seen.appReady).toEqual(['forest.png']);
     });
 
+    describe('waitForDomContentLoaded gates boot on DOMContentLoaded', () => {
+        const gateSlice = extractSliceBetween(scriptSource, 'function waitForDomContentLoaded() {', 'await waitForDomContentLoaded();');
+
+        // A module script runs with readyState 'interactive' before DOMContentLoaded fires, and 'interactive' stays until window.load.
+        const createGate = ({ readyState, domContentLoadedEventStart }) => {
+            const listeners = new Map();
+            const sandbox = {
+                document: {
+                    readyState,
+                    addEventListener: jest.fn((type, listener) => listeners.set(type, listener)),
+                },
+                performance: {
+                    getEntriesByType: () => (domContentLoadedEventStart === undefined ? [] : [{ domContentLoadedEventStart }]),
+                },
+            };
+            vm.runInNewContext(gateSlice, sandbox);
+            const settled = { value: false };
+            sandbox.waitForDomContentLoaded().then(() => { settled.value = true; });
+            return { listeners, settled, sandbox };
+        };
+        const flush = () => new Promise(resolve => setImmediate(resolve));
+
+        test.each([
+            ['loading', undefined],
+            ['interactive', 0],
+        ])('waits for the event while readyState is %s and the event has not started', async (readyState, domContentLoadedEventStart) => {
+            const { listeners, settled, sandbox } = createGate({ readyState, domContentLoadedEventStart });
+            await flush();
+            expect(settled.value).toBe(false);
+            expect(sandbox.document.addEventListener).toHaveBeenCalledWith('DOMContentLoaded', expect.any(Function), { once: true });
+
+            listeners.get('DOMContentLoaded')();
+            await flush();
+            expect(settled.value).toBe(true);
+        });
+
+        test.each([
+            ['complete', 0],
+            ['interactive', 12.5],
+            ['interactive', undefined],
+        ])('does not wait when readyState is %s and the event start time is %s', async (readyState, domContentLoadedEventStart) => {
+            const { settled, sandbox } = createGate({ readyState, domContentLoadedEventStart });
+            await flush();
+            expect(settled.value).toBe(true);
+            expect(sandbox.document.addEventListener).not.toHaveBeenCalled();
+        });
+
+        test('never listens for window.load', () => {
+            const { sandbox } = createGate({ readyState: 'loading' });
+            expect(sandbox.document.addEventListener.mock.calls.map(([type]) => type)).toEqual(['DOMContentLoaded']);
+            expect(gateSlice).not.toContain('\'load\'');
+        });
+    });
+
     test('extensions getManifests uses inline manifests without HTTP fetches and falls back per-extension when absent', async () => {
         const discoverSlice = extractSliceBetween(
             extensionsSource,
@@ -1048,8 +1102,7 @@ describe('boot waterfall, inline extension manifests, loopback SW retirement, an
         expect(libPreloadIdx).toBeGreaterThan(-1);
         expect(scriptPreloadIdx).toBeGreaterThan(libPreloadIdx);
 
-        // 1. Boot readiness uses DOMContentLoaded and does not await dismissPreloader fade-out before getCharacters.
-        expect(scriptSource).toContain('document.addEventListener(\'DOMContentLoaded\', resolve, { once: true })');
+        // 1. Boot readiness does not wait for window.load and does not await dismissPreloader fade-out before getCharacters.
         expect(scriptSource).not.toContain('window.addEventListener(\'load\', () => resolve(), { once: true })');
         expect(scriptSource).toContain('void dismissPreloader();');
 
