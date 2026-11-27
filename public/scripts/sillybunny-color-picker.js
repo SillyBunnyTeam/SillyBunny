@@ -14,7 +14,6 @@ const COLOR_PICKER_STYLESHEET = Object.freeze({
 });
 const MARGIN = 12;
 const GAP = 8;
-const LIFECYCLE_HOOKED = Symbol('sbColorPickerLifecycleHooked');
 let initialization;
 let active = null;
 
@@ -367,6 +366,7 @@ function openColorMenu(picker, button) {
     picker.addEventListener('change', onPickerChange);
     state.unbindPickerChange = () => picker.removeEventListener('change', onPickerChange);
     active = state;
+    state.stopWatchingRemoval = watchPickerRemoval(state);
     bindControls(state);
     render(state);
     button.setAttribute('aria-expanded', 'true');
@@ -441,6 +441,7 @@ function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
     active = null;
     state.unlink?.();
     state.unbindPickerChange?.();
+    state.stopWatchingRemoval?.();
     state.button.setAttribute('aria-expanded', 'false');
     if (state.dialog) state.dialog.close('close');
     else state.menu.remove();
@@ -492,27 +493,34 @@ function findEligiblePicker(target) {
     return picker;
 }
 
-function installPickerLifecycleHook() {
-    const PickerElement = customElements.get(PICKER_SELECTOR);
-    const prototype = PickerElement?.prototype;
-    if (!prototype || prototype[LIFECYCLE_HOOKED]) return;
-    prototype[LIFECYCLE_HOOKED] = true;
-    const originalConnected = prototype.connectedCallback;
-    const originalDisconnected = prototype.disconnectedCallback;
-    prototype.connectedCallback = function (...args) {
-        originalConnected?.apply(this, args);
-        enhancePicker(this);
-    };
-    prototype.disconnectedCallback = function (...args) {
-        originalDisconnected?.apply(this, args);
-        if (active?.picker === this) {
-            queueMicrotask(() => {
-                if (active?.picker === this && !this.isConnected) {
-                    closeColorMenu({ restoreFocus: false, commitPending: false });
-                }
-            });
-        }
-    };
+/**
+ * The vendor element builds its shadow DOM in connectedCallback and assigns its colour there, which dispatches a
+ * non-bubbling `change` on the picker. A capture listener on the document sees that event for every picker that
+ * connects, wherever it is added, so no observer has to watch the page. The shadow DOM is complete once the
+ * callback has returned, which is why the work waits for a microtask. A moved picker connects again and gets a
+ * new shadow DOM, so it is enhanced again.
+ */
+function handlePickerConnected(event) {
+    const picker = event.target;
+    if (!(picker instanceof Element) || !picker.matches(PICKER_SELECTOR)) return;
+    queueMicrotask(() => {
+        if (picker.isConnected && !picker.shadowRoot?.querySelector('[data-sb-color-picker-style]')) enhancePicker(picker);
+    });
+}
+
+/**
+ * The vendor element has no disconnect signal. An owner that rebuilds its list replaces the picker under an open menu,
+ * so the menu closes when the picker or one of its ancestors leaves the document. Only the ancestors are observed, and
+ * only while the menu is open.
+ */
+function watchPickerRemoval(state) {
+    const observer = new MutationObserver(() => {
+        if (active === state && !state.picker.isConnected) closeColorMenu({ restoreFocus: false, commitPending: false });
+    });
+    for (let ancestor = state.picker.parentNode; ancestor; ancestor = ancestor.parentNode) {
+        observer.observe(ancestor, { childList: true });
+    }
+    return () => observer.disconnect();
 }
 
 function handleDelegatedPickerActivation(event) {
@@ -535,7 +543,7 @@ function handleDelegatedPickerPrepare(event) {
 
 export function initializeColorPickers() {
     initialization ??= customElements.whenDefined(PICKER_SELECTOR).then(() => {
-        installPickerLifecycleHook();
+        document.addEventListener('change', handlePickerConnected, { capture: true, passive: true });
         for (const picker of document.querySelectorAll(PICKER_SELECTOR)) {
             enhancePicker(picker);
         }

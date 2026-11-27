@@ -353,11 +353,11 @@ describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startu
             expect(greetingArtSource).toContain('chatElement.addEventListener(\'scroll\', onScroll, { passive: true })');
         });
 
-        test('replaces color-picker body MutationObserver with delegated capture hook, enhances pre-connected pickers, and re-runs placement after stylesheet load', async () => {
+        test('enhances pre-connected pickers without observing the document, delegates activation, and re-runs placement after stylesheet load', async () => {
             const colorPickerSource = readPublic('scripts', 'sillybunny-color-picker.js');
 
-            expect(colorPickerSource).not.toContain('MutationObserver');
             expect(colorPickerSource).not.toContain('enhanceWithin(document.body)');
+            expect(colorPickerSource).not.toMatch(/\.observe\(\s*document\.(?:body|documentElement)/);
             expect(colorPickerSource).toContain('target.closest(PICKER_SELECTOR)');
             expect(colorPickerSource).toContain('document.addEventListener(\'click\', handleDelegatedPickerActivation, true)');
             expect(colorPickerSource).toContain('document.addEventListener(\'keydown\', handleDelegatedPickerActivation, true)');
@@ -483,6 +483,7 @@ describe('PR 5 compositor scroll, deferred CSS priority, and Conversation startu
                     get: () => FakePicker,
                 },
                 SillyBunnyAssets: { loadStylesheetAsync },
+                MutationObserver: class { observe() {} disconnect() {} },
                 requestAnimationFrame: cb => { cb(); return 1; },
                 queueMicrotask,
             });
