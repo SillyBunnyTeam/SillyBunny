@@ -2939,6 +2939,20 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 | Last reviewed | 2026-11-27, PR #1047 review fixes. |
 | Owner | `TODO(copy)` |
 
+### `public/scripts/extensions/tts/elevenlabs.js` - ElevenLabs Eleven v4 and v4 Turbo models
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/extensions/tts/elevenlabs.js` |
+| Area | TTS extension: ElevenLabs model selector in `ElevenLabsTtsProvider.settingsHtml`. |
+| Divergence reason | Early port of upstream SillyTavern PR #6143 before the next full upstream sync so users can select ElevenLabs `eleven_v4` and `eleven_v4_turbo` models in the TTS extension. |
+| Target seam | `ElevenLabsTtsProvider.settingsHtml` (early port of upstream SillyTavern PR #6143, merged into upstream `staging` on 2026-11-15). |
+| Adapter shape | Add `<option value="eleven_v4">Eleven v4</option>` and `<option value="eleven_v4_turbo">Eleven v4 Turbo</option>` at the top of `#elevenlabs_tts_model`; `shouldInvolveExtendedSettings()` stays unchanged. |
+| Protecting tests | `tests/elevenlabs-v4-models.test.js`. |
+| Validation | Root and `tests/` lint, `npm run test:unit -- elevenlabs-v4-models.test.js`, `npm run check:frontend-budgets`. |
+| Rollback path | Remove the `eleven_v4` and `eleven_v4_turbo` `<option>` elements and marker comment from `ElevenLabsTtsProvider.settingsHtml` in `public/scripts/extensions/tts/elevenlabs.js`, and delete `tests/elevenlabs-v4-models.test.js`. Existing saved TTS settings are unchanged. Drop this entry on the upstream sync carrying ST #6143. |
+| Last reviewed | 2026-11-27 (early port of ST #6143). |
+| Owner | Built-in extensions and TTS integrator. |
+
 ## Review Checklist
 - Does the upstream-origin file contain only adapter wiring and concise comments?
 - Does the target seam have a small interface and concentrated implementation?
