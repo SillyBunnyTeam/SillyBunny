@@ -10,6 +10,11 @@
         "**/tests/**/?(*.)+(spec|test).[jt]s?(x)"
     ],
     "verbose": true,
+    "workerIdleMemoryLimit": "512MB",
+    "reporters": [
+        "default",
+        "<rootDir>/tests/util/v8-coverage-compact-reporter.js"
+    ],
     "transform": {},
     "testEnvironment": "node",
     "moduleNameMapper": {
