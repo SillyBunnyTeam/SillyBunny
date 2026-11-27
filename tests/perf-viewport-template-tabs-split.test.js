@@ -331,6 +331,30 @@ describe('PR 14A: Unified ViewportCoordinator and Trap #13', () => {
 
 describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
     const tabsSource = readRepoFile('public', 'scripts', 'sillybunny-tabs.js');
+
+    /** The source of one top-level function of the shell, `async` included; the shell has no exports to call. */
+    function extractShellFunction(name) {
+        const match = new RegExp(`^(async )?function ${name}\\(`, 'm').exec(tabsSource);
+        expect(match).not.toBeNull();
+        const bodyStart = tabsSource.indexOf('{', tabsSource.indexOf(')', match.index + match[0].length - 1));
+        let depth = 0;
+        let end = bodyStart;
+        for (; end < tabsSource.length; end++) {
+            if (tabsSource[end] === '{') depth++;
+            else if (tabsSource[end] === '}' && --depth === 0) break;
+        }
+        return tabsSource.slice(match.index, end + 1);
+    }
+
+    /** Compiles the named shell functions together with the lazy-load error helpers, against stubbed collaborators. */
+    function compileShell(names, globals) {
+        const sources = ['reportLazyModuleFailure', 'loadControllerOrReport', ...names].map(extractShellFunction);
+        const toastr = { error: jest.fn() };
+        const errors = [];
+        const sandbox = { toastr, console: { error: (...args) => errors.push(args) }, String, ...globals };
+        const functions = vm.runInNewContext(`${sources.join('\n')}\n({ ${names.join(', ')} })`, sandbox);
+        return { functions, toastr, errors };
+    }
     const subModules = [
         { file: 'sampling-panel.js', factory: 'createSamplingPanelController' },
         { file: 'backend-panels.js', factory: 'createBackendPanelsController' },
@@ -365,17 +389,7 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
     describe('the chat list refresh at boot', () => {
         /** Runs the shell's own refreshChatbarState with stubbed collaborators; the module loader is the one to watch. */
         function runRefresh({ controller = null, loadModule }) {
-            const marker = 'async function refreshChatbarState(';
-            const start = tabsSource.indexOf(marker);
-            expect(start).toBeGreaterThanOrEqual(0);
-            const bodyStart = tabsSource.indexOf('{', tabsSource.indexOf(')', start));
-            let depth = 0;
-            let end = bodyStart;
-            for (; end < tabsSource.length; end++) {
-                if (tabsSource[end] === '{') depth++;
-                else if (tabsSource[end] === '}' && --depth === 0) break;
-            }
-            const source = tabsSource.slice(start, end + 1);
+            const source = extractShellFunction('refreshChatbarState');
 
             const calls = [];
             const chatbarState = { refreshToken: 0 };
@@ -415,6 +429,69 @@ describe('PR 14C: sillybunny-tabs.js Modular Split & Lazy Sub-Modules', () => {
             expect(rendered).toBe(files);
             expect(rendered.map(file => file.fileName)).toEqual(['current', 'older']);
             expect(sandbox.loadChatActionsSearchController).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('a lazy controller that cannot load is reported, not dropped', () => {
+        const importError = new Error('Failed to fetch dynamically imported module');
+        const failingLoader = () => jest.fn(() => Promise.reject(importError));
+
+        function expectReported({ toastr, errors }) {
+            expect(toastr.error).toHaveBeenCalledTimes(1);
+            expect(toastr.error.mock.calls[0][0]).toBe('Failed to fetch dynamically imported module');
+            expect(toastr.error.mock.calls[0][2]).toEqual({ preventDuplicates: true });
+            expect(errors).toHaveLength(1);
+        }
+
+        test('a search that needs the universal search module says so when the import fails, and the search goes on', async () => {
+            const loadUniversalSearchController = failingLoader();
+            const compiled = compileShell(['prepareShellSearch'], {
+                loadUniversalSearchController,
+                sbState: { shells: {} },
+                Promise,
+                Object,
+                Array,
+            });
+            await expect(compiled.functions.prepareShellSearch()).resolves.toBeUndefined();
+            expect(loadUniversalSearchController).toHaveBeenCalledTimes(1);
+            expectReported(compiled);
+        });
+
+        test('painting search results says so when the import fails, and does not reject', async () => {
+            const loadUniversalSearchController = failingLoader();
+            const compiled = compileShell(['renderUniversalSearchResults'], { loadUniversalSearchController });
+            await expect(compiled.functions.renderUniversalSearchResults('query')).resolves.toBeUndefined();
+            expectReported(compiled);
+        });
+
+        test('picking a chat says so when the chat module cannot load, and opens nothing', async () => {
+            const loadChatActionsSearchController = failingLoader();
+            const compiled = compileShell(['openChatById'], { loadChatActionsSearchController });
+            await expect(compiled.functions.openChatById('chat')).resolves.toBeUndefined();
+            expectReported(compiled);
+        });
+
+        test('a chat action runs on the loaded module when the import works', async () => {
+            const controller = { openChatById: jest.fn(async () => 'opened') };
+            const loadChatActionsSearchController = jest.fn(() => Promise.resolve(controller));
+            const compiled = compileShell(['openChatById'], { loadChatActionsSearchController });
+            await expect(compiled.functions.openChatById('chat')).resolves.toBe('opened');
+            expect(controller.openChatById).toHaveBeenCalledWith('chat');
+            expect(compiled.toastr.error).not.toHaveBeenCalled();
+        });
+
+        test('updating the Editor panel says so when the backend panels module cannot load', async () => {
+            const loadBackendPanelsController = failingLoader();
+            const compiled = compileShell(['updateEditorPanel'], {
+                loadBackendPanelsController,
+                backendPanelsController: null,
+                getShellState: () => null,
+                Promise,
+            });
+            compiled.functions.updateEditorPanel({});
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(loadBackendPanelsController).toHaveBeenCalledTimes(1);
+            expectReported(compiled);
         });
     });
 

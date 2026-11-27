@@ -242,6 +242,28 @@ function loadUniversalSearchController() {
     return universalSearchLoader.load();
 }
 
+/**
+ * Shows that a lazy module did not load: the console and a toast with the error, as the settings panel does for its own
+ * load failure. The next call that needs the module imports it again on a new URL.
+ * @param {string} label What did not load, for the console.
+ * @param {unknown} error
+ */
+function reportLazyModuleFailure(label, error) {
+    console.error(`[SillyBunny] Could not load ${label}:`, error);
+    toastr.error(String(error?.message || error), undefined, { preventDuplicates: true });
+}
+
+/**
+ * Loads a lazy controller for an action that needs it. A failed import is reported and gives undefined, so the action stops.
+ * @template T
+ * @param {() => Promise<T>} load
+ * @param {string} label
+ * @returns {Promise<T|undefined>}
+ */
+function loadControllerOrReport(load, label) {
+    return load().catch(error => reportLazyModuleFailure(label, error));
+}
+
 /** Appearance holds raw upstream rows until its module has regrouped them, and the settings passes must not reshape them first. */
 function isAppearancePending(tabId) {
     return tabId === 'appearance' && appearanceModule === null;
@@ -620,7 +642,7 @@ function flattenSettingsPanelDrawers(shellKey, tabId) {
 async function prepareShellSearch() {
     // Search also discovers controls in unopened panels, without starting their polling.
     await Promise.allSettled([
-        loadUniversalSearchController(),
+        loadControllerOrReport(loadUniversalSearchController, 'Universal Search'),
         ...Object.values(sbState.shells).flatMap(shell =>
             Array.from(shell.tabs.values(), tab => tab.ensureReady?.()),
         ),
@@ -4451,23 +4473,23 @@ async function getChatFilesForContext(chatContext = getChatUiContext()) {
 }
 
 async function openChatById(chatId) {
-    return (await loadChatActionsSearchController()).openChatById(chatId);
+    return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.openChatById(chatId);
 }
 
 async function handleRenameChat() {
-    return (await loadChatActionsSearchController()).handleRenameChat();
+    return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleRenameChat();
 }
 
 async function handleDeleteChat() {
-    return (await loadChatActionsSearchController()).handleDeleteChat();
+    return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleDeleteChat();
 }
 
 async function handleAutoNameChat() {
-    return (await loadChatActionsSearchController()).handleAutoNameChat();
+    return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleAutoNameChat();
 }
 
 async function handleMassDeleteChats() {
-    return (await loadChatActionsSearchController()).handleMassDeleteChats();
+    return (await loadControllerOrReport(loadChatActionsSearchController, 'Chat Sidebar'))?.handleMassDeleteChats();
 }
 
 function handleNewChat() {
@@ -4579,7 +4601,7 @@ function setChatSidebarOpenState(shouldOpen, options = {}) {
             if (token === chatSidebarOpenRequestToken) {
                 getChatbarState().sidebarOpen = false;
             }
-            console.error('[SillyBunny] Could not load Chat Sidebar module:', error);
+            reportLazyModuleFailure('Chat Sidebar', error);
         });
 }
 
@@ -4657,7 +4679,7 @@ function clearChatSearchHighlights() {
 function scheduleChatSearchHighlight(options = {}) {
     void loadChatActionsSearchController()
         .then(controller => controller.scheduleChatSearchHighlight(options))
-        .catch(error => console.error('[SillyBunny] Could not load Chat Search module:', error));
+        .catch(error => reportLazyModuleFailure('Chat Search', error));
 }
 
 function setChatSearchQuery(value, { source = null } = {}) {
@@ -7183,7 +7205,7 @@ function buildEditorPanel() {
                 backendPanelsController.groupAdvancedFormattingIntoDrawers();
                 backendPanelsController.updateEditorPanel(panel);
             } else {
-                void ensureEditorReady().catch(error => console.error('[SillyBunny] Could not load Editor panel:', error));
+                void ensureEditorReady().catch(error => reportLazyModuleFailure('Editor panel', error));
             }
         },
     };
@@ -7194,7 +7216,7 @@ function updateEditorPanel(panel = getShellState('left')?.tabs.get('editor')?.pa
         backendPanelsController.updateEditorPanel(panel);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updateEditorPanel(panel)).catch(error => console.error('[SillyBunny] Could not load Editor panel:', error));
+    void loadBackendPanelsController().then(panels => panels.updateEditorPanel(panel)).catch(error => reportLazyModuleFailure('Editor panel', error));
 }
 
 function updatePromptingPanel(panel) {
@@ -7203,7 +7225,7 @@ function updatePromptingPanel(panel) {
         backendPanelsController.updatePromptingPanel(panel);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updatePromptingPanel(panel)).catch(error => console.error('[SillyBunny] Could not load Prompting panel:', error));
+    void loadBackendPanelsController().then(panels => panels.updatePromptingPanel(panel)).catch(error => reportLazyModuleFailure('Prompting panel', error));
 }
 
 function getImporterState() {
@@ -7275,7 +7297,7 @@ function groupAdvancedFormattingIntoDrawers() {
         backendPanelsController.groupAdvancedFormattingIntoDrawers();
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.groupAdvancedFormattingIntoDrawers()).catch(error => console.error('[SillyBunny] Could not load Formatting panel:', error));
+    void loadBackendPanelsController().then(panels => panels.groupAdvancedFormattingIntoDrawers()).catch(error => reportLazyModuleFailure('Formatting panel', error));
 }
 
 function updateFormattingGroupVisibility(formatting) {
@@ -7283,7 +7305,7 @@ function updateFormattingGroupVisibility(formatting) {
         backendPanelsController.updateFormattingGroupVisibility(formatting);
         return;
     }
-    void loadBackendPanelsController().then(panels => panels.updateFormattingGroupVisibility(formatting)).catch(error => console.error('[SillyBunny] Could not load Formatting panel:', error));
+    void loadBackendPanelsController().then(panels => panels.updateFormattingGroupVisibility(formatting)).catch(error => reportLazyModuleFailure('Formatting panel', error));
 }
 
 function setSillyTavernImportBusy(isBusy) {
@@ -8180,8 +8202,8 @@ function collectGlobalSearchMatches(query, options = {}) {
 }
 
 async function renderUniversalSearchResults(query) {
-    const controller = await loadUniversalSearchController();
-    return controller.renderUniversalSearchResults(query);
+    const controller = await loadControllerOrReport(loadUniversalSearchController, 'Universal Search');
+    return controller?.renderUniversalSearchResults(query);
 }
 
 function setUniversalSearchActiveIndex(index) {
