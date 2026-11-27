@@ -757,7 +757,7 @@ describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', 
         const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
         try {
-            const jsonRes = await openRawHttpRequest(`${baseUrl}/json`, { headers: { 'Accept-Encoding': 'zstd, gzip' } });
+            const jsonRes = await openRawHttpRequest(`${baseUrl}/json`, { headers: { 'Accept-Encoding': 'gzip;q=0.5, zstd' } });
             expect(jsonRes.headers['content-encoding']).toBe('zstd');
             expect(jsonRes.headers.vary?.toLowerCase()).toContain('accept-encoding');
             expect(JSON.parse(zlib.zstdDecompressSync(jsonRes.body).toString('utf8'))).toEqual(largeJson);
@@ -784,7 +784,7 @@ describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', 
         }
     });
 
-    test('encoding negotiation prefers brotli over zstd at equal q and uses zstd only when brotli is not accepted or zstd ranks higher', () => {
+    test('encoding negotiation picks zstd only when the client ranks it strictly above brotli and gzip', () => {
         const browserHeader = 'gzip, deflate, br, zstd';
         expect(negotiateCompressionEncoding(browserHeader)).toBe('br');
         expect(negotiateCompressionEncoding(browserHeader, { zstdSupported: false })).toBe('br');
@@ -794,15 +794,20 @@ describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', 
         expect(negotiateCompressionEncoding('gzip, br, zstd;q=0.5')).toBe('br');
         expect(negotiateCompressionEncoding('gzip, br;q=0.5, zstd;q=0.5')).toBe('gzip');
 
-        expect(negotiateCompressionEncoding('gzip, deflate, zstd')).toBe('zstd');
-        expect(negotiateCompressionEncoding('gzip, br;q=0, zstd')).toBe('zstd');
-        expect(negotiateCompressionEncoding('zstd')).toBe('zstd');
+        expect(negotiateCompressionEncoding('gzip, zstd')).toBe('gzip');
+        expect(negotiateCompressionEncoding('gzip, deflate, zstd')).toBe('gzip');
+        expect(negotiateCompressionEncoding('gzip, br;q=0, zstd')).toBe('gzip');
+        expect(negotiateCompressionEncoding('gzip, br;q=0.5, zstd')).toBe('gzip');
+        expect(negotiateCompressionEncoding('gzip, deflate, zstd', { zstdSupported: false })).toBe('gzip');
+
+        expect(negotiateCompressionEncoding('gzip;q=0.5, zstd;q=1')).toBe('zstd');
+        expect(negotiateCompressionEncoding('gzip;q=0.5, br;q=0.5, zstd')).toBe('zstd');
         expect(negotiateCompressionEncoding('br;q=0.8, zstd')).toBe('zstd');
         expect(negotiateCompressionEncoding('br;q=0.8, zstd;q=0.9, gzip;q=0.7')).toBe('zstd');
-        expect(negotiateCompressionEncoding('gzip, deflate, zstd', { zstdSupported: false })).toBe('gzip');
+        expect(negotiateCompressionEncoding('zstd')).toBe('zstd');
     });
 
-    test('a browser Accept-Encoding gets brotli and gzip answers byte-identical to the compression package defaults', async () => {
+    test('every Accept-Encoding that does not rank zstd strictly first gets the compression package answer byte for byte', async () => {
         const payload = { text: 'compressible response body for the negotiation order check '.repeat(150) };
         const mount = middleware => {
             const app = express();
@@ -832,12 +837,20 @@ describe('3. Lazy Startup, Native Zstd, Async Locks, SQLite & Endpoint Caches', 
             expect(zlib.gunzipSync(gzipOnly.body).toString('utf8')).toBe(expectedJson);
             expect(gzipOnly.body.equals((await request(reference, 'gzip, deflate')).body)).toBe(true);
 
-            const withoutBrotli = await request(ours, 'gzip, deflate, zstd');
-            expect(withoutBrotli.headers['content-encoding']).toBe('zstd');
-            expect(zlib.zstdDecompressSync(withoutBrotli.body).toString('utf8')).toBe(expectedJson);
+            for (const header of ['gzip, zstd', 'gzip, deflate, zstd']) {
+                const gzipAndZstd = await request(ours, header);
+                expect(gzipAndZstd.headers['content-encoding']).toBe('gzip');
+                expect(zlib.gunzipSync(gzipAndZstd.body).toString('utf8')).toBe(expectedJson);
+                expect(gzipAndZstd.body.equals((await request(reference, header)).body)).toBe(true);
+            }
 
-            const zstdRankedHigher = await request(ours, 'gzip, br;q=0.5, zstd');
-            expect(zstdRankedHigher.headers['content-encoding']).toBe('zstd');
+            const brotliAheadOfZstd = await request(ours, 'br, zstd;q=0.9');
+            expect(brotliAheadOfZstd.headers['content-encoding']).toBe('br');
+            expect(brotliAheadOfZstd.body.equals((await request(reference, 'br, zstd;q=0.9')).body)).toBe(true);
+
+            const zstdRankedFirst = await request(ours, 'gzip;q=0.5, zstd;q=1');
+            expect(zstdRankedFirst.headers['content-encoding']).toBe('zstd');
+            expect(zlib.zstdDecompressSync(zstdRankedFirst.body).toString('utf8')).toBe(expectedJson);
         } finally {
             await Promise.all(servers.map(srv => new Promise(resolve => srv.close(resolve))));
         }
