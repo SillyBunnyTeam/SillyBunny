@@ -49,6 +49,18 @@ const MANUAL_SYNC_EXTENSIONS = new Map([
  */
 const OPTIONS = Object.freeze({ timeout: { block: 5 * 60 * 1000 } });
 
+// SillyBunny: scope the cache-clear bump of an in-process extension change to the acting user unless the extension is global.
+/**
+ * Invalidates browser caches after an extension changed in-process. A user's own extension is
+ * served to that user only, so it must not make other users' browsers clear their caches; only a
+ * global extension, which an admin alone can change, is shared.
+ * @param {import('express').Request} request Express request of the acting user
+ * @param {boolean} isGlobal Whether the change was to a global extension
+ */
+function invalidateBrowserCaches(request, isGlobal) {
+    bumpRestartCacheGeneration(isGlobal ? undefined : request.user.profile.handle);
+}
+
 /**
  * This function extracts the extension information from the manifest file.
  * @param {string} extensionPath - The path of the extension folder
@@ -334,7 +346,7 @@ router.post('/install', async (request, response) => {
             }
             const { version, author, display_name } = manifest;
             // SillyBunny: invalidate browser frontend caches after installing an extension in-process.
-            bumpRestartCacheGeneration();
+            invalidateBrowserCaches(request, Boolean(global));
             return response.send({ version, author, display_name, extensionPath, folderName });
         } catch (manifestError) {
             await fs.promises.rm(extensionPath, { recursive: true, force: true });
@@ -413,7 +425,7 @@ router.post('/update', async (request, response) => {
             await git.pull('origin', currentBranch.current);
             console.info(`Extension has been updated at ${extensionPath}`);
             // SillyBunny: invalidate browser frontend caches after pulling new extension code.
-            bumpRestartCacheGeneration();
+            invalidateBrowserCaches(request, Boolean(global));
         } else {
             console.info(`Extension is up to date at ${extensionPath}`);
         }
@@ -531,14 +543,14 @@ router.post('/switch', async (request, response) => {
                 console.info(`Branch ${localBranch} already exists locally, checking it out`);
                 await git.checkout(localBranch);
                 // SillyBunny: invalidate browser frontend caches after switching extension branches.
-                bumpRestartCacheGeneration();
+                invalidateBrowserCaches(request, Boolean(global));
                 return response.sendStatus(204);
             }
 
             console.info(`Branch ${localBranch} does not exist locally, creating it from ${branch}`);
             await git.checkoutBranch(localBranch, branch);
             // SillyBunny: invalidate browser frontend caches after switching extension branches.
-            bumpRestartCacheGeneration();
+            invalidateBrowserCaches(request, Boolean(global));
             return response.sendStatus(204);
         }
 
@@ -558,7 +570,7 @@ router.post('/switch', async (request, response) => {
         await git.checkout(branch);
         console.info(`Checked out branch ${branch} at ${extensionPath}`);
         // SillyBunny: invalidate browser frontend caches after switching extension branches.
-        bumpRestartCacheGeneration();
+        invalidateBrowserCaches(request, Boolean(global));
 
         return response.sendStatus(204);
     } catch (error) {
@@ -775,7 +787,7 @@ router.post('/delete', async (request, response) => {
         await fs.promises.rm(extensionPath, { recursive: true });
         console.info(`Extension has been deleted at ${extensionPath}`);
         // SillyBunny: invalidate browser frontend caches after deleting an extension in-process.
-        bumpRestartCacheGeneration();
+        invalidateBrowserCaches(request, Boolean(global));
 
         return response.send(`Extension has been deleted at ${extensionPath}`);
     } catch (error) {

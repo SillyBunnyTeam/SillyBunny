@@ -215,7 +215,13 @@ export function computeContentBootId({ rootDir = serverDirectory, dataRoot } = {
 
 export const CONTENT_BOOT_ID = computeContentBootId();
 
+// One counter orders every bump. A change that every user sees (a global or bundled extension)
+// records it as the shared generation; a change inside one user's own extensions records
+// it for that user's handle only, so other users' browsers keep the cache they have.
 let restartCacheGeneration = 0;
+let sharedRestartCacheGeneration = 0;
+/** @type {Map<string, number>} */
+const userRestartCacheGenerations = new Map();
 
 export function getServerBootId() {
     return SERVER_BOOT_ID;
@@ -238,19 +244,34 @@ export function resolveRestartCacheClearMode(mode, env = process.env) {
  * @param {object} [options]
  * @param {unknown} [options.mode] `content` (default) or `always`
  * @param {NodeJS.ProcessEnv} [options.env] Environment variables
+ * @param {string} [options.userHandle] Handle of the logged-in user, when there is one
  * @returns {string}
  */
-export function getRestartCacheBootId({ mode, env = process.env } = {}) {
+export function getRestartCacheBootId({ mode, env = process.env, userHandle } = {}) {
     const resolvedMode = resolveRestartCacheClearMode(mode, env);
-    const baseId = resolvedMode === 'always' ? SERVER_BOOT_ID : CONTENT_BOOT_ID;
-    return restartCacheGeneration > 0 ? `${baseId}-g${restartCacheGeneration}` : baseId;
+    let bootId = resolvedMode === 'always' ? SERVER_BOOT_ID : CONTENT_BOOT_ID;
+    if (sharedRestartCacheGeneration > 0) {
+        bootId += `-g${sharedRestartCacheGeneration}`;
+    }
+    const userGeneration = typeof userHandle === 'string' ? userRestartCacheGenerations.get(userHandle) : undefined;
+    if (userGeneration) {
+        bootId += `-u${userGeneration}`;
+    }
+    return bootId;
 }
 
 /**
  * Advances the runtime cache-clear generation after in-process extension installs or updates.
- * @returns {string} Updated restart-cache boot identifier
+ * @param {string} [userHandle] Handle of the user whose own extensions changed. Omit it for a
+ * change that every user sees, such as a global extension, which only an admin can make.
+ * @returns {string} Updated restart-cache boot identifier for that user, or the shared one
  */
-export function bumpRestartCacheGeneration() {
+export function bumpRestartCacheGeneration(userHandle) {
     restartCacheGeneration += 1;
-    return getRestartCacheBootId();
+    if (typeof userHandle === 'string' && userHandle) {
+        userRestartCacheGenerations.set(userHandle, restartCacheGeneration);
+    } else {
+        sharedRestartCacheGeneration = restartCacheGeneration;
+    }
+    return getRestartCacheBootId({ userHandle });
 }

@@ -81,7 +81,7 @@ export function createRestartCacheClearMiddleware({
             return next();
         }
 
-        const activeBootId = bootId ?? getRestartCacheBootId({ mode });
+        const activeBootId = bootId ?? getRestartCacheBootId({ mode, userHandle: request.user?.profile?.handle });
         if (getCompletedPasses(request.headers.cookie, activeBootId) >= RESTART_CACHE_CLEAR_PASSES) {
             return next();
         }

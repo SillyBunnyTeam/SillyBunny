@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import process from 'node:process';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -339,9 +340,84 @@ describe('1. Content-fingerprint restartCacheClear & boot ID', () => {
         const extensionsSource = fs.readFileSync(path.join(repoRoot, 'src', 'endpoints', 'extensions.js'), 'utf8');
         const usersPrivateSource = fs.readFileSync(path.join(repoRoot, 'src', 'endpoints', 'users-private.js'), 'utf8');
         expect(extensionsSource).toMatch(/import\s*\{[^}]*bumpRestartCacheGeneration[^}]*\}\s*from\s*'\.\.\/server-boot-marker\.js'/);
-        expect((extensionsSource.match(/bumpRestartCacheGeneration\(\)/g) ?? []).length).toBeGreaterThanOrEqual(7);
+        expect((extensionsSource.match(/invalidateBrowserCaches\(request, Boolean\(global\)\)/g) ?? []).length).toBe(6);
+        expect((extensionsSource.match(/bumpRestartCacheGeneration\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
         expect(usersPrivateSource).toMatch(/import\s*\{[^}]*bumpRestartCacheGeneration[^}]*\}\s*from\s*'\.\.\/server-boot-marker\.js'/);
         expect(usersPrivateSource).toMatch(/bumpRestartCacheGeneration\(\)/);
+    });
+
+    test('extension routes bump the cache-clear value of the acting user only, unless an admin changes a global extension', async () => {
+        const serverRoot = makeTempDir('sb-ext-scope-');
+        const globalDir = path.join(serverRoot, 'public', 'scripts', 'extensions', 'third-party');
+        const users = {
+            alice: { admin: false },
+            bob: { admin: false },
+            root: { admin: true },
+        };
+        fs.mkdirSync(path.join(globalDir, 'shared-ext'), { recursive: true });
+        fs.mkdirSync(path.join(globalDir, 'shared-ext-2'), { recursive: true });
+        for (const [handle, user] of Object.entries(users)) {
+            user.extensions = path.join(serverRoot, 'data', handle, 'extensions');
+            fs.mkdirSync(path.join(user.extensions, `${handle}-ext`), { recursive: true });
+            fs.mkdirSync(path.join(user.extensions, `${handle}-ext-2`), { recursive: true });
+        }
+
+        const originalCwd = process.cwd();
+        process.chdir(serverRoot);
+        const { router } = await import('../src/endpoints/extensions.js');
+        const app = express();
+        app.use(express.json());
+        app.use((request, _response, next) => {
+            const handle = request.headers['x-test-user'];
+            request.user = {
+                profile: { handle, admin: users[handle].admin },
+                directories: { extensions: users[handle].extensions },
+            };
+            next();
+        });
+        app.use(router);
+        const server = await new Promise(resolve => {
+            const srv = app.listen(0, '127.0.0.1', () => resolve(srv));
+        });
+
+        const postDelete = (handle, body) => fetch(`http://127.0.0.1:${server.address().port}/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-test-user': handle },
+            body: JSON.stringify(body),
+        });
+        const bootIds = () => Object.fromEntries(['alice', 'bob', 'root'].map(handle => [handle, getRestartCacheBootId({ mode: 'content', userHandle: handle })]));
+
+        try {
+            const beforeOwnDelete = bootIds();
+            const ownDelete = await postDelete('alice', { extensionName: 'alice-ext' });
+            expect(ownDelete.status).toBe(200);
+            const afterOwnDelete = bootIds();
+            expect(afterOwnDelete.alice).not.toBe(beforeOwnDelete.alice);
+            expect(afterOwnDelete.bob).toBe(beforeOwnDelete.bob);
+            expect(afterOwnDelete.root).toBe(beforeOwnDelete.root);
+
+            const refusedGlobalDelete = await postDelete('alice', { extensionName: 'shared-ext', global: true });
+            expect(refusedGlobalDelete.status).toBe(403);
+            expect(fs.existsSync(path.join(globalDir, 'shared-ext'))).toBe(true);
+            expect(bootIds()).toEqual(afterOwnDelete);
+
+            const adminOwnDelete = await postDelete('root', { extensionName: 'root-ext' });
+            expect(adminOwnDelete.status).toBe(200);
+            const afterAdminOwnDelete = bootIds();
+            expect(afterAdminOwnDelete.root).not.toBe(afterOwnDelete.root);
+            expect(afterAdminOwnDelete.alice).toBe(afterOwnDelete.alice);
+            expect(afterAdminOwnDelete.bob).toBe(afterOwnDelete.bob);
+
+            const globalDelete = await postDelete('root', { extensionName: 'shared-ext', global: true });
+            expect(globalDelete.status).toBe(200);
+            const afterGlobalDelete = bootIds();
+            for (const handle of ['alice', 'bob', 'root']) {
+                expect(afterGlobalDelete[handle]).not.toBe(afterAdminOwnDelete[handle]);
+            }
+        } finally {
+            process.chdir(originalCwd);
+            await new Promise(resolve => server.close(resolve));
+        }
     });
 
     test('supports SB_DEV=1 always mode override and live bumpRestartCacheGeneration()', () => {

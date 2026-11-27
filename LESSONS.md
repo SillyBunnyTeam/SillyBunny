@@ -1910,6 +1910,12 @@ This is the largest class by a wide margin.
 - **Guards:** `resolveStaticTargetPath()` in `src/middleware/response-compression.js` normalizes the decoded path the way `send` does, refuses a leftover `..` segment, a trailing separator and a dotted last segment before it looks at the file system, and `createCompressedStaticMiddleware()` passes `Range`, `If-Match` and `If-Unmodified-Since` requests to `express.static`, which answers 206 or 412. Any new rule of `send` that decides which file is served or with which status belongs in these two places, and in the request-path list of the parity test.
 - **Tests:** `tests/perf-caching-compression-markers.test.js` ("compressed static cache answers every request path like express.static") runs the same raw request paths against the cache plus `express.static` and against `express.static` alone, cold and warm, and compares status and body.
 
+### Cache-clear value of extension changes
+
+- **Breaks:** `bumpRestartCacheGeneration()` wrote one process-wide counter that every browser's `sillybunny_cache_boot` cookie carried, so a non-admin user's `/install`, `/update`, `/switch` or `/delete` of an extension in their own folder made every other user's browser clear its caches and reload at the next index load, as often as that user repeated the action.
+- **Guards:** `bumpRestartCacheGeneration(userHandle)` in `src/server-boot-marker.js` records a change for that handle only, and `getRestartCacheBootId({ userHandle })` (called by `restartCacheClear` with `request.user.profile.handle`) adds the handle's value to the cookie value. A bump without a handle is shared and only for changes that every user sees; in `src/endpoints/extensions.js` that is `/move` and `/sync` (both admin only) and a `global` request (admin only). `invalidateBrowserCaches(request, isGlobal)` is the one place that chooses. The startup fingerprint still hashes every user's extensions, so the first start after any user's extension change clears all browsers once.
+- **Tests:** `tests/perf-caching-compression-markers.test.js` ("extension routes bump the cache-clear value of the acting user only", two non-admin users and one admin against the real router) and `tests/restart-cache-clear.test.js` ("a change to one user's own extensions clears only that user's browsers", two browsers with a cookie jar).
+
 ## Reverts and release problems
 
 - Performance work caused the largest rollback: `0ecfa44e3` reverted 14 optimisation commits. iOS stayed at "Initializing", and the desktop Characters panel did not open.
