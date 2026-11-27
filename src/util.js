@@ -19,6 +19,8 @@ import chalk from 'chalk';
 import bytes from 'bytes';
 import { LOG_LEVELS, CHAT_COMPLETION_SOURCES, MEDIA_REQUEST_TYPE } from './constants.js';
 import { serverDirectory } from './server-directory.js';
+// SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
+import { getAndroidAppGitOptions } from './android-app-gate.js';
 import { sync as writeFileAtomicSync } from 'write-file-atomic';
 import { isFirefox } from './express-common.js';
 import { pollSocketConnection } from './connection-state-checker.js';
@@ -140,7 +142,8 @@ export async function getVersion() {
         const pkgJson = require(path.join(serverDirectory, './package.json'));
         pkgVersion = pkgJson.version;
         if (commandExistsSync('git')) {
-            const git = simpleGit({ baseDir: serverDirectory });
+            // SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
+            const git = simpleGit({ baseDir: serverDirectory, ...getAndroidAppGitOptions() });
             gitRevision = await git.revparse(['--short', 'HEAD']);
             gitBranch = await git.revparse(['--abbrev-ref', 'HEAD']);
             commitDate = await git.show(['-s', '--format=%ci', gitRevision]);

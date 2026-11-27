@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>fixture-post</title></head><body>
+<form id="post" method="post"><input type="hidden" name="x" value="1"></form>
+<script>
+'use strict';
+// Served from the other loopback port under the app's host name, which is same-site with the app origin:
+// this form POST into the app origin would carry the launch cookie, and no page script of the app runs here.
+const name = new URLSearchParams(location.search).get('name') || 'otherport.json';
+const form = document.getElementById('post');
+form.action = 'http://' + location.hostname + ':{{APP}}/attachment?name=' + encodeURIComponent(name) + '&n=700&seed=5';
+form.submit();
+</script>
+</body></html>

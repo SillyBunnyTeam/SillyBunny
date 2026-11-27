@@ -1,0 +1,122 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}</style>
+<title>fixture-media</title></head><body>
+<button class="b" id="loop" onclick="startLoop()">loop</button>
+<script>
+window.results = {};
+
+// A silent 8 kHz mono WAV built in the page, so nothing is audible and no fixture file is needed.
+function silentWav(seconds) {
+  const rate = 8000;
+  const samples = Math.round(rate * seconds);
+  const view = new DataView(new ArrayBuffer(44 + samples * 2));
+  const text = (offset, value) => { for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i)); };
+  text(0, 'RIFF');
+  view.setUint32(4, 36 + samples * 2, true);
+  text(8, 'WAVE');
+  text(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, 'data');
+  view.setUint32(40, samples * 2, true);
+  return URL.createObjectURL(new Blob([view.buffer], { type: 'audio/wav' }));
+}
+
+// Settles results[key] as a timeout if nothing else settled it first, so a stalled audio pipeline is measured.
+function timeout(key, millis, detail) {
+  setTimeout(() => { if (results[key] === 'pending') results[key] = 'timeout:' + detail(); }, millis);
+}
+
+// Like the frontend's TTS and previews: playback starts after awaited work, with no fresh user gesture.
+function playLater() {
+  results.autoplay = 'pending';
+  setTimeout(() => {
+    const audio = new Audio(silentWav(1));
+    audio.play().then(() => { results.autoplay = 'ok'; }, (e) => { results.autoplay = 'err:' + e.name; });
+    timeout('autoplay', 8000, () => 'readyState=' + audio.readyState);
+  }, 500);
+}
+
+// A dedicated worker that compiles and runs WebAssembly: a module whose export main() returns 42.
+function workerWasm() {
+  results.wasm = 'pending';
+  const bytes = [0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 127, 3, 2, 1, 0, 7, 8, 1, 4, 109, 97, 105, 110, 0, 0, 10, 6, 1, 4, 0, 65, 42, 11];
+  const source = 'onmessage = (e) => WebAssembly.instantiate(new Uint8Array(e.data))' +
+    '.then((r) => postMessage("ok:" + r.instance.exports.main()), (err) => postMessage("err:" + err.name));';
+  try {
+    const worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
+    worker.onmessage = (e) => { results.wasm = String(e.data); worker.terminate(); };
+    worker.onerror = () => { results.wasm = 'err:worker'; };
+    worker.postMessage(bytes);
+  } catch (e) {
+    results.wasm = 'throw:' + e.name;
+  }
+}
+
+// Web Audio with an AudioWorklet module, started from script.
+function webAudio() {
+  results.worklet = 'pending';
+  try {
+    const context = new (window.AudioContext || window.webkitAudioContext)();
+    results.context = context.state;
+    if (!context.audioWorklet) {
+      results.worklet = 'absent';
+      return;
+    }
+    const source = 'registerProcessor("fixture-silence", class extends AudioWorkletProcessor { process() { return true; } });';
+    context.audioWorklet.addModule(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })))
+      .then(() => {
+        new AudioWorkletNode(context, 'fixture-silence').connect(context.destination);
+        return context.resume();
+      })
+      .then(() => { results.worklet = 'ok:' + context.state; }, (e) => { results.worklet = 'err:' + e.name; });
+    timeout('worklet', 8000, () => context.state);
+  } catch (e) {
+    results.worklet = 'throw:' + e.name;
+  }
+}
+
+// speechSynthesis: the voice count and one silent utterance.
+function speech() {
+  if (!('speechSynthesis' in window)) {
+    results.voices = 'absent';
+    results.speak = 'absent';
+    return;
+  }
+  results.speak = 'pending';
+  const count = () => { results.voices = String(speechSynthesis.getVoices().length); };
+  count();
+  speechSynthesis.onvoiceschanged = count;
+  const utterance = new SpeechSynthesisUtterance('fixture');
+  utterance.volume = 0;
+  utterance.onend = () => { results.speak = 'end'; };
+  utterance.onerror = (e) => { results.speak = 'err:' + e.error; };
+  speechSynthesis.speak(utterance);
+  timeout('speak', 8000, () => 'speaking=' + speechSynthesis.speaking);
+}
+
+// A looping silent track started from a tap, and a 100 ms ticker, for the background measurement.
+let loop = null;
+let ticks = 0;
+function startLoop() {
+  results.loop = 'pending';
+  loop = new Audio(silentWav(2));
+  loop.loop = true;
+  loop.play().then(() => { results.loop = 'playing'; }, (e) => { results.loop = 'err:' + e.name; });
+  timeout('loop', 8000, () => 'readyState=' + loop.readyState);
+  setInterval(() => { ticks++; }, 100);
+}
+function loopState() {
+  const audio = loop ? (loop.paused ? 'paused' : 'playing') + '@' + loop.currentTime.toFixed(1) : 'none';
+  return audio + ' ticks=' + ticks + ' ' + document.visibilityState;
+}
+function stopLoop() {
+  if (loop) loop.pause();
+}
+</script>
+</body></html>

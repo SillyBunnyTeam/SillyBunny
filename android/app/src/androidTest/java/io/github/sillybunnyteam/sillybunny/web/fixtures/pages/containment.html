@@ -1,0 +1,129 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{margin:0;font:16px sans-serif}.b{display:block;box-sizing:border-box;width:calc(100% - 16px);height:52px;margin:6px 8px;background:#ccd;border:0;font:16px sans-serif;line-height:52px;text-align:center;color:#000;text-decoration:none}iframe{width:10px;height:10px;border:0}</style>
+<title>fixture-containment</title></head><body>
+<button class="b" id="open-redirect" onclick="window.open('/redirect-other?to=/m-open')">open redirect</button>
+<button class="b" id="open-redirect-label" onclick="window.open('/redirect-other?host=label&to=/m-open-label')">open redirect, app host</button>
+<form id="post-self" method="post" action="/redirect-other?to=/m-post"><input name="a" value="b"></form>
+<form id="post-self-label" method="post" action="/redirect-other?host=label&to=/m-post-label"><input name="a" value="b"></form>
+<script>
+window.results = {};
+
+// The host names that reach the other loopback listener: 127.0.0.1, localhost, another *.localhost name, and the
+// app's own host (its per-install label) on that other port. The page takes the label from its own location, so the
+// test never has to name it.
+const HOSTS = { ip: '127.0.0.1', localhost: 'localhost', named: 'other.localhost', label: location.hostname };
+
+// The kinds of request the probes make; HOP_KINDS are the ones whose redirect hops reach no WebView hook.
+const KINDS = ['img', 'css', 'script', 'frame', 'form', 'nocors', 'cors', 'xhr', 'beacon'];
+const HOP_KINDS = ['img', 'css', 'script', 'frame', 'form', 'nocors', 'beacon'];
+
+function other(host, path) {
+  return 'http://' + HOSTS[host] + ':{{OTHER}}' + path;
+}
+
+// One request of the given kind to url; results[key] settles with its outcome.
+function probe(key, kind, url) {
+  results[key] = 'pending';
+  const done = (value) => { results[key] = value; };
+  try {
+    if (kind === 'img') {
+      const e = new Image();
+      e.onload = () => done('load');
+      e.onerror = () => done('error');
+      e.src = url;
+      document.body.appendChild(e);
+    } else if (kind === 'css') {
+      const e = document.createElement('link');
+      e.rel = 'stylesheet';
+      e.onload = () => done('load');
+      e.onerror = () => done('error');
+      e.href = url;
+      document.head.appendChild(e);
+    } else if (kind === 'script') {
+      const e = document.createElement('script');
+      e.onload = () => done('load');
+      e.onerror = () => done('error');
+      e.src = url;
+      document.body.appendChild(e);
+    } else if (kind === 'frame') {
+      const e = document.createElement('iframe');
+      e.onload = () => done('load');
+      e.src = url;
+      document.body.appendChild(e);
+    } else if (kind === 'form') {
+      const sink = document.createElement('iframe');
+      sink.name = 'sink-' + key;
+      document.body.appendChild(sink);
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = url;
+      form.target = sink.name;
+      const input = document.createElement('input');
+      input.name = 'a';
+      input.value = 'b';
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+      sink.onload = () => done('load');
+    } else if (kind === 'nocors') {
+      fetch(url, { mode: 'no-cors', credentials: 'include' }).then((r) => done('type:' + r.type + ':' + r.status), (e) => done('err:' + e.name));
+    } else if (kind === 'cors') {
+      fetch(url, { credentials: 'include' }).then((r) => done('status:' + r.status), (e) => done('err:' + e.name));
+    } else if (kind === 'xhr') {
+      const x = new XMLHttpRequest();
+      x.open('GET', url);
+      x.withCredentials = true;
+      x.onloadend = () => done('status:' + x.status);
+      x.send();
+    } else if (kind === 'beacon') {
+      done('queued:' + navigator.sendBeacon(url, 'x'));
+    }
+  } catch (e) {
+    done('throw:' + e.name);
+  }
+}
+
+// Requests straight to the other listener under every host name (d-<host>-<kind>): the shell answers each one
+// locally, so none may arrive there.
+function direct() {
+  for (const host of Object.keys(HOSTS)) {
+    for (const kind of KINDS) probe('d-' + host + '-' + kind, kind, other(host, '/d-' + host + '-' + kind));
+  }
+}
+
+// A main-frame form POST whose response redirects to another port.
+function postSelf(label) {
+  document.getElementById(label ? 'post-self-label' : 'post-self').submit();
+}
+
+// Requests the shell cannot see, measured by the test, under every host name. Each one asks for its own path on the
+// other listener, so the test can tell which probe a request that arrived there came from:
+// - ws-<host>: a WebSocket handshake;
+// - r-<host>-<kind>: the app origin's own response redirects there;
+// - e-<host>-<kind>: an external https redirector given by the test, whose URL takes the encoded target last. Never
+//   for the label, which must not reach a third party;
+// - x-<name>-<kind>: a first hop to another local origin (the fixture's redirector at the server's native address,
+//   and at localhost), which the shell refuses before it is sent.
+function residual(external) {
+  for (const host of Object.keys(HOSTS)) {
+    const key = 'ws-' + host;
+    results[key] = 'pending';
+    try {
+      const ws = new WebSocket('ws://' + HOSTS[host] + ':{{OTHER}}/ws-' + host);
+      ws.onerror = () => { results[key] = 'error'; };
+      ws.onclose = () => { if (results[key] === 'pending') results[key] = 'closed'; };
+    } catch (e) {
+      results[key] = 'throw:' + e.name;
+    }
+    for (const kind of KINDS) probe('r-' + host + '-' + kind, kind, '/redirect-other?host=' + host + '&to=/r-' + host + '-' + kind);
+    if (external && host !== 'label') {
+      for (const kind of HOP_KINDS) probe('e-' + host + '-' + kind, kind, external + encodeURIComponent(other(host, '/e-' + host + '-' + kind)));
+    }
+  }
+  for (const kind of HOP_KINDS) {
+    probe('x-ip-' + kind, kind, 'http://127.0.0.1:{{PORT}}/__fixture/redirect-other?to=/x-ip-' + kind);
+    probe('x-localhost-' + kind, kind, 'http://localhost:{{PORT}}/__fixture/redirect-other?to=/x-localhost-' + kind);
+  }
+}
+</script>
+</body></html>

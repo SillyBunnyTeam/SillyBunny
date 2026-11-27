@@ -7,6 +7,8 @@ import express from 'express';
 import { simpleGit as git, CheckRepoActions } from 'simple-git';
 import { sync as commandExistsSync } from 'command-exists';
 import { getConfig, getConfigValue, color } from './util.js';
+// SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
+import { getAndroidAppGitOptions } from './android-app-gate.js';
 import {
     SERVER_PLUGIN_BACKUP_DIRECTORY,
     SERVER_PLUGIN_RELEASE_MARKER,
@@ -388,7 +390,8 @@ async function updatePlugins(pluginsPath) {
                 continue;
             }
 
-            const pluginRepo = git(pluginPath);
+            // SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
+            const pluginRepo = git(pluginPath, getAndroidAppGitOptions());
 
             const isRepo = await pluginRepo.checkIsRepo(CheckRepoActions.IS_REPO_ROOT);
             if (!isRepo) {

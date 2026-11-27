@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Debug builds only: the Android smoke (tests/android-smoke) reads the server state and gets handoff
+             codes through `adb shell content call`. DUMP limits it to the shell user and the system. -->
+        <provider
+            android:name=".smoke.SmokeHookProvider"
+            android:authorities="${applicationId}.smoke"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
+
+</manifest>

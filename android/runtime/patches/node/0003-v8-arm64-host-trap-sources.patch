@@ -1,0 +1,22 @@
+--- a/tools/v8_gypfiles/v8.gyp
++++ b/tools/v8_gypfiles/v8.gyp
+@@ -1269,7 +1269,8 @@
+           'conditions': [
+             ['v8_enable_webassembly==1', {
+               'conditions': [
+-                ['((_toolset=="host" and host_arch=="arm64" or _toolset=="target" and target_arch=="arm64") and (OS in "linux mac ios openharmony")) or ((_toolset=="host" and host_arch=="x64" or _toolset=="target" and target_arch=="x64") and (OS in "linux mac openharmony"))', {
++                # Android arm64 cross builds use POSIX handlers in the native host simulator.
++                ['((_toolset=="host" and host_arch=="arm64" or _toolset=="target" and target_arch=="arm64") and (OS in "linux mac ios openharmony android")) or ((_toolset=="host" and host_arch=="x64" or _toolset=="target" and target_arch=="x64") and (OS in "linux mac openharmony android"))', {
+                   'sources': [
+                     '<(V8_ROOT)/src/trap-handler/handler-inside-posix.cc',
+                     '<(V8_ROOT)/src/trap-handler/handler-outside-posix.cc',
+@@ -1281,7 +1282,8 @@
+                     '<(V8_ROOT)/src/trap-handler/handler-outside-win.cc',
+                   ],
+                 }],
+-                ['(_toolset=="host" and host_arch=="x64" or _toolset=="target" and target_arch=="x64") and (OS in "linux mac win openharmony")', {
++                # The arm64 mksnapshot simulator also needs its memory probe implementation.
++                ['(_toolset=="host" and host_arch=="x64" or _toolset=="target" and target_arch=="x64") and (OS in "linux mac win openharmony android")', {
+                   'sources': [
+                     '<(V8_ROOT)/src/trap-handler/handler-outside-simulator.cc',
+                   ],

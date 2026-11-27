@@ -2,6 +2,7 @@ import './server-log-buffer.js';
 
 // native node modules
 import fs from 'node:fs';
+import module from 'node:module';
 import path from 'node:path';
 import util from 'node:util';
 import dns from 'node:dns';
@@ -53,6 +54,8 @@ import getWebpackServeMiddleware from './middleware/webpack-serve.js';
 import { FRONTEND_ASSET_PREFIX, rewriteFrontendHtml } from './frontend-assets.js';
 import { getFrontendAssetMiddleware, setPublicAssetHeaders, shouldServeFrontendAssets } from './middleware/frontend-assets.js';
 import getResponseCompressionMiddleware from './middleware/response-compression.js';
+// SillyBunny: opt-in Android localhost authentication, separate from account sessions.
+import createLaunchTokenMiddleware, { LAUNCH_COOKIE_NAME } from './middleware/launchToken.js';
 import basicAuthMiddleware from './middleware/basicAuth.js';
 import requireHttpsMiddleware from './middleware/requireHttps.js';
 import { isSessionAuthEnabled, registerSessionAuthRoutes } from './middleware/sessionAuth.js';
@@ -121,8 +124,53 @@ const app = express();
 app.use(helmet({
     contentSecurityPolicy: false,
 }));
+// SillyBunny: reject other local apps before parsing bodies, logging, authentication or static files.
+const launchTokenMiddleware = createLaunchTokenMiddleware();
+if (launchTokenMiddleware) {
+    app.use(launchTokenMiddleware);
+}
 app.use(getResponseCompressionMiddleware());
 app.use(responseTime());
+
+// SillyBunny: flush Node's V8 compile cache on startup/trim/exit so mobile SIGKILL keeps warm bytecode.
+function flushNodeCompileCache() {
+    if (isBunRuntime() || typeof module.flushCompileCache !== 'function') {
+        return;
+    }
+    try {
+        module.flushCompileCache();
+    } catch {
+        // Best-effort flush so Android SIGKILL does not lose compiled bytecode.
+    }
+}
+
+const MEMORY_TRIM_LOG_LIMIT = 200;
+
+if (launchTokenMiddleware) {
+    // SillyBunny: Android memory-pressure trim hint, protected by launchTokenMiddleware above.
+    app.post('/__sillybunny/trim', (request, response) => {
+        if (request.headers.origin) {
+            return response.sendStatus(403);
+        }
+
+        try {
+            flushNodeCompileCache();
+            const logBuffer = globalThis.__sillyBunnyServerLogBuffer;
+            if (Array.isArray(logBuffer?.entries) && logBuffer.entries.length > MEMORY_TRIM_LOG_LIMIT) {
+                logBuffer.entries.splice(0, logBuffer.entries.length - MEMORY_TRIM_LOG_LIMIT);
+            }
+            serverEvents.emit('memory_trim');
+            if (typeof globalThis.gc === 'function') {
+                globalThis.gc();
+            }
+        } catch {
+            // Trim is best-effort and must never disrupt active requests.
+        }
+
+        response.set('Cache-Control', 'no-store');
+        return response.sendStatus(204);
+    });
+}
 
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ extended: true, limit: '500mb' }));
@@ -257,6 +305,10 @@ app.post('/api/cookies/clear', express.json(), (request, response) => {
         'session',
         'session.sig',
     ]);
+    // SillyBunny: clearing the launch cookie would lock the Android browser out of the server.
+    if (launchTokenMiddleware) {
+        cookieNames.delete(LAUNCH_COOKIE_NAME);
+    }
     const domains = getServerCookieClearDomains(request.hostname);
     const paths = getServerCookieClearPaths(request.path);
     const secure = isSecureCookieRequest(request);
@@ -512,6 +564,8 @@ async function preSetupTasks() {
         characterIndex.close();
         // SillyBunny: close the conversation index database file the same way.
         conversationIndex.close();
+        // SillyBunny: persist Node's bytecode compile cache before exit.
+        flushNodeCompileCache();
         setWindowTitle(consoleTitle);
         process.exit(exitCode);
     };
@@ -708,6 +762,8 @@ async function postSetupTasks(result) {
     setupLogLevel();
     serverEvents.emit(EVENT_NAMES.SERVER_STARTED, { url: browserLaunchUrl });
     notifyServerStartup(getLoadedServerPlugins());
+    // SillyBunny: flush Node's bytecode compile cache once startup completes.
+    setImmediate(flushNodeCompileCache);
     void runDeferredStartupTasks();
 }
 

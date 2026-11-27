@@ -1,0 +1,18 @@
+# Android patches for the pinned Node.js source, applied in this order from the source root with
+# `patch --batch --forward -p1`. Lines starting with # and blank lines are comments.
+# android/runtime.lock node.patchSet.sha256 is the SHA-256 of what GNU `sha256sum --text` prints for the
+# patches below, in this order: cd android/runtime/patches/node && sha256sum --text $(grep -v -e '^#' -e '^$' series) | sha256sum
+# Comments do not change that hash; renaming, reordering or editing a patch does.
+# Each patch is guarded to the ABI that needs it, so every ABI applies the whole series.
+
+# 0001 reason: the x86_64 build's host mksnapshot cannot link TryHandleSignal and RegisterDefaultTrapHandler; build the POSIX trap-handler sources for Android too (inside v8_target_arch=="x64", so x86_64 only).
+# 0001 provenance: adapted from nodejs/node#65774 (98da35b14d02a88e3bacdd1035b1477de3bfa644); changes Node's tools/v8_gypfiles/v8.gyp (MIT).
+0001-v8-x64-posix-trap-sources.patch
+
+# 0002 reason: the arm64 openssl-cli cannot link android_getCpuFeatures; zlib reads the CRC32 and PMULL bits through Bionic getauxval (ARMV8_OS_ANDROID, so ARM only).
+# 0002 provenance: adapted from Sanitised/ST-android@26058b5f6ce119edcc62224c909c02c069281d72 tools/patches/deps-zlib-cpu-features-android-getauxval.patch (MIT, see LICENSE.ST-android); changes Chromium zlib's deps/zlib/cpu_features.c (BSD-style notice).
+0002-zlib-android-getauxval.patch
+
+# 0003 reason: the arm64 build's host mksnapshot cannot link TryHandleSignal, RegisterDefaultTrapHandler and v8_internal_simulator_ProbeMemory; build the POSIX and simulator sources for Android too (inside v8_target_arch=="arm64", so arm64 only).
+# 0003 provenance: adapted from nodejs/node#65774 (98da35b14d02a88e3bacdd1035b1477de3bfa644); changes Node's tools/v8_gypfiles/v8.gyp (MIT).
+0003-v8-arm64-host-trap-sources.patch

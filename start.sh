@@ -19,7 +19,19 @@ is_truthy() {
     esac
 }
 
+# SillyBunny: the Android app (android/) sets this. It bundles git, Node.js and
+# npm, so it skips the Termux, prerequisite and runtime detection paths.
+is_android_app() {
+    [[ "${SILLYBUNNY_ANDROID_APP:-}" == 1 ]]
+}
+
 is_termux() {
+    # SillyBunny: the Android app ships its own tools and paths, so it never takes
+    # the Termux paths, even with a Termux variable set.
+    if is_android_app; then
+        return 1
+    fi
+
     [[ -n "${TERMUX_VERSION:-}" || "${PREFIX:-}" == /data/data/com.termux/files/usr ]]
 }
 
@@ -47,6 +59,11 @@ prefer_node_runtime() {
     # Forced Bun override for users who accept the ARM/macOS CPU tradeoff
     if is_truthy "${SILLYBUNNY_USE_BUN:-}"; then
         return 1
+    fi
+
+    # SillyBunny: the APK bundles Node.js but not Bun.
+    if is_android_app; then
+        return 0
     fi
 
     # Termux always prefers Node unless overridden
@@ -183,7 +200,11 @@ if (( auto_update_enabled )) && [[ -d "$SCRIPT_DIR/.git" ]]; then
     prereq_args+=(--require-git)
 fi
 
-if (( ${#prereq_args[@]} )); then
+if is_android_app; then
+    # SillyBunny: the APK ships every prerequisite, and the download tools the
+    # installer relies on may not exist on Android.
+    :
+elif (( ${#prereq_args[@]} )); then
     bash "$SCRIPT_DIR/scripts/install-prerequisites.sh" "${prereq_args[@]}"
 else
     bash "$SCRIPT_DIR/scripts/install-prerequisites.sh"
@@ -239,13 +260,6 @@ if [[ "$runtime_kind" == node ]]; then
     else
         install_args+=(--omit=dev)
     fi
-
-    if command -v git >/dev/null 2>&1 \
-        && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-        && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 \
-        && git diff --quiet -- package-lock.json; then
-        restore_package_lock_after_install=1
-    fi
 else
     install_args=(install --frozen-lockfile --no-progress --no-summary)
     if has_existing_dev_dependencies; then
@@ -256,13 +270,6 @@ else
 
     if is_termux; then
         install_args+=(--backend=copyfile)
-    fi
-
-    if command -v git >/dev/null 2>&1 \
-        && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-        && git ls-files --error-unmatch bun.lock >/dev/null 2>&1 \
-        && git diff --quiet -- bun.lock; then
-        restore_bun_lock_after_install=1
     fi
 fi
 
@@ -288,37 +295,229 @@ run_package_install() {
     "$PACKAGE_MANAGER_CMD" "${fallback_args[@]}"
 }
 
-if ! "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1; then
-    if [[ "$dependency_profile" == *development ]]; then
-        if [[ "$runtime_kind" == node ]]; then
-            echo "Installing packages via npm including development tooling (Node.js mode)..."
-        else
-            echo "Installing Bun packages including development tooling..."
+# SillyBunny: fast warm-boot stamp helpers avoid extra Node and npm spawns on unchanged Android launches.
+android_git_head() {
+    local head_file="$SCRIPT_DIR/.git/HEAD"
+    local line ref_path
+    [[ -f "$head_file" ]] || return 1
+    IFS= read -r line < "$head_file" || return 1
+    if [[ "$line" == ref:\ * ]]; then
+        ref_path="$SCRIPT_DIR/.git/${line#ref: }"
+        if [[ -f "$ref_path" ]]; then
+            IFS= read -r line < "$ref_path" || return 1
+            printf '%s' "$line"
+            return 0
         fi
-    elif [[ "$runtime_kind" == node ]]; then
-        echo "Installing packages via npm (Node.js mode)..."
-    else
-        echo "Installing Bun packages..."
+        git rev-parse HEAD 2>/dev/null && return 0
+        return 1
     fi
+    printf '%s' "$line"
+}
 
-    run_package_install
-
-    if (( restore_package_lock_after_install )) && ! git diff --quiet -- package-lock.json; then
-        echo "Restoring tracked package-lock.json after npm metadata rewrite..."
-        git restore -- package-lock.json
+android_file_stamp() {
+    local target="$1"
+    if [[ ! -f "$target" ]]; then
+        printf 'missing'
+        return
     fi
+    stat -c '%s:%Y' "$target" 2>/dev/null || stat -f '%z:%m' "$target" 2>/dev/null || printf 'present'
+}
 
-    if (( restore_bun_lock_after_install )) && ! git diff --quiet -- bun.lock; then
-        echo "Restoring tracked bun.lock after Bun lockfile refresh..."
-        git restore -- bun.lock
+android_boot_stamp_key() {
+    local head_sha
+    head_sha="$(android_git_head)" || return 1
+    [[ -n "$head_sha" ]] || return 1
+    printf 'v1|%s|%s|%s|%s|%s|%s' \
+        "$dependency_profile" \
+        "$head_sha" \
+        "${SILLYBUNNY_ANDROID_APP_VERSION_CODE:-}" \
+        "$(android_file_stamp "$SCRIPT_DIR/package.json")" \
+        "$(android_file_stamp "$SCRIPT_DIR/package-lock.json")" \
+        "$(android_file_stamp "$SCRIPT_DIR/default/config.yaml")"
+}
+
+android_fast_boot_valid() {
+    local stamp_file="$SCRIPT_DIR/node_modules/.sillybunny-android-boot-stamp"
+    local expected actual
+    is_android_app || return 1
+    [[ "$runtime_kind" == node ]] || return 1
+    [[ -d "$SCRIPT_DIR/node_modules" && -f "$SCRIPT_DIR/node_modules/.sillybunny-dependencies.json" ]] || return 1
+    [[ -f "$SCRIPT_DIR/config.yaml" && ! -f "$SCRIPT_DIR/config.conf" ]] || return 1
+    [[ -f "$stamp_file" ]] || return 1
+    expected="$(android_boot_stamp_key)" || return 1
+    IFS= read -r actual < "$stamp_file" || return 1
+    [[ "$actual" == "$expected" ]]
+}
+
+write_android_boot_stamp() {
+    local stamp_file="$SCRIPT_DIR/node_modules/.sillybunny-android-boot-stamp"
+    local stamp_tmp="$stamp_file.tmp.$$"
+    local value
+    is_android_app || return 0
+    [[ "$runtime_kind" == node ]] || return 0
+    [[ -d "$SCRIPT_DIR/node_modules" && -f "$SCRIPT_DIR/config.yaml" && ! -f "$SCRIPT_DIR/config.conf" ]] || return 0
+    value="$(android_boot_stamp_key)" || return 0
+    if printf '%s\n' "$value" > "$stamp_tmp" 2>/dev/null; then
+        mv -f "$stamp_tmp" "$stamp_file" 2>/dev/null || rm -f "$stamp_tmp" 2>/dev/null || true
     fi
+}
 
-    "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" mark "$dependency_profile"
-else
+cleanup_android_npm_cache() {
+    is_android_app || return 0
+    [[ "$runtime_kind" == node ]] || return 0
+    if [[ -n "${HOME:-}" && -d "$HOME/.npm" ]]; then
+        rm -rf "$HOME/.npm" || true
+    fi
+    if [[ -n "${TMPDIR:-}" && -d "$TMPDIR/npm-cache" ]]; then
+        rm -rf "$TMPDIR/npm-cache" || true
+    fi
+}
+
+# SillyBunny: zero-feature-loss Android node_modules prune (keeps sillytavern-transformers active WASMs and all package.json).
+prune_android_node_modules() {
+    is_android_app || return 0
+    [[ "$runtime_kind" == node ]] || return 0
+    [[ -d "$SCRIPT_DIR/node_modules" ]] || return 0
+    "$RUNTIME_CMD" -e '
+        const fs = require("node:fs");
+        const path = require("node:path");
+        const nmRoot = process.argv[1];
+        if (!nmRoot) process.exit(0);
+        const removableDirs = new Set(["docs", "test", "tests", "__tests__"]);
+        const dupOrtWasms = [
+            "ort-wasm-simd-threaded.wasm",
+            "ort-wasm-simd.wasm",
+            "ort-wasm-threaded.wasm",
+            "ort-wasm.wasm",
+        ];
+        const hasPackageJson = (dir) => {
+            let entries;
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return true; }
+            for (const entry of entries) {
+                if (entry.isSymbolicLink()) continue;
+                if (entry.name === "package.json") return true;
+                if (entry.isDirectory() && hasPackageJson(path.join(dir, entry.name))) return true;
+            }
+            return false;
+        };
+        const pruneDir = (dir, atPackageRoot) => {
+            let entries;
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                if (entry.isSymbolicLink()) continue;
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (entry.name === "node_modules") {
+                        walkNodeModules(full);
+                        continue;
+                    }
+                    if (atPackageRoot && removableDirs.has(entry.name) && !hasPackageJson(full)) {
+                        try { fs.rmSync(full, { recursive: true, force: true }); } catch {}
+                        continue;
+                    }
+                    pruneDir(full, false);
+                } else if (entry.isFile()) {
+                    if (entry.name === "package.json") continue;
+                    if (entry.name.endsWith(".map") || /\.d\.(?:ts|mts|cts)$/.test(entry.name)) {
+                        try { fs.unlinkSync(full); } catch {}
+                    }
+                }
+            }
+        };
+        const walkNodeModules = (root) => {
+            let entries;
+            try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                if (entry.isSymbolicLink() || !entry.isDirectory() || entry.name.startsWith(".")) continue;
+                const full = path.join(root, entry.name);
+                if (entry.name.startsWith("@")) {
+                    let scoped;
+                    try { scoped = fs.readdirSync(full, { withFileTypes: true }); } catch { continue; }
+                    for (const pkg of scoped) {
+                        if (!pkg.isSymbolicLink() && pkg.isDirectory()) pruneDir(path.join(full, pkg.name), true);
+                    }
+                } else {
+                    pruneDir(full, true);
+                }
+            }
+        };
+        walkNodeModules(nmRoot);
+        const transformersDist = path.join(nmRoot, "sillytavern-transformers", "dist");
+        const ortDist = path.join(nmRoot, "onnxruntime-web", "dist");
+        const activeWasmsPresent = dupOrtWasms.every((name) => {
+            try {
+                const st = fs.lstatSync(path.join(transformersDist, name));
+                return !st.isSymbolicLink() && st.isFile() && st.size > 0;
+            } catch {
+                return false;
+            }
+        });
+        if (activeWasmsPresent) {
+            for (const name of dupOrtWasms) {
+                const dup = path.join(ortDist, name);
+                try {
+                    const st = fs.lstatSync(dup);
+                    if (!st.isSymbolicLink() && st.isFile()) fs.unlinkSync(dup);
+                } catch {}
+            }
+        }
+    ' "$SCRIPT_DIR/node_modules" || true
+}
+
+if android_fast_boot_valid; then
     echo "Dependencies are up to date."
-fi
+else
+    if ! "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" check "$dependency_profile" >/dev/null 2>&1; then
+        if [[ "$dependency_profile" == *development ]]; then
+            if [[ "$runtime_kind" == node ]]; then
+                echo "Installing packages via npm including development tooling (Node.js mode)..."
+            else
+                echo "Installing Bun packages including development tooling..."
+            fi
+        elif [[ "$runtime_kind" == node ]]; then
+            echo "Installing packages via npm (Node.js mode)..."
+        else
+            echo "Installing Bun packages..."
+        fi
 
-"$PACKAGE_MANAGER_CMD" run init
+        if [[ "$runtime_kind" == node ]]; then
+            if command -v git >/dev/null 2>&1 \
+                && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+                && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1 \
+                && git diff --quiet -- package-lock.json; then
+                restore_package_lock_after_install=1
+            fi
+        else
+            if command -v git >/dev/null 2>&1 \
+                && git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+                && git ls-files --error-unmatch bun.lock >/dev/null 2>&1 \
+                && git diff --quiet -- bun.lock; then
+                restore_bun_lock_after_install=1
+            fi
+        fi
+
+        run_package_install
+        cleanup_android_npm_cache
+        prune_android_node_modules
+
+        if (( restore_package_lock_after_install )) && ! git diff --quiet -- package-lock.json; then
+            echo "Restoring tracked package-lock.json after npm metadata rewrite..."
+            git restore -- package-lock.json
+        fi
+
+        if (( restore_bun_lock_after_install )) && ! git diff --quiet -- bun.lock; then
+            echo "Restoring tracked bun.lock after Bun lockfile refresh..."
+            git restore -- bun.lock
+        fi
+
+        "$RUNTIME_CMD" "$SCRIPT_DIR/scripts/dependency-state.js" mark "$dependency_profile"
+    else
+        echo "Dependencies are up to date."
+    fi
+
+    "$PACKAGE_MANAGER_CMD" run init
+    write_android_boot_stamp
+fi
 
 if is_truthy "${SILLYBUNNY_BUN_SMOL:-}" && [[ "$runtime_kind" == node ]]; then
     echo "[SillyBunny] SILLYBUNNY_BUN_SMOL is set, but this host resolved to Node.js — --smol is a Bun flag and will be ignored."
@@ -330,6 +529,7 @@ export NODE_NO_WARNINGS=1
 export SILLYBUNNY_LAUNCHER=1
 
 restart_exit_code=75
+supervisor_reload_exit_code=77
 server_restart_count=0
 
 run_server() {
@@ -365,7 +565,7 @@ while true; do
         fi
     fi
 
-    if (( server_exit_code == restart_exit_code )); then
+    if (( server_exit_code == restart_exit_code || server_exit_code == supervisor_reload_exit_code )); then
         ((server_restart_count += 1))
         echo "Restarting SillyBunny..."
         continue

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launch and server screens (plan §2.4, §4.4, §4.5). Placeholder copy until humans write it. -->
+    <string name="app_loading">Getting ready</string>
+    <string name="app_runtime_error">TODO(copy)</string>
+    <string name="app_runtime_retry">Try again</string>
+    <string name="app_share_logs">Share logs…</string>
+    <string name="app_server_starting">TODO(copy)</string>
+    <string name="app_server_stopping">TODO(copy)</string>
+    <string name="app_server_failed">TODO(copy)</string>
+    <string name="app_server_restart">Restart server</string>
+    <string name="app_server_repair">Repair…</string>
+    <string name="app_server_stopped">TODO(copy)</string>
+    <string name="app_server_stopped_by_user">TODO(copy)</string>
+    <string name="app_server_start">Start server</string>
+    <string name="app_open_settings">Open settings</string>
+    <string name="app_open_in_browser">TODO(copy)</string>
+    <string name="app_origin_changed_title">TODO(copy)</string>
+    <string name="app_origin_changed_body">TODO(copy)</string>
+    <string name="app_origin_changed_ok">Continue</string>
+</resources>

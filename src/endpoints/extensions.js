@@ -12,6 +12,8 @@ import { CheckRepoActions, simpleGit } from 'simple-git';
 import { PUBLIC_DIRECTORIES } from '../constants.js';
 import { color, getConfigValue, isValidUrl } from '../util.js';
 import { createGitClient } from '../git/client.js';
+// SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
+import { getAndroidAppGitOptions } from '../android-app-gate.js';
 
 const gitBackend = getConfigValue('git.backend', 'auto');
 const execFileAsync = promisify(execFile);
@@ -42,10 +44,11 @@ const MANUAL_SYNC_EXTENSIONS = new Map([
     }],
 ]);
 
+// SillyBunny: simple-git 4 removes the GIT_* variables that the Android app needs to pass to git.
 /**
  * @type {Partial<import('simple-git').SimpleGitOptions>}
  */
-const OPTIONS = Object.freeze({ timeout: { block: 5 * 60 * 1000 } });
+const OPTIONS = Object.freeze({ timeout: { block: 5 * 60 * 1000 }, ...getAndroidAppGitOptions() });
 
 /**
  * This function extracts the extension information from the manifest file.

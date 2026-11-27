@@ -1,0 +1,34 @@
+{
+    "licenses": [
+        {
+            "file": "LICENSE-2.0.txt",
+            "pom": [
+                {
+                    "name": "Apache-2.0",
+                    "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                },
+                {
+                    "name": "The Apache License, Version 2.0",
+                    "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                },
+                {
+                    "name": "The Apache Software License, Version 2.0",
+                    "url": "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                },
+                {
+                    "name": "The Apache Software License, Version 2.0",
+                    "url": "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                }
+            ],
+            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+            "source": {
+                "commit": "01b1be9fbc5cd93b6794f5653a58b9b863807f84",
+                "path": "content/licenses/LICENSE-2.0.txt",
+                "repository": "https://github.com/apache/www-site",
+                "url": "https://raw.githubusercontent.com/apache/www-site/01b1be9fbc5cd93b6794f5653a58b9b863807f84/content/licenses/LICENSE-2.0.txt"
+            },
+            "spdx": "Apache-2.0"
+        }
+    ],
+    "schema": 1
+}

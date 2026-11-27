@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -28,6 +29,8 @@ export const SUPERVISOR_RELOAD_EXIT_CODE = 77;
 export const SERVER_CRASH_EXIT_CODE = 1;
 export const SUPERVISED_ENV = 'SILLYBUNNY_SUPERVISED';
 export const LAUNCHER_ENV = 'SILLYBUNNY_LAUNCHER';
+export const ANDROID_APP_ENV = 'SILLYBUNNY_ANDROID_APP';
+const SERVER_PLUGINS_ENV = 'SILLYTAVERN_ENABLESERVERPLUGINS';
 export const SUPERVISOR_SHUTDOWN_MESSAGE = 'sillybunny:shutdown';
 export const SUPERVISOR_FORCE_KILL_TIMEOUT_MS = 5000;
 export const SERVER_PLUGIN_ACTIVATION_TIMEOUT_MS = 150_000;
@@ -76,15 +79,124 @@ async function stopChildForRollback(child, exitPromise) {
     }
 }
 
+function parseConfigBoolean(rawValue) {
+    const trimmed = String(rawValue ?? '').trim();
+    if (trimmed.length === 0) {
+        return false;
+    }
+
+    let unquoted = trimmed;
+    if ((unquoted.startsWith('"') && unquoted.endsWith('"')) || (unquoted.startsWith('\'') && unquoted.endsWith('\''))) {
+        unquoted = unquoted.slice(1, -1).trim();
+    } else {
+        // Strip unquoted trailing YAML comment.
+        const commentIndex = unquoted.search(/(?:^|\s)#/);
+        if (commentIndex >= 0) {
+            unquoted = unquoted.slice(0, commentIndex).trim();
+        }
+    }
+
+    const lowered = unquoted.toLowerCase();
+    if (lowered === '' || lowered === 'false' || lowered === 'null' || lowered === '~') {
+        return false;
+    }
+
+    // Fail safe: treat 'true' and any non-false / complex YAML expression as enabled so the supervisor stays active.
+    return true;
+}
+
+function resolveConfigPathFromArgv(argv, defaultConfigPath) {
+    if (!Array.isArray(argv)) {
+        return defaultConfigPath;
+    }
+
+    for (let index = 0; index < argv.length; index++) {
+        const arg = argv[index];
+        if (arg === '--global') {
+            return null;
+        }
+        if (arg === '--configPath' && index + 1 < argv.length) {
+            return path.resolve(argv[index + 1]);
+        }
+        if (typeof arg === 'string' && arg.startsWith('--configPath=')) {
+            return path.resolve(arg.slice('--configPath='.length));
+        }
+    }
+
+    return defaultConfigPath;
+}
+
+/**
+ * Lightweight pre-startup check for `enableServerPlugins` so Android app mode can skip
+ * spawning a second Node.js supervisor process when server plugins are disabled.
+ * Fails safe to `true` on any unreadable or ambiguous config so plugin updates remain supervised.
+ * @param {NodeJS.ProcessEnv} [env] Environment to inspect
+ * @param {object} [options] Optional overrides for tests
+ * @param {boolean} [options.enableServerPlugins] Explicit override
+ * @param {string} [options.configPath] Explicit config.yaml path
+ * @param {string[]} [options.argv] Process argv for `--configPath` / `--global`
+ * @returns {boolean} True when server plugins are enabled or cannot be confirmed disabled
+ */
+export function isServerPluginsEnabledForSupervisor(env = process.env, options = {}) {
+    if (typeof options.enableServerPlugins === 'boolean') {
+        return options.enableServerPlugins;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(env, SERVER_PLUGINS_ENV)) {
+        const envValue = env[SERVER_PLUGINS_ENV];
+        if (typeof envValue === 'string') {
+            const lowered = envValue.trim().toLowerCase();
+            if (lowered === 'true') return true;
+            if (lowered === 'false') return false;
+        }
+        return Boolean(envValue);
+    }
+
+    const defaultPath = path.join(serverDirectory, 'config.yaml');
+    const configPath = options.configPath ?? resolveConfigPathFromArgv(options.argv ?? process.argv, defaultPath);
+    if (!configPath) {
+        return true;
+    }
+
+    try {
+        const content = fs.readFileSync(configPath, 'utf8');
+        let enabled = false;
+        for (const line of content.split(/\r?\n/)) {
+            const match = /^enableServerPlugins[ \t]*:[ \t]*(.*)$/.exec(line);
+            if (match) {
+                enabled = parseConfigBoolean(match[1]);
+            }
+        }
+        return enabled;
+    } catch (error) {
+        if (error?.code === 'ENOENT') {
+            return false;
+        }
+        return true;
+    }
+}
+
 /**
  * Whether this process should act as a supervisor instead of booting the server.
  * A supervised child must not supervise again. Launcher scripts may wrap this
  * supervisor so a host-code update can replace the supervisor itself.
- * @param {NodeJS.ProcessEnv} env Environment to inspect
+ * In Android APK mode launched via `start.sh`, bypass the extra Node.js supervisor
+ * process when server plugins are disabled (`start.sh` handles restart exit codes
+ * and `ServerManager` handles crash restarts and graceful shutdown).
+ * @param {NodeJS.ProcessEnv} [env] Environment to inspect
+ * @param {object} [options] Optional overrides for tests
  * @returns {boolean} True when a supervisor loop should run
  */
-export function shouldSupervise(env = process.env) {
-    return env[SUPERVISED_ENV] !== '1';
+export function shouldSupervise(env = process.env, options = {}) {
+    if (env[SUPERVISED_ENV] === '1') {
+        return false;
+    }
+
+    if (env[ANDROID_APP_ENV] === '1' && env[LAUNCHER_ENV] === '1') {
+        return isServerPluginsEnabledForSupervisor(env, options);
+    }
+
+    return true;
 }
 
 /**

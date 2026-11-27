@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Libadwaita Dark palette from DESIGN.json / DESIGN.md -->
+    <!-- Window surface (sb-layer-window / window-bg) -->
+    <color name="charcoal_canvas">#222226</color>
+    <!-- View surface (sb-layer-view / view-bg), used behind the WebView -->
+    <color name="libadwaita_view">#1D1D20</color>
+    <!-- Header bar / Canvas (sb-layer-headerbar / headerbar-bg) -->
+    <color name="libadwaita_headerbar">#2E2E32</color>
+    <!-- Card fill (sb-card-fill / card-bg) -->
+    <color name="libadwaita_card">#343437</color>
+    <!-- Dialog / Popover (sb-layer-dialog / dialog-bg) -->
+    <color name="libadwaita_dialog">#36363A</color>
+    <!-- Raised / Hover panel (sb-raised-hover-bg), used for subtle borders and outlines -->
+    <color name="libadwaita_outline">#434347</color>
+    <!-- Foreground (SmartThemeBodyColor) -->
+    <color name="linen_text">#FFFFFF</color>
+    <!-- Dim foreground (sb-muted-fg) -->
+    <color name="libadwaita_dim_text">#9C9C9D</color>
+    <!-- Primary accent (sb-accent) -->
+    <color name="warm_signal">#B1E2FF</color>
+    <!-- Soft accent (sb-accent-soft) -->
+    <color name="libadwaita_accent_soft">#9AB9CD</color>
+    <!-- Ink on solid accent (sb-on-solid-accent) -->
+    <color name="libadwaita_on_accent">#000000</color>
+    <!-- Destructive red (color-danger) -->
+    <color name="libadwaita_danger">#FF938C</color>
+    <!-- Shadow ink (SmartThemeShadowColor) -->
+    <color name="shadow_ink">#000006</color>
+    <!-- Header bar bottom shade line (rgba(0, 0, 6, 0.36)) -->
+    <color name="libadwaita_headerbar_shade">#5C000006</color>
+    <!-- The bunny's muzzle color. On a dark background such as the web manifest's #202124, the bunny's dark outline
+         disappears. -->
+    <color name="ic_launcher_background">#FFF9F2</color>
+</resources>

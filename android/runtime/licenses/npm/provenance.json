@@ -1,0 +1,110 @@
+{
+    "packages": [
+        {
+            "license": "ISC",
+            "name": "@npmcli/agent",
+            "registry": {
+                "gitHead": "db7852869c74ceb8985d7c36b291a2e7a866741c",
+                "integrity": "sha512-EUEuWAxnL07Sp5/iC/1X6Xj+XThUvnbei9zfRWZdEXa7lss9RTHMhAHBeg+MZ5To9s/gGaSI+UwZTPdYMvKSeg==",
+                "repository": "git+https://github.com/npm/agent.git",
+                "tarball": "https://registry.npmjs.org/@npmcli/agent/-/agent-4.0.2.tgz",
+                "url": "https://registry.npmjs.org/@npmcli%2fagent/4.0.2"
+            },
+            "texts": [
+                {
+                    "basis": "substitute",
+                    "commit": "afcb3c135cf9fd170aca4d9f1d5ea2a1d418581b",
+                    "file": "@npmcli/agent/LICENSE",
+                    "note": "Not the package's own text: npm/agent has no license file at gitHead or at any other commit, nor has the registry tarball, and package.json declares ISC with author GitHub Inc. This is npm/template-oss's ISC template (lib/content/LICENSE-md.hbs at v4.30.0, the version package.json's templateOSS names), which template-oss v4.30.0 does not write into packages. It names npm, Inc. as the holder, not GitHub Inc.",
+                    "repository": "https://github.com/npm/template-oss",
+                    "sha256": "841f1334747abb34576cb8a3c49d5ba585f82b0df36a4fd21067c0531ee5c550",
+                    "url": "https://raw.githubusercontent.com/npm/template-oss/afcb3c135cf9fd170aca4d9f1d5ea2a1d418581b/lib/content/LICENSE-md.hbs"
+                }
+            ],
+            "version": "4.0.2"
+        },
+        {
+            "license": "Apache-2.0",
+            "name": "@sigstore/verify",
+            "registry": {
+                "gitHead": "c1dc7d4778a450787fc72b083f2490ad02b714c6",
+                "integrity": "sha512-qv7+G3J2cc6wwFj3yKvXOamzqhMwSk1ogPGmhpS8iXllcPrJaIIBA+4HbttlHVu1pqWTdmaCH/WE7UOC51kdoA==",
+                "repository": "git+https://github.com/sigstore/sigstore-js.git",
+                "tarball": "https://registry.npmjs.org/@sigstore/verify/-/verify-3.1.1.tgz",
+                "url": "https://registry.npmjs.org/@sigstore%2fverify/3.1.1"
+            },
+            "texts": [
+                {
+                    "basis": "repository-license-file",
+                    "commit": "c1dc7d4778a450787fc72b083f2490ad02b714c6",
+                    "file": "@sigstore/verify/LICENSE",
+                    "repository": "https://github.com/sigstore/sigstore-js",
+                    "sha256": "364a130d2ca340bd56eb1e6d045fc6929bb0f9d0aa018f2c1949b29517e1cdd0",
+                    "url": "https://raw.githubusercontent.com/sigstore/sigstore-js/c1dc7d4778a450787fc72b083f2490ad02b714c6/LICENSE"
+                }
+            ],
+            "version": "3.1.1"
+        },
+        {
+            "license": "CC-BY-3.0",
+            "name": "spdx-exceptions",
+            "registry": {
+                "gitHead": "3aa64bec339abc6a3eca00c3436aaa7e154b8799",
+                "integrity": "sha512-PiU42r+xO4UbUS1buo3LPJkjlO7430Xn5SVAhdpzzsPHsjbYVflnnFdATgabnLude+Cqu25p6N+g2lw/PFsa4w==",
+                "repository": "git+https://github.com/kemitchell/spdx-exceptions.json.git",
+                "tarball": "https://registry.npmjs.org/spdx-exceptions/-/spdx-exceptions-2.5.0.tgz",
+                "url": "https://registry.npmjs.org/spdx-exceptions/2.5.0"
+            },
+            "texts": [
+                {
+                    "basis": "spdx-license-list",
+                    "commit": "31ba1a50e5397e00a304dbadc76531740e89ee48",
+                    "file": "spdx-exceptions/CC-BY-3.0.txt",
+                    "repository": "https://github.com/spdx/license-list-data",
+                    "sha256": "e6bc9e9c474700b708f568bac9e5a8a9bcb2b1dad53442f5ba449fcb848b8e76",
+                    "url": "https://raw.githubusercontent.com/spdx/license-list-data/31ba1a50e5397e00a304dbadc76531740e89ee48/text/CC-BY-3.0.txt"
+                },
+                {
+                    "basis": "repository-readme",
+                    "commit": "3aa64bec339abc6a3eca00c3436aaa7e154b8799",
+                    "file": "spdx-exceptions/README.md",
+                    "repository": "https://github.com/jslicense/spdx-exceptions.json",
+                    "sha256": "554b19eee11d2964e9f7b244e47944c08d52ca75539260a04f3227e6c0144513",
+                    "url": "https://raw.githubusercontent.com/jslicense/spdx-exceptions.json/3aa64bec339abc6a3eca00c3436aaa7e154b8799/README.md"
+                }
+            ],
+            "version": "2.5.0"
+        },
+        {
+            "license": "CC0-1.0",
+            "name": "spdx-license-ids",
+            "registry": {
+                "gitHead": "a2a975daf48bbc2afdc8e7c304405b44c656fd53",
+                "integrity": "sha512-CWLcCCH7VLu13TgOH+r8p1O/Znwhqv/dbb6lqWy67G+pT1kHmeD/+V36AVb/vq8QMIQwVShJ6Ssl5FPh0fuSdw==",
+                "repository": "git+https://github.com/jslicense/spdx-license-ids.git",
+                "tarball": "https://registry.npmjs.org/spdx-license-ids/-/spdx-license-ids-3.0.23.tgz",
+                "url": "https://registry.npmjs.org/spdx-license-ids/3.0.23"
+            },
+            "texts": [
+                {
+                    "basis": "spdx-license-list",
+                    "commit": "31ba1a50e5397e00a304dbadc76531740e89ee48",
+                    "file": "spdx-license-ids/CC0-1.0.txt",
+                    "repository": "https://github.com/spdx/license-list-data",
+                    "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+                    "url": "https://raw.githubusercontent.com/spdx/license-list-data/31ba1a50e5397e00a304dbadc76531740e89ee48/text/CC0-1.0.txt"
+                },
+                {
+                    "basis": "repository-readme",
+                    "commit": "a2a975daf48bbc2afdc8e7c304405b44c656fd53",
+                    "file": "spdx-license-ids/README.md",
+                    "repository": "https://github.com/jslicense/spdx-license-ids",
+                    "sha256": "b4807793db6058c819f76c023362b7d522b3d19c9b41563fcc01c2b2c5b1ccd3",
+                    "url": "https://raw.githubusercontent.com/jslicense/spdx-license-ids/a2a975daf48bbc2afdc8e7c304405b44c656fd53/README.md"
+                }
+            ],
+            "version": "3.0.23"
+        }
+    ],
+    "schema": 1
+}
