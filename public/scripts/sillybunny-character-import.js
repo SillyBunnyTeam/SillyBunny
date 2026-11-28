@@ -49,18 +49,40 @@ function resultButton(label, glyph, action) {
 
 // The page prints file names in the code face. A web font loads on first use, and nothing else lays out text in that
 // face before this page does, so without this wait the first open shows a fallback face and then changes height when
-// the real face arrives. The wait is bounded so that a slow font file cannot hold the page back.
+// the real face arrives. The font sheets are deferred and the idle activation may not have run yet, so the page
+// activates them itself before it asks for the face; document.fonts.load() finds no face in a sheet that is not
+// active. The wait is bounded so that a slow font file cannot hold the page back.
 const CODE_FACE_WAIT_MS = 1500;
+const CODE_FACE_STYLESHEETS = Object.freeze([
+    { href: 'webfonts/AdwaitaMono/stylesheet.css?v=20261030a', id: 'deferred-adwaita-mono-css' },
+    { href: 'webfonts/NotoSansMono/stylesheet.css', id: 'deferred-noto-sans-mono-css' },
+]);
 
-function loadCodeFace() {
+/** Loads one deferred sheet and removes its link when the load fails, so that the next opening loads it again. */
+async function loadRetryableStyle(loader, { href, id }) {
+    let link;
+    try {
+        const loading = loader(href, { id });
+        link = document.getElementById(id);
+        await loading;
+    } catch (error) {
+        if (link instanceof HTMLLinkElement && document.getElementById(id) === link) link.remove();
+        throw error;
+    }
+}
+
+function loadCodeFace(loader) {
     const family = getComputedStyle(document.documentElement).getPropertyValue('--monoFontFamily').trim();
     if (!family || typeof document.fonts?.load !== 'function') return Promise.resolve();
     return new Promise(resolve => {
         const timer = setTimeout(resolve, CODE_FACE_WAIT_MS);
-        document.fonts.load(`1em ${family}`).catch(() => {}).finally(() => {
-            clearTimeout(timer);
-            resolve();
-        });
+        Promise.all(CODE_FACE_STYLESHEETS.map(stylesheet => loadRetryableStyle(loader, stylesheet).catch(() => {})))
+            .then(() => document.fonts.load(`1em ${family}`))
+            .catch(() => {})
+            .finally(() => {
+                clearTimeout(timer);
+                resolve();
+            });
     });
 }
 
@@ -68,17 +90,7 @@ function loadCodeFace() {
 export async function loadCharacterImportStyles(stylesheets) {
     const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
     if (!loader) throw new Error('Deferred stylesheet loader is unavailable');
-    await Promise.all([loadCodeFace(), ...stylesheets.map(async ({ href, id }) => {
-        let link;
-        try {
-            const loading = loader(href, { id });
-            link = document.getElementById(id);
-            await loading;
-        } catch (error) {
-            if (link instanceof HTMLLinkElement && document.getElementById(id) === link) link.remove();
-            throw error;
-        }
-    })]);
+    await Promise.all([loadCodeFace(loader), ...stylesheets.map(stylesheet => loadRetryableStyle(loader, stylesheet))]);
 }
 
 /**

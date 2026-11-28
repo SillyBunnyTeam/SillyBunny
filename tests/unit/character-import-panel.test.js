@@ -205,8 +205,10 @@ describe('Import tab', () => {
     describe('code face', () => {
         const sheets = [{ href: 'import.css', id: 'import-css' }];
         let load;
+        let loader;
         beforeEach(() => {
-            globalThis.SillyBunnyAssets = { loadStylesheetAsync: jest.fn(async () => undefined) };
+            loader = jest.fn(async () => undefined);
+            globalThis.SillyBunnyAssets = { loadStylesheetAsync: loader };
             document.documentElement.style.setProperty('--monoFontFamily', '\'Adwaita Mono\', monospace');
             load = jest.fn();
             Object.defineProperty(document, 'fonts', { configurable: true, value: { load } });
@@ -229,6 +231,29 @@ describe('Import tab', () => {
             finish([]);
             await loading;
             expect(settled).toBe(true);
+        });
+
+        test('the font sheets are activated before the face is requested, because a deferred sheet has no face until it is active', async () => {
+            load.mockResolvedValueOnce([]);
+            await loadCharacterImportStyles(sheets);
+            const hrefs = loader.mock.calls.map(([href]) => href);
+            expect(hrefs).toEqual(expect.arrayContaining(['webfonts/AdwaitaMono/stylesheet.css?v=20261030a', 'webfonts/NotoSansMono/stylesheet.css']));
+            const lastFontSheet = Math.max(...loader.mock.calls.flatMap(([href], index) => (href.startsWith('webfonts/') ? [loader.mock.invocationCallOrder[index]] : [])));
+            expect(load.mock.invocationCallOrder[0]).toBeGreaterThan(lastFontSheet);
+        });
+
+        test('a font sheet that fails to load does not fail the page and is removed so that the next opening retries it', async () => {
+            loader.mockImplementation((href, { id }) => {
+                if (!href.startsWith('webfonts/')) return Promise.resolve();
+                const link = document.createElement('link');
+                link.id = id;
+                document.head.append(link);
+                return Promise.reject(new Error('font sheet offline'));
+            });
+            load.mockResolvedValue([]);
+            await expect(loadCharacterImportStyles(sheets)).resolves.toBeUndefined();
+            expect(document.getElementById('deferred-adwaita-mono-css')).toBeNull();
+            expect(document.getElementById('deferred-noto-sans-mono-css')).toBeNull();
         });
 
         test('a face that fails to load does not fail the page', async () => {
