@@ -920,6 +920,41 @@ describe('selection mode ranges', () => {
         expect(selection.selectedKeys).toEqual(['c']);
     });
 
+    test('Shift-click ranges over the rows the list shows, not over the order of getAllKeys', () => {
+        const { selection, rows } = makeSelection({ range: true, getAllKeys: () => ['c', 'off-page', 'a', 'b'] });
+        selection.enter();
+        click(rows[0]);
+        click(rows[2], true);
+
+        expect(new Set(selection.selectedKeys)).toEqual(new Set(['a', 'b', 'c']));
+    });
+
+    test('getRangeKeys orders the range, including rows that are not mounted', () => {
+        const { selection, list, rows } = makeSelection({
+            range: true,
+            getRangeKeys: () => ['a', 'b', 'c', 'd', 'e'],
+        });
+        selection.enter();
+        click(rows[0]);
+        // Rows b and c leave the DOM, as when a long list mounts only a window of its rows.
+        rows[1].remove();
+        rows[2].remove();
+        const last = createRow('e');
+        list.append(last);
+        click(last, true);
+
+        expect(new Set(selection.selectedKeys)).toEqual(new Set(['a', 'b', 'c', 'd', 'e']));
+    });
+
+    test('a key that getRangeKeys does not list is a plain toggle', () => {
+        const { selection, rows } = makeSelection({ range: true, getRangeKeys: () => ['a', 'b'] });
+        selection.enter();
+        click(rows[0]);
+        click(rows[2], true);
+
+        expect(new Set(selection.selectedKeys)).toEqual(new Set(['a', 'c']));
+    });
+
     test('clear resets the anchor even when the selection is already empty', () => {
         const { selection, rows } = makeSelection({ range: true });
         selection.enter('a');

@@ -71,13 +71,17 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
         Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
     }, { platform, userAgent });
 
-    const [tabs, lifecycle, sendButton, breakpoints] = await Promise.all([
+    const [tabs, lifecycle, sendButton, breakpoints, coordinator] = await Promise.all([
         'scripts/sillybunny-tabs.js', 'scripts/mobile-shell-lifecycle/index.js', 'scripts/mobile-send-button.js',
-        'scripts/sillybunny-editor/breakpoints.js',
+        'scripts/sillybunny-editor/breakpoints.js', 'scripts/viewport-coordinator.js',
     ].map(file => fs.readFile(new URL(file, publicRoot), 'utf8')));
-    const bindings = tabs.match(/ {4}window\.addEventListener\('resize', queueMobileViewportStateSync,[\s\S]*?(?= {4}\/\/ Reinitialize Select2 widgets)/)?.[0];
+    // The shell binds the viewport through the lifecycle seam's subscription to the ViewportCoordinator, then adds its focus listeners.
+    const bindings = tabs.match(/ {4}sbMobileShellLifecycle\.viewportSync\.subscribe\([\s\S]*?(?= {4}\/\/ Reinitialize Select2 widgets)/)?.[0];
     if (!bindings) throw new Error('Missing production viewport/focus bindings');
     await page.addScriptTag({ content: [
+        // The coordinator has no imports, so its real source runs here once the module keywords are gone.
+        coordinator.replace(/^export /gm, ''),
+        extractFunction(lifecycle, 'subscribeMobileViewportSync'),
         extractDeclaration(breakpoints, 'LAYOUT_MOBILE_QUERY'),
         ...['IOS_STABLE_COMPOSER_VIEWPORT_MAJOR'].map(name => extractDeclaration(sendButton, name)),
         ...['isIOSWebKitPlatform', 'isLegacyIOSWebKitPlatform'].map(name => extractFunction(sendButton, name)),
@@ -91,7 +95,7 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
             'isEditableElement', 'isMobileShellPanelEditableElement', 'isChatComposerEditableElement', 'hasOpenMobileShellDrawer',
             'shouldUseStableIOSPanelViewport', 'isVisualViewportKeyboardOpen', 'getComposerKeyboardInset',
             'handleComposerKeyboardFocusIn', 'handleMobileKeyboardFocusOut', 'syncIOSKeyboardBottomInset',
-            'getShellViewportSize', 'syncShellViewportBounds', 'getResolvedShellTopbarOffset',
+            'resolveViewportBoundsFromSnapshot', 'getShellViewportSize', 'syncShellViewportBounds', 'getResolvedShellTopbarOffset',
             'syncMobileViewportState', 'queueMobileViewportStateSync',
             'getMobileFocusedInputScroller', 'syncMobileFocusedInputScroll', 'scheduleMobileFocusedInputScroll',
         ].map(name => extractFunction(tabs, name)),
@@ -100,7 +104,7 @@ async function mountFixture(page, { platform = 'iPhone', userAgent = safariUA } 
             'syncChatbarVisibilityState', 'updateTopBarBrand', 'scheduleTopbarContextRefresh', 'syncMobileModalState', 'scheduleMobilePopupKeyboardSync',
         ].map(name => `function ${name}() {}`),
         `const sbMobileShellLifecycle = {
-            viewportSync: { step: MOBILE_SHELL_VIEWPORT_SYNC_STEP, resolveSyncPlan: resolveMobileViewportSyncPlan },
+            viewportSync: { step: MOBILE_SHELL_VIEWPORT_SYNC_STEP, resolveSyncPlan: resolveMobileViewportSyncPlan, subscribe: subscribeMobileViewportSync },
         };`,
         'function hasOpenMobileShellDrawer() { return document.getElementById(\'sb-settings-page\')?.hasAttribute(\'hidden\') === false; }',
         bindings,

@@ -182,6 +182,12 @@ export const POSITIONAL_HELPERS = {
         createBackendGroupHeader: [heading, caption(2)], createBackendPromptGroup: { index: 1, role: 'heading' },
         createGroup: [{ index: 1, role: 'heading' }, caption(2)], createPromptingGroup: [{ index: 1, role: 'heading' }, caption(2)],
     },
+    // The panel builders of the tab split call the shell's two group helpers, and define `createGroup` and `createPromptingGroup` themselves.
+    'public/scripts/sillybunny-tabs/backend-panels.js': {
+        createBackendGroupHeader: [heading, caption(2)], createBackendPromptGroup: { index: 1, role: 'heading' },
+        createGroup: [{ index: 1, role: 'heading' }, caption(2)], createPromptingGroup: [{ index: 1, role: 'heading' }, caption(2)],
+    },
+    'public/scripts/sillybunny-tabs/sampling-panel.js': { createBackendGroupHeader: [heading, caption(2)] },
     'public/scripts/sillybunny-editor/reorder-menu.js': { item: { index: 1, role: 'menu item' } },
     'public/scripts/sillybunny-color-picker.js': { range: rowTitle },
     'public/scripts/sillybunny-segmented-control.js': { createSegmentedControl: rowTitle },
@@ -196,7 +202,7 @@ export const POSITIONAL_HELPERS = {
     'public/scripts/extensions/guided-generations/index.js': { createActionButton: { index: 1, role: 'tooltip' } },
 };
 // Files whose `[id, title, description]` tables are group tables: the second element is a group heading and the third its caption.
-const ROW_TABLE_FILES = new Set(['public/scripts/sillybunny-tabs.js']);
+const ROW_TABLE_FILES = new Set(['public/scripts/sillybunny-tabs.js', 'public/scripts/sillybunny-tabs/backend-panels.js']);
 const isIdLike = node => node?.type === 'Literal' && typeof node.value === 'string' && /^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$/.test(node.value);
 
 // Helpers that other files import by name.

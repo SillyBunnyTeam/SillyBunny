@@ -72,8 +72,8 @@ describe('mobile keyboard focused-input scroll wiring', () => {
     test('resyncs the focused input after Safari changes the visual viewport', () => {
         expect(tabsSource).toContain('document.addEventListener(\'focusin\', scheduleMobileFocusedInputScroll)');
         expect(tabsSource).toContain('document.addEventListener(\'focusout\', scheduleMobileFocusedInputScroll)');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', scheduleMobileFocusedInputScroll, { passive: true })');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', scheduleMobileFocusedInputScroll, { passive: true })');
+        expect(tabsSource).toContain('sbMobileShellLifecycle.viewportSync.subscribe((snapshot, meta) => {');
+        expect(tabsSource).toContain('scheduleMobileFocusedInputScroll();');
         expect(tabsSource).toContain('sbMobileFocusedInputScrollTimer = window.setTimeout(() => {');
         expect(tabsSource).toContain('syncMobileFocusedInputScroll(target);');
         expect(tabsSource).toContain('}, 360);');
@@ -126,7 +126,7 @@ describe('mobile popup keyboard shift wiring', () => {
     test('wires the sync on focus changes and visualViewport changes inside initAll', () => {
         expect(tabsSource).toContain('document.addEventListener(\'focusin\', scheduleMobilePopupKeyboardSync)');
         expect(tabsSource).toContain('document.addEventListener(\'focusout\', scheduleMobilePopupKeyboardSync)');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'resize\', scheduleMobilePopupKeyboardSync, { passive: true })');
-        expect(tabsSource).toContain('window.visualViewport?.addEventListener(\'scroll\', scheduleMobilePopupKeyboardSync, { passive: true })');
+        expect(tabsSource).toContain('sbMobileShellLifecycle.viewportSync.subscribe((snapshot, meta) => {');
+        expect(tabsSource).toContain('scheduleMobilePopupKeyboardSync();');
     });
 });

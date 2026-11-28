@@ -1,6 +1,7 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
 import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
+import { subscribeViewport } from './viewport-coordinator.js'; // SillyBunny: share a single rAF-batched viewport listener across shell modules.
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
 
@@ -317,16 +318,16 @@ function applyBrowserFixes() {
             });
         };
 
-        const fixFunkyPositioning = () => {
+        const fixFunkyPositioning = (snapshot = null) => {
             if (isFirefox() && isEditableFocusTarget(document.activeElement)) {
                 return;
             }
 
-            const currentViewportHeight = Math.round(viewport?.height || window.innerHeight || 0);
+            const currentViewportHeight = Math.round(snapshot?.height ?? viewport?.height ?? window.innerHeight ?? 0);
             const viewportDelta = Math.abs(currentViewportHeight - lastViewportHeight);
-            const currentOffsetLeft = Math.round(viewport?.offsetLeft || 0);
+            const currentOffsetLeft = Math.round(snapshot?.offsetLeft ?? viewport?.offsetLeft ?? 0);
             const offsetLeftDelta = Math.abs(currentOffsetLeft - lastOffsetLeft);
-            const currentScale = viewport?.scale || 1;
+            const currentScale = snapshot?.scale ?? viewport?.scale ?? 1;
             const scaleDelta = Math.abs(currentScale - lastScale);
 
             lastViewportHeight = currentViewportHeight;
@@ -359,9 +360,16 @@ function applyBrowserFixes() {
             applyPositionFix();
         };
 
-        viewport?.addEventListener('resize', fixFunkyPositioning, { passive: true });
-        viewport?.addEventListener('scroll', fixFunkyPositioning, { passive: true });
-        window.addEventListener('resize', fixFunkyPositioning, { passive: true });
+        // SillyBunny: route resize/scroll/orientation events through ViewportCoordinator.
+        subscribeViewport((snapshot, meta) => {
+            if (meta?.types?.has('orientationchange')) {
+                updateViewportBaseline();
+                applyPositionFix({ force: true });
+                return;
+            }
+
+            fixFunkyPositioning(snapshot);
+        });
         document.addEventListener('pointerdown', (event) => {
             if (event.target instanceof HTMLElement && event.target.closest('#send_but')) {
                 lastSendInteractionAt = Date.now();
@@ -376,10 +384,6 @@ function applyBrowserFixes() {
         };
 
         document.addEventListener('focusin', handleFocusIn, true);
-        window.addEventListener('orientationchange', () => {
-            updateViewportBaseline();
-            applyPositionFix({ force: true });
-        }, { passive: true });
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 updateViewportBaseline();

@@ -1,3 +1,5 @@
+import { getViewportSnapshot, subscribeViewport } from '../viewport-coordinator.js';
+
 export const MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX = 6;
 export const MOBILE_SHELL_LIFECYCLE_NAV_CLICK_SUPPRESSION_MS = 350;
 
@@ -697,6 +699,23 @@ export function resolveMobileViewportSyncPlan() {
 }
 
 /**
+ * Subscribes a mobile shell viewport sync callback through the unified ViewportCoordinator.
+ * @param {(snapshot: object, meta: object) => void} listener Frame-coalesced viewport callback.
+ * @param {object} [options] Options.
+ * @param {object|null} [options.coordinator=null] Optional coordinator instance for isolated tests.
+ * @param {string[]} [options.sources] Optional event source filter.
+ * @param {boolean} [options.immediate=false] Whether to invoke immediately on registration.
+ * @returns {() => void} Teardown / unsubscribe callback.
+ */
+export function subscribeMobileViewportSync(listener, { coordinator = null, ...options } = {}) {
+    if (coordinator && typeof coordinator.subscribe === 'function') {
+        return coordinator.subscribe(listener, options);
+    }
+
+    return subscribeViewport(listener, options);
+}
+
+/**
  * Creates the compatibility-facing mobile shell lifecycle seam.
  * Runtime call sites should depend on this shape instead of individual helpers.
  * @returns {object}
@@ -727,6 +746,8 @@ export function createMobileShellLifecycle() {
         viewportSync: {
             step: MOBILE_SHELL_VIEWPORT_SYNC_STEP,
             resolveSyncPlan: resolveMobileViewportSyncPlan,
+            subscribe: subscribeMobileViewportSync,
+            getSnapshot: getViewportSnapshot,
         },
         timings: {
             navDragThresholdPx: MOBILE_SHELL_LIFECYCLE_NAV_DRAG_THRESHOLD_PX,

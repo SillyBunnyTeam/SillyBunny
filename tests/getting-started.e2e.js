@@ -358,6 +358,8 @@ for (const { name, options, checksColours } of VIEWPORTS) {
                 await bootHome(page);
                 await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'prompting'));
                 const presets = page.locator('#settings_preset_openai');
+                // The Presets page shows its controls a moment after the tab opens, and focus() on a control that has no box does nothing, so the key press went to the Close button.
+                await expect(presets).toBeVisible();
                 await presets.focus();
 
                 await presets.press('ArrowDown');

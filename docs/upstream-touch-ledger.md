@@ -24,6 +24,34 @@ This ledger tracks intentional SillyBunny divergence in upstream-origin files. I
 
 ## Active Entries
 
+### Shared `ViewportCoordinator` subscription in `browser-fixes.js` and `power-user.js`
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/browser-fixes.js`; `public/scripts/power-user.js`. |
+| Area | Mobile and desktop viewport resize, visualViewport scroll/resize and orientationchange handling. |
+| Divergence reason | Upstream registers separate `window` and `visualViewport` resize/scroll listeners across modules, which repeats layout reads on every viewport event. SillyBunny funnels viewport listeners through one single-rAF `ViewportCoordinator` with `>= 1px` delta flags. The `documentElement.style.position = 'fixed'` re-layout of `browser-fixes.js` is kept and runs on the same events as before, one frame later because the coordinator batches them. |
+| Target seam | `public/scripts/viewport-coordinator.js` (`subscribeViewport`) and `public/scripts/moving-ui-viewport.js` (`subscribeMovingUIViewport`). |
+| Adapter shape | Routes the `browser-fixes.js` viewport and orientation listeners through `subscribeViewport()` (the fixed-position re-layout and its edit-focus guard are unchanged; a rotation still forces it) and replaces `$(window).on('resize', ...)` in `power-user.js` with `subscribeMovingUIViewport()`, each marked `SillyBunny:`. |
+| Protecting tests | `tests/perf-viewport-template-tabs-split.test.js`; `tests/browser-fixes-viewport.test.js`; `tests/mobile-shell-lifecycle-wiring.test.js`; `tests/mobile-keyboard-focused-input-scroll.test.js`; `tests/mobile-shell-lifecycle-viewport-sync.test.js`; `tests/moving-ui-viewport.test.js`. |
+| Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
+| Rollback path | Revert the marked `subscribeViewport` / `subscribeMovingUIViewport` hunks in `public/scripts/browser-fixes.js` and `public/scripts/power-user.js` (and the SillyBunny-owned subscribers in `mobile-shell-lifecycle`, `chat-render-lifecycle/mobile-viewport.js`, `moving-ui-viewport.js`, and `sillybunny-tabs.js`) and remove `public/scripts/viewport-coordinator.js`. No saved user data changes. |
+| Last reviewed | 2026-11-26, PR #1043 (large lists, viewport coordinator, tabs split). |
+| Owner | UI shell and performance integrator. |
+
+### `public/scripts/backgrounds.js` - O(1) background indexes and keyed thumbnail reconciliation
+| Field | Value |
+| --- | --- |
+| File | `public/scripts/backgrounds.js`. |
+| Area | System and chat background gallery lookup, highlight tracking, folder thumbnails and re-sort rendering. |
+| Divergence reason | Upstream tears down and rebuilds every background tile via jQuery `.clone()` and scans the images array linearly on each lookup, causing noticeable jank with large background libraries. SillyBunny maintains O(1) `Map` indexes and reconciles existing DOM tiles in place with `DocumentFragment` batching and lazy folder thumbnails. |
+| Target seam | `public/scripts/sillybunny-background-gallery.js` (`buildBackgroundImageMap`, `reconcileBackgroundGrid`). |
+| Adapter shape | Maintains `Map` indexes (`systemBackgroundsByFilename`, `systemBackgroundsByUrl`, `thumbnailsByUrl`), reconciles flat thumbnail lists by filename via `DocumentFragment` without jQuery `.clone()` or full DOM teardown, sets `loading="lazy" decoding="async"` on Folder Manager thumbnails, and exposes `getImageMap` / `getImageByUrl` gallery hooks, each marked `SillyBunny:`. |
+| Protecting tests | `tests/perf-large-lists-virtualization.test.js`; `tests/unit/sillybunny-background-sections.test.js`. |
+| Validation | 2026-11-26: root and tests lint, frontend budgets, frontend contracts, design rules, and focused Jest suites (PR #1043). |
+| Rollback path | Revert the marked `SillyBunny:` `Map` index and keyed reconciliation hunks in `public/scripts/backgrounds.js` (and matching gallery hook consumers in `public/scripts/sillybunny-background-gallery.js`). All indexes are in-memory only and no background files or metadata change. |
+| Last reviewed | 2026-11-26, PR #1043 (large lists, viewport coordinator, tabs split). |
+| Owner | UI shell and performance integrator. |
+
 ### Extension row action overflow adapter
 | Field | Value |
 | --- | --- |

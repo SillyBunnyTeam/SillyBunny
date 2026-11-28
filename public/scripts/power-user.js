@@ -87,7 +87,8 @@ import { persona_description_positions as _persona_description_positions } from 
 import { generateCustomCssWithAI, resolveCustomCssAIProfile } from './sillybunny-custom-css-ai.js';
 import { THEME_RESET_DEFAULTS, appendCustomCss, buildImportedTheme, getGeneratedCustomCss, getRenamedBundledThemeName, isCssStoredInThemes, isThemeCssDirty, mergeThemeUpdate, shouldConfirmCssReplace } from './sillybunny-theme-css.js';
 import { populateConnectionProfileSelect } from './extensions/in-chat-agents/profile-utils.js';
-import { resolveMovingUIViewportState, scaleMovingUIViewportState } from './moving-ui-viewport.js';
+// SillyBunny: subscribe to ViewportCoordinator via moving-ui-viewport instead of a raw window resize listener.
+import { resolveMovingUIViewportState, scaleMovingUIViewportState, subscribeMovingUIViewport } from './moving-ui-viewport.js';
 // SillyBunny: registered side panels persist a side preference without applying draggable geometry.
 import { applyMovingUIState, configureMovingUIState, resetSidePanelSides } from './sillybunny-editor/side-panel.js';
 import { ANDROID_STREAMING_SETTING_DEFAULTS, ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY, initializeAndroidStreamingSettings } from './mobile-streaming.js';
@@ -4308,7 +4309,8 @@ jQuery(async () => {
     var coreTruthWinWidth = window.innerWidth;
     var coreTruthWinHeight = window.innerHeight;
 
-    $(window).on('resize', async () => {
+    // SillyBunny: coalesce resize updates through ViewportCoordinator.
+    subscribeMovingUIViewport(async () => {
         adjustAutocompleteDebounced();
         setHotswapsDebounced();
 

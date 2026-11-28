@@ -1422,7 +1422,8 @@ body:not(.movingUI) .drawer-content.maximized {
     padding-bottom: var(--sb-shell-panel-bottom-padding);
 }
 
-/* Appearance presents its groups once its module has loaded, so the upstream rows stay out of sight until then. */
+/* A page that a deferred module builds (Appearance, Interface, Messages, Presets, Editor, Formatting) is held while the module
+   loads, so the upstream rows stay out of sight until the module has presented them (`holdPanel` in deferred-panel.js). */
 .sb-shell-panel-scroller > [aria-busy='true'] {
     visibility: hidden;
 }
@@ -5331,6 +5332,13 @@ body.reduced-motion .ds-row-expander__toggle::after {
 #sb-settings-page .sb-sampling-panel .sb-sampling-group > .sb-settings-flat-header,
 #sb-settings-page .sb-prompting-panel .sb-prompting-group > .sb-settings-flat-header {
     margin-bottom: var(--sb-settings-heading-gap);
+}
+
+/* A flattened upstream drawer that Prompting boxes is a flat section, which is a flex column with its own row gap. The heading
+   margin above already carries the 6px gap to the box, so the row gap would add a second one. Whether the drawer is a column
+   depends on whether upstream's visibility pass left an inline `display: block` on it, which is not a state to rely on. */
+#sb-settings-page .sb-prompting-panel .sb-prompting-group.sb-settings-flat-section {
+    row-gap: 0;
 }
 
 /* The container owns category spacing so hidden groups leave no gaps or leading margins. */
