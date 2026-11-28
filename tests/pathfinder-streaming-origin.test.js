@@ -1,277 +1,564 @@
+/** @jest-environment jsdom */
+/* global globalThis */
 /* eslint-disable playwright/no-standalone-expect */
-import { describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { createStreamWriteBuffer } from '../public/scripts/chat-render-lifecycle/stream-buffer.js';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import * as realChatRenderLifecycle from '../public/scripts/chat-render-lifecycle/index.js';
+import { event_types } from '../public/scripts/events.js';
+import { importScriptModule } from './util/script-harness.js';
 
-const source = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
-const classSource = source.slice(source.indexOf('class StreamingProcessor {'), source.indexOf('\n/**', source.indexOf('\n}\n', source.indexOf('class StreamingProcessor {'))));
+function deferred() {
+    let resolve;
+    let reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+}
 
 function replacement() {
-    return { mes: 'different chat', name: 'Other', extra: {}, swipe_id: 0, swipes: ['untouched'], swipe_info: [{ extra: { keep: true } }] };
+    return {
+        mes: 'different chat',
+        name: 'Other',
+        is_user: false,
+        extra: {},
+        swipe_id: 0,
+        swipes: ['untouched'],
+        swipe_info: [{ extra: { keep: true } }],
+    };
 }
 
-async function stream(type = 'normal') {
-    const writes = [];
-    const reasoningDomWrite = jest.fn();
-    class Element {
-        isConnected = true;
-        classList = { toggle() {} };
-        querySelector() { return this; }
-        getAttribute() { return '0'; }
+const STREAM_DOM = `
+    <div id="options_button"></div>
+    <div id="options"></div>
+    <div id="export_button"></div>
+    <div id="export_format_popup"></div>
+    <div id="online_status_indicator"></div>
+    <div id="online_status_text"></div>
+    <select id="main_api">
+        <option value="openai">openai</option>
+    </select>
+    <div id="chat"></div>
+    <div id="message_template" hidden>
+        <div class="mes">
+            <div class="mes_block">
+                <div class="ch_name">
+                    <span class="name_text"></span>
+                    <span class="mes_timer"></span>
+                    <span class="tokenCounterDisplay"></span>
+                </div>
+                <div class="mes_text"></div>
+            </div>
+        </div>
+    </div>
+    <textarea id="send_textarea"></textarea>
+    <div id="send_but"></div>
+    <div id="mes_stop"></div>
+`;
+
+const originalRaf = globalThis.requestAnimationFrame;
+const originalCaf = globalThis.cancelAnimationFrame;
+
+afterEach(() => {
+    jest.restoreAllMocks();
+    globalThis.requestAnimationFrame = originalRaf;
+    globalThis.cancelAnimationFrame = originalCaf;
+    if (typeof globalThis.window !== 'undefined') {
+        globalThis.window.requestAnimationFrame = originalRaf;
+        globalThis.window.cancelAnimationFrame = originalCaf;
     }
-    const element = new Element();
-    const context = vm.createContext({
-        console, AbortController, structuredClone, performance,
-        chat: [], chatId: 'original', chatGeneration: 1, activeGenerationRun: {}, streamingProcessor: null,
-        document: { querySelector: () => element }, HTMLElement: Element,
-        power_user: { streaming_fps: 30 }, main_api: 'openai', scrollLock: false, scrollLockImmunityUntil: 0,
-        IN_CHAT_AGENT_TRANSFORM_HISTORY_KEY: 'history', IN_CHAT_AGENT_PRE_GENERATION_INTERCEPT_HISTORY_KEY: 'intercept',
-        GENERATION_PLACEHOLDER_KEY: 'server_generation_placeholder',
-        ReasoningHandler: class {
-            reasoning = '';
-            process = async () => {};
-            updateDom = reasoningDomWrite;
-            updateReasoning() {}
-            hasReasoningContent() { return false; }
-            getDuration() { return 0; }
-        },
-        event_types: { STREAM_TOKEN_RECEIVED: 'token' }, eventSource: { emit: jest.fn(async () => {}) },
-        delay: async () => {}, Stopwatch: class { async tick(callback) { await callback(); } },
-        getStoppingStrings: () => [], getStreamingUpdateInterval: () => 1,
-        cleanUpMessage: ({ getMessage }) => getMessage,
-        shouldReduceStreamingDomWork: () => false, shouldGuardMobileChatScroll: () => false,
-        shouldPinMobileChatToBottom: () => false, isMobileChatManualScrollSuppressionActive: () => false,
-        isAndroidStreamingPlatform: () => false, shouldUsePlainTextStreamingPreview: () => false,
-        getPositiveTokenCount: value => Number(value) || 0,
-        updateMessageTokenAccounting: jest.fn(async () => ({ outputTokens: 1, reasoningTokens: 0 })),
-        balanceStreamingMarkdown: value => value, messageFormatting: jest.fn(value => value),
-        applyStreamDomPatch: jest.fn((element, html) => { element.innerHTML = html; }),
-        applyStreamFadeIn: jest.fn((element, html) => { element.innerHTML = html; }),
-        formatGenerationTimer: () => ({}), deactivateSendButtons() {}, hideSwipeButtons() {}, unblockGeneration() {},
-        scrollStartedStreamingMessageThroughLifecycle() {}, scrollChatToBottom: jest.fn(),
-        CHAT_RENDER_LIFECYCLE_ROUTE: { STREAM_PROGRESS: 'stream' },
-        isChatRenderLifecycleRolloutEnabled: () => true,
-        getStreamingVisibleWriteBuffer: () => ({ queue: (...args) => writes.push(args) }),
-        updateMessageMetaBadges: jest.fn(),
+});
+
+/**
+ * Installs a controllable animation-frame queue before importing `public/script.js`
+ * so `createStreamWriteBuffer`'s frame scheduler runs deterministically on demand.
+ */
+function installManualFrames() {
+    let nextId = 1;
+    const frames = new Map();
+    const requestAnimationFrame = jest.fn(callback => {
+        const id = nextId++;
+        frames.set(id, callback);
+        return id;
     });
-    context.getCurrentChatId = () => context.chatId;
-    context.saveReply = async () => { context.chat.push({ ...replacement(), mes: 'original', swipes: ['original'] }); };
-    vm.runInContext(classSource + '\nthis.StreamingProcessor = StreamingProcessor;', context);
-    const apply = source.match(/^function applyStreamingVisibleWrite\([\s\S]*?^}$/m)[0];
-    vm.runInContext(apply, context);
-    const processor = new context.StreamingProcessor(type, false, new Date(), '', { prefixReasoning: '', removePrefix: text => text });
-    context.streamingProcessor = processor;
-    processor.messageId = await processor.onStartStreaming('original');
-    processor.generator = async function* () { yield { text: 'stale output', swipes: [], toolCalls: [], state: {} }; };
-    return { context, processor, writes, reasoningDomWrite };
+    const cancelAnimationFrame = jest.fn(id => {
+        frames.delete(id);
+    });
+    globalThis.requestAnimationFrame = requestAnimationFrame;
+    globalThis.cancelAnimationFrame = cancelAnimationFrame;
+    if (typeof globalThis.window !== 'undefined') {
+        globalThis.window.requestAnimationFrame = requestAnimationFrame;
+        globalThis.window.cancelAnimationFrame = cancelAnimationFrame;
+    }
+    return {
+        requestAnimationFrame,
+        cancelAnimationFrame,
+        pendingCount: () => frames.size,
+        runFrame: () => {
+            const entries = [...frames.entries()];
+            frames.clear();
+            for (const [, callback] of entries) {
+                callback(0);
+            }
+        },
+    };
 }
 
-function useFrameBuffer(context) {
-    let frame = null;
-    const buffer = createStreamWriteBuffer({
-        scheduler: {
-            request: callback => { frame = callback; },
-            cancel: () => { frame = null; },
-        },
-        applyWrite: (...args) => context.applyStreamingVisibleWrite(...args),
+/**
+ * Boots the real `public/script.js` with streaming enabled and starts a real
+ * `Generate(type)` run paused inside its async generator so tests can drive
+ * both real streamed chunks and direct `StreamingProcessor` / `saveReply` races.
+ */
+async function createStreamingSession({
+    type = 'normal',
+    initialChat = null,
+    chunks = [{ text: 'stale output', swipes: [], toolCalls: [], state: {} }],
+    pauseBeforeChunks = true,
+    pauseAfterChunks = true,
+    pauseOnInitialSaveReply = false,
+} = {}) {
+    const frames = installManualFrames();
+    const reasoningDomWrite = jest.fn();
+    const applyStreamDomPatch = jest.fn((element, html) => { element.innerHTML = html; });
+    const applyStreamFadeIn = jest.fn((element, html) => { element.innerHTML = html; });
+    const updateReasoningTokenAccounting = jest.fn(async () => ({ outputTokens: 1, reasoningTokens: 0 }));
+
+    let initialTokenStarted = null;
+    let initialTokenRelease = null;
+    if (pauseOnInitialSaveReply) {
+        const started = deferred();
+        const release = deferred();
+        initialTokenStarted = started.promise;
+        initialTokenRelease = release.resolve;
+        updateReasoningTokenAccounting.mockImplementationOnce(() => {
+            started.resolve();
+            return release.promise;
+        });
+    }
+
+    const generatorReady = deferred();
+    const allowChunks = deferred();
+    const chunksYielded = deferred();
+    const allowFinish = deferred();
+
+    let createdReasoningHandler = null;
+    class TrackingReasoningHandler {
+        constructor() {
+            this.reasoning = '';
+            createdReasoningHandler = this;
+        }
+        initContinue() {}
+        async process() {}
+        updateDom(...args) { reasoningDomWrite(...args); }
+        updateReasoning() {}
+        hasReasoningContent() { return false; }
+        getDuration() { return 0; }
+        async finish() {}
+    }
+
+    const sendOpenAIRequest = jest.fn(async () => async function* () {
+        generatorReady.resolve();
+        if (pauseBeforeChunks) {
+            await allowChunks.promise;
+        }
+        for (const chunk of chunks) {
+            yield chunk;
+        }
+        chunksYielded.resolve();
+        if (pauseAfterChunks) {
+            await allowFinish.promise;
+        }
     });
-    context.getStreamingVisibleWriteBuffer = () => buffer;
-    return { runFrame: () => { const callback = frame; frame = null; callback?.(); }, buffer };
+
+    let capturedBuffer = null;
+    const loaded = await importScriptModule({
+        dom: STREAM_DOM,
+        mocks: {
+            'scripts/chat-render-lifecycle/index.js': {
+                ...realChatRenderLifecycle,
+                createStreamWriteBuffer: (...args) => {
+                    capturedBuffer = realChatRenderLifecycle.createStreamWriteBuffer(...args);
+                    return capturedBuffer;
+                },
+            },
+            'scripts/openai.js': base => ({
+                ...base,
+                oai_settings: { ...base.oai_settings, stream_openai: true },
+                prepareOpenAIMessages: jest.fn(async () => [[{ role: 'user', content: 'hi' }], false]),
+                sendOpenAIRequest,
+            }),
+            'scripts/util/stream-fadein.js': {
+                applyStreamDomPatch,
+                applyStreamFadeIn,
+            },
+            'scripts/reasoning.js': base => ({
+                ...base,
+                ReasoningHandler: TrackingReasoningHandler,
+            }),
+            'scripts/reasoning-token-accounting.js': {
+                formatTokenCounterText: () => '',
+                getPositiveTokenCount: value => Number(value) || 0,
+                updateReasoningTokenAccounting,
+            },
+        },
+    });
+
+    const { script, eventSource, state, mocks } = loaded;
+    const makeHtml = mocks['lib.js'].showdown.Converter().makeHtml;
+    state.power_user.stream_fade_in = false;
+    state.power_user.streaming_fps = 30;
+    state.power_user.message_token_count_enabled = false;
+    state.power_user.trim_spaces = false;
+
+    script.characters.push({ name: 'Assistant', avatar: 'assistant.png', chat: 'original' });
+    script.setCharacterId(0);
+    script.setCharacterName('Assistant');
+    await script.changeMainAPI('openai');
+    script.setOnlineStatus('Connected');
+
+    const seedChat = initialChat ?? (type === 'continue'
+        ? [{
+            mes: 'original',
+            name: 'Assistant',
+            is_user: false,
+            is_system: false,
+            extra: {},
+            swipe_id: 0,
+            swipes: ['original'],
+            swipe_info: [{ extra: {} }],
+        }]
+        : []);
+    for (const msg of seedChat) {
+        script.chat.push(msg);
+        script.addOneMessage(msg);
+    }
+
+    const generatePromise = script.Generate(type);
+
+    if (pauseOnInitialSaveReply) {
+        await initialTokenStarted;
+        return {
+            script,
+            eventSource,
+            frames,
+            makeHtml,
+            applyStreamDomPatch,
+            reasoningDomWrite,
+            updateReasoningTokenAccounting,
+            releaseInitialToken: () => initialTokenRelease({ outputTokens: 1, reasoningTokens: 0 }),
+            finish: async () => {
+                allowChunks.resolve();
+                allowFinish.resolve();
+                await generatePromise;
+            },
+        };
+    }
+
+    await generatorReady.promise;
+    // Wait until StreamingProcessor.generate has completed onStartStreaming and entered the generator.
+    const processor = script.streamingProcessor;
+    makeHtml.mockClear();
+    applyStreamDomPatch.mockClear();
+    reasoningDomWrite.mockClear();
+    updateReasoningTokenAccounting.mockClear();
+
+    return {
+        script,
+        processor,
+        reasoningHandler: createdReasoningHandler,
+        messageId: processor.messageId,
+        eventSource,
+        frames,
+        getBuffer: () => capturedBuffer,
+        makeHtml,
+        applyStreamDomPatch,
+        reasoningDomWrite,
+        updateReasoningTokenAccounting,
+        releaseChunks: async () => {
+            allowChunks.resolve();
+            await chunksYielded.promise;
+            // Let the final yielded token's onProgressStreaming settle before inspecting.
+            await new Promise(resolve => setTimeout(resolve, 10));
+        },
+        finish: async () => {
+            allowChunks.resolve();
+            allowFinish.resolve();
+            await generatePromise;
+        },
+    };
 }
 
 describe('streaming message origin', () => {
     test('formats only the latest queued snapshot while retaining every token event', async () => {
-        const { context, processor } = await stream();
-        const { runFrame } = useFrameBuffer(context);
-        processor.generator = async function* () {
-            for (const text of ['a', 'ab', 'abc']) yield { text, swipes: [], toolCalls: [], state: {} };
-        };
-        await processor.generate();
-        expect(context.eventSource.emit.mock.calls.map(call => call[1])).toEqual(['a', 'ab', 'abc']);
-        expect(context.messageFormatting).not.toHaveBeenCalled();
-        runFrame();
-        expect(context.messageFormatting).toHaveBeenCalledTimes(1);
-        expect(context.messageFormatting.mock.calls[0][0]).toBe('abc');
-        expect(processor.messageTextDom.innerHTML).toBe('abc');
+        const tokenEvents = [];
+        const session = await createStreamingSession({
+            chunks: ['a', 'ab', 'abc'].map(text => ({ text, swipes: [], toolCalls: [], state: {} })),
+            pauseBeforeChunks: true,
+            pauseAfterChunks: true,
+        });
+        session.eventSource.on(event_types.STREAM_TOKEN_RECEIVED, text => tokenEvents.push(text));
+
+        await session.releaseChunks();
+        expect(tokenEvents).toEqual(['a', 'ab', 'abc']);
+        expect(session.makeHtml).not.toHaveBeenCalled();
+
+        session.frames.runFrame();
+        expect(session.makeHtml).toHaveBeenCalledTimes(1);
+        expect(session.makeHtml.mock.calls[0][0]).toBe('abc');
+        expect(session.processor.messageTextDom.innerHTML).toBe('abc');
+
+        await session.finish();
     });
 
     test('finalization synchronously formats the final snapshot and cancels the pending preview', async () => {
-        const { context, processor } = await stream();
-        const { runFrame, buffer } = useFrameBuffer(context);
-        await processor.onProgressStreaming(0, 'preview', false);
-        await processor.onProgressStreaming(0, 'final', true);
-        expect(buffer.size()).toBe(0);
+        const session = await createStreamingSession();
+        const { processor, messageId, frames, getBuffer, makeHtml, applyStreamDomPatch } = session;
+
+        await processor.onProgressStreaming(messageId, 'preview', false);
+        expect(getBuffer().size()).toBe(1);
+
+        await processor.onProgressStreaming(messageId, 'final', true);
+        expect(getBuffer().size()).toBe(0);
         expect(processor.messageTextDom.innerHTML).toBe('final');
-        expect(context.messageFormatting).toHaveBeenCalledTimes(1);
-        expect(context.messageFormatting.mock.calls[0][0]).toBe('final');
-        expect(context.applyStreamDomPatch).not.toHaveBeenCalled();
-        runFrame();
-        expect(context.messageFormatting).toHaveBeenCalledTimes(1);
+        expect(makeHtml).toHaveBeenCalledTimes(1);
+        expect(makeHtml.mock.calls[0][0]).toBe('final');
+        expect(applyStreamDomPatch).not.toHaveBeenCalled();
+
+        frames.runFrame();
+        expect(makeHtml).toHaveBeenCalledTimes(1);
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test.each(['Stop', 'chat switch', 'swipe'])('drops queued formatting before doing any work after %s', async reason => {
-        const { context, processor } = await stream();
-        const { runFrame } = useFrameBuffer(context);
-        await processor.onProgressStreaming(0, 'preview', false);
+        const session = await createStreamingSession();
+        const { script, processor, messageId, frames, makeHtml, applyStreamDomPatch } = session;
+
+        await processor.onProgressStreaming(messageId, 'preview', false);
         if (reason === 'Stop') processor.onStopStreaming();
-        else if (reason === 'swipe') context.chat[0].swipe_id++;
-        else context.chatGeneration++;
-        runFrame();
-        expect(context.messageFormatting).not.toHaveBeenCalled();
-        expect(context.applyStreamDomPatch).not.toHaveBeenCalled();
+        else if (reason === 'swipe') script.chat[messageId].swipe_id++;
+        else script.incrementChatGeneration();
+
+        frames.runFrame();
+        expect(makeHtml).not.toHaveBeenCalled();
+        expect(applyStreamDomPatch).not.toHaveBeenCalled();
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('records format and DOM cost, then decays it after a cheaper visible update', async () => {
-        const { context, processor } = await stream();
-        const { runFrame } = useFrameBuffer(context);
-        context.performance = { now: jest.fn().mockReturnValueOnce(0).mockReturnValueOnce(30).mockReturnValueOnce(40).mockReturnValueOnce(45) };
-        await processor.onProgressStreaming(0, 'first', false);
-        runFrame();
+        const session = await createStreamingSession();
+        const { processor, messageId, frames } = session;
+        const nowSpy = jest.spyOn(performance, 'now');
+
+        await processor.onProgressStreaming(messageId, 'first', false);
+        nowSpy.mockReturnValueOnce(0).mockReturnValueOnce(30);
+        frames.runFrame();
         expect(processor.streamingRenderDurationMs).toBe(30);
-        await processor.onProgressStreaming(0, 'second', false);
-        runFrame();
+
+        await processor.onProgressStreaming(messageId, 'second', false);
+        nowSpy.mockReturnValueOnce(40).mockReturnValueOnce(45);
+        frames.runFrame();
         expect(processor.streamingRenderDurationMs).toBe(24);
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('routes a scheduled formatter failure through stream error cleanup', async () => {
-        const { context, processor } = await stream();
-        const { runFrame } = useFrameBuffer(context);
-        context.console = { ...console, error: jest.fn() };
-        context.messageFormatting.mockImplementation(() => { throw new Error('formatter failed'); });
-        await processor.onProgressStreaming(0, 'preview', false);
-        expect(runFrame).not.toThrow();
+        const session = await createStreamingSession();
+        const { processor, messageId, frames, makeHtml, applyStreamDomPatch } = session;
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        makeHtml.mockImplementation(() => { throw new Error('formatter failed'); });
+
+        await processor.onProgressStreaming(messageId, 'preview', false);
+        expect(() => frames.runFrame()).not.toThrow();
         expect(processor.abortController.signal.aborted).toBe(true);
         expect(processor.isStopped).toBe(true);
         expect(processor.isFinished).toBe(true);
-        expect(context.applyStreamDomPatch).not.toHaveBeenCalled();
+        expect(applyStreamDomPatch).not.toHaveBeenCalled();
+
+        await session.finish();
     });
 
     test('propagates final formatting errors to the caller', async () => {
-        const { context, processor } = await stream();
-        useFrameBuffer(context);
-        context.messageFormatting.mockImplementation(() => { throw new Error('final formatter failed'); });
-        await expect(processor.onProgressStreaming(0, 'final', true)).rejects.toThrow('final formatter failed');
+        const session = await createStreamingSession();
+        const { processor, messageId, makeHtml } = session;
+        makeHtml.mockImplementation(() => { throw new Error('final formatter failed'); });
+
+        await expect(processor.onProgressStreaming(messageId, 'final', true)).rejects.toThrow('final formatter failed');
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('continues updating the original message and swipe through normal stream completion', async () => {
-        const { context, processor } = await stream();
-        await processor.generate();
-        await processor.onProgressStreaming(0, 'final output', true);
-        expect(context.chat[0].mes).toBe('final output');
-        expect(context.chat[0].swipes[0]).toBe('final output');
+        const session = await createStreamingSession({
+            chunks: [{ text: 'final output', swipes: [], toolCalls: [], state: {} }],
+            pauseBeforeChunks: false,
+            pauseAfterChunks: false,
+        });
+        await session.finish();
+        expect(session.script.chat[0].mes).toBe('final output');
+        expect(session.script.chat[0].swipes[0]).toBe('final output');
     });
 
     test.each(['chat switch', 'Stop'])('rechecks after token listeners before progress writes on %s', async reason => {
-        const { context, processor } = await stream();
-        context.eventSource.emit.mockImplementationOnce(async () => {
-            if (reason === 'Stop') processor.onStopStreaming();
-            else { context.chat = [replacement()]; context.chatGeneration++; }
+        const session = await createStreamingSession();
+        const { script, processor, messageId, eventSource } = session;
+        const originalSnapshot = structuredClone(script.chat[messageId]);
+
+        eventSource.once(event_types.STREAM_TOKEN_RECEIVED, async () => {
+            if (reason === 'Stop') {
+                processor.onStopStreaming();
+            } else {
+                script.chat.splice(0, script.chat.length, replacement());
+                script.incrementChatGeneration();
+            }
         });
-        const before = reason === 'Stop' ? structuredClone(context.chat[0]) : replacement();
-        await processor.generate();
-        expect(context.chat[0]).toEqual(before);
+
+        await session.finish();
+        const expected = reason === 'Stop' ? originalSnapshot : replacement();
+        expect(script.chat[0]).toEqual(expected);
     });
 
     test('does not write through a reused index after the DOM lookup await', async () => {
-        const { context, processor } = await stream();
-        const pending = processor.onProgressStreaming(0, 'stale output', false);
-        context.chat = [replacement()];
-        context.chatGeneration++;
+        const session = await createStreamingSession();
+        const { script, processor, messageId } = session;
+
+        const pending = processor.onProgressStreaming(messageId, 'stale output', false);
+        script.chat.splice(0, script.chat.length, replacement());
+        script.incrementChatGeneration();
         await pending;
-        expect(context.chat[0]).toEqual(replacement());
+
+        expect(script.chat[0]).toEqual(replacement());
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('honours the originating host run guard before updating an otherwise unchanged message', async () => {
-        const { context, processor } = await stream();
-        const before = structuredClone(context.chat[0]);
+        const session = await createStreamingSession();
+        const { script, processor, messageId } = session;
+        const before = structuredClone(script.chat[messageId]);
+
         processor.isCurrentGeneration = () => false;
-        await processor.onProgressStreaming(0, 'cancelled output', false);
-        expect(context.chat[0]).toEqual(before);
+        await processor.onProgressStreaming(messageId, 'cancelled output', false);
+        expect(script.chat[messageId]).toEqual(before);
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('does not update replacement swipe metadata after token accounting', async () => {
-        const { context, processor } = await stream('continue');
-        let release;
-        let started;
-        const accounting = new Promise(resolve => { started = resolve; });
-        context.updateMessageTokenAccounting.mockImplementationOnce(() => { started(); return new Promise(resolve => { release = resolve; }); });
-        const pending = processor.onProgressStreaming(0, 'stale output', true);
-        await accounting;
-        context.chat[0] = replacement();
-        release({ outputTokens: 1, reasoningTokens: 0 });
+        const session = await createStreamingSession({ type: 'continue' });
+        const { script, processor, messageId, updateReasoningTokenAccounting } = session;
+        const started = deferred();
+        const release = deferred();
+
+        updateReasoningTokenAccounting.mockImplementationOnce(() => {
+            started.resolve();
+            return release.promise;
+        });
+
+        const pending = processor.onProgressStreaming(messageId, 'stale output', true);
+        await started.promise;
+        script.chat[messageId] = replacement();
+        release.resolve({ outputTokens: 1, reasoningTokens: 0 });
         await pending;
-        expect(context.chat[0]).toEqual(replacement());
+
+        expect(script.chat[messageId]).toEqual(replacement());
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('does not let cancellation cleanup change a different message', async () => {
-        const { context, processor } = await stream();
-        context.chat[0] = replacement();
+        const session = await createStreamingSession();
+        const { script, processor, messageId } = session;
+
+        script.chat[messageId] = replacement();
         processor.onStopStreaming();
-        processor.setFirstSwipe(0);
-        expect(context.chat[0]).toEqual(replacement());
+        processor.setFirstSwipe(messageId);
+        expect(script.chat[messageId]).toEqual(replacement());
+
+        await session.finish();
     });
 
     test('guards the real initial saveReply after its token-count await', async () => {
-        const { context } = await stream();
-        context.chat = [];
-        Object.assign(context, {
-            name2: 'Assistant', generation_started: new Date(), selected_group: null,
-            getMessageTimeStamp: () => 'now', getGeneratingApi: () => 'openai', getGeneratingModel: () => 'model', getCurrentReasoningEffort: () => null,
-            processImageAttachment: async () => {}, addOneMessage: jest.fn(), statMesProcess() {},
-        });
-        vm.runInContext(source.match(/^export (async function saveReply\([\s\S]*?^})/m)[1], context);
-        const processor = new context.StreamingProcessor('normal', false, new Date(), '', {});
-        context.streamingProcessor = processor;
-        let release;
-        let started;
-        const counting = new Promise(resolve => { started = resolve; });
-        context.updateMessageTokenAccounting.mockImplementationOnce(() => { started(); return new Promise(resolve => { release = resolve; }); });
-        const pending = processor.onStartStreaming('initial');
-        await counting;
-        context.chat = [replacement()];
-        context.chatGeneration++;
-        release({ outputTokens: 1, reasoningTokens: 0 });
-        await pending;
-        expect(context.chat[0]).toEqual(replacement());
-        expect(context.addOneMessage).not.toHaveBeenCalled();
+        const session = await createStreamingSession({ pauseOnInitialSaveReply: true });
+        const { script, releaseInitialToken } = session;
+
+        script.chat.splice(0, script.chat.length, replacement());
+        script.incrementChatGeneration();
+        releaseInitialToken();
+        await session.finish();
+
+        expect(script.chat[0]).toEqual(replacement());
+        expect(document.querySelectorAll('#chat .mes')).toHaveLength(0);
     });
 
     test('does not let delayed reasoning completion repaint a different chat', async () => {
-        const { context, processor, reasoningDomWrite } = await stream();
-        let release;
-        let started;
-        const processing = new Promise(resolve => { started = resolve; });
+        const session = await createStreamingSession();
+        const { script, processor, messageId, reasoningDomWrite } = session;
+        const started = deferred();
+        const release = deferred();
+
         processor.reasoningHandler.process = async () => {
-            started();
-            await new Promise(resolve => { release = resolve; });
-            processor.reasoningHandler.updateDom(0);
+            started.resolve();
+            await release.promise;
+            processor.reasoningHandler.updateDom(messageId);
         };
-        const pending = processor.onProgressStreaming(0, 'valid output', false);
-        await processing;
-        context.chat = [replacement()];
-        context.chatGeneration++;
-        release();
+
+        const pending = processor.onProgressStreaming(messageId, 'valid output', false);
+        await started.promise;
+        script.chat.splice(0, script.chat.length, replacement());
+        script.incrementChatGeneration();
+        release.resolve();
         await pending;
-        expect(context.chat[0]).toEqual(replacement());
+
+        expect(script.chat[0]).toEqual(replacement());
         expect(reasoningDomWrite).not.toHaveBeenCalled();
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('rejects a queued DOM write after a chat switch', async () => {
-        const { context, processor, writes } = await stream();
-        await processor.onProgressStreaming(0, 'valid output', false);
-        expect(writes).toHaveLength(1);
-        context.chat = [replacement()];
-        context.chatGeneration++;
-        context.applyStreamingVisibleWrite(...writes[0]);
-        expect(context.updateMessageMetaBadges).not.toHaveBeenCalled();
+        const session = await createStreamingSession();
+        const { script, processor, messageId, frames, getBuffer, makeHtml, applyStreamDomPatch } = session;
+        const initialHtml = processor.messageTextDom.innerHTML;
+
+        await processor.onProgressStreaming(messageId, 'valid output', false);
+        expect(getBuffer().size()).toBe(1);
+
+        script.chat.splice(0, script.chat.length, replacement());
+        script.incrementChatGeneration();
+        frames.runFrame();
+
+        expect(makeHtml).not.toHaveBeenCalled();
+        expect(applyStreamDomPatch).not.toHaveBeenCalled();
+        expect(processor.messageTextDom.innerHTML).toBe(initialHtml);
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 
     test('rejects a queued write when the renderer reused its DOM node for a different message', async () => {
-        const { context, processor, writes } = await stream();
-        await processor.onProgressStreaming(0, 'valid output', false);
-        writes[0][1].messageDom.getAttribute = () => 'another-message';
-        context.applyStreamingVisibleWrite(...writes[0]);
-        expect(context.updateMessageMetaBadges).not.toHaveBeenCalled();
+        const session = await createStreamingSession();
+        const { processor, messageId, frames, getBuffer, makeHtml, applyStreamDomPatch } = session;
+        const initialHtml = processor.messageTextDom.innerHTML;
+
+        await processor.onProgressStreaming(messageId, 'valid output', false);
+        expect(getBuffer().size()).toBe(1);
+
+        processor.messageDom.setAttribute('mesid', '999');
+        frames.runFrame();
+
+        expect(makeHtml).not.toHaveBeenCalled();
+        expect(applyStreamDomPatch).not.toHaveBeenCalled();
+        expect(processor.messageTextDom.innerHTML).toBe(initialHtml);
+
+        processor.onStopStreaming();
+        await session.finish();
     });
 });

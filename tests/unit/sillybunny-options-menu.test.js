@@ -1,8 +1,8 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
-import { readFileSync } from 'node:fs';
 import { describe, test, expect, beforeEach } from '@jest/globals';
 import { LOGPROBS_CHAT_SOURCES, getOptionsApplicability, syncOptionsMenu } from '../../public/scripts/sillybunny-options-menu.js';
+import { importOpenAiModule } from '../util/openai-harness.js';
 
 const CFG_TYPES = ['ooba', 'tabby'];
 
@@ -27,12 +27,24 @@ describe('getOptionsApplicability', () => {
         expect(probabilities('koboldhorde')).toBe(false);
     });
 
-    test('the chat source list is the one that openai.js sends logprobs for', () => {
-        const source = readFileSync(new URL('../../public/scripts/openai.js', import.meta.url), 'utf8');
-        const block = source.match(/const logprobsSupportedSources = \[([^\]]*)\]/)?.[1] ?? '';
-        const constants = [...block.matchAll(/chat_completion_sources\.([A-Z_0-9]+)/g)].map(match => match[1]);
-        const values = Object.fromEntries([...source.match(/export const chat_completion_sources = \{([^}]*)\}/)[1].matchAll(/([A-Z_0-9]+): '([a-z_0-9]+)'/g)].map(match => [match[1], match[2]]));
-        expect([...LOGPROBS_CHAT_SOURCES].sort()).toEqual(constants.map(name => values[name]).sort());
+    test('the chat source list is the one that openai.js sends logprobs for', async () => {
+        const { openai } = await importOpenAiModule({ powerUser: { request_token_probabilities: true } });
+        const sourcesWithLogprobs = [];
+
+        for (const source of Object.values(openai.chat_completion_sources)) {
+            const settings = {
+                ...openai.oai_settings,
+                chat_completion_source: source,
+                reverse_proxy: '',
+                stream_openai: false,
+            };
+            const { generate_data } = await openai.createGenerationParameters(settings, 'gpt-4o', 'normal', []);
+            if (generate_data.logprobs !== undefined) {
+                sourcesWithLogprobs.push(source);
+            }
+        }
+
+        expect([...LOGPROBS_CHAT_SOURCES].sort()).toEqual(sourcesWithLogprobs.sort());
     });
 });
 

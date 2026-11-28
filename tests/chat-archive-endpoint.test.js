@@ -1,11 +1,13 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { setConfigFilePath } from '../src/util.js';
+import { canCreateFileSymlinks, nativeTmpDir } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
@@ -69,7 +71,7 @@ describe('Chat Archive endpoint', () => {
     });
 
     beforeEach(() => {
-        tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-endpoint-'));
+        tempRoot = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-chat-archive-endpoint-'));
         directories = {
             root: tempRoot,
             avatars: path.join(tempRoot, 'avatars'),
@@ -202,7 +204,7 @@ describe('Chat Archive endpoint', () => {
 
     test('rejects an opened file handle that does not match the validated in-root path', async () => {
         const inRootPath = path.join(directories.chats, 'root-chat.jsonl');
-        const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-race-'));
+        const outsideRoot = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-chat-archive-race-'));
         const outsidePath = path.join(outsideRoot, 'outside.jsonl');
         fs.writeFileSync(outsidePath, jsonl('outside replacement', 4));
         const originalOpen = fs.promises.open.bind(fs.promises);
@@ -223,7 +225,7 @@ describe('Chat Archive endpoint', () => {
 
     test('rejects an opened identity mismatch when procfs descriptor paths are unavailable', async () => {
         const inRootPath = path.join(directories.chats, 'root-chat.jsonl');
-        const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-fallback-'));
+        const outsideRoot = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-chat-archive-fallback-'));
         const outsidePath = path.join(outsideRoot, 'outside.jsonl');
         fs.writeFileSync(outsidePath, jsonl('fallback replacement', 3));
         const originalOpen = fs.promises.open.bind(fs.promises);
@@ -249,20 +251,22 @@ describe('Chat Archive endpoint', () => {
         }
     });
 
-    test('rejects symlinks that resolve outside the canonical archive root', async () => {
-        const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-symlink-'));
-        const outsidePath = path.join(outsideRoot, 'outside.jsonl');
-        const linkedPath = path.join(directories.chats, 'outside-link.jsonl');
-        fs.writeFileSync(outsidePath, jsonl('outside symlink', 1));
-        fs.symlinkSync(outsidePath, linkedPath);
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('rejects symlinks that resolve outside the canonical archive root', async () => {
+            const outsideRoot = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-chat-archive-symlink-'));
+            const outsidePath = path.join(outsideRoot, 'outside.jsonl');
+            const linkedPath = path.join(directories.chats, 'outside-link.jsonl');
+            fs.writeFileSync(outsidePath, jsonl('outside symlink', 1));
+            fs.symlinkSync(outsidePath, linkedPath);
 
-        try {
-            await expect(readArchiveChatMetadata(linkedPath, undefined, directories.root)).rejects.toMatchObject({
-                code: 'ARCHIVE_PATH_FORBIDDEN',
-            });
-        } finally {
-            fs.rmSync(outsideRoot, { recursive: true, force: true });
-        }
+            try {
+                await expect(readArchiveChatMetadata(linkedPath, undefined, directories.root)).rejects.toMatchObject({
+                    code: 'ARCHIVE_PATH_FORBIDDEN',
+                });
+            } finally {
+                fs.rmSync(outsideRoot, { recursive: true, force: true });
+            }
+        });
     });
 
     test('reuses unchanged metadata on refresh and rereads files whose metadata changed', async () => {
@@ -502,22 +506,33 @@ describe('Chat Archive endpoint', () => {
         expect((await postJson('/api/chats/archive/release', { cursor: firstPage.cursor })).status).toBe(204);
         expect(ArchiveInventoryService.INVENTORIES.has(firstPage.cursor)).toBe(false);
 
-        const outsideRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-chat-archive-outside-'));
+        const outsideRoot = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-chat-archive-outside-'));
         try {
             const outsidePath = path.join(outsideRoot, 'outside.jsonl');
             fs.writeFileSync(outsidePath, jsonl('outside', 1));
             const descriptor = { filePath: outsidePath };
             const token = ArchiveReadTokenService.create('alice', directories.root, [descriptor]);
             expect((await get(`/api/chats/archive/view?token=${token}&hash=${descriptor.hash}`)).status).toBe(403);
-
-            const linkedPath = path.join(directories.chats, 'outside-link.jsonl');
-            fs.symlinkSync(outsidePath, linkedPath);
-            const linkedDescriptor = { filePath: linkedPath };
-            const linkedToken = ArchiveReadTokenService.create('alice', directories.root, [linkedDescriptor]);
-            expect((await get(`/api/chats/archive/view?token=${linkedToken}&hash=${linkedDescriptor.hash}`)).status).toBe(403);
         } finally {
             fs.rmSync(outsideRoot, { recursive: true, force: true });
         }
+    });
+
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('rejects symlinked read paths that resolve outside the archive root', async () => {
+            const outsideRoot = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-chat-archive-outside-'));
+            try {
+                const outsidePath = path.join(outsideRoot, 'outside.jsonl');
+                fs.writeFileSync(outsidePath, jsonl('outside', 1));
+                const linkedPath = path.join(directories.chats, 'outside-link.jsonl');
+                fs.symlinkSync(outsidePath, linkedPath);
+                const linkedDescriptor = { filePath: linkedPath };
+                const linkedToken = ArchiveReadTokenService.create('alice', directories.root, [linkedDescriptor]);
+                expect((await get(`/api/chats/archive/view?token=${linkedToken}&hash=${linkedDescriptor.hash}`)).status).toBe(403);
+            } finally {
+                fs.rmSync(outsideRoot, { recursive: true, force: true });
+            }
+        });
     });
 
     test('keeps archive read sessions independent from overlapping Data Maid sessions and authorization', async () => {

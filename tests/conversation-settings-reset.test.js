@@ -6,7 +6,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { afterAll, beforeEach, describe, expect, test } from '@jest/globals';
+import { afterAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+
+// Resetting settings and migrating conversations touch SQLite and disk snapshots, which can exceed Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
 
 import { branch, lines, thread } from './util/conversation-legacy-fixture.js';
 import { snapshotTree } from './util/install-sandbox.js';

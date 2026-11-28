@@ -1,8 +1,15 @@
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
 import { readFileSync } from 'node:fs';
 
 import { describe, expect, test } from '@jest/globals';
 
 import { getRenamedBundledThemeName } from '../../public/scripts/sillybunny-theme-css.js';
+import { REVISED_THEMES, THEME_TEXT_REVISION } from '../../public/scripts/sillybunny-theme-revisions.js';
+import { importPowerUserModule } from '../util/power-user-harness.js';
+
+const libadwaitaDark = JSON.parse(readFileSync(new URL('../../default/content/themes/Libadwaita Dark.json', import.meta.url), 'utf8'));
+const { powerUser } = await importPowerUserModule();
 
 describe('getRenamedBundledThemeName', () => {
     test('selects Libadwaita Dark when the saved selection is Libadwaita and no Libadwaita theme is loaded', () => {
@@ -24,14 +31,31 @@ describe('getRenamedBundledThemeName', () => {
 });
 
 describe('loadPowerUserSettings', () => {
-    test('renames the selection before the palette and text repairs, which find the theme by name', () => {
-        const source = readFileSync(new URL('../../public/scripts/power-user.js', import.meta.url), 'utf8');
-        const rename = source.indexOf('getRenamedBundledThemeName(power_user.theme, themes)');
-        const paletteRepair = source.indexOf('const migratedTheme = themes.find');
-        const textRepair = source.indexOf('planThemeTextRepair({');
+    test('renames the saved Libadwaita selection before text and palette repairs look up the theme by name', async () => {
+        const oldPalette = REVISED_THEMES['Libadwaita Dark'].old;
 
-        expect(rename).toBeGreaterThan(source.indexOf('themes = data.themes;'));
-        expect(rename).toBeLessThan(paletteRepair);
-        expect(rename).toBeLessThan(textRepair);
+        await powerUser.loadPowerUserSettings(
+            {
+                power_user: {
+                    theme: 'Libadwaita',
+                    ...oldPalette,
+                    custom_css: libadwaitaDark.custom_css,
+                    sb_theme_text_revision: 0,
+                },
+            },
+            {
+                themes: [libadwaitaDark],
+                context: [],
+                instruct: [],
+                sysprompt: [],
+                reasoning: [],
+            },
+        );
+
+        // Selection moved from 'Libadwaita' to 'Libadwaita Dark', AND text repair found 'Libadwaita Dark' by its new name.
+        expect(powerUser.power_user.theme).toBe('Libadwaita Dark');
+        expect(powerUser.power_user.sb_theme_text_revision).toBe(THEME_TEXT_REVISION);
+        expect(powerUser.power_user.main_text_color).toBe(libadwaitaDark.main_text_color);
+        expect(powerUser.power_user.quote_text_color).toBe(libadwaitaDark.quote_text_color);
     });
 });

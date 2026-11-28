@@ -5,7 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
 
 import extract from 'png-chunks-extract';
 import PNGtext from 'png-chunk-text';
@@ -15,7 +14,8 @@ import { AVATAR_HEIGHT, AVATAR_WIDTH } from '../src/constants.js';
 import { Jimp } from '../src/jimp.js';
 import { setConfigFilePath } from '../src/util.js';
 import encode from '../src/png/encode.js';
-import { escapeCharacterBookRegex, normalizeCharacterBookPosition } from '../public/scripts/world-info-character-book.js';
+import { importWorldInfoModule } from './util/world-info-module-harness.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const originalWorkingDirectory = process.cwd();
@@ -24,23 +24,16 @@ const originalDiskCacheSetting = process.env[diskCacheEnvironmentKey];
 const describeWindows = process.platform === 'win32' ? describe : describe.skip;
 const describeCaseSensitive = process.platform === 'win32' ? describe.skip : describe;
 const describePosix = process.platform === 'win32' ? describe.skip : describe;
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
+// Card creation and Jimp PNG verification can exceed Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
 process.env[diskCacheEnvironmentKey] = 'false';
 process.chdir(repoRoot);
 setConfigFilePath(path.join(repoRoot, 'default', 'config.yaml'));
 
 const { router: charactersRouter, sanitiseFilenameForWindows } = await import('../src/endpoints/characters.js');
-const worldInfoSource = fs.readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
-const conversionFunctions = ['convertCharacterBook', 'getFreeWorldEntryUid', 'parseRegexFromString'].map(name => {
-    const match = worldInfoSource.match(new RegExp(`^(?:export )?(function ${name}\\([\\s\\S]*?^})`, 'm'));
-    if (!match) throw new Error(`Missing function ${name}`);
-    return match[1];
-});
-const restoreCharacterBook = vm.runInNewContext(`${conversionFunctions.join('\n')}\nconvertCharacterBook`, {
-    structuredClone, escapeCharacterBookRegex, normalizeCharacterBookPosition,
-    worldInfoDataSnapshots: new WeakMap(), newWorldInfoEntryTemplate: {},
-    world_info_position: { before: 0, after: 1 }, world_info_logic: { AND_ANY: 0 },
-    extension_prompt_roles: { SYSTEM: 0 }, DEFAULT_DEPTH: 4, DEFAULT_WEIGHT: 100,
-});
+const { worldInfo } = await importWorldInfoModule();
+const restoreCharacterBook = worldInfo.convertCharacterBook;
 
 describe('character card metadata preservation', () => {
     let baseUrl;
@@ -377,26 +370,28 @@ describe('character card metadata preservation', () => {
         expect(fs.readFileSync(alicePath).equals(aliceBefore)).toBe(true);
     });
 
-    test('replaces a symlinked card path without modifying its target', async () => {
-        jest.spyOn(console, 'error').mockImplementation(() => {});
-        jest.spyOn(console, 'info').mockImplementation(() => {});
-        await createAlice();
-        const cardPath = path.join(directories.characters, 'Alice.png');
-        const outsidePath = path.join(tempRoot, 'outside.png');
-        fs.copyFileSync(cardPath, outsidePath);
-        const outsideBefore = fs.readFileSync(outsidePath);
-        fs.unlinkSync(cardPath);
-        fs.symlinkSync(outsidePath, cardPath);
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('replaces a symlinked card path without modifying its target', async () => {
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+            jest.spyOn(console, 'info').mockImplementation(() => {});
+            await createAlice();
+            const cardPath = path.join(directories.characters, 'Alice.png');
+            const outsidePath = path.join(tempRoot, 'outside.png');
+            fs.copyFileSync(cardPath, outsidePath);
+            const outsideBefore = fs.readFileSync(outsidePath);
+            fs.unlinkSync(cardPath);
+            fs.symlinkSync(outsidePath, cardPath);
 
-        const response = await postJson('/api/characters/merge-attributes', {
-            avatar: 'Alice.png',
-            creator: 'Somebody',
+            const response = await postJson('/api/characters/merge-attributes', {
+                avatar: 'Alice.png',
+                creator: 'Somebody',
+            });
+
+            expect(response.status).toBe(200);
+            expect(fs.lstatSync(cardPath).isSymbolicLink()).toBe(false);
+            expect(fs.readFileSync(outsidePath).equals(outsideBefore)).toBe(true);
+            expect(decodeCardChunks(fs.readFileSync(cardPath)).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
         });
-
-        expect(response.status).toBe(200);
-        expect(fs.lstatSync(cardPath).isSymbolicLink()).toBe(false);
-        expect(fs.readFileSync(outsidePath).equals(outsideBefore)).toBe(true);
-        expect(decodeCardChunks(fs.readFileSync(cardPath)).every(chunk => chunk.card.creator === 'Somebody')).toBe(true);
     });
 
     test('deletes chats under the existing dotted-card owner name', async () => {

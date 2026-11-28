@@ -1,64 +1,123 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static CSS/HTML contracts. */
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+    buildChatCompletionSamplingProfileKey,
+    buildChatCompletionSamplingSettingsSnapshot,
+} from '../public/scripts/openai-preset-utils.js';
+import { importConnectionManagerModule } from './util/connection-manager-harness.js';
+import { importOpenAiModule } from './util/openai-harness.js';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const openAiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'openai.js'), 'utf8');
-const connectionManagerSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'extensions', 'connection-manager', 'index.js'), 'utf8');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const toggleDependentCss = readFileSync(path.join(repoRoot, 'public', 'css', 'toggle-dependent.css'), 'utf8');
+const jquerySource = readFileSync(path.join(repoRoot, 'public', 'lib', 'jquery-3.5.1.min.js'), 'utf8');
 
-function getFunctionSourceFrom(source, name) {
-    const marker = `function ${name}(`;
-    const start = source.indexOf(marker);
+(0, eval)(jquerySource);
+$.fn.select2 = function () { return this; };
+$.fn.sortable = function () { return this; };
 
-    expect(start).toBeGreaterThanOrEqual(0);
+const { openai, mocks } = await importOpenAiModule();
+const initialDefaults = structuredClone(openai.oai_settings);
 
-    const bodyStart = source.indexOf(') {', start) + 2;
-    let depth = 0;
-
-    for (let index = bodyStart; index < source.length; index++) {
-        const char = source[index];
-        if (char === '{') {
-            depth++;
-        } else if (char === '}') {
-            depth--;
-            if (depth === 0) {
-                return source.slice(start, index + 1);
-            }
-        }
-    }
-
-    throw new Error(`Unable to find function source for ${name}`);
+function mountSamplingDom() {
+    document.body.innerHTML = `
+        <select id="chat_completion_source">
+            <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
+        </select>
+        <select id="model_openai_select">
+            <option value="gpt-5.6">gpt-5.6</option>
+        </select>
+        <select id="model_claude_select">
+            <option value="claude-opus-5">claude-opus-5</option>
+        </select>
+        <select id="settings_preset_openai">
+            <option value="0">Default</option>
+            <option value="1">Story</option>
+        </select>
+        <input id="temp_openai" type="number" value="1" />
+        <input id="top_p_openai" type="number" value="1" />
+        <input id="claude_disable_temperature" type="checkbox" />
+        <input id="claude_disable_top_p" type="checkbox" />
+        <input id="model_sampling_profiles_enabled" type="checkbox" />
+        <button id="api_button_openai" type="button"></button>
+        <div id="model_sampling_profiles_container">
+            <button id="model_sampling_profile_save" type="button"></button>
+            <button id="model_sampling_profile_clear" type="button"></button>
+            <div id="model_sampling_profile_status"></div>
+        </div>
+    `;
 }
 
-function getFunctionSource(name) {
-    return getFunctionSourceFrom(openAiSource, name);
-}
-
-describe('OpenAI sampling profile wiring', () => {
-    test('restores checkbox-backed sampling settings as checked state', () => {
-        const applySamplingSettingsSource = getFunctionSource('applySamplingSettings');
-
-        expect(applySamplingSettingsSource).toContain('for (const [selector, setting, isCheckbox, , isSampling] of Object.values(settingsToUpdate))');
-        expect(applySamplingSettingsSource).toContain('$(selector).prop(\'checked\', value).trigger(\'input\')');
-        expect(applySamplingSettingsSource).not.toContain('$(`#${key}`)');
+describe('OpenAI sampling profile behaviour', () => {
+    beforeEach(() => {
+        Object.assign(openai.oai_settings, structuredClone(initialDefaults));
+        mocks.script.saveSettingsDebounced.mockClear();
+        mocks.script.startStatusLoading.mockClear();
+        global.toastr.success.mockClear();
+        global.toastr.warning.mockClear();
+        mountSamplingDom();
     });
 
-    test('keeps sampling snapshots derived from settingsToUpdate', () => {
-        const getSamplingSettingsSnapshotSource = getFunctionSource('getSamplingSettingsSnapshot');
+    afterEach(async () => {
+        document.body.innerHTML = '';
+        await Promise.resolve();
+    });
 
-        expect(getSamplingSettingsSnapshotSource).toContain('buildChatCompletionSamplingSettingsSnapshot(oai_settings, settingsToUpdate)');
-        expect(getSamplingSettingsSnapshotSource).not.toContain('temp_openai: oai_settings.temp_openai');
+    test('saves sampling snapshots derived from settingsToUpdate and restores checkbox-backed sampling settings as checked state', () => {
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.CLAUDE;
+        openai.oai_settings.claude_model = 'claude-opus-5';
+        openai.oai_settings.temp_openai = 0.65;
+        openai.oai_settings.claude_disable_temperature = true;
+        openai.oai_settings.claude_disable_top_p = true;
+        openai.oai_settings.model_sampling_profiles_enabled = true;
+
+        openai.initOpenAI();
+
+        // Save snapshot via the real Save button click handler.
+        $('#model_sampling_profile_save').trigger('click');
+
+        const profileKey = buildChatCompletionSamplingProfileKey(openai.chat_completion_sources.CLAUDE, 'claude-opus-5');
+        const expectedSnapshot = buildChatCompletionSamplingSettingsSnapshot(openai.oai_settings, openai.settingsToUpdate);
+        expect(openai.oai_settings.model_sampling_profiles[profileKey]).toEqual(expectedSnapshot);
+        expect(openai.oai_settings.model_sampling_profiles[profileKey].claude_disable_temperature).toBe(true);
+        expect(openai.oai_settings.model_sampling_profiles[profileKey].temp_openai).toBe(0.65);
+
+        // Mutate live state and DOM checkboxes, then restore via maybeApplyModelSamplingProfile().
+        openai.oai_settings.temp_openai = 1.2;
+        openai.oai_settings.claude_disable_temperature = false;
+        openai.oai_settings.claude_disable_top_p = false;
+        $('#temp_openai').val('1.2');
+        $('#claude_disable_temperature').prop('checked', false);
+        $('#claude_disable_top_p').prop('checked', false);
+
+        const checkboxInputSpy = jest.fn();
+        $('#claude_disable_temperature').on('input', checkboxInputSpy);
+
+        openai.maybeApplyModelSamplingProfile();
+        expect(openai.oai_settings.temp_openai).toBe(0.65);
+        expect(openai.oai_settings.claude_disable_temperature).toBe(true);
+        expect($('#claude_disable_temperature').prop('checked')).toBe(true);
+        expect($('#claude_disable_top_p').prop('checked')).toBe(true);
+        expect(checkboxInputSpy).toHaveBeenCalled();
     });
 
     test('uses CSS-driven visibility for the model sampling profile controls', () => {
         expect(indexHtml).toContain('id="model_sampling_profiles_container"');
         expect(indexHtml).not.toContain('id="model_sampling_profiles_container" style=');
         expect(toggleDependentCss).toContain('label[for="model_sampling_profiles_enabled"]:has(input:checked)~#model_sampling_profiles_container');
-        expect(openAiSource).toContain('function syncModelSamplingProfilesUI()');
-        expect(openAiSource).not.toContain('function updateModelSamplingProfilesHelp()');
+
+        // Toggling the checkbox does not stamp an inline display style onto the container.
+        openai.initOpenAI();
+        $('#model_sampling_profiles_enabled').prop('checked', true).trigger('input');
+        expect(document.getElementById('model_sampling_profiles_container').getAttribute('style')).toBeNull();
+        $('#model_sampling_profiles_enabled').prop('checked', false).trigger('input');
+        expect(document.getElementById('model_sampling_profiles_container').getAttribute('style')).toBeNull();
     });
 
     test('keeps model sampling profile actions as text buttons', () => {
@@ -69,40 +128,93 @@ describe('OpenAI sampling profile wiring', () => {
         expect(indexHtml).not.toMatch(/id="model_sampling_profile_(?:save|clear)"[^>]*>\s*<i\b/);
     });
 
-    test('applies the selected model sampling profile when the chat completion source changes', () => {
-        const initOpenAISource = getFunctionSource('initOpenAI');
-        const sourceChangeStart = initOpenAISource.indexOf('$(\'#chat_completion_source\').on(\'change\', function () {');
-        const nextHandlerStart = initOpenAISource.indexOf('$(\'#oai_max_context_unlocked\')', sourceChangeStart);
+    test('applies the saved model sampling profile before saving and reconnecting when the chat completion source changes', async () => {
+        const claudeKey = buildChatCompletionSamplingProfileKey(openai.chat_completion_sources.CLAUDE, 'claude-opus-5');
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.OPENAI;
+        openai.oai_settings.openai_model = 'gpt-5.6';
+        openai.oai_settings.claude_model = 'claude-opus-5';
+        openai.oai_settings.temp_openai = 1.0;
+        openai.oai_settings.model_sampling_profiles_enabled = true;
+        openai.oai_settings.model_sampling_profiles = {
+            [claudeKey]: { temp_openai: 0.42, claude_disable_top_p: true },
+        };
+        mocks.secrets.secret_state[mocks.secrets.SECRET_KEYS.CLAUDE] = true;
 
-        expect(sourceChangeStart).toBeGreaterThanOrEqual(0);
-        expect(nextHandlerStart).toBeGreaterThan(sourceChangeStart);
+        const originalFetch = global.fetch;
+        global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ data: [] }) }));
 
-        const sourceChangeHandler = initOpenAISource.slice(sourceChangeStart, nextHandlerStart);
-        const toggleFormsIndex = sourceChangeHandler.indexOf('toggleChatCompletionForms();');
-        const restorePresetIndex = sourceChangeHandler.indexOf('restoreOpenAIPresetSelection(presetName);');
-        const applyProfileIndex = sourceChangeHandler.indexOf('maybeApplyModelSamplingProfile();');
-        const saveSettingsIndex = sourceChangeHandler.indexOf('saveSettingsDebounced();');
-        const reconnectIndex = sourceChangeHandler.indexOf('reconnectOpenAi();');
+        try {
+            openai.initOpenAI();
 
-        expect(toggleFormsIndex).toBeGreaterThanOrEqual(0);
-        expect(restorePresetIndex).toBeGreaterThan(toggleFormsIndex);
-        expect(applyProfileIndex).toBeGreaterThan(restorePresetIndex);
-        expect(saveSettingsIndex).toBeGreaterThan(applyProfileIndex);
-        expect(reconnectIndex).toBeGreaterThan(applyProfileIndex);
+            const observedAtSave = [];
+            const observedAtReconnect = [];
+            mocks.script.saveSettingsDebounced.mockImplementation(() => {
+                observedAtSave.push({ temp: openai.oai_settings.temp_openai, disableTopP: openai.oai_settings.claude_disable_top_p });
+            });
+            mocks.script.resultCheckStatus.mockImplementation(() => {
+                observedAtReconnect.push({ temp: openai.oai_settings.temp_openai, disableTopP: openai.oai_settings.claude_disable_top_p });
+            });
+
+            $('#chat_completion_source').val(openai.chat_completion_sources.CLAUDE).trigger('change');
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            expect(openai.oai_settings.chat_completion_source).toBe(openai.chat_completion_sources.CLAUDE);
+            expect(openai.oai_settings.temp_openai).toBe(0.42);
+            expect(openai.oai_settings.claude_disable_top_p).toBe(true);
+            expect(observedAtSave.at(-1)).toEqual({ temp: 0.42, disableTopP: true });
+            expect(observedAtReconnect[0]).toEqual({ temp: 0.42, disableTopP: true });
+        } finally {
+            global.fetch = originalFetch;
+        }
     });
 
-    test('re-applies the final model sampling profile after connection profile backend switches', () => {
-        const applyConnectionProfileSource = getFunctionSourceFrom(connectionManagerSource, 'applyConnectionProfile');
-        const commandLoopIndex = applyConnectionProfileSource.indexOf('for (const command of commands) {');
-        const applyProfileIndex = applyConnectionProfileSource.indexOf('maybeApplyModelSamplingProfile();');
-        const cancelSaveIndex = applyConnectionProfileSource.indexOf('cancelDebounce(saveSettingsDebounced);', applyProfileIndex);
-        const stopSpinnerIndex = applyConnectionProfileSource.indexOf('spinner.stop();');
+    test('re-applies the final model sampling profile after connection profile backend switches', async () => {
+        const events = [];
+        const profile = {
+            id: 'p-claude',
+            name: 'Claude Profile',
+            mode: 'cc',
+            api: 'claude',
+            preset: 'Story',
+            model: 'claude-opus-5',
+            exclude: [],
+        };
+        document.body.innerHTML = '<div id="rm_api_block"></div>';
+        const { mocks: cmMocks } = await importConnectionManagerModule({
+            extension_settings: {
+                connectionManager: { selectedProfile: '', profiles: [profile], folders: [], favorites: [] },
+            },
+            commands: {
+                api: async (_a, v) => { events.push(`cmd:api:${v}`); return v; },
+                preset: async (_a, v) => { events.push(`cmd:preset:${v}`); return v; },
+                model: async (_a, v) => { events.push(`cmd:model:${v}`); return v; },
+            },
+            openai: {
+                maybeApplyModelSamplingProfile: jest.fn(() => {
+                    const spinner = document.getElementById('connection_profile_spinner');
+                    events.push(`maybeApply:spinnerVisible=${!spinner.classList.contains('hidden')}`);
+                }),
+            },
+            utils: {
+                cancelDebounce: jest.fn(() => events.push('cancelDebounce')),
+            },
+        });
 
-        expect(openAiSource).toContain('export function maybeApplyModelSamplingProfile()');
-        expect(connectionManagerSource).toContain('maybeApplyModelSamplingProfile');
-        expect(commandLoopIndex).toBeGreaterThanOrEqual(0);
-        expect(applyProfileIndex).toBeGreaterThan(commandLoopIndex);
-        expect(cancelSaveIndex).toBeGreaterThan(applyProfileIndex);
-        expect(stopSpinnerIndex).toBeGreaterThan(applyProfileIndex);
+        const select = document.getElementById('connection_profiles');
+        select.value = 'p-claude';
+        select.dispatchEvent(new Event('change'));
+        for (let i = 0; i < 20; i++) await Promise.resolve();
+
+        expect(typeof openai.maybeApplyModelSamplingProfile).toBe('function');
+        expect(cmMocks.openai.maybeApplyModelSamplingProfile).toHaveBeenCalledTimes(1);
+
+        const lastModelIndex = events.lastIndexOf('cmd:model:claude-opus-5');
+        const applyIndex = events.indexOf('maybeApply:spinnerVisible=true');
+        const cancelAfterApplyIndex = events.indexOf('cancelDebounce', applyIndex + 1);
+
+        expect(lastModelIndex).toBeGreaterThan(-1);
+        expect(applyIndex).toBeGreaterThan(lastModelIndex);
+        expect(cancelAfterApplyIndex).toBeGreaterThan(applyIndex);
+        expect(document.getElementById('connection_profile_spinner').classList.contains('hidden')).toBe(true);
     });
 });

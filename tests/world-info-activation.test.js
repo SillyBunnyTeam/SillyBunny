@@ -1,4 +1,4 @@
-import { describe, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { event_types } from '../public/scripts/events.js';
 import { createHarness } from './util/world-info-harness.js';
@@ -22,45 +22,59 @@ import {
 
 const BOOK = 'Rules Book';
 
-function createMath(random) {
+function mockMathRandom(random) {
     const rolls = [random ?? []].flat();
     let used = 0;
-    return Object.assign(Object.create(Math), {
-        random() {
-            if (!rolls.length) {
-                throw new Error('This case rolled Math.random without setting random.');
-            }
-            return rolls[Math.min(used++, rolls.length - 1)];
-        },
+    return jest.spyOn(Math, 'random').mockImplementation(() => {
+        if (!rolls.length) {
+            throw new Error('This case rolled Math.random without setting random.');
+        }
+        return rolls[Math.min(used++, rolls.length - 1)];
     });
 }
 
+beforeEach(() => {
+    jest.spyOn(console, 'debug').mockImplementation(() => {});
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+afterEach(() => {
+    jest.restoreAllMocks();
+});
+
 async function scanSteps(testCase) {
     const entries = Object.fromEntries(testCase.entries.map(item => [item.uid, item]));
-    const context = createHarness({ books: { [BOOK]: { entries } } });
-    Object.assign(context, {
-        selected_world_info: [BOOK],
-        world_info: { charLore: [] },
-        chat_metadata: {},
-        power_user: {},
-        extensionPrompts: { note: { value: '', scan: true } },
-        ...testCase.state,
+    const harness = await createHarness({
+        books: { [BOOK]: { entries } },
+        selectedWorldInfo: [BOOK],
+        charLore: [],
+        state: {
+            chat_metadata: {},
+            power_user: {},
+            extensionPrompts: { note: { value: '', scan: true } },
+            ...testCase.state,
+        },
     });
-    context.characters.forEach(character => {
+    harness.state.characters.forEach(character => {
         character.data.extensions = {};
     });
 
     const outcomes = [];
     for (const step of getSteps(testCase)) {
-        Object.assign(context, BASELINE_SETTINGS, testCase.settings, step.settings);
-        context.Math = createMath(step.random ?? testCase.random);
-        context.eventSource.emit.mockClear();
-        const globalScanData = { ...context.defaultGlobalScanData, ...testCase.scanData };
-        const result = await context.checkWorldInfo(step.chat, step.maxContext ?? testCase.maxContext ?? 4000, false, globalScanData);
-        outcomes.push({
-            uids: [...result.allActivatedEntries].map(item => item.uid),
-            loops: context.eventSource.emit.mock.calls.filter(([name]) => name === event_types.WORLDINFO_SCAN_DONE).length,
-        });
+        harness.updateSettings({ ...BASELINE_SETTINGS, ...testCase.settings, ...step.settings }, [BOOK]);
+        const randomSpy = mockMathRandom(step.random ?? testCase.random);
+        harness.mocks.eventSource.emit.mockClear();
+        const globalScanData = { ...harness.defaultGlobalScanData, ...testCase.scanData };
+        try {
+            const result = await harness.checkWorldInfo(step.chat, step.maxContext ?? testCase.maxContext ?? 4000, false, globalScanData);
+            outcomes.push({
+                uids: [...result.allActivatedEntries].map(item => item.uid),
+                loops: harness.mocks.eventSource.emit.mock.calls.filter(([name]) => name === event_types.WORLDINFO_SCAN_DONE).length,
+            });
+        } finally {
+            randomSpy.mockRestore();
+        }
     }
     return outcomes;
 }

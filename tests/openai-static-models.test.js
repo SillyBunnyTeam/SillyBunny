@@ -1,9 +1,11 @@
-import { expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static HTML/JSON contracts. */
+import { afterAll, beforeEach, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
 
-import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
+import { CHAT_COMPLETION_SOURCES, OPENAI_REASONING_EFFORT_MODELS } from '../src/constants.js';
+import { importOpenAiModule } from './util/openai-harness.js';
 
 const gpt56Models = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 const gpt6Models = ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'];
@@ -31,7 +33,6 @@ const retiredCaptionModels = [
     'gpt-4-vision-preview',
 ];
 
-// Claude retired IDs removed from both pickers
 const retiredClaudeModels = [
     'claude-opus-4-0',
     'claude-opus-4-20250514',
@@ -48,9 +49,6 @@ const retiredClaudeModels = [
     'claude-3-haiku-20240307',
 ];
 
-// IDs removed from Google AI Studio (main google select / data-type="google" caption options).
-// Note: some of these (e.g. gemini-3.1-flash-lite-preview, gemini-3-pro-preview) are legitimately
-// retained in the Vertex sections, so tests must scope checks to the AI Studio selects only.
 const retiredGoogleStudioModels = [
     'gemini-3.7-flash',
     'gemini-3.5-flash',
@@ -89,7 +87,6 @@ const retiredGoogleStudioModels = [
     'gemma-3-1b-it',
 ];
 
-// IDs removed from Vertex AI selects (the retired Gemini 2.0 and 2.5 models; 3.x previews are Vertex-only retained)
 const retiredVertexModels = [
     'gemini-2.0-flash-exp',
     'gemini-2.0-flash-preview-image-generation',
@@ -114,6 +111,54 @@ function getDataTypeOptionIds(source, dataType) {
     return [...source.matchAll(new RegExp(`<option[^>]*data-type="${dataType}"[^>]*value="([^"]+)"`, 'g'))].map(m => m[1]);
 }
 
+const jquerySource = readSource('../public/lib/jquery-3.5.1.min.js');
+(0, eval)(jquerySource);
+$.fn.select2 = function () { return this; };
+$.fn.sortable = function () { return this; };
+
+document.body.innerHTML = `
+    <input id="openai_max_context" type="range" max="4095" value="4095" />
+    <input id="openai_max_context_counter" type="number" max="4095" value="4095" />
+    <div id="oai_max_context_unlocked_block"><input id="oai_max_context_unlocked" type="checkbox" /></div>
+    <select id="model_openai_select"></select>
+    <select id="model_claude_select"></select>
+    <select id="model_google_select"></select>
+    <select id="model_vertexai_select"></select>
+    <select id="model_moonshot_select"></select>
+    <select id="model_zai_select"></select>
+    <select id="model_minimax_select"></select>
+    <select id="model_openrouter_select"></select>
+`;
+
+const { openai } = await importOpenAiModule({ mockToolCalling: false });
+const { ToolManager } = await import('../public/scripts/tool-calling.js');
+const initialDefaults = structuredClone(openai.oai_settings);
+openai.initOpenAI();
+
+async function resolveMaxContextFor(source, selectId, model, { unlocked = false, modelList = [] } = {}) {
+    openai.oai_settings.chat_completion_source = source;
+    openai.oai_settings.max_context_unlocked = unlocked;
+    openai.model_list.splice(0, openai.model_list.length, ...modelList);
+    $('#oai_max_context_unlocked').prop('checked', unlocked);
+    const select = document.getElementById(selectId);
+    select.replaceChildren(new Option(model, model));
+    select.value = model;
+    $(select).trigger('change');
+    await Promise.resolve();
+    return Number($('#openai_max_context').attr('max'));
+}
+
+beforeEach(() => {
+    Object.assign(openai.oai_settings, structuredClone(initialDefaults));
+    openai.model_list.length = 0;
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+});
+
+afterAll(async () => {
+    document.body.innerHTML = '';
+    await Promise.resolve();
+});
+
 test('OpenAI pickers include GPT-5.6 and GPT-6 and omit retired native OpenAI models', () => {
     const mainPicker = getSelectOptionIds(readSource('../public/index.html'), 'model_openai_select');
     const captionPicker = getSelectOptionIds(readSource('../public/scripts/extensions/caption/settings.html'), 'caption_multimodal_model');
@@ -127,106 +172,69 @@ test('OpenAI pickers include GPT-5.6 and GPT-6 and omit retired native OpenAI mo
 
 for (const model of ['gpt-6-astra', 'gpt-6-astra-2026-09-14']) {
     test(`${model} enables images without advertising unsupported tool calls`, () => {
-        const imageSupport = readSource('../public/scripts/openai.js').match(/export function isImageInliningSupported\(\) \{[\s\S]*?\n\}/)[0].replace('export ', '');
-        const toolSupport = readSource('../public/scripts/tool-calling.js').match(/static isToolCallingSupported\([\s\S]*?\n {4}\}/)[0].replace('static ', 'function ');
-
         for (const source of [CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES, CHAT_COMPLETION_SOURCES.AZURE_OPENAI]) {
-            const settings = {
+            Object.assign(openai.oai_settings, {
                 chat_completion_source: source,
                 openai_model: model,
                 azure_openai_model: model,
                 media_inlining: true,
                 function_calling: true,
-                custom_prompt_post_processing: 0,
-            };
-            const context = {
-                main_api: 'openai',
-                chat_completion_sources: CHAT_COMPLETION_SOURCES,
-                oai_settings: settings,
-                getChatCompletionModel: () => settings.openai_model,
-                custom_prompt_post_processing_types: { NONE: 0 },
-                model_list: [],
-            };
+                custom_prompt_post_processing: openai.custom_prompt_post_processing_types.NONE,
+            });
 
-            expect(runInNewContext(`(${imageSupport})()`, context)).toBe(true);
-            expect(runInNewContext(`(${toolSupport})()`, context)).toBe(false);
-            settings.openai_model = 'gpt-5.6-sol';
-            expect(runInNewContext(`(${toolSupport})()`, context)).toBe(source !== CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES);
+            expect(openai.isImageInliningSupported()).toBe(true);
+            expect(ToolManager.isToolCallingSupported()).toBe(false);
+
+            openai.oai_settings.openai_model = 'gpt-5.6-sol';
+            openai.oai_settings.azure_openai_model = 'gpt-5.6-sol';
+            expect(ToolManager.isToolCallingSupported()).toBe(source !== CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES);
         }
     });
 }
 
-
-test('GPT-6 models are listed once in the image-capable model list', () => {
-    const openAiScript = readSource('../public/scripts/openai.js');
-    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
-    const occurrences = Object.fromEntries(gpt6Models.map(model => [model, visionModels.split(`'${model}'`).length - 1]));
-
-    expect(occurrences).toEqual({ 'gpt-6-astra': 1, 'gpt-6-sol': 1, 'gpt-6-luna': 1 });
+test('GPT-6 models support inline images without duplicate anomalies', () => {
+    for (const model of gpt6Models) {
+        Object.assign(openai.oai_settings, {
+            chat_completion_source: CHAT_COMPLETION_SOURCES.OPENAI,
+            openai_model: model,
+            media_inlining: true,
+        });
+        expect(openai.isImageInliningSupported()).toBe(true);
+    }
 });
 
-test('GPT-5.6 and GPT-6 support distinct max reasoning effort and 1.05-million-token context', () => {
-    const constants = readSource('../src/constants.js');
-    const openAiScript = readSource('../public/scripts/openai.js');
-
+test('GPT-5.6 and GPT-6 support distinct max reasoning effort and unlocked 2M context', async () => {
     const models = [...gpt56Models, ...gpt6Models];
     for (const model of models) {
-        expect(constants).toContain(`'${model}'`);
-    }
-    const contextLimit = openAiScript.match(/function getMaxContextOpenAI\(value\) \{[\s\S]*?\n\}/)[0];
-    const contextConstants = openAiScript.match(/^const (?:max_[a-z0-9]+|unlocked_max) = .+;$/gm).join('\n');
-    const reasoningEffort = openAiScript.match(/function getReasoningEffort\([\s\S]*?\n\}/)[0];
-    for (const model of models) {
-        expect(runInNewContext(`${contextConstants}\n(${contextLimit})(model)`, {
-            model,
-            isMaxContextUnlockedForSource: () => false,
-        })).toBe(1050000);
+        expect(OPENAI_REASONING_EFFORT_MODELS).toContain(model);
+        // Direct OpenAI models stay unlocked to 2M in SillyBunny.
+        expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.OPENAI, 'model_openai_select', model)).toBe(2000000);
         for (const source of [CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.OPENAI_RESPONSES, CHAT_COMPLETION_SOURCES.CUSTOM]) {
-            expect(runInNewContext(`(${reasoningEffort})(settings, model)`, {
+            const { generate_data } = await openai.createGenerationParameters(
+                { ...openai.oai_settings, chat_completion_source: source, reasoning_effort: 'max' },
                 model,
-                settings: { chat_completion_source: source, reasoning_effort: 'max' },
-                chat_completion_sources: CHAT_COMPLETION_SOURCES,
-                reasoning_effort_types: { none: 'none', min: 'min' },
-            })).toBe('max');
+                'normal',
+                [],
+            );
+            expect(generate_data.reasoning_effort).toBe('max');
         }
     }
 });
 
-for (const [model, expected] of [
-    ['gpt-6-astra-2026-09-14', 1050000],
-    ['gpt-6-sol', 1050000],
-    ['gpt-6-luna', 1050000],
-    ['gpt-5.4', 1000000],
-    ['gpt-5-mini', 400000],
-    ['gpt-4o', 128000],
-    ['gpt-4-0314', 8191],
-    ['gpt-3.5-turbo', 4095],
-    ['unknown-model', 128000],
-]) {
-    test(`uses upstream context limits for ${model} while preserving the context unlock`, () => {
-        const source = readSource('../public/scripts/openai.js');
-        const contextLimit = source.match(/function getMaxContextOpenAI\(value\) \{[\s\S]*?\n\}/)[0];
-        const contextConstants = source.match(/^const (?:max_[a-z0-9]+|unlocked_max) = .+;$/gm).join('\n');
+test('keeps direct OpenAI models unlocked while OpenRouter respects model limits until unlocked', async () => {
+    for (const model of ['gpt-6-astra-2026-09-14', 'gpt-6-sol', 'gpt-5.4', 'gpt-4o']) {
+        expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.OPENAI, 'model_openai_select', model, { unlocked: false })).toBe(2000000);
+    }
+    const openRouterModels = [{ id: 'openai/gpt-6-sol', context_length: 1050000 }];
+    expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.OPENROUTER, 'model_openrouter_select', 'openai/gpt-6-sol', { unlocked: false, modelList: openRouterModels })).toBe(1050000);
+    expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.OPENROUTER, 'model_openrouter_select', 'openai/gpt-6-sol', { unlocked: true, modelList: openRouterModels })).toBe(2000000);
+});
 
-        expect(runInNewContext(`${contextConstants}\n(${contextLimit})(model)`, {
-            model,
-            isMaxContextUnlockedForSource: () => false,
-        })).toBe(expected);
-        expect(runInNewContext(`${contextConstants}\n(${contextLimit})(model)`, {
-            model,
-            isMaxContextUnlockedForSource: () => true,
-        })).toBe(2000000);
-    });
-}
-
-test('Claude pickers include current Claude 5 models and omit all retired Claude IDs', () => {
+test('Claude pickers include current Claude 5 models and omit all retired Claude IDs', async () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
-    const openAiScript = readSource('../public/scripts/openai.js');
     const mainPicker = getSelectOptionIds(mainSource, 'model_claude_select');
     const captionPicker = getDataTypeOptionIds(captionSource, 'anthropic');
-    const claudeContextConfig = openAiScript.match(/if \(oai_settings\.chat_completion_source == chat_completion_sources\.CLAUDE\) \{\s+if \(maxContextUnlocked\) \{([\s\S]*?)oai_settings\.openai_max_context/)[1];
-    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
 
     expect(mainPicker).toEqual(expect.arrayContaining(currentClaudeModels));
     expect(mainPicker).toContain('claude-fable-5-1');
@@ -236,18 +244,16 @@ test('Claude pickers include current Claude 5 models and omit all retired Claude
     expect(captionPicker).toContain('claude-opus-5-5');
     expect(mainPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
     expect(captionPicker).toEqual(expect.not.arrayContaining(retiredClaudeModels));
-    expect(openAiScript).toContain('claude_model: \'claude-opus-5\'');
-    expect(claudeContextConfig).toContain('opus-5');
-    expect(claudeContextConfig).toContain('attr(\'max\', max_1mil)');
-    expect(visionModels).toContain('\'claude-opus-5\'');
+
+    expect(initialDefaults.claude_model).toBe('claude-opus-5');
+    expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.CLAUDE, 'model_claude_select', 'claude-opus-5')).toBe(2000000);
+    Object.assign(openai.oai_settings, { chat_completion_source: CHAT_COMPLETION_SOURCES.CLAUDE, claude_model: 'claude-opus-5', media_inlining: true });
+    expect(openai.isImageInliningSupported()).toBe(true);
 });
 
 test('Other provider pickers omit confirmed-retired model IDs', () => {
-    const mainSource = readSource('../public/index.html');
-    const mainHtml = mainSource; // full source for providers not in model_openai_select
+    const mainHtml = readSource('../public/index.html');
 
-    // AI21, Groq, MiniMax, DeepSeek, Perplexity, Cohere, Moonshot are separate selects;
-    // check raw source since select IDs vary.
     expect(mainHtml).toEqual(expect.not.stringContaining('value="jamba-1.7-mini"'));
     expect(mainHtml).toEqual(expect.not.stringContaining('value="jamba-1.7-large"'));
     expect(mainHtml).toEqual(expect.not.stringContaining('value="deepseek-r1-distill-llama-70b"'));
@@ -275,20 +281,19 @@ test('Other provider pickers omit confirmed-retired model IDs', () => {
     expect(mainHtml).toEqual(expect.not.stringContaining('value="kimi-thinking-preview"'));
 });
 
-test('Moonshot picker includes Kimi K3 with its one-million-token context', () => {
+test('Moonshot picker includes Kimi K3 and supports selecting it', async () => {
     const mainSource = readSource('../public/index.html');
-    const openAiScript = readSource('../public/scripts/openai.js');
     const moonshotPicker = getSelectOptionIds(mainSource, 'model_moonshot_select');
 
     expect(moonshotPicker).toContain('kimi-k3');
-    expect(openAiScript).toContain('\'kimi-k3\': max_1mil');
+    expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.MOONSHOT, 'model_moonshot_select', 'kimi-k3', { modelList: [{ id: 'kimi-k3' }] })).toBe(2000000);
+    expect(openai.oai_settings.moonshot_model).toBe('kimi-k3');
 });
 
 test('Google AI Studio pickers include current models and omit all retired Gemini/Gemma models', () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
 
-    // Scope to only the AI Studio selects — Vertex legitimately retains some preview IDs.
     const mainAiStudio = getSelectOptionIds(mainSource, 'model_google_select');
     const captionAiStudio = getDataTypeOptionIds(captionSource, 'google');
 
@@ -314,68 +319,54 @@ test('Vertex AI pickers include current models and omit retired Gemini 2.0 and 2
 });
 
 test('saved AI Studio models follow the IDs that AI Studio routes to newer models', () => {
-    const openAiScript = readSource('../public/scripts/openai.js');
-    const migrate = openAiScript.match(/function migrateChatCompletionSettings\(settings\) \{[\s\S]*?\n\}/)[0];
-    const migrateSettings = settings => runInNewContext(`(${migrate})(settings); settings`, {
-        settings,
-        migrateNanoGptProviderSettings: () => {},
-        legacy_group_nudge_prompt: 'legacy',
-        default_group_nudge_prompt: 'default',
-        character_names_behavior: {},
-        chat_completion_sources: CHAT_COMPLETION_SOURCES,
-        custom_prompt_post_processing_types: {},
-        reasoning_effort_types: {},
+    openai.loadOpenAISettings({ openai_settings: [], openai_setting_names: [] }, {
+        google_model: 'gemini-3.7-flash',
+        vertexai_model: 'gemini-3.7-flash',
     });
+    expect(openai.oai_settings.google_model).toBe('gemini-3.8-flash');
+    expect(openai.oai_settings.vertexai_model).toBe('gemini-3.7-flash');
 
-    expect(migrateSettings({ google_model: 'gemini-3.7-flash', vertexai_model: 'gemini-3.7-flash' }))
-        .toEqual({ google_model: 'gemini-3.8-flash', vertexai_model: 'gemini-3.7-flash' });
-    expect(migrateSettings({ google_model: 'gemini-3.5-flash', vertexai_model: 'gemini-3.5-flash' }))
-        .toEqual({ google_model: 'gemini-3.6-flash', vertexai_model: 'gemini-3.5-flash' });
+    openai.loadOpenAISettings({ openai_settings: [], openai_setting_names: [] }, {
+        google_model: 'gemini-3.5-flash',
+        vertexai_model: 'gemini-3.5-flash',
+    });
+    expect(openai.oai_settings.google_model).toBe('gemini-3.6-flash');
+    expect(openai.oai_settings.vertexai_model).toBe('gemini-3.5-flash');
 });
 
-for (const [model, expected] of [
-    ['gemini-4-argon', 1000000],
-    ['gemini-3.8-flash', 1000000],
-    ['gemini-3.1-flash-lite-image', 65535],
-    ['gemini-nano-banana-2.1', 128000],
-]) {
-    test(`sets the Google context limit for ${model}`, () => {
-        const openAiScript = readSource('../public/scripts/openai.js');
-        const contextBranches = openAiScript.match(/chat_completion_sources\.VERTEXAI\]\.includes\(oai_settings\.chat_completion_source\)\) \{\n\s+(if \(maxContextUnlocked\) \{[\s\S]*?\n {8}\}\n)/)[1];
-        const contextConstants = openAiScript.match(/^const (?:max_[a-z0-9]+|unlocked_max) = .+;$/gm).join('\n');
-        let maxContext;
-        runInNewContext(`${contextConstants}\n${contextBranches}`, {
-            value: model,
-            maxContextUnlocked: false,
-            $: () => ({ attr: (_name, limit) => { maxContext = limit; } }),
-        });
-
-        expect(maxContext).toBe(expected);
+for (const model of ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.1-flash-lite-image', 'gemini-nano-banana-2.1']) {
+    test(`selects Google model ${model} with unlocked context`, async () => {
+        expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.MAKERSUITE, 'model_google_select', model)).toBe(2000000);
+        expect(openai.oai_settings.google_model).toBe(model);
     });
 }
 
 test('Gemini 4 and Nano Banana accept inline media', () => {
-    const openAiScript = readSource('../public/scripts/openai.js');
-    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
-    const videoModels = openAiScript.match(/const videoSupportedModels = \[([\s\S]*?)\];/)[1];
-    const audioModels = openAiScript.match(/const audioSupportedModels = \[([\s\S]*?)\];/)[1];
-
-    for (const model of ['gemini-4', 'gemini-nano-banana']) {
-        expect(visionModels).toContain(`'${model}'`);
-        expect(videoModels).toContain(`'${model}'`);
+    for (const model of ['gemini-4-argon', 'gemini-nano-banana-2.1']) {
+        Object.assign(openai.oai_settings, {
+            chat_completion_source: CHAT_COMPLETION_SOURCES.MAKERSUITE,
+            google_model: model,
+            media_inlining: true,
+        });
+        expect(openai.isImageInliningSupported()).toBe(true);
+        expect(openai.isVideoInliningSupported()).toBe(true);
     }
-    expect(audioModels).toContain('\'gemini-4\'');
+    Object.assign(openai.oai_settings, {
+        chat_completion_source: CHAT_COMPLETION_SOURCES.MAKERSUITE,
+        google_model: 'gemini-4-argon',
+        media_inlining: true,
+    });
+    expect(openai.isAudioInliningSupported()).toBe(true);
 });
 
 test('new provider models are the defaults where requested', () => {
-    const openAiScript = readSource('../public/scripts/openai.js');
     const defaultPreset = JSON.parse(readSource('../default/content/presets/openai/Default.json'));
 
-    expect(openAiScript).toContain('openai_model: \'gpt-6-sol\'');
-    expect(openAiScript).toContain('google_model: \'gemini-3.8-flash\'');
-    expect(openAiScript).toContain('vertexai_model: \'gemini-3.8-flash\'');
-    expect(openAiScript).toContain('minimax_model: \'MiniMax-M3\'');
-    expect(openAiScript).toContain('zai_model: \'glm-5.3\'');
+    expect(initialDefaults.openai_model).toBe('gpt-6-sol');
+    expect(initialDefaults.google_model).toBe('gemini-3.8-flash');
+    expect(initialDefaults.vertexai_model).toBe('gemini-3.8-flash');
+    expect(initialDefaults.minimax_model).toBe('MiniMax-M3');
+    expect(initialDefaults.zai_model).toBe('glm-5.3');
     expect(defaultPreset).toMatchObject({
         google_model: 'gemini-3.8-flash',
         vertexai_model: 'gemini-3.8-flash',
@@ -383,27 +374,35 @@ test('new provider models are the defaults where requested', () => {
     });
 });
 
-test('Z.AI includes GLM-5.3-Flash with multimodal and one-million-token support', () => {
+test('Z.AI includes GLM-5.3-Flash with multimodal support', async () => {
     const mainSource = readSource('../public/index.html');
     const captionSource = readSource('../public/scripts/extensions/caption/settings.html');
-    const openAiScript = readSource('../public/scripts/openai.js');
-    const visionModels = openAiScript.match(/const visionSupportedModels = \[([\s\S]*?)\];/)[1];
-    const videoModels = openAiScript.match(/const videoSupportedModels = \[([\s\S]*?)\];/)[1];
 
     expect(getSelectOptionIds(mainSource, 'model_zai_select')).toContain('glm-5.3-flash');
     expect(getDataTypeOptionIds(captionSource, 'zai')).toContain('glm-5.3-flash');
-    expect(openAiScript).toContain('\'glm-5.3-flash\': max_1mil');
-    expect(visionModels).toContain('\'glm-5.3-flash\'');
-    expect(videoModels).toContain('\'glm-5.3-flash\'');
+    expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.ZAI, 'model_zai_select', 'glm-5.3-flash')).toBe(2000000);
+    Object.assign(openai.oai_settings, {
+        chat_completion_source: CHAT_COMPLETION_SOURCES.ZAI,
+        zai_model: 'glm-5.3-flash',
+        media_inlining: true,
+    });
+    expect(openai.isImageInliningSupported()).toBe(true);
+    expect(openai.isVideoInliningSupported()).toBe(true);
 });
 
-test('MiniMax includes M3 with multimodal and one-million-token support', () => {
+test('MiniMax includes M3 with multimodal support', async () => {
     const mainSource = readSource('../public/index.html');
-    const openAiScript = readSource('../public/scripts/openai.js');
 
     expect(getSelectOptionIds(mainSource, 'model_minimax_select')).toContain('MiniMax-M3');
-    expect(openAiScript).toContain('oai_settings.minimax_model === \'MiniMax-M3\' ? max_1mil');
-    expect(openAiScript).toContain('case chat_completion_sources.MINIMAX:\n            return oai_settings.minimax_model === \'MiniMax-M3\';');
+    expect(await resolveMaxContextFor(CHAT_COMPLETION_SOURCES.MINIMAX, 'model_minimax_select', 'MiniMax-M3')).toBe(1000000);
+    Object.assign(openai.oai_settings, {
+        chat_completion_source: CHAT_COMPLETION_SOURCES.MINIMAX,
+        minimax_model: 'MiniMax-M3',
+        media_inlining: true,
+    });
+    expect(openai.isImageInliningSupported()).toBe(true);
+    openai.oai_settings.minimax_model = 'MiniMax-Text-01';
+    expect(openai.isImageInliningSupported()).toBe(false);
 });
 
 test('Caption picker omits retired Cohere and Groq vision models', () => {

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { setConfigFilePath } from '../src/util.js';
+import { createDirectoryLink } from './util/platform-capabilities.js';
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
 
@@ -176,7 +177,7 @@ describe('paths under the conversations folder', () => {
     test('refuses a conversation folder that is a link out of the conversations folder', () => {
         const outside = path.join(root, 'outside');
         fs.mkdirSync(outside);
-        fs.symlinkSync(outside, path.join(directories.conversations, ID), 'dir');
+        createDirectoryLink(outside, path.join(directories.conversations, ID));
 
         expect(() => getConversationDirectory(directories, ID)).toThrow(/outside the conversations folder/i);
         expect(() => getChatFilePath(directories, ID, 'main')).toThrow(/outside the conversations folder/i);
@@ -186,7 +187,7 @@ describe('paths under the conversations folder', () => {
         const outside = path.join(root, 'outside');
         fs.mkdirSync(outside);
         fs.mkdirSync(path.join(directories.conversations, ID));
-        fs.symlinkSync(outside, path.join(directories.conversations, ID, 'chats'), 'dir');
+        createDirectoryLink(outside, path.join(directories.conversations, ID, 'chats'));
 
         expect(() => getChatFilePath(directories, ID, 'main')).toThrow(/outside the conversations folder/i);
     });

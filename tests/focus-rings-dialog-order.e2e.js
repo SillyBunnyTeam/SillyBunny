@@ -18,7 +18,8 @@ const surfaceById = id => {
 
 async function openAt(browser, { baseURL, locale, timezoneId }, id, variant) {
     const surface = surfaceById(id);
-    const context = await browser.newContext({ ...variantContextOptions(variant), baseURL, locale, timezoneId });
+    const storageState = test.info().project.use.storageState;
+    const context = await browser.newContext({ ...variantContextOptions(variant), baseURL, locale, timezoneId, ...(storageState ? { storageState } : {}) });
     const page = await context.newPage();
     await bootSurfaceApp(page, baseURL, { variant, needs: surface.needs ?? [] });
     await openSurface(page, surface, { viewport: variant.viewport });
@@ -80,7 +81,8 @@ const VIEWPORTS = { '1440x900': { width: 1440, height: 900 }, '390x844': { width
 async function bootChat(browser, { baseURL, locale, timezoneId }, viewport, fontScale = 1) {
     const size = VIEWPORTS[viewport];
     const coarse = viewport === '390x844';
-    const context = await browser.newContext({ viewport: size, hasTouch: coarse, isMobile: coarse, locale, timezoneId, serviceWorkers: 'block' });
+    const storageState = test.info().project.use.storageState;
+    const context = await browser.newContext({ viewport: size, hasTouch: coarse, isMobile: coarse, locale, timezoneId, serviceWorkers: 'block', ...(storageState ? { storageState } : {}) });
     const page = await context.newPage();
     await bootMiscWithChat(page, baseURL, size, { fontScale });
     return { context, page };

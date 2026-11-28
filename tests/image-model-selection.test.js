@@ -1,214 +1,297 @@
+/** @jest-environment jsdom */
 import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { parse } from 'acorn';
-import { describe, expect, jest, test } from '@jest/globals';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { getExtensionCapability } from '../public/scripts/sillybunny-conversation/extension-capabilities.js';
+import { loadSdModule } from './util/sd-module-harness.js';
 
-const source = readFileSync(new URL('../public/scripts/extensions/stable-diffusion/index.js', import.meta.url), 'utf8');
-const declarations = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }).body;
-
-function createRuntime(model = 'saved-model') {
-    const select = {
-        options: [{ value: model, text: model }],
-        value: model,
-        replaceChildren() { this.options = []; this.value = ''; },
-        add(option) { this.options.push(option); },
-        setAttribute() {},
-        removeAttribute() {},
-    };
-    const controls = new Map();
-    const $ = target => {
-        if (!controls.has(target)) {
-            const control = {
-                value: '',
-                prop() { return control; },
-                data() { return control; },
-                val(value) {
-                    if (value === undefined) return control.value;
-                    control.value = value;
-                    return control;
-                },
-            };
-            controls.set(target, control);
-        }
-        return controls.get(target);
-    };
-    $('#sd_model_custom').val(model);
-    const runtime = vm.createContext({
-        document: { querySelector: () => select },
-        Option: function (text, value) { return { text, value }; },
-        $,
-        extension_settings: { sd: { source: 'openai', model } },
-        sources: { electronhub: 'electronhub' },
-        getModelsForSource: jest.fn(),
-        saveSettingsDebounced: jest.fn(),
-        switchModelSpecificControls: jest.fn(),
-        ensureElectronHubQualitySelect: jest.fn(),
-        toastr: { warning: jest.fn() },
-        t: strings => strings.join(''),
-        console: { warn: jest.fn() },
-        onModelChange: async () => { runtime.extension_settings.sd.model = select.value; },
-    });
-    vm.runInContext('let modelLoadRequest = 0;', runtime);
-    for (const name of ['loadModels', 'onCustomModelChange']) {
-        const node = declarations.find(node => node.id?.name === name);
-        vm.runInContext(source.slice(node.start, node.end), runtime);
-    }
-    return { runtime, select, $ };
-}
+let activeHarness = null;
 
 function deferred() {
     let resolve;
-    const promise = new Promise(done => { resolve = done; });
-    return { promise, resolve };
+    let reject;
+    const promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return { promise, resolve, reject };
 }
+
+async function flushMicrotasks(rounds = 6) {
+    for (let i = 0; i < rounds; i++) {
+        await Promise.resolve();
+    }
+}
+
+async function bootSdWithModelMock({
+    source = 'openai',
+    model = 'saved-model',
+    initialModels = [{ value: model, text: model }],
+    sdSettings = {},
+    secretState = { api_key_openai: true },
+    onFetch,
+} = {}) {
+    let discoveryHandler = async () => ({
+        ok: true,
+        json: async () => initialModels,
+    });
+
+    const fetchMock = jest.fn(async (url, options) => {
+        if (onFetch) {
+            const custom = await onFetch(url, options);
+            if (custom !== undefined) return custom;
+        }
+        if (String(url) === '/api/sd/openai/models') {
+            return discoveryHandler(url, options);
+        }
+        return { ok: true, json: async () => [], text: async () => '' };
+    });
+
+    activeHarness = await loadSdModule({
+        fetch: fetchMock,
+        secretState,
+        sdSettings: {
+            source,
+            model,
+            ...sdSettings,
+        },
+    });
+    await activeHarness.sdModule.init();
+    activeHarness.saveSettingsDebounced.mockClear();
+    activeHarness.toastr.warning.mockClear();
+
+    const select = document.getElementById('sd_model');
+    const customInput = document.getElementById('sd_model_custom');
+
+    return {
+        harness: activeHarness,
+        select,
+        customInput,
+        fetchMock,
+        setDiscovery(handler) {
+            discoveryHandler = handler;
+        },
+        async triggerRefresh() {
+            window.$('#sd_models_refresh').trigger('click');
+            await flushMicrotasks();
+        },
+    };
+}
+
+afterEach(() => {
+    activeHarness?.cleanup();
+    activeHarness = null;
+    jest.restoreAllMocks();
+});
 
 describe('image model selection', () => {
     test('keeps a saved model absent from refreshed suggestions', async () => {
-        const { runtime, select } = createRuntime('custom-provider-model');
-        runtime.getModelsForSource.mockResolvedValue([{ value: 'new-image-model', text: 'New image model' }]);
-        await runtime.loadModels();
-        expect(select.options.map(option => option.value)).toEqual(['new-image-model', 'custom-provider-model']);
+        const { harness, select, setDiscovery, triggerRefresh } = await bootSdWithModelMock({
+            model: 'custom-provider-model',
+        });
+
+        setDiscovery(async () => ({
+            ok: true,
+            json: async () => [{ value: 'new-image-model', text: 'New image model' }],
+        }));
+        await triggerRefresh();
+
+        expect([...select.options].map(option => option.value)).toEqual(['new-image-model', 'custom-provider-model']);
         expect(select.value).toBe('custom-provider-model');
-        expect(runtime.extension_settings.sd.model).toBe('custom-provider-model');
-        expect(runtime.saveSettingsDebounced).not.toHaveBeenCalled();
+        expect(harness.extension_settings.sd.model).toBe('custom-provider-model');
+        expect(harness.saveSettingsDebounced).not.toHaveBeenCalled();
     });
 
     test('preserves the current list and selection after a discovery failure', async () => {
-        const { runtime, select } = createRuntime();
-        runtime.getModelsForSource.mockRejectedValue(new Error('Provider unavailable'));
-        await runtime.loadModels();
-        expect(select.options.map(option => option.value)).toEqual(['saved-model']);
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const { harness, select, setDiscovery, triggerRefresh } = await bootSdWithModelMock();
+
+        setDiscovery(async () => { throw new Error('Provider unavailable'); });
+        await triggerRefresh();
+
+        expect([...select.options].map(option => option.value)).toEqual(['saved-model']);
         expect(select.value).toBe('saved-model');
-        expect(runtime.extension_settings.sd.model).toBe('saved-model');
-        expect(runtime.toastr.warning).toHaveBeenCalledTimes(1);
+        expect(harness.extension_settings.sd.model).toBe('saved-model');
+        expect(harness.toastr.warning).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenCalled();
     });
 
     test('ignores late catalogs from a previously selected provider', async () => {
-        const { runtime, select } = createRuntime();
+        const { harness, select, setDiscovery } = await bootSdWithModelMock();
         const old = deferred();
-        runtime.getModelsForSource.mockReturnValueOnce(old.promise);
-        const first = runtime.loadModels();
-        runtime.extension_settings.sd = { source: 'novel', model: 'nai-diffusion-5-curated' };
-        runtime.getModelsForSource.mockResolvedValueOnce([{ value: 'nai-diffusion-5-full', text: 'V5 Full' }]);
-        await runtime.loadModels();
-        old.resolve([{ value: 'old-provider-model', text: 'Old' }]);
-        await first;
-        expect(select.options.map(option => option.value)).toEqual(['nai-diffusion-5-full', 'nai-diffusion-5-curated']);
+        setDiscovery(() => old.promise);
+
+        window.$('#sd_models_refresh').trigger('click');
+        await flushMicrotasks(2);
+
+        // Switch source to NovelAI while OpenAI discovery is still in flight.
+        harness.extension_settings.sd.source = 'novel';
+        harness.extension_settings.sd.model = 'nai-diffusion-5-curated';
+        window.$('#sd_models_refresh').trigger('click');
+        await flushMicrotasks(8);
+
+        old.resolve({
+            ok: true,
+            json: async () => [{ value: 'old-provider-model', text: 'Old' }],
+        });
+        await flushMicrotasks(8);
+
+        expect([...select.options].map(option => option.value)).not.toContain('old-provider-model');
+        expect([...select.options].map(option => option.value)).toContain('nai-diffusion-5-curated');
         expect(select.value).toBe('nai-diffusion-5-curated');
-        expect(runtime.extension_settings.sd.model).toBe('nai-diffusion-5-curated');
+        expect(harness.extension_settings.sd.model).toBe('nai-diffusion-5-curated');
     });
 
     test('uses the latest refresh result and preserves a selection changed while loading', async () => {
-        const { runtime, select } = createRuntime();
+        const { harness, select, setDiscovery } = await bootSdWithModelMock();
         const old = deferred();
         const latest = deferred();
-        runtime.getModelsForSource.mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
-        const first = runtime.loadModels();
-        const second = runtime.loadModels();
-        runtime.extension_settings.sd.model = 'chosen-during-refresh';
-        latest.resolve([{ value: 'current-model', text: 'Current' }]);
-        await second;
-        old.resolve([{ value: 'obsolete-model', text: 'Obsolete' }]);
-        await first;
-        expect(select.options.map(option => option.value)).toEqual(['current-model', 'chosen-during-refresh']);
+        let call = 0;
+        setDiscovery(() => (++call === 1 ? old.promise : latest.promise));
+
+        window.$('#sd_models_refresh').trigger('click');
+        window.$('#sd_models_refresh').trigger('click');
+        harness.extension_settings.sd.model = 'chosen-during-refresh';
+
+        latest.resolve({
+            ok: true,
+            json: async () => [{ value: 'current-model', text: 'Current' }],
+        });
+        await flushMicrotasks(8);
+
+        old.resolve({
+            ok: true,
+            json: async () => [{ value: 'obsolete-model', text: 'Obsolete' }],
+        });
+        await flushMicrotasks(8);
+
+        expect([...select.options].map(option => option.value)).toEqual(['current-model', 'chosen-during-refresh']);
         expect(select.value).toBe('chosen-during-refresh');
     });
 
     test('does not replace a custom ID being typed when discovery finishes', async () => {
-        const { runtime, select, $ } = createRuntime();
+        const { harness, select, customInput, setDiscovery } = await bootSdWithModelMock();
         const pending = deferred();
-        runtime.getModelsForSource.mockReturnValue(pending.promise);
-        const refresh = runtime.loadModels();
-        $('#sd_model_custom').val('unfinished-custom-id');
-        pending.resolve([{ value: 'listed', text: 'Listed' }]);
-        await refresh;
-        expect($('#sd_model_custom').val()).toBe('unfinished-custom-id');
+        setDiscovery(() => pending.promise);
+
+        window.$('#sd_models_refresh').trigger('click');
+        window.$(customInput).val('unfinished-custom-id');
+
+        pending.resolve({
+            ok: true,
+            json: async () => [{ value: 'listed', text: 'Listed' }],
+        });
+        await flushMicrotasks(8);
+
+        expect(customInput.value).toBe('unfinished-custom-id');
         expect(select.value).toBe('saved-model');
-        await runtime.onCustomModelChange();
-        expect(runtime.extension_settings.sd.model).toBe('unfinished-custom-id');
+
+        window.$(customInput).trigger('change');
+        await flushMicrotasks(4);
+        expect(harness.extension_settings.sd.model).toBe('unfinished-custom-id');
     });
 
     test('keeps a preexisting draft after discovery fails', async () => {
-        const { runtime, $ } = createRuntime();
-        $('#sd_model_custom').val('uncommitted-id');
-        runtime.getModelsForSource.mockRejectedValue(new Error('Unavailable'));
-        await runtime.loadModels();
-        expect($('#sd_model_custom').val()).toBe('uncommitted-id');
-        expect(runtime.extension_settings.sd.model).toBe('saved-model');
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const { harness, customInput, setDiscovery, triggerRefresh } = await bootSdWithModelMock();
+
+        window.$(customInput).val('uncommitted-id');
+        setDiscovery(async () => { throw new Error('Unavailable'); });
+        await triggerRefresh();
+
+        expect(customInput.value).toBe('uncommitted-id');
+        expect(harness.extension_settings.sd.model).toBe('saved-model');
     });
 
     test('sends the selected local checkpoint even if the server loaded another one', async () => {
         const requests = [];
-        const context = vm.createContext({
-            extension_settings: { sd: { model: 'saved-checkpoint', seed: 0 } },
-            getSdRequestBody: () => ({ url: 'http://local.invalid' }),
-            getRequestHeaders: () => ({}),
-            placeholderVae: 'N/A',
-            fetch: async (_url, options) => {
-                requests.push(JSON.parse(options.body));
-                return { ok: true, json: async () => ({ images: ['image'] }) };
+        await bootSdWithModelMock({
+            source: 'auto',
+            model: 'saved-checkpoint',
+            sdSettings: {
+                auto_url: 'http://local.invalid',
+                seed: 0,
+            },
+            onFetch: async (url, options) => {
+                if (String(url) === '/api/sd/generate') {
+                    requests.push(JSON.parse(options.body));
+                    return { ok: true, json: async () => ({ images: ['image'] }) };
+                }
+                if (String(url) === '/api/sd/options') {
+                    return { ok: true, json: async () => ({ sd_model_checkpoint: 'different-server-checkpoint' }), text: async () => 'different-server-checkpoint' };
+                }
+                return { ok: true, json: async () => [], text: async () => 'different-server-checkpoint' };
             },
         });
-        const node = declarations.find(node => node.id?.name === 'generateAutoImage');
-        vm.runInContext(source.slice(node.start, node.end), context);
-        await context.generateAutoImage('portrait', '', undefined);
+
+        const sdCapability = getExtensionCapability('stable-diffusion');
+        await sdCapability.generateScopedImage('portrait', '', { character: { name: 'Seraphina' } });
+
+        expect(requests).toHaveLength(1);
         expect(requests[0].override_settings.sd_model_checkpoint).toBe('saved-checkpoint');
         expect(requests[0].override_settings_restore_afterwards).toBe(true);
         expect(requests[0].seed).toBe(0);
     });
 
     test('accepts a trimmed custom ID and retains it through refresh', async () => {
-        const { runtime, select, $ } = createRuntime();
-        $('#sd_model_custom').val('  future-image-model  ');
-        await runtime.onCustomModelChange();
-        runtime.getModelsForSource.mockResolvedValue([{ value: 'listed-model', text: 'Listed' }]);
-        await runtime.loadModels();
+        const { harness, select, customInput, setDiscovery, triggerRefresh } = await bootSdWithModelMock();
+
+        window.$(customInput).val('  future-image-model  ').trigger('change');
+        await flushMicrotasks(4);
+
+        setDiscovery(async () => ({
+            ok: true,
+            json: async () => [{ value: 'listed-model', text: 'Listed' }],
+        }));
+        await triggerRefresh();
+
         expect(select.value).toBe('future-image-model');
-        expect(runtime.extension_settings.sd.model).toBe('future-image-model');
-        $('#sd_model_custom').val('  ');
-        await runtime.onCustomModelChange();
-        expect(runtime.extension_settings.sd.model).toBe('future-image-model');
+        expect(harness.extension_settings.sd.model).toBe('future-image-model');
+
+        window.$(customInput).val('  ').trigger('change');
+        await flushMicrotasks(4);
+        expect(harness.extension_settings.sd.model).toBe('future-image-model');
     });
 
     test('OpenAI image generation and settings omit retired Sora 2 video paths', async () => {
         const requests = [];
-        const context = vm.createContext({
-            extension_settings: {
-                sd: {
-                    model: 'gpt-image-2',
-                    width: 1024,
-                    height: 1536,
-                    openai_quality: 'standard',
-                    openai_quality_gpt: 'high',
-                    openai_style: 'vivid',
-                },
+        const { harness } = await bootSdWithModelMock({
+            source: 'openai',
+            model: 'gpt-image-2',
+            sdSettings: {
+                width: 1024,
+                height: 1536,
+                openai_quality: 'standard',
+                openai_quality_gpt: 'high',
+                openai_style: 'vivid',
+                prompt_prefix: '',
+                negative_prompt: '',
             },
-            getRequestHeaders: () => ({}),
-            fetch: async (url, options) => {
-                requests.push({ url, body: JSON.parse(options.body) });
-                return { ok: true, json: async () => ({ data: [{ b64_json: 'aW1hZ2U=' }] }) };
+            onFetch: async (url, options) => {
+                if (String(url).startsWith('/api/openai/')) {
+                    requests.push({ url: String(url), body: JSON.parse(options.body) });
+                    return { ok: true, json: async () => ({ data: [{ b64_json: 'aW1hZ2U=' }] }) };
+                }
+                return undefined;
             },
         });
-        const node = declarations.find(node => node.id?.name === 'generateOpenAiImage');
-        vm.runInContext(source.slice(node.start, node.end), context);
 
-        const image = await context.generateOpenAiImage('A lighthouse', undefined);
-        expect(image).toEqual({ format: 'png', data: 'aW1hZ2U=' });
+        const sdCapability = getExtensionCapability('stable-diffusion');
+        const result = await sdCapability.generateScopedImage('A lighthouse', '', { character: { name: 'Seraphina' } });
+
+        expect(result).toEqual({ url: '/user/images/Seraphina/Seraphina_timestamp.png' });
         expect(requests).toEqual([{
             url: '/api/openai/generate-image',
-            body: expect.objectContaining({ model: 'gpt-image-2', size: '1024x1536', quality: 'high', moderation: 'low' }),
+            body: expect.objectContaining({
+                model: 'gpt-image-2',
+                size: '1024x1536',
+                quality: 'high',
+                moderation: 'low',
+            }),
         }]);
+        expect(harness.extension_settings.sd).not.toHaveProperty('openai_duration');
+        expect(document.getElementById('sd_openai_duration')).toBeNull();
 
-        const defaultSettingsDecl = declarations
-            .filter(item => item.type === 'VariableDeclaration')
-            .flatMap(item => item.declarations)
-            .find(decl => decl.id?.name === 'defaultSettings');
-        const defaultSettingKeys = defaultSettingsDecl.init.properties.map(prop => prop.key?.name ?? prop.key?.value);
-        expect(defaultSettingKeys).not.toContain('openai_duration');
-        expect(source).not.toContain('/api/openai/generate-video');
-        expect(source).not.toContain('sd_openai_duration');
-        expect(source).not.toContain('isSora2');
-
+        // Keep genuine markup contract check on settings.html.
         const settingsHtml = readFileSync(new URL('../public/scripts/extensions/stable-diffusion/settings.html', import.meta.url), 'utf8');
         expect(settingsHtml).not.toContain('sd_openai_duration');
         expect(settingsHtml).not.toContain('sora-2');

@@ -2,8 +2,9 @@
 /* eslint-disable playwright/no-duplicate-hooks, playwright/no-standalone-expect -- Jest hooks and parameterised tests. */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 
 // Only the DOM is doubled. Saves run through the real agent store and fetch boundary.
 class Control {
@@ -29,6 +30,8 @@ class Control {
     fire(event, selector = '', target = this) { return this.handlers.get(`${event}:${selector}`)?.call(target); }
     off() { this.handlers.clear(); return this; }
     each() { return this; }
+    filter() { return this; }
+    remove() { return this; }
     first() { return this; }
     children(selector) { return this.find(selector); }
     closest() { return this.parent ?? this; }
@@ -58,9 +61,14 @@ function deferred() {
 }
 
 const events = new EventEmitter();
-const eventTypes = { CHAT_CHANGED: 'chat', SETTINGS_UPDATED: 'settings' };
+const eventTypes = {
+    CHAT_CHANGED: 'chat',
+    SETTINGS_UPDATED: 'settings',
+    WORLDINFO_UPDATED: 'worldinfo_updated',
+    WORLDINFO_RENAMED: 'worldinfo_renamed',
+    WORLDINFO_DELETED: 'worldinfo_deleted',
+};
 const summaryListeners = new Set();
-const generationListeners = new Set();
 const template = jest.fn(async () => new Control());
 const loadWorldInfo = jest.fn();
 const sidecarGenerate = jest.fn();
@@ -70,69 +78,147 @@ const saveSummaryMemoryContent = jest.fn();
 const syncTools = jest.fn();
 let context;
 let generation;
-let stopped;
 let summary;
 let profiles;
 let store;
 let tree;
+let runner;
+let queuedFrames = [];
 
-await jest.unstable_mockModule('../public/script.js', () => ({
+await jest.unstable_mockModule(pub('lib.js'), () => ({
+    DOMPurify: { sanitize: v => v },
+    Fuse: class {},
+    hljs: { highlightElement: jest.fn(), highlightAuto: jest.fn(v => ({ value: v })) },
+    showdown: { Converter: class { makeHtml(v) { return v; } } },
+    Handlebars: { compile: () => () => '', registerHelper: jest.fn() },
+    moment: () => ({ format: () => '' }),
+    lodash: {},
+}));
+await jest.unstable_mockModule(pub('scripts/templates.js'), () => ({
+    renderTemplate: jest.fn(() => ''),
+    renderTemplateAsync: jest.fn(async () => ''),
+}));
+await jest.unstable_mockModule(pub('scripts/reasoning.js'), () => ({ removeReasoningFromString: v => v }));
+await jest.unstable_mockModule(pub('scripts/events.js'), () => ({
+    eventSource: events,
+    event_types: eventTypes,
+}));
+await jest.unstable_mockModule(pub('script.js'), () => ({
     eventSource: events,
     event_types: eventTypes,
     online_status: 'connected',
     getRequestHeaders: () => ({}),
     saveSettingsDebounced: jest.fn(),
+    chat: [],
+    chat_metadata: {},
+    ensureSwipes: jest.fn(),
+    extension_prompt_roles: { SYSTEM: 0 },
+    extension_prompt_types: { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 },
+    extension_prompts: {},
+    setExtensionPrompt: jest.fn(),
+    setAgentGenerationContextProvider: jest.fn(),
+    substituteParams: v => v,
+    substituteParamsExtended: v => v,
+    generateQuietPrompt: jest.fn(),
+    getCurrentChatId: () => generation?.chatId ?? 'chat-a',
+    itemizedPrompts: [],
+    normalizeContentText: v => String(v ?? ''),
+    saveChatDebounced: jest.fn(),
+    stopGeneration: jest.fn(),
+    streamingProcessor: null,
+    syncMesToSwipe: jest.fn(),
+    updateMessageTokenAccounting: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({
+await jest.unstable_mockModule(pub('scripts/i18n.js'), () => ({
+    t: (s, ...v) => s.reduce((a, p, i) => a + p + (v[i] ?? ''), ''),
+    translate: v => String(v ?? ''),
+}));
+await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({ is_group_generating: false }));
+await jest.unstable_mockModule(pub('scripts/popup.js'), () => ({ Popup: class {}, POPUP_RESULT: {}, POPUP_TYPE: {}, callGenericPopup: jest.fn() }));
+const registerFunctionTool = jest.fn();
+const unregisterFunctionTool = jest.fn();
+await jest.unstable_mockModule(pub('scripts/tool-calling.js'), () => ({
+    ToolManager: {
+        registerFunctionTool,
+        unregisterFunctionTool,
+        isToolCallingSupported: () => true,
+        tools: [],
+    },
+}));
+await jest.unstable_mockModule(pub('scripts/chat-backup-sequence.js'), () => ({ resetChatBackupSequence: jest.fn() }));
+await jest.unstable_mockModule(pub('scripts/openai-model-capabilities.js'), () => ({ isKimiK3Model: () => false }));
+await jest.unstable_mockModule(pub('scripts/extensions.js'), () => ({
     getContext: () => context,
     extension_settings: {},
     renderExtensionTemplateAsync: template,
 }));
-await jest.unstable_mockModule('../public/scripts/utils.js', () => ({
+await jest.unstable_mockModule(pub('scripts/utils.js'), () => ({
     uuidv4: () => 'test-id',
     escapeHtml: value => String(value),
+    escapeRegex: s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
     regexFromString: value => new RegExp(value),
+    includesIgnoreCaseAndAccents: (a, b) => String(a ?? '').toLowerCase().includes(String(b ?? '').toLowerCase()),
+    delay: async () => {},
+    debounce: fn => fn,
+    onlyUnique: (v, i, a) => a.indexOf(v) === i,
+    isValidUrl: () => true,
 }));
-await jest.unstable_mockModule('../public/scripts/util/AccountStorage.js', () => ({
+await jest.unstable_mockModule(pub('scripts/util/AccountStorage.js'), () => ({
     accountStorage: { getItem: () => null, setItem: jest.fn() },
 }));
 // The shared row pass needs a browser document; the panel here is a jQuery double.
-await jest.unstable_mockModule('../public/scripts/sillybunny-settings-presentation.js', () => ({ normalizeBackendSettingsRows: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({ world_names: ['Book A', 'Book B'], loadWorldInfo }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/textarea-fullscreen.js', () => ({ attachTextareaFullscreen: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder-init.js', () => ({ runDiagnostics: jest.fn(async () => ({})) }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/profile-utils.js', () => ({
+await jest.unstable_mockModule(pub('scripts/sillybunny-settings-presentation.js'), () => ({ normalizeBackendSettingsRows: jest.fn() }));
+await jest.unstable_mockModule(pub('scripts/world-info.js'), () => ({
+    world_names: ['Book A', 'Book B'],
+    loadWorldInfo,
+    createWorldInfoEntry: jest.fn(),
+    syncWIOriginalDataEntry: jest.fn(),
+    deleteWIOriginalDataValue: jest.fn(),
+    reloadEditor: jest.fn(),
+}));
+await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/textarea-fullscreen.js'), () => ({ attachTextareaFullscreen: jest.fn() }));
+await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/pathfinder-init.js'), () => ({ runDiagnostics: jest.fn(async () => ({})) }));
+await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/profile-utils.js'), () => ({
     listConnectionProfiles: () => profiles,
     populateConnectionProfileSelect: jest.fn(),
+    getConnectionProfileDisplayName: () => '',
+    getConnectionProfileModelName: () => '',
 }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-runner.js', () => ({
-    getAgentGenerationContext: () => ({ ...generation }),
-    getAgentGenerationCancelRevision: () => generation.cancelRevision,
-    isAgentGenerationStopped: () => stopped,
-    getPathfinderRuntimeAgent: () => store.getEnabledToolAgents()[0] ?? null,
-    isPathfinderToolEnabledForAgent: (agent, name) => agent.settings?.toolStates?.[name] !== false,
-    syncToolAgentRegistrations: syncTools,
-    onAgentGenerationStateChanged: listener => { generationListeners.add(listener); return () => generationListeners.delete(listener); },
+await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/tool-action-registry.js'), () => ({
+    getToolAction: () => jest.fn(),
+    getToolFormatter: () => jest.fn(),
+    registerToolAction: jest.fn(),
+    registerToolFormatter: jest.fn(),
+    unregisterToolAction: jest.fn(),
+    unregisterToolFormatter: jest.fn(),
 }));
 
-const { ALL_TOOL_NAMES: toolNames, getActiveTunnelVisionBooks: activeBooks } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js');
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/activity-feed.js', () => ({ clearFeed: jest.fn(), getFeedItems: () => [] }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/summary-memory-store.js', () => ({
+const { ALL_TOOL_NAMES: toolNames, getActiveTunnelVisionBooks: activeBooks } = await import(pub('scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js'));
+await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/pathfinder/summary-memory-store.js'), () => ({
     getSummaryMemoryState: () => ({ ...summary }),
     onSummaryMemoryChanged: listener => { summaryListeners.add(listener); return () => summaryListeners.delete(listener); },
     saveSummaryMemoryContent,
+    isSummaryMemoryEntry: () => false,
+    markSummaryMemoryInjected: jest.fn(),
+    detachSummaryMemoryBook: jest.fn(),
+    renameSummaryMemoryBook: jest.fn(),
+    syncSummaryMemoryForBook: jest.fn(),
+    setSummaryMemoryCreated: jest.fn(),
 }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/llm-sidecar.js', () => ({ sidecarGenerate }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/tools/summarize.js', () => ({
+await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/pathfinder/llm-sidecar.js'), () => ({ sidecarGenerate, sidecarGenerateWithProfile: jest.fn() }));
+await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/pathfinder/tools/summarize.js'), () => ({
     createSummaryMemoryEntry,
     createSeparateSummaryMemoryEntry,
     deriveSummaryLorebookTitle: ({ title }) => title,
+    getDefinition: () => ({ name: 'Pathfinder_Summarize', actionKey: 'summarize', formatMessageKey: 'summarize' }),
+    registerActions: jest.fn(),
 }));
 
-store = await import('../public/scripts/extensions/in-chat-agents/agent-store.js');
-tree = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js');
-const ui = await import('../public/scripts/extensions/in-chat-agents/pathfinder-settings-ui.js');
-const prompts = await import('../public/scripts/extensions/in-chat-agents/pathfinder/prompts/prompt-store.js');
+store = await import(pub('scripts/extensions/in-chat-agents/agent-store.js'));
+tree = await import(pub('scripts/extensions/in-chat-agents/pathfinder/tree-store.js'));
+runner = await import(pub('scripts/extensions/in-chat-agents/agent-runner.js'));
+const ui = await import(pub('scripts/extensions/in-chat-agents/pathfinder-settings-ui.js'));
+const prompts = await import(pub('scripts/extensions/in-chat-agents/pathfinder/prompts/prompt-store.js'));
 
 function setting(panel, key, value) {
     const input = new Control();
@@ -151,29 +237,32 @@ function click(panel, selector) { return panel.find(selector).fire('click'); }
 function notifySummary() { for (const listener of summaryListeners) listener(); }
 
 function backgroundSaves() {
-    const source = readFileSync(new URL('../public/scripts/extensions/in-chat-agents/agent-runner.js', import.meta.url), 'utf8');
-    const runtime = vm.createContext({
-        console, structuredClone, pathfinderChatSyncRevision: 0, pathfinderToolRevision: 0,
-        isPathfinderSubmoduleEnabled: store.isPathfinderSubmoduleEnabled,
-        isAgentRuntimeAllowed: store.isAgentRuntimeAllowed,
-        getPathfinderRuntimeAgent: () => store.getEnabledToolAgents()[0], isPathfinderToolAgent: () => true,
-        getAgentById: store.getAgentById, getAgents: store.getAgents,
-        getCurrentSnapshotChatId: () => generation.chatId,
-        getPathfinderRuntimeSettings: tree.getSettings,
-        getContextualLorebooks: () => [context.chatMetadata.world_info],
-        saveAgent: store.saveAgent, syncToolAgentRegistrations: syncTools,
-        notifyAgentGenerationStateChanged: () => { for (const listener of generationListeners) listener(); },
-        onPathfinderWorldInfoRenamed() {}, onPathfinderWorldInfoDeleted() {}, invalidatePathfinderRetrieval() {},
-    });
-    for (const name of ['syncPathfinderAgentLorebooksForCurrentChat', 'onWorldInfoRenamedOrDeleted']) {
-        const match = source.match(new RegExp(`^(?:export )?((?:async )?function ${name}\\([\\s\\S]*?^})`, 'm'));
-        vm.runInContext(match[1], runtime);
-    }
-    return runtime;
+    // Runs through the real agent-runner.js ESM module wired to EventEmitter listeners.
+    return {
+        syncPathfinderAgentLorebooksForCurrentChat: (agent, opts) => runner.syncPathfinderAgentLorebooksForCurrentChat(agent, opts),
+        onWorldInfoRenamedOrDeleted: async (oldName, newName) => {
+            if (newName === undefined) {
+                await events.emit(eventTypes.WORLDINFO_DELETED, oldName);
+            } else {
+                await events.emit(eventTypes.WORLDINFO_RENAMED, oldName, newName);
+            }
+        },
+        advanceChatSyncRevision: (times = 1) => {
+            for (let i = 0; i < times; i++) {
+                events.emit(eventTypes.CHAT_CHANGED);
+            }
+            queuedFrames = [];
+        },
+    };
 }
 
 beforeEach(() => {
     jest.clearAllMocks();
+    queuedFrames = [];
+    globalThis.requestAnimationFrame = callback => {
+        queuedFrames.push(callback);
+        return queuedFrames.length;
+    };
     globalThis.$ = value => value instanceof Control ? value : new Control();
     globalThis.toastr = { info: jest.fn(), error: jest.fn(), warning: jest.fn(), success: jest.fn() };
     globalThis.window = { SillyTavern: { getContext: () => context }, matchMedia: () => ({ matches: true }) };
@@ -181,7 +270,6 @@ beforeEach(() => {
     globalThis.fetch = jest.fn(async () => ({ ok: true }));
     profiles = [];
     generation = { chatId: 'chat-a', runId: 1, cancelRevision: 0 };
-    stopped = false;
     context = {
         groupId: null,
         chatMetadata: { world_info: 'Book B' },
@@ -195,6 +283,7 @@ beforeEach(() => {
         tools: toolNames.map(name => ({ name, enabled: name !== 'Pathfinder_Summarize' })),
     })));
     tree.replaceSettings(store.getAgentById('agent-a').settings);
+    runner.initAgentRunner();
     syncTools.mockImplementation(() => tree.replaceSettings(store.getEnabledToolAgents()[0]?.settings ?? {}));
     summary = { title: 'Saved summary', content: 'Saved memory.', bookName: 'Book A', uid: 0, updatedAt: 1, injectedAt: 0 };
     saveSummaryMemoryContent.mockImplementation(async content => { summary = { ...summary, content }; notifySummary(); });
@@ -209,6 +298,7 @@ afterEach(() => {
     delete globalThis.toastr;
     delete globalThis.window;
     delete globalThis.fetch;
+    delete globalThis.requestAnimationFrame;
 });
 
 describe('Pathfinder settings persistence', () => {
@@ -250,7 +340,7 @@ describe('Pathfinder settings persistence', () => {
         await Promise.resolve();
         const obsolete = runtime.syncPathfinderAgentLorebooksForCurrentChat(undefined, { persist: true });
         generation.chatId = 'chat-b';
-        runtime.pathfinderChatSyncRevision++;
+        runtime.advanceChatSyncRevision(1);
         context.chatMetadata.world_info = 'Book C';
         const current = runtime.syncPathfinderAgentLorebooksForCurrentChat(undefined, { persist: true });
         request.resolve({ ok: true });
@@ -266,7 +356,7 @@ describe('Pathfinder settings persistence', () => {
         const old = runtime.syncPathfinderAgentLorebooksForCurrentChat(undefined, { persist: true });
         await Promise.resolve();
         generation.chatId = 'chat-b';
-        runtime.pathfinderChatSyncRevision++;
+        runtime.advanceChatSyncRevision(1);
         context.chatMetadata.world_info = 'Book A';
         const current = runtime.syncPathfinderAgentLorebooksForCurrentChat(undefined, { persist: true });
         request.resolve({ ok: true });
@@ -283,7 +373,7 @@ describe('Pathfinder settings persistence', () => {
         const editing = setting(panel, 'connectionProfile', 'new-profile');
         await Promise.resolve();
         const obsolete = runtime.syncPathfinderAgentLorebooksForCurrentChat(undefined, { persist: true });
-        runtime.pathfinderChatSyncRevision += 2;
+        runtime.advanceChatSyncRevision(2);
         context.chatMetadata.world_info = 'Book A';
         const current = runtime.syncPathfinderAgentLorebooksForCurrentChat(undefined, { persist: true });
         request.resolve({ ok: true });
@@ -321,13 +411,14 @@ describe('Pathfinder settings persistence', () => {
 
     test('captures each rapid toggle and registers tools only after its save', async () => {
         const panel = await ui.openPathfinderSettings(store.getAgentById('agent-a'));
+        registerFunctionTool.mockClear();
         const firstRequest = deferred();
         globalThis.fetch.mockReturnValueOnce(firstRequest.promise);
         const first = setting(panel, 'sidecarEnabled', true);
         const second = setting(panel, 'autoSummary', true);
         await Promise.resolve();
         expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-        expect(syncTools).not.toHaveBeenCalled();
+        expect(registerFunctionTool).not.toHaveBeenCalled();
         expect(store.getAgentById('agent-a').settings.sidecarEnabled).toBe(false);
         expect(tree.getSettings().autoSummary).toBe(false);
         firstRequest.resolve({ ok: true });
@@ -335,7 +426,7 @@ describe('Pathfinder settings persistence', () => {
         const payloads = globalThis.fetch.mock.calls.map(([, options]) => JSON.parse(options.body));
         expect(payloads[0].settings).toMatchObject({ sidecarEnabled: true, autoSummary: false, toolStates: { Pathfinder_Summarize: false } });
         expect(payloads[1].settings).toMatchObject({ sidecarEnabled: true, autoSummary: true, toolStates: { Pathfinder_Summarize: true } });
-        expect(syncTools).toHaveBeenCalledTimes(2);
+        expect(registerFunctionTool.mock.calls.some(([tool]) => tool?.name === 'Pathfinder_Summarize')).toBe(true);
         expect(tree.getSettings()).toMatchObject({ sidecarEnabled: true, autoSummary: true });
         expect(store.getAgentById('agent-a').phaseLocked).toBe(false);
     });
@@ -408,6 +499,7 @@ describe('Pathfinder settings persistence', () => {
     });
 
     test('drops queued saves on remount and never applies the old panel to a different agent', async () => {
+        const baseChatListeners = events.listenerCount('chat');
         const firstPanel = await ui.openPathfinderSettings(store.getAgentById('agent-a'));
         const request = deferred();
         globalThis.fetch.mockReturnValueOnce(request.promise);
@@ -422,7 +514,7 @@ describe('Pathfinder settings persistence', () => {
         expect(store.getAgentById('agent-b').settings.sidecarEnabled).toBe(false);
         expect(secondPanel.find('#pf--settings-save-status').text()).toBe('');
         expect(summaryListeners.size).toBe(1);
-        expect(events.listenerCount('chat')).toBe(1);
+        expect(events.listenerCount('chat')).toBe(baseChatListeners + 1);
     });
 
     test('does not overwrite a pending saved field when the same agent is remounted', async () => {
@@ -452,8 +544,7 @@ describe('Pathfinder settings persistence', () => {
     test('refreshes committed auto-sync selections without overwriting a summary draft', async () => {
         const panel = await ui.openPathfinderSettings(store.getAgentById('agent-a'));
         editSummary(panel, 'Keep this draft');
-        store.getAgentById('agent-a').settings.enabledLorebooks = ['Book B'];
-        for (const listener of generationListeners) listener();
+        await runner.syncPathfinderAgentLorebooksForCurrentChat(undefined, { persist: false });
         expect(panel.find('#pf--permission-matrix').markup).not.toContain('Book A');
         expect(panel.find('#pf--permission-matrix').markup).toContain('Book B');
         expect(panel.find('#pf--summary-content').val()).toBe('Keep this draft');
@@ -557,9 +648,7 @@ describe('Pathfinder summary drafts and generation', () => {
         const create = click(panel, '#pf--summary-create');
         const signal = sidecarGenerate.mock.calls[0][2];
         if (reason === 'stop') {
-            generation.cancelRevision++;
-            stopped = true;
-            for (const listener of generationListeners) listener();
+            runner.cancelAgentGeneration();
         } else if (reason === 'chat change') {
             generation.chatId = 'chat-b';
             events.emit('chat');
@@ -573,6 +662,17 @@ describe('Pathfinder summary drafts and generation', () => {
         request.resolve('{"title":"Late scene","content":"Must not be saved."}');
         await create;
         expect(createSummaryMemoryEntry).not.toHaveBeenCalled();
-        expect(generationListeners.size).toBe(reason === 'disable' ? 0 : 1);
+        expect(summaryListeners.size).toBe(reason === 'disable' ? 0 : 1);
+    });
+
+    test.each(['hidden', 'sb-subpage-store'])('refreshPathfinderSettings skips DOM updates while hosted inside a %s ancestor', async marker => {
+        const panel = await ui.openPathfinderSettings(store.getAgentById('agent-a'));
+        panel.isConnected = true;
+        panel.closest = selector => (selector.includes(marker) ? {} : null);
+        const findSpy = jest.spyOn(panel, 'find');
+
+        ui.refreshPathfinderSettings();
+
+        expect(findSpy).not.toHaveBeenCalled();
     });
 });

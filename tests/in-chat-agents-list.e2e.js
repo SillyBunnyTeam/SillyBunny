@@ -862,7 +862,8 @@ test('global switch and banner preserve row state and unfiltered header totals',
 });
 
 test('390px coarse controls meet 44px and interim pages keep shell and in-pane Back separate', async ({ browser, baseURL }) => {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block', reducedMotion: 'reduce' });
+    const storageState = test.info().project.use.storageState;
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block', reducedMotion: 'reduce', ...(storageState ? { storageState } : {}) });
     try {
         const page = await context.newPage();
         const { root } = await openAgents(page, baseURL, 390);

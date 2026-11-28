@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { fileURLToPath } from 'node:url';
 
 import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
 import { seedConversations, settle, startConversationServer } from './util/conversation-data-fixture.js';
 import { addCharacters, PERSONA } from './util/conversation-store-sandbox.js';
+
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 
 let data;
 const chatReadListeners = [];
@@ -23,11 +26,21 @@ const sendQueue = [];
 const cards = new Set(['Orion.png']);
 
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/send-queue.js', () => ({ enqueueConversationReply }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({ getConversationPersonaId: () => PERSONA }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+    getConversationPersonaId: () => PERSONA,
+    getRoleplayCurrentCharacter: jest.fn(() => null),
+    getRoleplayGroupById: jest.fn(() => null),
+}));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({ conversationData }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/media.js', () => ({ getCharacterForAvatar: avatar => (cards.has(avatar) ? { avatar } : null) }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-finalizer-browser.js', () => ({ finalizePendingReplies }));
-await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({ sendQueue }));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/reply-finalizer-browser.js', () => ({
+    finalizePendingReplies,
+    installReplyFinalizer: jest.fn(),
+}));
+await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
+    conversationState: { autoWorkerStarted: false },
+    sendQueue,
+}));
 
 const { installRoundResume } = await import('../public/scripts/sillybunny-conversation/round-resume-browser.js');
 const { roundMemory } = await import('../public/scripts/sillybunny-conversation/rounds.js');
@@ -135,7 +148,51 @@ describe('the round resumer of this page', () => {
 
 describe('the wiring of the mode', () => {
     test('installs the hook when the mode starts', async () => {
-        const { readFileSync } = await import('node:fs');
-        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/runtime.js', import.meta.url), 'utf8')).toContain('installRoundResume();');
+        await jest.unstable_mockModule(pub('script.js'), () => ({ chat: [] }));
+        await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({ selected_group: null }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/auto-engine.js'), () => ({
+            captureGroupAsideRequest: jest.fn(),
+            captureRoleplayAsideRequest: jest.fn(),
+            checkGroupChatMention: jest.fn(),
+            startConversationAutoWorker: jest.fn(),
+            stopConversationAutoWorker: jest.fn(),
+            triggerGroupAside: jest.fn(),
+            triggerRoleplayAside: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/context.js'), () => ({
+            getConversationPersonaId: () => PERSONA,
+            getRoleplayCurrentCharacter: jest.fn(() => null),
+            getRoleplayGroupById: jest.fn(() => null),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-list.js'), () => ({
+            getCharacterForGroupChatMessage: jest.fn(() => null),
+            getCurrentGroupConversationMembers: jest.fn(() => []),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/reply-events-browser.js'), () => ({
+            installReplyEvents: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/reply-finalizer-browser.js'), () => ({
+            finalizePendingReplies,
+            installReplyFinalizer: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/settings-store.js'), () => ({
+            getSettings: jest.fn(() => ({})),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/state.js'), () => ({
+            conversationState: { autoWorkerStarted: false },
+            sendQueue,
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/timers.js'), () => ({
+            setConversationTimeout: jest.fn(),
+        }));
+
+        await startData();
+        const runtime = await import(pub('scripts/sillybunny-conversation/runtime.js'));
+        runtime.installConversationReplyStream();
+
+        await data.loadChat(ADDRESS);
+        await settle();
+
+        expect(enqueueConversationReply).toHaveBeenCalledTimes(1);
     });
 });

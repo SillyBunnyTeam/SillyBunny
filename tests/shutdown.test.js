@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
-const SERVER_MAIN_SOURCE = new URL('../src/server-main.js', import.meta.url);
+import { bootServerMainHarness } from './util/server-main-harness.js';
 
 async function loadShutdownModule() {
     jest.resetModules();
@@ -60,12 +59,20 @@ describe('graceful shutdown', () => {
         expect(exitSpy).toHaveBeenCalledWith(0);
     });
 
-    test('does not wire process signals directly to the exit function', () => {
-        const source = readFileSync(SERVER_MAIN_SOURCE, 'utf8');
+    test.each(['SIGINT', 'SIGTERM'])('server-main %s listener exits with numeric 0 instead of the signal name', async (signal) => {
+        jest.useRealTimers();
+        const harness = await bootServerMainHarness();
+        try {
+            const listeners = harness.signalHandlers.get(signal) ?? [];
+            expect(listeners.length).toBeGreaterThan(0);
 
-        expect(source).toContain('process.on(\'SIGINT\', () => exitProcess(0));');
-        expect(source).toContain('process.on(\'SIGTERM\', () => exitProcess(0));');
-        expect(source).not.toContain('process.on(\'SIGINT\', exitProcess);');
-        expect(source).not.toContain('process.on(\'SIGTERM\', exitProcess);');
+            // Node passes the signal name as the first argument when invoking a signal listener.
+            const listener = listeners[listeners.length - 1];
+            await listener(signal);
+
+            expect(exitSpy).toHaveBeenCalledWith(0);
+        } finally {
+            harness.cleanup();
+        }
     });
 });

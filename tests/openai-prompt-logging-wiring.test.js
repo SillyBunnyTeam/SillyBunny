@@ -1,13 +1,18 @@
 import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+import { importOpenAiModule } from './util/openai-harness.js';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const openAiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'openai.js'), 'utf8');
+const { openai, mocks } = await importOpenAiModule();
 
 describe('OpenAI prompt logging wiring', () => {
-    test('passes the existing prompt-log preference to backend request metadata', () => {
-        expect(openAiSource).toContain('\'log_prompts\': Boolean(power_user.console_log_prompts),');
+    test('passes the existing prompt-log preference to backend request metadata', async () => {
+        const settings = { ...openai.oai_settings, chat_completion_source: openai.chat_completion_sources.OPENAI };
+
+        mocks.powerUser.console_log_prompts = false;
+        const { generate_data: disabledData } = await openai.createGenerationParameters(settings, 'gpt-4o', 'normal', []);
+        expect(disabledData.log_prompts).toBe(false);
+
+        mocks.powerUser.console_log_prompts = true;
+        const { generate_data: enabledData } = await openai.createGenerationParameters(settings, 'gpt-4o', 'normal', []);
+        expect(enabledData.log_prompts).toBe(true);
     });
 });

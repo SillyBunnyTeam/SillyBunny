@@ -1,8 +1,40 @@
 {
+    "rootDir": "..",
+    "roots": [
+        "<rootDir>/tests",
+        "<rootDir>/src",
+        "<rootDir>/public",
+        "<rootDir>/scripts"
+    ],
+    "testMatch": [
+        "**/tests/**/?(*.)+(spec|test).[jt]s?(x)"
+    ],
     "verbose": true,
+    "workerIdleMemoryLimit": "512MB",
+    "reporters": [
+        "default",
+        "<rootDir>/tests/util/v8-coverage-compact-reporter.js"
+    ],
     "transform": {},
     "testEnvironment": "node",
     "moduleNameMapper": {
-        "^/scripts/(.*)$": "<rootDir>/../public/scripts/$1"
-    }
+        "^/script\\.js$": "<rootDir>/public/script.js",
+        "^/lib\\.js$": "<rootDir>/public/lib.js",
+        "^/scripts/(.*)$": "<rootDir>/public/scripts/$1"
+    },
+    "coverageProvider": "v8",
+    "collectCoverageFrom": [
+        "src/**/*.js",
+        "public/script.js",
+        "public/scripts/**/*.js",
+        "scripts/**/*.js",
+        "!src/tokenizers/**",
+        "!scripts/art/**",
+        "!public/scripts/extensions/quick-image-gen/**",
+        "!public/scripts/extensions/third-party/**",
+        "!public/scripts/extensions/quick-reply/lib/**",
+        "!public/scripts/extensions/tts/lib/**",
+        "!public/scripts/extensions/sillybunny-debugger/lib/eruda.js",
+        "!**/*.min.js"
+    ]
 }

@@ -1,0 +1,244 @@
+[
+    {
+        "name": "unknown command is accepted",
+        "script": "/nosuchcommand arg",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "nosuchcommand", "command": null, "unnamed": ["arg"] }] } }
+    },
+    {
+        "name": "half typed command name",
+        "script": "/stp-pl",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "stp-pl", "command": null }] } }
+    },
+    {
+        "name": "slash alone",
+        "script": "/",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "", "command": null }] } }
+    },
+    {
+        "name": "slash before the closure end is not a run shorthand",
+        "script": "/stp-plain {: /:}",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "closure": { "rawText": " /", "executors": [{ "name": "", "command": null }] } }]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "unclosed closure",
+        "script": "/stp-plain {: /stp-plain x",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain x",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "nested unclosed closures",
+        "script": "/stp-plain {: /stp-plain {: /stp-plain x",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain {: /stp-plain x",
+                                    "executors": [
+                                        {
+                                            "name": "stp-plain",
+                                            "unnamed": [
+                                                {
+                                                    "closure": {
+                                                        "rawText": " /stp-plain x",
+                                                        "executors": [{ "name": "stp-plain", "unnamed": ["x"] }]
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "unclosed closure after a pipe",
+        "script": "/stp-plain {: /stp-plain a | /stp-plain",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain a | /stp-plain",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["a"] }, { "name": "stp-plain" }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "unclosed quote",
+        "script": "/stp-plain \"abc",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["abc"] }] } }
+    },
+    {
+        "name": "unclosed quote in strict mode",
+        "script": "/stp-plain \"abc | /stp-plain x",
+        "verify": false,
+        "flags": { "STRICT_ESCAPING": true },
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["abc | /stp-plain x"], "flags": ["STRICT_ESCAPING"] }]
+            }
+        }
+    },
+    {
+        "name": "unclosed quote in a named value",
+        "script": "/stp-plain key=\"abc",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "named": [{ "name": "key", "value": "abc" }] }] } }
+    },
+    {
+        "name": "unclosed comment",
+        "script": "// note",
+        "verify": false,
+        "expected": { "tree": { "executors": [] } }
+    },
+    {
+        "name": "unclosed block comment",
+        "script": "/* note",
+        "verify": false,
+        "expected": { "tree": { "executors": [] } }
+    },
+    {
+        "name": "trailing pipe",
+        "script": "/stp-plain a |",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["a"] }] } }
+    },
+    {
+        "name": "unknown command inside a closure",
+        "script": "/stp-plain {: /nosuch x :}",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /nosuch x ",
+                                    "executors": [{ "name": "nosuch", "command": null, "unnamed": ["x"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "valid scripts parse the same way",
+        "script": "/stp-plain a=1 text | /stp-plain {: /stp-plain b :}",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "stp-plain", "named": [{ "name": "a", "value": "1" }], "unnamed": ["text"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain b ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["b"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "half typed named argument",
+        "script": "/stp-plain key",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["key"] }] } }
+    },
+    {
+        "name": "partial run shorthand",
+        "script": "/:",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": ":", "command": "run", "unnamed": [""] }] } }
+    },
+    {
+        "name": "unclosed quote ends at a pipe and leaves the next command",
+        "script": "/stp-plain \"abc | /stp-plain x",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "stp-plain", "unnamed": ["abc "] }, { "name": "stp-plain", "unnamed": ["x"] }]
+            }
+        }
+    },
+    {
+        "name": "unclosed quote ends at the closure end and leaves it to the closure",
+        "script": "/stp-plain {: /stp-plain \"abc :} | /stp-plain y",
+        "verify": false,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /stp-plain \"abc ",
+                                    "executors": [{ "name": "stp-plain", "unnamed": ["abc "] }]
+                                }
+                            }
+                        ]
+                    },
+                    { "name": "stp-plain", "unnamed": ["y"] }
+                ]
+            }
+        }
+    }
+]

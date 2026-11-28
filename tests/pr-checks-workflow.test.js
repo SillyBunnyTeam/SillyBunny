@@ -13,6 +13,15 @@ describe('pull request checks workflow', () => {
         expect(commands).toContain('npm run lint --prefix tests');
     });
 
+    test('runs the server typecheck ratchet under Node 24', () => {
+        const job = workflow.jobs['server-typecheck'];
+        expect(job.name).toBe('✅ Check Server Types');
+        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+        const commands = runCommands('server-typecheck');
+        expect(commands).toContain('npm ci --ignore-scripts');
+        expect(commands).toContain('npm run check:server-types');
+    });
+
     test('checks agent template versions against the merge ref inside the required unit test job', () => {
         expect(workflow.jobs['run-tests'].name).toBe('✅ Run Unit Tests on PR');
         const step = workflow.jobs['run-tests'].steps.find(candidate => candidate.name === 'Check agent template versions');
@@ -21,16 +30,32 @@ describe('pull request checks workflow', () => {
         expect(step.env.BASE_REPOSITORY).toBe('${{ github.repository }}');
     });
 
-    test('boots the server under Node.js and keeps the Bun check name', () => {
-        expect(workflow.jobs['run-bun-checks'].name).toBe('✅ Check Bun Runtime');
-        const job = workflow.jobs['run-node-checks'];
-        expect(job.name).toBe('✅ Check Node Runtime');
-        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+    test('runs the full runtime parity suite under both Bun and Node.js and keeps required check names', () => {
+        const bunJob = workflow.jobs['run-bun-checks'];
+        expect(bunJob.name).toBe('✅ Check Bun Runtime');
+        expect(bunJob['timeout-minutes']).toBe(10);
+        expect(bunJob.steps.find(step => step.uses?.startsWith('oven-sh/setup-bun@')).with['bun-version']).toBe('1.4.4');
 
-        const bootStep = job.steps.find(step => step.name === 'Node boot smoke');
-        expect(bootStep.run).toContain('node server.js --browserLaunchEnabled=false');
-        expect(bootStep.run).toContain('curl --fail --silent --max-time 2 "$SILLYBUNNY_TEST_BASE_URL/"');
-        expect(bootStep.env).toEqual({ SILLYBUNNY_LAUNCHER: '1', SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' });
+        const bunParityStep = bunJob.steps.find(step => step.name === 'Run Bun runtime parity checks');
+        expect(bunParityStep.run).toBe('bun tests/runtime-parity.js --runtime bun --log-file "$RUNNER_TEMP/bun-parity-server.log"');
+
+        const bunUploadStep = bunJob.steps.find(step => step.name === 'Upload Bun server log on failure');
+        expect(bunUploadStep.if).toBe('failure() || cancelled()');
+        expect(bunUploadStep.uses).toMatch(/^actions\/upload-artifact@[0-9a-f]{40}$/);
+        expect(bunUploadStep.with.path).toBe('${{ runner.temp }}/bun-parity-server.log');
+
+        const nodeJob = workflow.jobs['run-node-checks'];
+        expect(nodeJob.name).toBe('✅ Check Node Runtime');
+        expect(nodeJob['timeout-minutes']).toBe(10);
+        expect(nodeJob.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+
+        const nodeParityStep = nodeJob.steps.find(step => step.name === 'Run Node runtime parity checks');
+        expect(nodeParityStep.run).toBe('node tests/runtime-parity.js --runtime node --log-file "$RUNNER_TEMP/node-parity-server.log"');
+
+        const nodeUploadStep = nodeJob.steps.find(step => step.name === 'Upload Node server log on failure');
+        expect(nodeUploadStep.if).toBe('failure() || cancelled()');
+        expect(nodeUploadStep.uses).toMatch(/^actions\/upload-artifact@[0-9a-f]{40}$/);
+        expect(nodeUploadStep.with.path).toBe('${{ runner.temp }}/node-parity-server.log');
     });
 
     test('runs the character index tests under Bun after the Bun install', () => {
@@ -55,6 +80,42 @@ describe('pull request checks workflow', () => {
         const testIndex = commands.indexOf('bun test ./tests/conversation-index.test.js');
         expect(installIndex).toBeGreaterThanOrEqual(0);
         expect(testIndex).toBeGreaterThan(installIndex);
+    });
+
+    test('runs the unit suite on Windows with Node 24 and ignore-scripts installs', () => {
+        const job = workflow.jobs['run-tests-windows'];
+        expect(job.name).toBe('✅ Run Unit Tests on Windows');
+        expect(job['runs-on']).toBe('windows-latest');
+        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+        const commands = runCommands('run-tests-windows');
+        expect(commands).toContain('npm ci --ignore-scripts');
+        expect(commands).toContain('npm ci --ignore-scripts --prefix tests');
+        expect(commands).toContain('npm run test:unit --prefix tests');
+    });
+
+    test('runs the Chromium E2E smoke suite within the ten-minute PR budget', () => {
+        const job = workflow.jobs['run-e2e-smoke'];
+        expect(job.name).toBe('✅ Run E2E Smoke on PR');
+        expect(job['timeout-minutes']).toBe(10);
+        expect(job.steps.find(step => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe(24);
+        expect(job.steps.find(step => step.uses?.startsWith('oven-sh/setup-bun@')).with['bun-version']).toBe('1.4.4');
+
+        const commands = runCommands('run-e2e-smoke');
+        expect(commands).toContain('npm ci --ignore-scripts');
+        expect(commands).toContain('npm ci --ignore-scripts --prefix tests');
+        expect(commands).toContain('npx --no-install playwright install --with-deps chromium');
+        expect(commands).toContain('npm run init');
+
+        const smokeStep = job.steps.find(step => step.name === 'Run Chromium E2E smoke suite');
+        expect(smokeStep.env).toEqual({ SILLYBUNNY_LAUNCHER: '1', SILLYBUNNY_SKIP_BROWSER_AUTO_LAUNCH: '1' });
+        expect(smokeStep.run).toContain('bun server.js --browserLaunchEnabled=false');
+        expect(smokeStep.run).toContain('node tests/e2e-servers-prime.js --browser=chromium');
+        expect(smokeStep.run).toContain('npm run test:e2e:smoke --prefix tests');
+
+        const logStep = job.steps.find(step => step.name === 'Print server log on failure');
+        const uploadStep = job.steps.find(step => step.name === 'Upload failure diagnostics');
+        expect(logStep.if).toBe('failure() || cancelled()');
+        expect(uploadStep.if).toBe('failure() || cancelled()');
     });
 
     test('pins every action to a full commit SHA', () => {

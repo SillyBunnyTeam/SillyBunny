@@ -761,7 +761,8 @@ for (const { candidate: plan } of heaviestFirst) {
         async function scanBoot(viewport, pass) {
             const cell = newCell(viewport, pass);
             const variant = { ...CELL, viewport, theme: pass.theme.id };
-            const context = await browser.newContext({ ...variantContextOptions(variant), baseURL, locale, timezoneId, ...(extraHTTPHeaders && { extraHTTPHeaders }) });
+            const storageState = test.info().project.use.storageState;
+            const context = await browser.newContext({ ...variantContextOptions(variant), baseURL, locale, timezoneId, ...(extraHTTPHeaders && { extraHTTPHeaders }), ...(storageState ? { storageState } : {}) });
             let stage = 'boot';
             try {
                 const page = await context.newPage();

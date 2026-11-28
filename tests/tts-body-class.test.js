@@ -1,25 +1,55 @@
-import fs from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, test } from '@jest/globals';
+import { loadTtsModule } from './util/tts-module-harness.js';
 
-const ttsSource = (await fs.readFile(fileURLToPath(new URL('../public/scripts/extensions/tts/index.js', import.meta.url)), 'utf8')).replace(/\r\n/g, '\n');
+let activeHarness = null;
+
+afterEach(() => {
+    activeHarness?.cleanup();
+    activeHarness = null;
+});
 
 describe('TTS body class', () => {
-    test('the tts class follows a boolean, because the setting is undefined until the switch is first used', () => {
-        const loadSettingsStart = ttsSource.indexOf('function loadSettings()');
-        const loadSettingsEnd = ttsSource.indexOf('const defaultSettings = {', loadSettingsStart);
-        const loadSettings = ttsSource.slice(loadSettingsStart, loadSettingsEnd);
+    test('the tts class stays off on first load when enabled is undefined, and clears a stale tts class', async () => {
+        activeHarness = await loadTtsModule({
+            ttsSettings: {},
+            initialBodyClass: 'tts',
+        });
 
-        expect(loadSettingsStart).toBeGreaterThanOrEqual(0);
-        expect(loadSettingsEnd).toBeGreaterThan(loadSettingsStart);
-        expect(loadSettings).toContain('$(\'body\').toggleClass(\'tts\', Boolean(extension_settings.tts.enabled));');
-        expect(loadSettings).not.toContain('toggleClass(\'tts\', extension_settings.tts.enabled)');
+        await activeHarness.ttsModule.init();
+
+        expect(activeHarness.extension_settings.tts.enabled).toBeUndefined();
+        expect(document.body.classList.contains('tts')).toBe(false);
+        expect(document.getElementById('tts_enabled').checked).toBe(false);
+
+        activeHarness.cleanup();
+
+        activeHarness = await loadTtsModule({
+            ttsSettings: {},
+            initialBodyClass: '',
+        });
+
+        await activeHarness.ttsModule.init();
+
+        expect(document.body.classList.contains('tts')).toBe(false);
     });
 
-    test('the switch handler sets the setting from the checkbox, so its class state is a boolean', () => {
-        const start = ttsSource.indexOf('function onEnableClick()');
-        const handler = ttsSource.slice(start, ttsSource.indexOf('\n}\n', start));
+    test('the switch handler writes a boolean setting from the checkbox and toggles the body class', async () => {
+        activeHarness = await loadTtsModule({
+            ttsSettings: {},
+        });
 
-        expect(start).toBeGreaterThanOrEqual(0);
-        expect(handler).toContain('extension_settings.tts.enabled = $(\'#tts_enabled\').is(');
+        await activeHarness.ttsModule.init();
+
+        const checkbox = document.getElementById('tts_enabled');
+        checkbox.click();
+
+        expect(activeHarness.extension_settings.tts.enabled).toBe(true);
+        expect(document.body.classList.contains('tts')).toBe(true);
+
+        checkbox.click();
+
+        expect(activeHarness.extension_settings.tts.enabled).toBe(false);
+        expect(document.body.classList.contains('tts')).toBe(false);
     });
 });

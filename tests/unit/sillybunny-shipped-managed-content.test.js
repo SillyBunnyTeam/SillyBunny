@@ -10,6 +10,7 @@ import extract from 'png-chunks-extract';
 
 import { buildManifest, fingerprintSpriteFile, readManifest } from '../../src/sillybunny-managed-content.js';
 import { getHomeAssistants } from '../../public/scripts/sillybunny-home/assistant-registry.js';
+import { loadExpressionsModule } from '../util/expressions-module-harness.js';
 
 const CONTENT_DIRECTORY = fileURLToPath(new URL('../../default/content/', import.meta.url));
 const INDEX = JSON.parse(readFileSync(new URL('../../default/content/index.json', import.meta.url), 'utf8'));
@@ -17,9 +18,10 @@ const manifest = readManifest(CONTENT_DIRECTORY);
 const LEXICON = 'SillyBunny Lexicon.json';
 const LEXICON_NAME = path.parse(LEXICON).name;
 
-/** The labels that the Expressions extension asks a sprite folder for, read from its source so the two cannot drift. */
-const EXPRESSION_LABELS = [...readFileSync(new URL('../../public/scripts/extensions/expressions/index.js', import.meta.url), 'utf8')
-    .match(/const DEFAULT_EXPRESSIONS = \[([^\]]+)\]/)[1].matchAll(/'([a-z]+)'/g)].map(([, label]) => label);
+/** The labels that the Expressions extension asks a sprite folder for, resolved by running its real offline fallback. */
+const expressionsHarness = await loadExpressionsModule({ expressionsSettings: { api: 99, custom: [] } });
+const EXPRESSION_LABELS = await expressionsHarness.expressionsModule.getExpressionsList();
+expressionsHarness.cleanup();
 
 /** The folder of a pack is the name of the card, because the extension looks sprites up by the name of the character. */
 const EXPRESSION_PACKS = [

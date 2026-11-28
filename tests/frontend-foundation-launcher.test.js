@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { findNpmCli, getNpmCommand } from '../src/npm-launcher.js';
+import { isBunRuntime } from '../src/runtime.js';
 
 const launcherUrl = new URL('../scripts/lib/npm-launcher.js', import.meta.url);
 const temporaryRoots = [];
@@ -84,5 +86,52 @@ describe('frontend foundation npm launcher', () => {
         expect(result.status).toBe(1);
         expect(result.stderr).toContain('Missing script: "missing-foundation-check"');
         expect(result.stderr).toContain('exited with status 1');
+    });
+});
+
+describe('Windows npm-cli.js launcher branch', () => {
+    function createFakeNpmCli(rootDir) {
+        const npmCliPath = path.join(rootDir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+        fs.mkdirSync(path.dirname(npmCliPath), { recursive: true });
+        fs.writeFileSync(npmCliPath, '// stub npm-cli.js\n', 'utf8');
+        return npmCliPath;
+    }
+
+    test('resolves npm_execpath on win32 and launches npm-cli.js through Node instead of npm.cmd', () => {
+        const cwd = createWorkingDirectory();
+        const npmCliPath = createFakeNpmCli(cwd);
+
+        const command = getNpmCommand(['run', 'lint'], {
+            platform: 'win32',
+            env: { npm_execpath: npmCliPath, Path: '' },
+        });
+
+        expect(command).toEqual({
+            command: isBunRuntime() ? 'node' : process.execPath,
+            args: [npmCliPath, 'run', 'lint'],
+        });
+    });
+
+    test('falls back to case-insensitive quoted Path entries on win32 when npm_execpath is not npm-cli.js', () => {
+        const cwd = createWorkingDirectory();
+        const npmCliPath = createFakeNpmCli(cwd);
+
+        const env = {
+            npm_execpath: path.join(cwd, 'pnpm.cjs'),
+            Path: `"${cwd}"${path.delimiter}${path.join(cwd, 'missing-dir')}`,
+        };
+
+        expect(findNpmCli(env)).toBe(npmCliPath);
+        expect(getNpmCommand(['--version'], { platform: 'win32', env })).toEqual({
+            command: isBunRuntime() ? 'node' : process.execPath,
+            args: [npmCliPath, '--version'],
+        });
+    });
+
+    test('keeps plain npm on non-Windows platforms', () => {
+        expect(getNpmCommand(['run', 'lint'], { platform: 'linux', env: {} })).toEqual({
+            command: 'npm',
+            args: ['run', 'lint'],
+        });
     });
 });

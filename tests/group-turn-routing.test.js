@@ -1,11 +1,17 @@
+/** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
-import vm from 'node:vm';
-import { describe, expect, test } from '@jest/globals';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+
 import { createGroupTurnRouting } from '../public/scripts/group-turn-routing.js';
 import { createGroupChatsRuntime } from './util/group-chats-sandbox.js';
 
 const members = new Map([['alice.png', 0], ['bob.png', 1], ['carol.png', 2]]);
 const resolveMember = avatar => members.get(avatar) ?? -1;
+
+afterEach(() => {
+    jest.restoreAllMocks();
+    document.body.replaceChildren();
+});
 
 /**
  * An open group chat whose scope the test can change, with one routing owner that logs every event it receives.
@@ -333,14 +339,14 @@ describe('routed turns', () => {
 });
 
 /**
- * A group chat sandbox where a routing owner holds the lease. The owner's plan requests and events go into the
- * sandbox log next to the user message and each reply, so tests can check the order they happen in.
+ * A real group-chats.js runtime where a routing owner holds the lease. The owner's plan requests and
+ * events go into the log next to the user message and each reply, so tests check exact call order.
  */
-function createRoutedGroupChat({ plan = () => ({ avatars: ['alice.png'], isCurrent: () => true }), react = () => {}, exclude } = {}) {
-    const sandbox = createGroupChatsRuntime({ exclude });
-    const { runtime, log } = sandbox;
+async function createRoutedGroupChat({ plan = () => ({ avatars: ['alice.png'], isCurrent: () => true }), react = () => {} } = {}) {
+    const sandbox = await createGroupChatsRuntime();
+    const { groupChats, log } = sandbox;
     const context = { ...sandbox, events: [], plans: [] };
-    context.api = vm.runInContext('groupTurnRoutingApi', runtime);
+    context.api = groupChats.groupTurnRoutingApi;
     context.lease = context.api.acquire({
         ownerId: 'test-router',
         groupId: 'group-1',
@@ -361,12 +367,12 @@ function createRoutedGroupChat({ plan = () => ({ avatars: ['alice.png'], isCurre
 
 async function send(sandbox, text, params = {}) {
     sandbox.composer.value = text;
-    return sandbox.runtime.generateGroupWrapper(false, 'normal', params);
+    return sandbox.groupChats.generateGroupWrapper(false, 'normal', params);
 }
 
 describe('group sends with a routing owner', () => {
     test('the owner plans who answers an ordinary message, and each reply waits for the one before it', async () => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png', 'alice.png'], isCurrent: () => true }) });
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png', 'alice.png'], isCurrent: () => true }) });
 
         await send(sandbox, 'Hello everyone, how is Alice?');
 
@@ -384,24 +390,24 @@ describe('group sends with a routing owner', () => {
             'finished',
         ]);
         expect(sandbox.plans[0]).toMatchObject({ groupId: 'group-1', chatId: 'chat-1', text: 'Hello everyone, how is Alice?' });
-        expect(sandbox.plans[0].chat).toBe(sandbox.runtime.chat);
+        expect(sandbox.plans[0].chat).toBe(sandbox.state.chat);
         expect(sandbox.events.filter(event => event.status).map(event => event.status)).toEqual(['success', 'success', 'success']);
-        expect(sandbox.events.every(event => event.turnId === vm.runInContext('group_generation_id', sandbox.runtime))).toBe(true);
+        expect(sandbox.events.every(event => event.turnId === sandbox.groupChats.group_generation_id)).toBe(true);
     });
 
     test('the owner plans against a chat that already ends with the saved user message', async () => {
         const seen = [];
-        const sandbox = createRoutedGroupChat({
+        const sandbox = await createRoutedGroupChat({
             plan: ({ chat }) => {
                 seen.push({ ...chat.at(-1) });
                 return { avatars: ['bob.png'], isCurrent: () => true };
             },
         });
         let saves = 0;
-        sandbox.runtime.saveChatConditional = async () => {
+        sandbox.mocks.script.saveChatConditional.mockImplementation(async () => {
             saves++;
             return true;
-        };
+        });
 
         await send(sandbox, 'Where did everyone go?');
 
@@ -415,7 +421,7 @@ describe('group sends with a routing owner', () => {
         ['names a muted member only', 'Carol, are you there?', { avatar: '', wholeGroup: false }],
         ['addresses nobody', 'Nice weather.', { avatar: '', wholeGroup: false }],
     ])('the owner hears what native addressing found when a message %s, and its plan still answers', async (_, text, addressed) => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png'], isCurrent: () => true }) });
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png'], isCurrent: () => true }) });
 
         await send(sandbox, text);
 
@@ -424,10 +430,10 @@ describe('group sends with a routing owner', () => {
     });
 
     test('routed replies run without auto-continue or auto-swipe, which could add or redo a reply', async () => {
-        const routed = createRoutedGroupChat();
-        const native = createGroupChatsRuntime();
-
+        const routed = await createRoutedGroupChat();
         await send(routed, 'Hello');
+
+        const native = await createGroupChatsRuntime();
         await send(native, 'Hello');
 
         expect(routed.generationOptions[0]).toMatchObject({ suppressAutoContinue: true, suppressAutoSwipe: true });
@@ -436,7 +442,7 @@ describe('group sends with a routing owner', () => {
     });
 
     test('native routing answers when the owner declines', async () => {
-        const sandbox = createRoutedGroupChat({ plan: () => null });
+        const sandbox = await createRoutedGroupChat({ plan: () => null });
 
         await send(sandbox, 'Alice, are you there?');
 
@@ -446,7 +452,7 @@ describe('group sends with a routing owner', () => {
     });
 
     test('native routing answers when the owner plans a muted member', async () => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['carol.png'], isCurrent: () => true }) });
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: ['carol.png'], isCurrent: () => true }) });
 
         await send(sandbox, 'Alice, are you there?');
 
@@ -455,42 +461,42 @@ describe('group sends with a routing owner', () => {
     });
 
     test('an empty plan saves the message without a reply', async () => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: [], isCurrent: () => true }) });
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: [], isCurrent: () => true }) });
 
         await send(sandbox, 'Just thinking out loud.');
 
         expect(sandbox.generations).toEqual([]);
-        expect(sandbox.runtime.chat.at(-1)).toMatchObject({ is_user: true, mes: 'Just thinking out loud.' });
+        expect(sandbox.state.chat.at(-1)).toMatchObject({ is_user: true, mes: 'Just thinking out loud.' });
         expect(sandbox.events.map(event => event.type)).toEqual(['turn-started', 'acknowledged', 'finished']);
         expect(sandbox.events.at(-1).status).toBe('success');
     });
 
     test('the speaker bar pick answers instead of the plan, and the owner is not asked', async () => {
-        const sandbox = createRoutedGroupChat();
-        sandbox.runtime.setSelectedGroupSpeakerAvatar('bob.png');
+        const sandbox = await createRoutedGroupChat();
+        sandbox.groupChats.setSelectedGroupSpeakerAvatar('bob.png');
 
         await send(sandbox, 'Hello');
 
         expect(sandbox.generations).toEqual([{ type: 'normal', avatar: 'bob.png' }]);
         expect(sandbox.events).toEqual([]);
-        expect(sandbox.runtime.getSelectedGroupSpeakerAvatar()).toBe('');
+        expect(sandbox.groupChats.getSelectedGroupSpeakerAvatar()).toBe('');
         expect(sandbox.lease.isCurrent()).toBe(true);
     });
 
     test.each([
-        ['a forced speaker', sandbox => sandbox.runtime.generateGroupWrapper(false, 'normal', { force_chid: 1 })],
-        ['forced speakers', sandbox => sandbox.runtime.generateGroupWrapper(false, 'normal', { force_chids: [1, 0] })],
-        ['a swipe', sandbox => sandbox.runtime.generateGroupWrapper(false, 'swipe', {})],
-        ['Continue', sandbox => sandbox.runtime.generateGroupWrapper(false, 'continue', {})],
-        ['a regenerate generation', sandbox => sandbox.runtime.generateGroupWrapper(false, 'regenerate', {})],
-        ['Regenerate with a draft in the composer', sandbox => sandbox.runtime.regenerateGroup()],
-        ['a quiet generation', sandbox => sandbox.runtime.generateGroupWrapper(false, 'quiet', { quiet_prompt: 'Summarize.' })],
-        ['Impersonate', sandbox => sandbox.runtime.generateGroupWrapper(false, 'impersonate', {})],
-        ['auto mode', sandbox => sandbox.runtime.generateGroupWrapper(true, 'normal', {})],
+        ['a forced speaker', sandbox => sandbox.groupChats.generateGroupWrapper(false, 'normal', { force_chid: 1 })],
+        ['forced speakers', sandbox => sandbox.groupChats.generateGroupWrapper(false, 'normal', { force_chids: [1, 0] })],
+        ['a swipe', sandbox => sandbox.groupChats.generateGroupWrapper(false, 'swipe', {})],
+        ['Continue', sandbox => sandbox.groupChats.generateGroupWrapper(false, 'continue', {})],
+        ['a regenerate generation', sandbox => sandbox.groupChats.generateGroupWrapper(false, 'regenerate', {})],
+        ['Regenerate with a draft in the composer', sandbox => sandbox.groupChats.regenerateGroup()],
+        ['a quiet generation', sandbox => sandbox.groupChats.generateGroupWrapper(false, 'quiet', { quiet_prompt: 'Summarize.' })],
+        ['Impersonate', sandbox => sandbox.groupChats.generateGroupWrapper(false, 'impersonate', {})],
+        ['auto mode', sandbox => sandbox.groupChats.generateGroupWrapper(true, 'normal', {})],
     ])('%s never starts a routed turn', async (_, generate) => {
-        const sandbox = createRoutedGroupChat();
+        const sandbox = await createRoutedGroupChat();
         sandbox.composer.value = 'Hello';
-        vm.runInContext('Math.random = () => 0;', sandbox.runtime);
+        jest.spyOn(Math, 'random').mockReturnValue(0);
 
         await generate(sandbox);
 
@@ -499,7 +505,7 @@ describe('group sends with a routing owner', () => {
     });
 
     test('an empty send never starts a routed turn', async () => {
-        const sandbox = createRoutedGroupChat();
+        const sandbox = await createRoutedGroupChat();
 
         await send(sandbox, '');
 
@@ -507,8 +513,8 @@ describe('group sends with a routing owner', () => {
     });
 
     test('with tool calling on, native routing answers and the owner hears why', async () => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png'], isCurrent: () => true }) });
-        sandbox.runtime.ToolManager.canPerformToolCalls = () => true;
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png'], isCurrent: () => true }) });
+        sandbox.mocks.toolManager.canPerformToolCalls.mockReturnValue(true);
 
         await send(sandbox, 'Alice, are you there?');
 
@@ -523,39 +529,40 @@ describe('group sends with a routing owner', () => {
         ['no planned member\'s model can call tools though the chat model can', 'tool-model', { 'alice.png': 'plain-model', 'bob.png': 'plain-model' }, 'success',
             [{ type: 'normal', avatar: 'bob.png' }, { type: 'normal', avatar: 'alice.png' }]],
     ])('tool calling is checked under each planned member\'s model override: %s', async (_, chatModel, memberModels, status, generations) => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png', 'alice.png'], isCurrent: () => true }) });
-        const { runtime } = sandbox;
-        Object.assign(runtime, { oai_settings: { model: chatModel }, getCurrentChatCompletionModelSettingKey: () => 'model' });
-        runtime.groups[0].member_models = memberModels;
-        runtime.ToolManager.canPerformToolCalls = () => runtime.oai_settings.model === 'tool-model';
+        jest.spyOn(console, 'debug').mockImplementation(() => {});
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: ['bob.png', 'alice.png'], isCurrent: () => true }) });
+        sandbox.state.oai_settings.chat_completion_source = 'openai';
+        sandbox.state.oai_settings.openai_model = chatModel;
+        sandbox.groupChats.groups[0].member_models = memberModels;
+        sandbox.mocks.toolManager.canPerformToolCalls.mockImplementation(() => sandbox.state.oai_settings.openai_model === 'tool-model');
 
         await send(sandbox, 'Alice, are you there?');
 
         expect(sandbox.events.at(-1)).toMatchObject({ type: 'finished', status });
         expect(sandbox.generations).toEqual(generations);
-        expect(runtime.oai_settings.model).toBe(chatModel);
+        expect(sandbox.state.oai_settings.openai_model).toBe(chatModel);
     });
 
     test('a routed turn whose message was not saved writes no replies', async () => {
-        const sandbox = createRoutedGroupChat();
-        sandbox.runtime.saveChatConditional = async () => false;
+        const sandbox = await createRoutedGroupChat();
+        sandbox.mocks.script.saveChatConditional.mockResolvedValue(false);
 
         await send(sandbox, 'Hello');
 
         expect(sandbox.generations).toEqual([]);
-        expect(sandbox.runtime.chat.at(-1)).toMatchObject({ is_user: true, mes: 'Hello' });
+        expect(sandbox.state.chat.at(-1)).toMatchObject({ is_user: true, mes: 'Hello' });
         expect(sandbox.events.map(event => event.type)).toEqual(['turn-started', 'finished']);
         expect(sandbox.events[1]).toMatchObject({ status: 'failed', reason: expect.stringMatching(/not saved/i) });
     });
 
     test('Stop ends the routed turn with the reply it interrupted', async () => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['alice.png', 'bob.png'], isCurrent: () => true }) });
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: ['alice.png', 'bob.png'], isCurrent: () => true }) });
         const controller = new AbortController();
-        const generate = sandbox.runtime.Generate;
-        sandbox.runtime.Generate = async (...args) => {
-            await generate(...args);
+        const originalGenerate = sandbox.mocks.script.Generate.getMockImplementation();
+        sandbox.mocks.script.Generate.mockImplementation(async (...args) => {
+            await originalGenerate(...args);
             controller.abort();
-        };
+        });
 
         await send(sandbox, 'Hello', { signal: controller.signal });
 
@@ -567,8 +574,8 @@ describe('group sends with a routing owner', () => {
     });
 
     test('a reply that was not saved ends the routed turn', async () => {
-        const sandbox = createRoutedGroupChat({ plan: () => ({ avatars: ['alice.png', 'bob.png'], isCurrent: () => true }) });
-        sandbox.runtime.Generate = async () => {};
+        const sandbox = await createRoutedGroupChat({ plan: () => ({ avatars: ['alice.png', 'bob.png'], isCurrent: () => true }) });
+        sandbox.mocks.script.Generate.mockImplementation(async () => {});
 
         await send(sandbox, 'Hello');
 
@@ -580,8 +587,8 @@ describe('group sends with a routing owner', () => {
     });
 
     test('a reply that throws still ends the routed turn', async () => {
-        const sandbox = createRoutedGroupChat();
-        sandbox.runtime.Generate = async () => { throw new Error('Backend went away.'); };
+        const sandbox = await createRoutedGroupChat();
+        sandbox.mocks.script.Generate.mockRejectedValue(new Error('Backend went away.'));
 
         await expect(send(sandbox, 'Hello')).rejects.toThrow('Backend went away.');
 
@@ -592,8 +599,8 @@ describe('group sends with a routing owner', () => {
     });
 
     test('a turn whose cards fail to load still ends', async () => {
-        const sandbox = createRoutedGroupChat();
-        sandbox.runtime.unshallowCharacter = async () => { throw new Error('Card file is missing.'); };
+        const sandbox = await createRoutedGroupChat();
+        sandbox.mocks.script.unshallowCharacter.mockRejectedValue(new Error('Card file is missing.'));
 
         await expect(send(sandbox, 'Hello')).rejects.toThrow('Card file is missing.');
 
@@ -603,7 +610,7 @@ describe('group sends with a routing owner', () => {
     });
 
     test('the owner can cancel the replies still to come', async () => {
-        const sandbox = createRoutedGroupChat({
+        const sandbox = await createRoutedGroupChat({
             plan: () => ({ avatars: ['alice.png', 'bob.png'], isCurrent: () => true }),
             react: (event, { lease }) => {
                 if (event.type === 'reply-completed') lease.cancel('That will do.');
@@ -617,11 +624,12 @@ describe('group sends with a routing owner', () => {
     });
 
     test('changing the group reply strategy ends the lease', async () => {
-        const sandbox = createRoutedGroupChat({ exclude: ['editGroup'] });
-        sandbox.runtime.editGroup = async () => {};
-        vm.runInContext('openGroupId = "group-1";', sandbox.runtime);
+        const sandbox = await createRoutedGroupChat();
+        sandbox.groupChats.select_group_chats('group-1', false);
 
-        await sandbox.runtime.onGroupActivationStrategyInput({ target: { value: '1' } });
+        sandbox.$('#rm_group_activation_strategy').val('1').trigger('change');
+        const editorCallbacks = sandbox.mocks.groupEditor.initGroupEditor.mock.calls[0][0];
+        await editorCallbacks.saveDraft('group-1', editorCallbacks.captureSnapshot());
 
         expect(sandbox.lease.isCurrent()).toBe(false);
         expect(sandbox.events).toEqual([{ type: 'revoked', reason: expect.any(String) }]);
@@ -631,19 +639,19 @@ describe('group sends with a routing owner', () => {
 describe('swipes and Continue stay with the author', () => {
     for (const type of ['swipe', 'continue']) {
         test(`a ${type} of a message that names another member is still written by its author`, async () => {
-            const sandbox = createGroupChatsRuntime();
-            sandbox.runtime.chat.push({ name: 'Bob', original_avatar: 'bob.png', mes: 'Alice, what do you think?', is_user: false });
+            const sandbox = await createGroupChatsRuntime();
+            sandbox.state.chat.push({ name: 'Bob', original_avatar: 'bob.png', mes: 'Alice, what do you think?', is_user: false });
 
-            await sandbox.runtime.generateGroupWrapper(false, type, {});
+            await sandbox.groupChats.generateGroupWrapper(false, type, {});
 
             expect(sandbox.generations).toEqual([{ type, avatar: 'bob.png' }]);
         });
 
         test(`a ${type} with everyone addressed in the composer is still written by the author alone`, async () => {
-            const sandbox = createGroupChatsRuntime();
+            const sandbox = await createGroupChatsRuntime();
             sandbox.composer.value = 'Over to you, everyone.';
 
-            await sandbox.runtime.generateGroupWrapper(false, type, {});
+            await sandbox.groupChats.generateGroupWrapper(false, type, {});
 
             expect(sandbox.generations).toEqual([{ type, avatar: 'bob.png' }]);
         });

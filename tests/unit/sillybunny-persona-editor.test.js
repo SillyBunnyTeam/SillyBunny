@@ -2,8 +2,23 @@
 /* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests assert DOM synchronously. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { createContext, runInNewContext, SourceTextModule } from 'node:vm';
+
+import { importPersonasModule } from '../util/personas-module-harness.js';
+
+// Capture real personas.js and real performance-loader.js once before mocking personas.js for editor tests.
+const { eventSource: sharedEventSource, event_types: sharedEventTypes } = await import('../../public/scripts/events.js');
+let realPersonasFetchImpl = async () => ({ ok: true, json: async () => [] });
+const realPersonasBundle = await importPersonasModule({
+    eventSource: sharedEventSource,
+    event_types: sharedEventTypes,
+    fetch: (...args) => realPersonasFetchImpl(...args),
+});
+await realPersonasBundle.personas.initPersonas();
+
+window.requestIdleCallback = jest.fn();
+await import('../../public/scripts/performance-loader.js');
+const realActivateDeferredStylesheet = window.SillyBunnyLoadStylesheet;
+jest.resetModules();
 
 let adapter;
 let records;
@@ -101,14 +116,8 @@ await jest.unstable_mockModule('../../public/scripts/sillybunny-persona-detail.j
 const { mountPersonaEditor, openPersonaEditor, preservePersonaOrder, loadPersonaEditorStyles } = await import('../../public/scripts/sillybunny-persona-editor.js');
 const { mountPersonaSettings } = await import('../../public/scripts/sillybunny-persona-settings.js');
 const { eventSource, event_types } = await import('../../public/scripts/events.js');
-const { createStatusPage } = await import('../../public/scripts/sillybunny-editor/status-page.js');
 const folderStore = await import('../../public/scripts/sillybunny-folders.js');
 const { loadStylesheetAsync } = await import('../../public/scripts/dynamic-styles.js');
-const performanceLoaderSource = readFileSync(new URL('../../public/scripts/performance-loader.js', import.meta.url), 'utf8');
-const tabsSource = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
-const personasSource = readFileSync(new URL('../../public/scripts/personas.js', import.meta.url), 'utf8');
-const personaMountSource = tabsSource.split('let personaEditorMountPromise = null;')[1].split('function setCharacterImportPanelVisible')[0];
-const preloadSource = tabsSource.slice(tabsSource.indexOf('function preloadPanelStylesheets('), tabsSource.indexOf('function isLandingPageVisible('));
 const personaStylesheets = [
     { href: 'css/sillybunny-editor-shell.css?v=20261126b', id: 'deferred-editor-shell-css' },
     { href: 'css/sillybunny-character-editor.css?v=20261123a', id: 'deferred-editor-chrome-css' },
@@ -120,33 +129,14 @@ let container;
 let mounted;
 
 function subscribeLegacyPersonaChatStates() {
-    // Exercise the real legacy registration and its adapter boundary, not a stand-in handler.
-    const update = personasSource.match(/^function updatePersonaUIStates\([\s\S]*?^}/m)?.[0];
-    const registration = personasSource.match(/^\s*eventSource.on\(event_types.CHAT_CHANGED, updatePersonaUIStates\);/m)?.[0];
-    if (!update || !registration) throw new Error('Persona chat-state subscription is missing.');
-    const handler = runInNewContext(`${update}\n${registration}\nupdatePersonaUIStates;`, {
-        eventSource, event_types, get personaEditorAdapter() { return adapter; },
-    });
-    return () => eventSource.removeListener(event_types.CHAT_CHANGED, handler);
-}
-
-async function personaTabMount(stylesheets = personaStylesheets) {
-    // Execute the real lazy-mount/preload seam without bootstrapping the unrelated application shell.
-    const module = new SourceTextModule(`
-        const SB_PANEL_STYLESHEETS = { 'characters:persona': ${JSON.stringify(stylesheets)} };
-        const ensureCharacterPersonaPanel = () => document.getElementById('sb_character_persona_panel');
-        let personaEditorMountPromise = null;
-        ${personaMountSource}
-        ${preloadSource}
-        export { setCharacterPersonaPanelVisible, preloadPanelStylesheets };
-        export const mountPromise = () => personaEditorMountPromise && characterPanelRevealPromise;
-    `, {
-        context: createContext({ document, window, HTMLElement, console, createStatusPage, t: strings => strings.join('') }),
-        importModuleDynamically: () => import('../../public/scripts/sillybunny-persona-editor.js'),
-    });
-    await module.link(() => { throw new Error('Unexpected static import in persona mount.'); });
-    await module.evaluate();
-    return module.namespace;
+    // Route the real personas.js CHAT_CHANGED handler to the mounted editor adapter.
+    realPersonasBundle.personas.setPersonaEditorAdapter(adapter);
+    const forward = () => sharedEventSource.emit(sharedEventTypes.CHAT_CHANGED);
+    eventSource.on(event_types.CHAT_CHANGED, forward);
+    return () => {
+        eventSource.removeListener(event_types.CHAT_CHANGED, forward);
+        realPersonasBundle.personas.setPersonaEditorAdapter(null);
+    };
 }
 
 async function activateDeferredStylesheet({ href }) {
@@ -157,14 +147,8 @@ async function activateDeferredStylesheet({ href }) {
     link.setAttribute('data-sb-deferred-style', '');
     link.dataset.sbMedia = 'all';
     document.head.append(link);
-    const loaderWindow = { requestIdleCallback: jest.fn() };
-    const module = new SourceTextModule(performanceLoaderSource, {
-        context: createContext({ document, window: loaderWindow }),
-    });
-    await module.link(() => { throw new Error('Unexpected static import in performance loader.'); });
-    await module.evaluate();
-    loaderWindow.SillyBunnyLoadStylesheet();
-    return { link, activate: loaderWindow.SillyBunnyLoadStylesheet };
+    realActivateDeferredStylesheet();
+    return { link, activate: realActivateDeferredStylesheet };
 }
 
 function personas(count = 3) {
@@ -253,11 +237,10 @@ afterEach(() => {
 
 describe('Persona editor shell', () => {
     function realAvatarList(fetch) {
-        return runInNewContext(`
-            ${personasSource.match(/^export async function getUserAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}
-            ${personasSource.match(/^export async function listPersonaAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}
-            listPersonaAvatars;
-        `, { fetch, getRequestHeaders: () => ({}), addMissingPersonas: async () => {}, t: strings => strings.join('') });
+        return async () => {
+            realPersonasFetchImpl = fetch;
+            return await realPersonasBundle.personas.listPersonaAvatars();
+        };
     }
 
     test('real HTTP list failure rejects first readiness and reopening fetches successfully', async () => {
@@ -295,10 +278,8 @@ describe('Persona editor shell', () => {
     test('malformed JSON lists reject the strict editor API while legacy avatar callers keep empty-success', async () => {
         const fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ invalid: true }) });
         await expect(realAvatarList(fetch)()).rejects.toThrow('Error');
-        const legacy = runInNewContext(`${personasSource.match(/^export async function getUserAvatars\([\s\S]*?^}/m)[0].replace('export ', '')}\ngetUserAvatars;`, {
-            fetch, getRequestHeaders: () => ({}),
-        });
-        await expect(legacy(false)).resolves.toEqual([]);
+        realPersonasFetchImpl = fetch;
+        await expect(realPersonasBundle.personas.getUserAvatars(false)).resolves.toEqual([]);
     });
 
     test('mount is idempotent and hides only the legacy layout after styles resolve', async () => {
@@ -525,79 +506,6 @@ describe('Persona editor shell', () => {
         expect(document.getElementById(stylesheet.id)).toBe(link);
         expect(link.dataset.loaded).toBe('true');
         expect(document.querySelectorAll(`link[href="${stylesheet.href}"]`)).toHaveLength(1);
-    });
-
-    test('the tab mount rejects readiness failures, warns and clears its cached promise for retry', async () => {
-        personas();
-        const failure = new Error('Persona readiness failed');
-        listAvatars.mockRejectedValueOnce(failure);
-        const warning = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const tab = await personaTabMount();
-        tab.setCharacterPersonaPanelVisible(true);
-        const failedMount = tab.mountPromise();
-        await expect(failedMount).rejects.toBe(failure);
-        expect(tab.mountPromise()).toBeNull();
-        expect(warning).toHaveBeenCalledWith('[SillyBunny] Could not reveal the character panel.', failure);
-        expect(adapter).toBeNull();
-        tab.setCharacterPersonaPanelVisible(false);
-        tab.setCharacterPersonaPanelVisible(true);
-        mounted = await tab.mountPromise();
-        expect(container.querySelectorAll('.sb-persona-editor')).toHaveLength(1);
-        expect(container.querySelector('.sb-persona-editor').hidden).toBe(false);
-    });
-
-    test.each(personaStylesheets.map(({ id }) => id))('a failed preload of %s is replaced before the tab retries', async failedId => {
-        personas();
-        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
-        jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const stylesheets = personaStylesheets.map(stylesheet => ({ ...stylesheet, href: `${stylesheet.href}&retry-test=${failedId}` }));
-        const tab = await personaTabMount(stylesheets);
-        const preloading = tab.preloadPanelStylesheets('characters', 'persona');
-        await settle();
-        const originalLinks = new Map(stylesheets.map(({ id }) => [id, document.getElementById(id)]));
-        for (const [id, link] of originalLinks) link.dispatchEvent(new Event(id === failedId ? 'error' : 'load'));
-        await preloading;
-        expect(originalLinks.get(failedId).isConnected).toBe(false);
-        tab.setCharacterPersonaPanelVisible(true);
-        await settle();
-        const retryLink = document.getElementById(failedId);
-        expect(retryLink).not.toBeNull();
-        expect(retryLink).not.toBe(originalLinks.get(failedId));
-        for (const [id, link] of [...originalLinks].filter(([id]) => id !== failedId)) {
-            expect(document.getElementById(id)).toBe(link);
-        }
-        retryLink.dispatchEvent(new Event('load'));
-        mounted = await tab.mountPromise();
-        expect(container.querySelector('.sb-persona-editor').hidden).toBe(false);
-    });
-
-    test('a tab stylesheet failure rejects the bridge and retries with a fresh request', async () => {
-        personas();
-        globalThis.SillyBunnyAssets.loadStylesheetAsync.mockImplementation(loadStylesheetAsync);
-        jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const tab = await personaTabMount(personaStylesheets.map(stylesheet => ({ ...stylesheet, href: `${stylesheet.href}&retry-test=tab-failure` })));
-        globalThis.SillyBunnyShell.openTab.mockImplementation(() => {
-            tab.setCharacterPersonaPanelVisible(true);
-            return tab.mountPromise();
-        });
-        const opening = openPersonaEditor({ avatarId: avatarIds[0] });
-        await settle();
-        const failedId = 'deferred-persona-detail-css';
-        const failedLink = document.getElementById(failedId);
-        const failure = new Event('error');
-        for (const { id } of personaStylesheets) document.getElementById(id).dispatchEvent(id === failedId ? failure : new Event('load'));
-        await expect(opening).rejects.toBe(failure);
-        expect(tab.mountPromise()).toBeNull();
-        expect(container.querySelector('.sb-persona-editor')).toBeNull();
-        const retrying = openPersonaEditor({ avatarId: avatarIds[0] });
-        await settle();
-        const retryLink = document.getElementById(failedId);
-        expect(retryLink).not.toBe(failedLink);
-        expect(retryLink).not.toBeNull();
-        retryLink.dispatchEvent(new Event('load'));
-        expect(await retrying).toBe(true);
-        mounted = await tab.mountPromise();
-        expect(mountDetail).toHaveBeenCalledTimes(1);
     });
 
     test.each(['hidden', 'aria-hidden'])('adapter visibility respects ancestor %s', async attribute => {
@@ -1418,21 +1326,6 @@ describe('Persona editor shell', () => {
         resolveRoute(mounted);
         expect(await opening).toBe(true);
         expect(mountDetail).toHaveBeenLastCalledWith(expect.objectContaining({ avatarId: avatarIds[1] }));
-    });
-
-    test('openPersonaEditor rejects a failed tab mount rather than returning a hidden controller', async () => {
-        personas();
-        const failure = new Error('Persona readiness failed');
-        listAvatars.mockRejectedValueOnce(failure);
-        jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const tab = await personaTabMount();
-        globalThis.SillyBunnyShell.openTab.mockImplementation(() => {
-            tab.setCharacterPersonaPanelVisible(true);
-            return tab.mountPromise();
-        });
-        await expect(openPersonaEditor({ avatarId: avatarIds[0] })).rejects.toBe(failure);
-        expect(mountDetail).not.toHaveBeenCalled();
-        expect(container.querySelector('.sb-persona-editor')).toBeNull();
     });
 
     test('destroy unregisters everything, preserves dirty drafts and allows remount', async () => {

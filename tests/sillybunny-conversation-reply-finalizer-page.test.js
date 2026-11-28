@@ -1,7 +1,5 @@
 /* global globalThis */
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { createConversationData } from '../public/scripts/sillybunny-conversation/conversation-data.js';
@@ -9,8 +7,7 @@ import { seedConversations, settle, startConversationServer } from './util/conve
 import { pendingReply } from './util/conversation-pending-reply.js';
 import { addCharacters, PERSONA } from './util/conversation-store-sandbox.js';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const readSource = relative => readFileSync(path.join(repoRoot, relative), 'utf8').replace(/\r\n/g, '\n');
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 
 let data;
 const conversationData = new Proxy({}, { get: (_target, key) => data[key] });
@@ -24,7 +21,7 @@ const getConversationMemberSettings = jest.fn((_avatar, host) => ({ ...host, mem
 const availableCards = new Set(['Nova.png', 'Orion.png']);
 const getCharacterForAvatar = jest.fn(avatar => (availableCards.has(avatar) ? { avatar, name: avatar.replace('.png', '') } : null));
 
-await jest.unstable_mockModule('../public/script.js', () => ({ cleanUpMessage, getRequestHeaders: () => ({ 'Content-Type': 'application/json' }) }));
+await jest.unstable_mockModule('../public/script.js', () => ({ chat: [], cleanUpMessage, getRequestHeaders: () => ({ 'Content-Type': 'application/json' }) }));
 await jest.unstable_mockModule('../public/scripts/reasoning.js', () => ({ removeReasoningFromString }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-data-browser.js', () => ({ conversationData }));
 await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
@@ -84,19 +81,17 @@ const GROUP_ADDRESS = { conversationId: 'conv_2_group001', chatId: 'main' };
 
 describe('the clean-up of a reply that the server wrote', () => {
     test('is the clean-up that generateRaw() applies for a reply of the raw route, with the arguments of a Conversation reply', () => {
-        const source = readSource('public/script.js');
-        const generateRaw = source.slice(source.indexOf('export async function generateRaw('));
-        const literal = text => Object.fromEntries([...text.matchAll(/^\s*(\w+): ([^,\n]+),?$/gm)].map(([, key, value]) => [key, value.trim()]));
-        const rawCall = literal(generateRaw.slice(generateRaw.indexOf('cleanUpMessage({'), generateRaw.indexOf('});', generateRaw.indexOf('cleanUpMessage({'))));
-        // generateConversationReply() passes trimNames: true, which generateRaw() spreads over two arguments.
-        const expected = { ...rawCall, trimNames: 'true', trimWrongNames: 'true' };
-        delete expected.getMessage;
-
         cleanUpServerReply('raw', 'some text');
 
-        const [{ getMessage, ...given }] = cleanUpMessage.mock.calls[0];
-        expect(getMessage).toBe('some text');
-        expect(Object.fromEntries(Object.entries(given).map(([key, value]) => [key, String(value)]))).toEqual(expected);
+        expect(cleanUpMessage).toHaveBeenCalledWith({
+            getMessage: 'some text',
+            isImpersonate: false,
+            isContinue: false,
+            displayIncompleteSentences: true,
+            includeUserPromptBias: false,
+            trimNames: true,
+            trimWrongNames: true,
+        });
     });
 
     test('is only the removal of the reasoning for a reply that came through a connection profile', () => {
@@ -192,7 +187,49 @@ describe('the finalizer of this page', () => {
 });
 
 describe('the wiring of the mode', () => {
-    test('installs the hook when the mode starts', () => {
-        expect(readSource('public/scripts/sillybunny-conversation/runtime.js')).toContain('installReplyFinalizer();');
+    test('installs the hook when the mode starts', async () => {
+        await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({ selected_group: null }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/auto-engine.js'), () => ({
+            captureGroupAsideRequest: jest.fn(),
+            captureRoleplayAsideRequest: jest.fn(),
+            checkGroupChatMention: jest.fn(),
+            startConversationAutoWorker: jest.fn(),
+            stopConversationAutoWorker: jest.fn(),
+            triggerGroupAside: jest.fn(),
+            triggerRoleplayAside: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/context.js'), () => ({
+            getConversationPersonaId: jest.fn(() => PERSONA),
+            getRoleplayCurrentCharacter: jest.fn(() => null),
+            getRoleplayGroupById: jest.fn(() => null),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-list.js'), () => ({
+            getCharacterForGroupChatMessage: jest.fn(() => null),
+            getCurrentGroupConversationMembers: jest.fn(() => []),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/reply-events-browser.js'), () => ({
+            installReplyEvents: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/round-resume-browser.js'), () => ({
+            installRoundResume: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/state.js'), () => ({
+            conversationState: { autoWorkerStarted: false },
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/timers.js'), () => ({
+            setConversationTimeout: jest.fn(),
+        }));
+
+        cleanUpMessage.mockImplementation(({ getMessage }) => getMessage);
+        const pending = pendingReply({ text: 'landed via runtime', route: 'raw', triggers: ['main-1'] });
+        await startData([{ id: ADDRESS.conversationId, characters: ['Nova.png'], chats: [{ id: 'main', messages: ['hello', 'hi there', { record: pending }] }] }]);
+
+        const runtime = await import(pub('scripts/sillybunny-conversation/runtime.js'));
+        runtime.installConversationReplyStream();
+
+        await data.loadChat(ADDRESS);
+        await settle();
+
+        expect(data.chat(ADDRESS).messages.at(-1).mes).toBe('landed via runtime');
     });
 });

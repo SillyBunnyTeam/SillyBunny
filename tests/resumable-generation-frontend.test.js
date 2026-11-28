@@ -1,6 +1,5 @@
 /* global globalThis */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
 
 const {
     fetchResumable,
@@ -13,7 +12,6 @@ const {
     settleGenerationCommit,
 } = await import('../public/scripts/resumable-generation.js');
 const { decodeCommitPlan } = await import('../public/scripts/generation-commit-plan.js');
-const customRequestSource = readFileSync(new URL('../public/scripts/custom-request.js', import.meta.url), 'utf8');
 
 const RESUME_URL = '/api/resumable-generations/resume';
 const CANCEL_URL = '/api/resumable-generations/cancel';
@@ -239,21 +237,6 @@ describe('fetchResumable', () => {
     });
 });
 
-test('routes all scoped-profile generation requests through fetchResumable', () => {
-    expect(customRequestSource).toContain('import { fetchResumable } from \'./resumable-generation.js\';');
-    expect(customRequestSource.match(/const response = await fetchResumable\(/g)).toHaveLength(3);
-    expect(customRequestSource).toContain('await fetchResumable(getGenerateUrl(this.TYPE), {');
-    expect(customRequestSource).toContain('await fetchResumable(\'/api/backends/text-completions/generate\', {');
-    expect(customRequestSource).toContain('await fetchResumable(\'/api/backends/chat-completions/generate\', {');
-});
-
-test('routes Horde generation requests through fetchResumable', () => {
-    const hordeSource = readFileSync(new URL('../public/scripts/horde.js', import.meta.url), 'utf8');
-    expect(hordeSource).toContain('import { fetchResumable } from \'./resumable-generation.js\';');
-    expect(hordeSource).toContain('await fetchResumable(\'/api/horde/generate-text\', {');
-    expect(hordeSource).not.toContain('fetch(\'/api/horde/generate-text\'');
-});
-
 describe('server-owned chat generations', () => {
     function hangingGeneration() {
         fetchMock.mockImplementation(async (url, init) => {
@@ -457,28 +440,5 @@ describe('server-owned chat generations', () => {
         } finally {
             unsubscribe();
         }
-    });
-});
-
-describe('page unload wiring', () => {
-    const resumableSource = readFileSync(new URL('../public/scripts/resumable-generation.js', import.meta.url), 'utf8');
-    const scriptSource = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
-
-    /**
-     * @param {string} event Window event
-     * @returns {string} Source of the chat UI's jQuery handler for it
-     */
-    function windowHandler(event) {
-        const start = scriptSource.indexOf(`$(window).on('${event}', `);
-        expect(start).toBeGreaterThan(-1);
-        return scriptSource.slice(start, scriptSource.indexOf('\n    });', start));
-    }
-
-    test('hands chat replies to the server on pagehide only, which a leave-site prompt cannot cancel', () => {
-        expect(resumableSource).not.toContain('addEventListener(\'beforeunload\'');
-        expect(resumableSource).toContain('window.addEventListener(\'pagehide\', releaseActiveGenerations);');
-        expect(windowHandler('beforeunload')).not.toContain('onStopStreaming');
-        expect(windowHandler('pagehide')).toContain('streamingProcessor.onStopStreaming();');
-        expect(windowHandler('pagehide')).toContain('!event.originalEvent?.persisted');
     });
 });

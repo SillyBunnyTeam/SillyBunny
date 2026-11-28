@@ -1602,12 +1602,21 @@ describe('Chat completions backend prompt caching integration', () => {
 });
 
 describe('Chat Completion preset compatibility', () => {
-    const openaiSource = fs.readFileSync(fileURLToPath(new URL('../public/scripts/openai.js', import.meta.url)), 'utf8');
+    test('keeps server-side caching flags out of Chat Completion preset serialization (SillyTavern preset compatibility)', async () => {
+        const { importOpenAiModule } = await import('./util/openai-harness.js');
+        const { openai } = await importOpenAiModule();
+        const forbidden = /sb-config-|enableSystemPromptCache|cachingAtDepth|extendedTTL|prompt_caching/i;
 
-    test('keeps server-side caching flags out of Chat Completion preset serialization (SillyTavern preset compatibility)', () => {
-        const settingsMapMatch = openaiSource.match(/export const settingsToUpdate = \{[\s\S]*?\n\};/);
-        expect(settingsMapMatch).not.toBeNull();
-        const settingsMapSource = settingsMapMatch[0];
-        expect(settingsMapSource).not.toMatch(/sb-config-|enableSystemPromptCache|cachingAtDepth|extendedTTL|prompt_caching/i);
+        expect(Object.keys(openai.settingsToUpdate).length).toBeGreaterThan(0);
+        for (const [key, entry] of Object.entries(openai.settingsToUpdate)) {
+            expect(key).not.toMatch(forbidden);
+            expect(String(entry?.[0] ?? '')).not.toMatch(forbidden);
+            expect(String(entry?.[1] ?? '')).not.toMatch(forbidden);
+        }
+
+        const serializedPreset = openai.getChatCompletionPreset(openai.oai_settings);
+        for (const key of Object.keys(serializedPreset)) {
+            expect(key).not.toMatch(forbidden);
+        }
     });
 });

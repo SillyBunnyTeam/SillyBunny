@@ -13,6 +13,9 @@ import multer from 'multer';
 import { createUploadStorage } from '../src/middleware/uploadStorage.js';
 import multerMonkeyPatch from '../src/middleware/multerMonkeyPatch.js';
 import { setConfigFilePath } from '../src/util.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 const configPath = fileURLToPath(new URL('../default/config.yaml', import.meta.url));
 setConfigFilePath(configPath);
@@ -259,20 +262,22 @@ describe('create-only installs', () => {
         expect(fs.readdirSync(directories.backgrounds)).toEqual([]);
     });
 
-    test.each(['themes', 'backgrounds'])('%s exclusive creation does not follow an existing symbolic link', async kind => {
-        const name = kind === 'themes' ? 'NightSky.json' : 'NightSky.gif';
-        const sentinel = path.join(tempRoot, 'sentinel');
-        fs.writeFileSync(sentinel, 'preserved');
-        fs.symlinkSync(sentinel, path.join(directories[kind], name));
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test.each(['themes', 'backgrounds'])('%s exclusive creation does not follow an existing symbolic link', async kind => {
+            const name = kind === 'themes' ? 'NightSky.json' : 'NightSky.gif';
+            const sentinel = path.join(tempRoot, 'sentinel');
+            fs.writeFileSync(sentinel, 'preserved');
+            fs.symlinkSync(sentinel, path.join(directories[kind], name));
 
-        const response = kind === 'themes'
-            ? await saveTheme('/create', { name: 'NightSky' })
-            : await uploadBackground('/upload-new');
+            const response = kind === 'themes'
+                ? await saveTheme('/create', { name: 'NightSky' })
+                : await uploadBackground('/upload-new');
 
-        expect(response.status).toBe(409);
-        expect(fs.readFileSync(sentinel, 'utf8')).toBe('preserved');
-        expect(fs.lstatSync(path.join(directories[kind], name)).isSymbolicLink()).toBe(true);
-        expect(fs.readdirSync(uploads)).toEqual([]);
+            expect(response.status).toBe(409);
+            expect(fs.readFileSync(sentinel, 'utf8')).toBe('preserved');
+            expect(fs.lstatSync(path.join(directories[kind], name)).isSymbolicLink()).toBe(true);
+            expect(fs.readdirSync(uploads)).toEqual([]);
+        });
     });
 
     test.each(['themes', 'backgrounds'])('%s has one winner across concurrent processes', async kind => {

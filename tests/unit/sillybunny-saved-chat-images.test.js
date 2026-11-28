@@ -1,10 +1,19 @@
+/* global globalThis */
 /* eslint-disable playwright/no-standalone-expect -- Jest contracts for shipped files. */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
+
+import { setConfigFilePath } from '../../src/util.js';
+import { RETIRED_ACCOUNT_KEYS, RETIRED_LOCAL_KEYS } from '../../public/scripts/sillybunny-retired-keys.js';
+
+setConfigFilePath(fileURLToPath(new URL('../../default/config.yaml', import.meta.url)));
+
+const { checkForNewContent } = await import('../../src/endpoints/content-manager.js');
 
 const REPO = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -30,13 +39,74 @@ describe('the images that saved chats point at', () => {
         expect(existsSync(path.join(REPO, 'public/img/five.png'))).toBe(true);
     });
 
-    test('are named in no removal list: not in the obsolete content items, and not in the keys and files the app retires', () => {
-        const lists = ['src/endpoints/content-manager.js', 'public/scripts/sillybunny-retired-keys.js'].map(file => [file, read(file).toString('utf8')]);
+    test('are not retired by client key cleanup or removed by default content reconciliation', async () => {
+        const retiredKeys = [...RETIRED_ACCOUNT_KEYS, ...RETIRED_LOCAL_KEYS];
+        for (const image of Object.keys(SAVED_CHAT_IMAGES)) {
+            const base = path.basename(image);
+            expect(retiredKeys.some(key => key.includes(base))).toBe(false);
+        }
 
-        for (const [file, text] of lists) {
-            for (const image of Object.keys(SAVED_CHAT_IMAGES)) {
-                expect([file, text.includes(path.basename(image))]).toEqual([file, false]);
+        const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'sillybunny-saved-chat-images-'));
+        const previousDataRoot = globalThis.DATA_ROOT;
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        const consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+        globalThis.DATA_ROOT = tempRoot;
+        try {
+            const directories = {
+                root: tempRoot,
+                backups: path.join(tempRoot, 'backups'),
+                characters: path.join(tempRoot, 'characters'),
+                chats: path.join(tempRoot, 'chats'),
+                avatars: path.join(tempRoot, 'User Avatars'),
+                backgrounds: path.join(tempRoot, 'backgrounds'),
+                worlds: path.join(tempRoot, 'worlds'),
+                themes: path.join(tempRoot, 'themes'),
+                openAI_Settings: path.join(tempRoot, 'OpenAI Settings'),
+                koboldAI_Settings: path.join(tempRoot, 'KoboldAI Settings'),
+                novelAI_Settings: path.join(tempRoot, 'NovelAI Settings'),
+                textGen_Settings: path.join(tempRoot, 'TextGen Settings'),
+                instruct: path.join(tempRoot, 'instruct'),
+                context: path.join(tempRoot, 'context'),
+                sysprompt: path.join(tempRoot, 'sysprompt'),
+                reasoning: path.join(tempRoot, 'reasoning'),
+                quickReplies: path.join(tempRoot, 'QuickReplies'),
+                movingUI: path.join(tempRoot, 'movingUI'),
+                assets: path.join(tempRoot, 'assets'),
+                workflows: path.join(tempRoot, 'workflows'),
+                userSprites: path.join(tempRoot, 'characters'),
+                thumbnailsAvatar: path.join(tempRoot, 'thumbnails', 'avatar'),
+                thumbnailsAvatarMobile: path.join(tempRoot, 'thumbnails', 'avatar-mobile'),
+                thumbnailsBg: path.join(tempRoot, 'thumbnails', 'bg'),
+                thumbnailsBgMobile: path.join(tempRoot, 'thumbnails', 'bg-mobile'),
+                thumbnailsPersona: path.join(tempRoot, 'thumbnails', 'persona'),
+                thumbnailsPersonaMobile: path.join(tempRoot, 'thumbnails', 'persona-mobile'),
+            };
+            for (const dir of Object.values(directories)) {
+                mkdirSync(dir, { recursive: true });
             }
+            const seededFiles = [];
+            for (const image of Object.keys(SAVED_CHAT_IMAGES)) {
+                const base = path.basename(image);
+                for (const dir of [directories.root, directories.avatars, directories.characters, directories.backgrounds]) {
+                    const target = path.join(dir, base);
+                    writeFileSync(target, 'keep');
+                    seededFiles.push(target);
+                }
+            }
+
+            await checkForNewContent([directories], []);
+
+            expect(consoleErrorSpy).not.toHaveBeenCalled();
+            for (const target of seededFiles) {
+                expect(existsSync(target)).toBe(true);
+            }
+        } finally {
+            consoleErrorSpy.mockRestore();
+            consoleLogSpy.mockRestore();
+            consoleInfoSpy.mockRestore();
+            globalThis.DATA_ROOT = previousDataRoot;
+            rmSync(tempRoot, { recursive: true, force: true });
         }
     });
 });

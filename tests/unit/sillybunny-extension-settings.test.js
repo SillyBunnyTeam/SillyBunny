@@ -1,23 +1,10 @@
 /** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom tests use synchronous DOM assertions. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
-import { readFileSync } from 'node:fs';
 
 await jest.unstable_mockModule('../../public/scripts/i18n.js', () => ({
     t: (strings, ...values) => strings.reduce((out, string, index) => out + string + (index < values.length ? values[index] : ''), ''),
     translate: value => value,
-}));
-await jest.unstable_mockModule('../../public/scripts/sillybunny-motion.js', () => ({
-    animateHeightFrom: jest.fn(),
-    animateIn: jest.fn(),
-    animateOut: jest.fn((_element, _frames, hide) => hide()),
-    play: jest.fn(),
-    stopMotion: jest.fn(),
-    MOTION_FAST: 200,
-    MOTION_SLOW: 250,
-    MOTION_POPOVER_CLOSE: 150,
-    MOTION_EASE_OUT_CUBIC: 'cubic-bezier(0.33, 1, 0.68, 1)',
-    SPRING_SHEET: {},
 }));
 await jest.unstable_mockModule('../../public/scripts/sillybunny-action-menu.js', () => ({
     MOBILE_QUERY: '(max-width: 768px)',
@@ -32,7 +19,6 @@ const { normalizeExtensionSettings, normalizeSettingsDetail, resolveFieldLabel, 
 const { buildExtensionsSubpage, isBuiltInExtensionContainer } = await import('../../public/scripts/sillybunny-settings-subpage-descriptors.js');
 const { closePicker } = await import('../../public/scripts/sillybunny-editor/picker.js');
 
-const tabs = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
 beforeEach(() => {
@@ -516,10 +502,49 @@ describe('third-party extension settings', () => {
         for (const id of ['bpt-settings', 'ChatCompletionTabs-container', 'qig-settings', 'qa-third-party']) expect(isBuiltInExtensionContainer(id)).toBe(false);
     });
 
-    test('reach the presentation pass only through the row flag that the Extensions page passes', () => {
-        const calls = tabs.match(/normalizeSettingsDetail\([^)]*\)/g) ?? [];
-        expect(calls).toHaveLength(1);
-        expect(calls[0]).toContain('builtIn: row.builtIn === true');
-        expect(tabs.match(/watchExtensionSettings|normalizeExtensionSettings/g)).toBeNull();
+    test('opening a built-in extension detail normalizes its markup while opening a third-party extension leaves its markup untouched', async () => {
+        const { importTabsModule, DEFAULT_TABS_DOM } = await import('../util/tabs-harness.js');
+        const extDom = DEFAULT_TABS_DOM.replace(
+            '<div id="extensions_settings"></div>',
+            `<div id="extensions_settings">
+                <div id="vectors_container" class="extension_container">${markup}</div>
+                <div id="qa-third-party-container" class="extension_container">
+                    <div class="inline-drawer">
+                        <div class="inline-drawer-toggle inline-drawer-header"><b>QA Third Party</b></div>
+                        <div class="inline-drawer-content" style="display: block">
+                            <label class="checkbox_label" for="tp2_on"><input id="tp2_on" type="checkbox"><span>On</span></label>
+                            <div><label for="tp2_url">URL</label><input id="tp2_url" class="text_pole" type="text" placeholder="x"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>`,
+        );
+
+        const loaded = await importTabsModule({ dom: extDom });
+        try {
+            loaded.shell.openTab('right', 'extensions');
+            await loaded.flush();
+
+            const tpRow = document.querySelector('[data-sb-subpage-row="qa-third-party-container"]');
+            expect(tpRow).not.toBeNull();
+            tpRow.click();
+            await loaded.flush();
+
+            expect(document.querySelector('#tp2_on').closest('.ds-row-switch')).toBeNull();
+            expect(document.querySelector('#tp2_url').closest('.ds-row-entry--floating')).toBeNull();
+
+            document.querySelector('.sb-subpage-back')?.click();
+            await loaded.flush();
+
+            const builtInRow = document.querySelector('[data-sb-subpage-row="vectors_container"]');
+            expect(builtInRow).not.toBeNull();
+            builtInRow.click();
+            await loaded.flush();
+
+            expect(document.querySelector('#tp_on').closest('.ds-row-switch')).not.toBeNull();
+            expect(document.querySelector('#tp_url').closest('.ds-row-entry--floating')).not.toBeNull();
+        } finally {
+            loaded.cleanup();
+        }
     });
 });

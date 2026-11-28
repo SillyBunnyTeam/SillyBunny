@@ -1,33 +1,15 @@
 /* eslint-disable playwright/no-standalone-expect -- These are parameterised Jest tests. */
 import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import lodash from 'lodash';
 
 import * as model from '../public/scripts/sillybunny-world-info-model.js';
+import { importWorldInfoModule } from './util/world-info-module-harness.js';
 
-const worldInfoSource = readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
+const { worldInfo } = await importWorldInfoModule();
 const indexSource = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
-function functionSource(name) {
-    const match = worldInfoSource.match(new RegExp(`^(?:export )?((?:async )?function ${name}\\([\\s\\S]*?^})`, 'm'));
-    if (!match) throw new Error(`Missing function ${name}`);
-    return match[1];
-}
-
-function objectLiteralSource(name) {
-    const match = worldInfoSource.match(new RegExp(`export const ${name} = (\\{[\\s\\S]*?^\\});`, 'm'));
-    if (!match) throw new Error(`Missing object literal ${name}`);
-    return match[1];
-}
-
-function evaluateObjectLiteral(name) {
-    return vm.runInNewContext(`(${objectLiteralSource(name)})`);
-}
-
 function definitionKeys() {
-    const source = objectLiteralSource('newWorldInfoEntryDefinition');
-    return [...source.matchAll(/^[ ]{4}([A-Za-z_$][\w$]*): \{/gm)].map(([, key]) => key);
+    return Object.keys(worldInfo.newWorldInfoEntryDefinition);
 }
 
 function selectOptionAttributes(name) {
@@ -41,10 +23,11 @@ function selectOptionAttributes(name) {
 }
 
 function createLegacyHelpers() {
-    const context = vm.createContext({ setValueByPath: lodash.set });
-    const helpers = ['getWIOriginalDataIndex', 'setWIOriginalDataValue', 'deleteWIOriginalDataValue', 'parseRegexFromString'];
-    vm.runInContext(helpers.map(functionSource).join('\n'), context);
-    return context;
+    return {
+        setWIOriginalDataValue: worldInfo.setWIOriginalDataValue,
+        deleteWIOriginalDataValue: worldInfo.deleteWIOriginalDataValue,
+        parseRegexFromString: worldInfo.parseRegexFromString,
+    };
 }
 
 function importedBook() {
@@ -124,8 +107,8 @@ describe('World Info schema parity', () => {
     });
 
     test('World Info enums and legacy select options stay in parity', () => {
-        expect(model.WI_POSITION).toEqual(evaluateObjectLiteral('world_info_position'));
-        expect(model.WI_LOGIC).toEqual(evaluateObjectLiteral('world_info_logic'));
+        expect(model.WI_POSITION).toEqual(worldInfo.world_info_position);
+        expect(model.WI_LOGIC).toEqual(worldInfo.world_info_logic);
 
         const htmlPositionValues = selectOptionAttributes('position').map(option => option.value);
         const modelPositionValues = model.POSITION_OPTIONS.map(option => option.value.split(':')[0]);
@@ -145,7 +128,7 @@ describe('World Info schema parity', () => {
     });
 
     test('originalData paths match the upstream key map wherever both define a key', () => {
-        const upstreamMap = evaluateObjectLiteral('originalWIDataKeyMap');
+        const upstreamMap = worldInfo.originalWIDataKeyMap;
         const sharedPaths = Object.fromEntries(Object.entries(model.ORIGINAL_DATA_PATHS)
             .filter(([key]) => Object.hasOwn(upstreamMap, key)));
         for (const [key, path] of Object.entries(sharedPaths)) {
@@ -675,58 +658,81 @@ describe('persistence operations', () => {
     });
 
     test.each([true, false])('failed transfer target rolls back copy=%s before an unrelated successful save', async copy => {
-        const source = importedBook();
-        const target = importedBook();
-        const beforeSource = structuredClone(source);
-        const beforeTarget = structuredClone(target);
-        const legacy = createLegacyHelpers();
-        const saveWorldInfo = jest.fn().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue('Archive');
-        const move = vm.runInNewContext(`${functionSource('moveWorldInfoEntry')}\nmoveWorldInfoEntry;`, {
-            world_names: ['Lore', 'Archive'],
-            loadWorldInfo: async name => name === 'Lore' ? source : target,
-            structuredClone, captureWorldInfoMutation: model.captureWorldInfoMutation,
-            getWIOriginalDataIndex: legacy.getWIOriginalDataIndex,
-            deleteWIOriginalDataValue: legacy.deleteWIOriginalDataValue,
-            getFreeWorldEntryUid: () => 1,
-            appendWIOriginalDataEntry: (book, entry) => {
-                book.originalDataUidMap[entry.uid] = book.originalData.entries.length;
-                book.originalData.entries.push({ id: 10, content: entry.content });
-            },
-            saveWorldInfo, toastr: { error() {} }, console: { error() {} },
-            t: (strings, ...values) => strings.reduce((out, part, index) => out + part + (values[index] ?? ''), ''),
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const books = new Map([
+            ['Lore', importedBook()],
+            ['Archive', importedBook()],
+        ]);
+        const beforeSource = structuredClone(books.get('Lore'));
+        const beforeTarget = structuredClone(books.get('Archive'));
+        let failFirstEdit = true;
+        const { worldInfo: wi } = await importWorldInfoModule({
+            fetch: jest.fn(async (url, init) => {
+                const body = JSON.parse(init.body);
+                if (url === '/api/worldinfo/get') {
+                    return { ok: books.has(body.name), json: async () => structuredClone(books.get(body.name)) };
+                }
+                if (url === '/api/worldinfo/edit') {
+                    if (failFirstEdit) {
+                        failFirstEdit = false;
+                        return { ok: false, status: 500, statusText: 'Offline' };
+                    }
+                    books.set(body.name, structuredClone(body.data));
+                    return { ok: true, json: async () => ({ name: body.name }) };
+                }
+                return { ok: false, status: 404, json: async () => ({}) };
+            }),
         });
-        expect(await move('Lore', 'Archive', 0, { deleteOriginal: !copy })).toBe(false);
-        expect(source).toEqual(beforeSource);
-        expect(target).toEqual(beforeTarget);
-        applyField(target, 3, 'content', 'Unrelated edit', legacy.setWIOriginalDataValue);
-        expect((await model.commit({ saveWorldInfo }, 'Archive', target)).ok).toBe(true);
-        expect(target.entries[1]).toBeUndefined();
-        expect(target.originalData.entries).toHaveLength(2);
+        wi.setWorldInfoSettings({}, { world_names: ['Lore', 'Archive'] });
+        try {
+            expect(await wi.moveWorldInfoEntry('Lore', 'Archive', 0, { deleteOriginal: !copy })).toBe(false);
+            expect(books.get('Lore')).toEqual(beforeSource);
+            expect(books.get('Archive')).toEqual(beforeTarget);
+
+            const target = await wi.loadWorldInfo('Archive');
+            applyField(target, 3, 'content', 'Unrelated edit', wi.setWIOriginalDataValue);
+            expect((await model.commit({ saveWorldInfo: wi.saveWorldInfo }, 'Archive', target)).ok).toBe(true);
+            expect(books.get('Archive').entries[1]).toBeUndefined();
+            expect(books.get('Archive').originalData.entries).toHaveLength(2);
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
 
     test('failed move source restores only its deletion after the target copy was acknowledged', async () => {
-        const source = importedBook();
-        const target = importedBook();
-        const before = structuredClone(source);
-        const legacy = createLegacyHelpers();
-        const move = vm.runInNewContext(`${functionSource('moveWorldInfoEntry')}\nmoveWorldInfoEntry;`, {
-            world_names: ['Lore', 'Archive'], loadWorldInfo: async name => name === 'Lore' ? source : target,
-            structuredClone, captureWorldInfoMutation: model.captureWorldInfoMutation,
-            getWIOriginalDataIndex: legacy.getWIOriginalDataIndex,
-            deleteWIOriginalDataValue: legacy.deleteWIOriginalDataValue,
-            getFreeWorldEntryUid: () => 1,
-            appendWIOriginalDataEntry: (book, entry) => {
-                book.originalDataUidMap[entry.uid] = book.originalData.entries.length;
-                book.originalData.entries.push({ id: 10, content: entry.content });
-            },
-            saveWorldInfo: jest.fn().mockResolvedValueOnce('Archive').mockResolvedValueOnce(null),
-            toastr: { error() {} }, console: { error() {} },
-            t: (strings, ...values) => strings.reduce((out, part, index) => out + part + (values[index] ?? ''), ''),
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const books = new Map([
+            ['Lore', importedBook()],
+            ['Archive', importedBook()],
+        ]);
+        const before = structuredClone(books.get('Lore'));
+        const { worldInfo: wi } = await importWorldInfoModule({
+            fetch: jest.fn(async (url, init) => {
+                const body = JSON.parse(init.body);
+                if (url === '/api/worldinfo/get') {
+                    return { ok: books.has(body.name), json: async () => structuredClone(books.get(body.name)) };
+                }
+                if (url === '/api/worldinfo/edit') {
+                    if (body.name === 'Lore') {
+                        return { ok: false, status: 500, statusText: 'Source write failed' };
+                    }
+                    books.set(body.name, structuredClone(body.data));
+                    return { ok: true, json: async () => ({ name: body.name }) };
+                }
+                return { ok: false, status: 404, json: async () => ({}) };
+            }),
         });
-        expect(await move('Lore', 'Archive', 0)).toBe(false);
-        expect(source).toEqual(before);
-        expect(target.entries[1].content).toBe(source.entries[0].content);
-        expect(target.originalDataUidMap[1]).toBe(2);
+        wi.setWorldInfoSettings({}, { world_names: ['Lore', 'Archive'] });
+        try {
+            expect(await wi.moveWorldInfoEntry('Lore', 'Archive', 0)).toBe(false);
+            expect(books.get('Lore')).toEqual(before);
+            expect(await wi.loadWorldInfo('Lore')).toEqual(before);
+            const savedTarget = books.get('Archive');
+            expect(savedTarget.entries[1].content).toBe(before.entries[0].content);
+            expect(savedTarget.originalDataUidMap[1]).toBe(2);
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
 
     test.each([

@@ -1,35 +1,15 @@
 /* eslint-disable playwright/no-standalone-expect */
 import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { getFreeCharacterBookEntryId, serializeWorldInfoEntry } from '../public/scripts/world-info-character-book.js';
 
-const positions = { before: 0, after: 1, ANTop: 2, ANBottom: 3, atDepth: 4, EMTop: 5, EMBottom: 6, outlet: 7 };
-const hostSource = readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
-const host = vm.createContext({
-    structuredClone, serializeWorldInfoEntry, getFreeCharacterBookEntryId, world_info_position: positions,
-    worldInfoDataSnapshots: new WeakMap(), worldInfoCache: new Map(),
-});
-for (const name of ['getWIOriginalDataIndex', 'syncWIOriginalDataEntry', 'deleteWIOriginalDataValue', 'appendWIOriginalDataEntry']) {
-    const match = hostSource.match(new RegExp(`^(?:export )?(function ${name}\\([\\s\\S]*?^})`, 'm'));
-    if (!match) throw new Error(`Missing function ${name}`);
-    vm.runInContext(match[1], host);
-}
-const syncOriginal = jest.fn((data, uid) => host.syncWIOriginalDataEntry(data, uid));
-const deleteOriginal = jest.fn((data, uid) => host.deleteWIOriginalDataValue(data, uid));
-const reloadEditor = jest.fn();
+import { serializeWorldInfoEntry } from '../public/scripts/world-info-character-book.js';
+import { importWorldInfoModule } from './util/world-info-module-harness.js';
 
-await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ getContext: jest.fn(() => null) }));
-await jest.unstable_mockModule('../public/scripts/util/AccountStorage.js', () => ({
-    accountStorage: { getItem: jest.fn(() => null), setItem: jest.fn() },
-}));
-await jest.unstable_mockModule('../public/scripts/world-info.js', () => ({
-    createWorldInfoEntry: jest.fn(),
-    syncWIOriginalDataEntry: syncOriginal,
-    deleteWIOriginalDataValue: deleteOriginal,
-    reloadEditor,
-}));
+const { worldInfo, mocks, $ } = await importWorldInfoModule();
+const positions = worldInfo.world_info_position;
+worldInfo.setWorldInfoSettings({}, { world_names: ['Memory Book'] });
+$('#world_editor_select').val('0');
 
+// entry-manager imports world-info.js directly; it binds to the live world-info module loaded above.
 const { clearAllTrees, getAllEntryUids, getTree, findNodeById, isPathfinderSelfWrite } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-store.js');
 const { buildTreeFromMetadata } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-builder.js');
 const { LAYOUT_KEY } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/tree-layout.js');
@@ -39,12 +19,14 @@ const {
 
 describe('Pathfinder entry manager', () => {
     let store;
-    let nextUid;
     let save;
 
     beforeEach(async () => {
         jest.clearAllMocks();
         clearAllTrees();
+        $('#world_editor_select').val('0');
+        $('#world_editor_select').trigger.mockClear();
+
         const first = {
             uid: 1, comment: 'Character First', content: 'first content', key: ['/first/i'], keysecondary: ['other'],
             selective: true, selectiveLogic: 2, constant: true, position: 4, depth: 8, order: 75,
@@ -65,21 +47,16 @@ describe('Pathfinder entry manager', () => {
                 originalDataUidMap: { 1: 0, 2: 1 },
             },
         };
-        nextUid = 10;
         save = jest.fn(async (name, data) => {
             store[name] = structuredClone(data);
             return name;
         });
         initEntryManagerAPIs(
-            jest.fn(async name => store[name] ? structuredClone(store[name]) : null),
-            jest.fn(async (name, data) => {
-                const entry = { uid: nextUid++, key: [], keysecondary: [], disable: false };
-                data.entries[entry.uid] = entry;
-                host.appendWIOriginalDataEntry(data, entry);
-                return entry;
-            }),
+            jest.fn(async name => (store[name] ? structuredClone(store[name]) : null)),
+            jest.fn(async (name, data) => worldInfo.createWorldInfoEntry(name, data)),
             save,
         );
+        mocks.getContext.mockReturnValue(null);
         await buildTreeFromMetadata('Memory Book', store['Memory Book']);
     });
 
@@ -100,7 +77,6 @@ describe('Pathfinder entry manager', () => {
         expect(data.originalData.entries).toHaveLength(1);
         expect(data.originalData.entries[0]).toMatchObject({ content: data.entries[1].content, customCardField: 'retained' });
         expect(data.originalDataUidMap).toEqual({ 1: 0 });
-        expect(deleteOriginal).toHaveBeenCalledTimes(1);
     });
 
     test('rejects a nonexistent waypoint without unfiling the entry', async () => {
@@ -130,7 +106,7 @@ describe('Pathfinder entry manager', () => {
         expect(data.originalData.entries).toHaveLength(4);
         expect(data.originalData.entries.slice(2).map(entry => entry.content)).toEqual(['alpha content', 'beta content']);
         expect(data.originalDataUidMap[created[1].uid]).toBe(3);
-        expect(reloadEditor).toHaveBeenLastCalledWith('Memory Book');
+        expect($('#world_editor_select').trigger).toHaveBeenCalledWith('change');
     });
 
     test('updates content and title without changing activation or custom metadata', async () => {
@@ -145,24 +121,25 @@ describe('Pathfinder entry manager', () => {
     });
 
     test('splits all applicable native and card-only metadata while preserving the new UID and source placement', async () => {
-        store['Memory Book'].originalData.entries[1].id = 10;
+        store['Memory Book'].originalData.entries[1].id = 0;
         const before = structuredClone(store['Memory Book'].entries[1]);
         const firstNode = getTree('Memory Book').children.find(node => node.entries.includes(1));
         const result = await splitEntry('Memory Book', 1, 'First half', 'one', 'Location second half', 'two');
         const data = store['Memory Book'];
         expect(result.newUid).not.toBe(1);
         expect(data.entries[result.newUid]).toEqual({
+            ...worldInfo.newWorldInfoEntryTemplate,
             ...before, uid: result.newUid, comment: 'Location second half', content: 'two', disable: false,
             extensions: { ...before.extensions, [LAYOUT_KEY]: data.entries[1].extensions[LAYOUT_KEY] },
         });
         expect(data.entries[result.newUid].extensions.custom).not.toBe(data.entries[1].extensions.custom);
-        expect(findNodeById(getTree('Memory Book'), firstNode.id).entries).toEqual([1, result.newUid]);
+        expect(findNodeById(getTree('Memory Book'), firstNode.id).entries).toEqual([result.newUid, 1]);
         expect(data.originalData.entries[data.originalDataUidMap[result.newUid]]).toMatchObject({
-            id: 0, content: 'two', comment: 'Location second half', customCardField: 'retained',
+            id: 1, content: 'two', comment: 'Location second half', customCardField: 'retained',
             constant: true, selective: true, extensions: { custom: { kept: true }, sticky: 3, cooldown: 4 },
         });
         expect(data.originalData.entries[0].content).toBe('one');
-        expect(data.originalData.entries.map(entry => entry.id)).toEqual([901, 10, 0]);
+        expect(data.originalData.entries.map(entry => entry.id)).toEqual([901, 0, 1]);
     });
 
     test('updates mapped original IDs [74, 0] without replacing them with native UIDs [0, 1]', async () => {
@@ -180,10 +157,11 @@ describe('Pathfinder entry manager', () => {
     });
 
     test('new entries receive a free original ID even when their native UID is already a card ID', async () => {
-        store['Memory Book'].originalData.entries[1].id = 10;
+        // Real createWorldInfoEntry allocates native UID 0; colliding card ID 0 forces free card ID 1.
+        store['Memory Book'].originalData.entries[1].id = 0;
         const created = await createEntry('Memory Book', 'New', 'new');
-        expect(created.uid).toBe(10);
-        expect(store['Memory Book'].originalData.entries.map(entry => entry.id)).toEqual([901, 10, 0]);
+        expect(created.uid).toBe(0);
+        expect(store['Memory Book'].originalData.entries.map(entry => entry.id)).toEqual([901, 0, 1]);
     });
 
     test('soft forget hides content without losing saved placement and updates the imported enabled flag', async () => {
@@ -198,13 +176,19 @@ describe('Pathfinder entry manager', () => {
     });
 
     test('hard forget updates the UID map before a later update and reused UID creation', async () => {
+        // Seed UID 0 so hard-forgetting UID 1 makes UID 1 the next free UID allocated by createWorldInfoEntry.
+        const zeroEntry = { uid: 0, comment: 'Anchor', content: 'anchor', key: ['anchor'] };
+        store['Memory Book'].entries[0] = zeroEntry;
+        store['Memory Book'].originalData.entries.push({ ...serializeWorldInfoEntry(zeroEntry, positions), id: 900 });
+        store['Memory Book'].originalDataUidMap[0] = 2;
+
         await forgetEntry('Memory Book', 1, true);
         await updateEntry('Memory Book', 2, 'survives');
-        nextUid = 1;
-        await createEntry('Memory Book', 'Fresh', 'new entry');
+        const created = await createEntry('Memory Book', 'Fresh', 'new entry');
         const data = store['Memory Book'];
-        expect(data.originalDataUidMap).toEqual({ 2: 0, 1: 1 });
-        expect(data.originalData.entries.map(entry => entry.content)).toEqual(['survives', 'new entry']);
+        expect(created.uid).toBe(1);
+        expect(data.originalDataUidMap).toEqual({ 2: 0, 0: 1, 1: 2 });
+        expect(data.originalData.entries.map(entry => entry.content)).toEqual(['survives', 'anchor', 'new entry']);
         expect(data.entries[1].extensions?.[LAYOUT_KEY]).toBeUndefined();
     });
 
@@ -255,6 +239,6 @@ describe('Pathfinder entry manager', () => {
         save.mockResolvedValueOnce(result);
         await expect(createEntry('Memory Book', 'Discarded', 'not saved')).rejects.toThrow('The lorebook save did not complete.');
         expect(Object.keys(store['Memory Book'].entries)).toHaveLength(2);
-        expect(reloadEditor).not.toHaveBeenCalled();
+        expect($('#world_editor_select').trigger).not.toHaveBeenCalled();
     });
 });

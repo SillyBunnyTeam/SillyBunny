@@ -2,7 +2,11 @@
 /* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions. */
 import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
-import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { importTagsModule } from '../util/tags-module-harness.js';
+
+const pub = relative => fileURLToPath(new URL(`../../public/${relative}`, import.meta.url));
 
 let menuOptions;
 let popoverOptions;
@@ -408,15 +412,6 @@ describe('tag manager interactions', () => {
         document.querySelector('.sb-dialog__close').click();
         await opening;
     });
-
-    test('the upstream bridge keeps all callers on one opener and does not change F1/F2 paths', () => {
-        const source = fs.readFileSync(new URL('../../public/scripts/tags.js', import.meta.url), 'utf8');
-        expect(source).toContain('VIEW: { id: \'2\'');
-        expect(source).toContain('action: onViewTagsListClick');
-        for (const handler of ['backup: onTagsBackupClick', 'restore: onBackupRestoreClick', 'prune: onTagsPruneClick', 'await onTagDeleteClick.call(row)', 'folder: row => onTagAsFolderClick.call(row)']) expect(source).toContain(handler);
-        expect(source).toContain('tag_map[key].splice(indexOf, 1);');
-        expect(source).toContain('if (mergeTagId) tag_map[key].push(mergeTagId);');
-    });
 });
 
 describe('tag manager batches, counts and refresh cost', () => {
@@ -440,11 +435,34 @@ describe('tag manager batches, counts and refresh cost', () => {
         expect(manager.root.querySelector('.ds-entity-list__footer').hidden).toBe(true);
     });
 
-    test('the Show More module loads when the dialog opens, not at startup', () => {
-        const source = fs.readFileSync(new URL('../../public/scripts/sillybunny-tag-manager.js', import.meta.url), 'utf8');
-        expect(source).not.toMatch(/^import .*list-show-more/m);
-        expect(source).toContain('import(\'./sillybunny-editor/list-show-more.js\')');
-        expect(source).not.toMatch(/^import .*selection-mode/m);
+    test('the Show More and selection-mode modules load when the dialog opens, not at startup', async () => {
+        const realShowMore = await import('../../public/scripts/sillybunny-editor/list-show-more.js');
+        const realSelectionMode = await import('../../public/scripts/sillybunny-editor/selection-mode.js');
+        let showMoreLoaded = 0;
+        let selectionModeLoaded = 0;
+        try {
+            jest.resetModules();
+            await jest.unstable_mockModule(pub('scripts/sillybunny-editor/list-show-more.js'), () => {
+                showMoreLoaded += 1;
+                return realShowMore;
+            });
+            await jest.unstable_mockModule(pub('scripts/sillybunny-editor/selection-mode.js'), () => {
+                selectionModeLoaded += 1;
+                return realSelectionMode;
+            });
+
+            const freshManager = await import('../../public/scripts/sillybunny-tag-manager.js');
+            expect(showMoreLoaded).toBe(0);
+            expect(selectionModeLoaded).toBe(0);
+
+            await freshManager.loadTagManagerModules();
+            expect(showMoreLoaded).toBe(1);
+            expect(selectionModeLoaded).toBe(1);
+        } finally {
+            // Restore real modules so subsequent tests use the uninstrumented implementations.
+            await jest.unstable_mockModule(pub('scripts/sillybunny-editor/list-show-more.js'), () => realShowMore);
+            await jest.unstable_mockModule(pub('scripts/sillybunny-editor/selection-mode.js'), () => realSelectionMode);
+        }
     });
 
     test('rows sit in the rows container and the footer sits in the box', () => {
@@ -640,5 +658,97 @@ describe('tag manager selection mode', () => {
         await settle();
         expect(adapter.actions.deleteMany).not.toHaveBeenCalled();
         expect(manager.root.dataset.selectionMode).toBe('true');
+    });
+});
+
+describe('tag manager upstream bridge', () => {
+    test('the upstream bridge keeps all callers on one opener and preserves delete/merge tag-map paths', async () => {
+        document.body.innerHTML = `
+            <div id="tag_template"><span class="tag"><span class="tag_name"></span><span class="tag_remove"></span></span></div>
+            <div id="bogus_folder_template"><div class="bogus_folder_select"><span class="avatar"></span></div></div>
+            <div id="tag_view_template"><div class="tag_view_item"><span class="tag_view_name"></span></div></div>
+            <button class="tags_view"></button>
+            <input id="tag_view_restore_input" type="file" />
+            <div id="rm_characters_block"><div class="rm_tag_filter"></div></div>
+        `;
+        let mergeTarget = '';
+        const { tagsModule, $, mocks } = await importTagsModule({
+            characters: [{ avatar: 'Alice.png', name: 'Alice' }, { avatar: 'Bob.png', name: 'Bob' }],
+            dialog: {
+                openAlert: jest.fn(async ({ bodyNode }) => {
+                    const select = bodyNode.querySelector('#merge_tag_select');
+                    if (select) {
+                        select.value = mergeTarget;
+                    }
+                    return 'delete';
+                }),
+            },
+        });
+        tagsModule.loadTagsSettings({
+            tags: [
+                { id: 'alpha', name: 'Alpha', color: '', color2: '', folder_type: 'NONE', sort_order: 0 },
+                { id: 'beta', name: 'Beta', color: '', color2: '', folder_type: 'NONE', sort_order: 1 },
+                { id: 'gamma', name: 'Gamma', color: '', color2: '', folder_type: 'NONE', sort_order: 2 },
+                { id: 'unused', name: 'Unused', color: '', color2: '', folder_type: 'NONE', sort_order: 3 },
+            ],
+            tag_map: {
+                'Alice.png': ['alpha', 'gamma'],
+                'Bob.png': ['alpha'],
+                'orphan.png': ['beta'],
+            },
+        });
+        tagsModule.initTags();
+
+        // Both the toolbar button and the filter's VIEW action route to the single Tag Manager opener.
+        $('.tags_view').trigger('click');
+        await settle();
+        expect(mocks.openTagManager).toHaveBeenCalledTimes(1);
+        const passedAdapter = mocks.openTagManager.mock.calls[0][0];
+
+        tagsModule.printTagFilters(tagsModule.tag_filter_type.character_list);
+        const manageChip = document.querySelector('#rm_characters_block .rm_tag_filter .tag.manageTags');
+        expect(manageChip).not.toBeNull();
+        expect(manageChip.id).toBe('2');
+        $(manageChip).trigger('click');
+        await settle();
+        expect(mocks.openTagManager).toHaveBeenCalledTimes(2);
+
+        // Verify backup, restore, prune and folder actions route to their upstream handlers.
+        passedAdapter.actions.backup();
+        expect(mocks.utils.download).toHaveBeenCalledTimes(1);
+
+        const restoreClicks = jest.fn();
+        document.getElementById('tag_view_restore_input').addEventListener('click', restoreClicks);
+        passedAdapter.actions.restore();
+        expect(restoreClicks).toHaveBeenCalledTimes(1);
+
+        // Prune removes unused tags and orphaned entity keys when confirmed.
+        await passedAdapter.actions.prune();
+        expect(mocks.Popup.show.confirm).toHaveBeenCalled();
+        expect(tagsModule.tags.map(tag => tag.id)).not.toContain('unused');
+        expect(tagsModule.tag_map).not.toHaveProperty('orphan.png');
+
+        const gammaRow = document.createElement('div');
+        gammaRow.className = 'tag_view_item';
+        gammaRow.id = 'gamma';
+        passedAdapter.actions.folder(gammaRow);
+        expect(tagsModule.tags.find(tag => tag.id === 'gamma').folder_type).not.toBe('NONE');
+
+        // Delete with merge removes the deleted tag from tag_map and appends the merge target.
+        mergeTarget = 'beta';
+        const alphaRow = document.createElement('div');
+        alphaRow.className = 'tag_view_item';
+        alphaRow.id = 'alpha';
+        await passedAdapter.actions.delete(alphaRow);
+        expect(tagsModule.tags.map(tag => tag.id)).toEqual(['beta', 'gamma']);
+        expect(tagsModule.tag_map['Alice.png']).toEqual(['gamma', 'beta']);
+        expect(tagsModule.tag_map['Bob.png']).toEqual(['beta']);
+
+        // Plain delete (no merge target) removes the tag from tag_map without pushing a replacement.
+        mergeTarget = '';
+        await passedAdapter.actions.delete(gammaRow);
+        expect(tagsModule.tags.map(tag => tag.id)).toEqual(['beta']);
+        expect(tagsModule.tag_map['Alice.png']).toEqual(['beta']);
+        expect(tagsModule.tag_map['Bob.png']).toEqual(['beta']);
     });
 });

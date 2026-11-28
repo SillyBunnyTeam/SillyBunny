@@ -1,186 +1,350 @@
-import { describe, expect, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import vm from 'node:vm';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import {
+    GENERATION_LIFECYCLE_ABORT_REASON,
+} from '../public/scripts/generation-lifecycle/index.js';
+import { importScriptModule } from './util/script-harness.js';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
+let activeRuntime = null;
 
-function getFunctionSource(name, { exported = false } = {}) {
-    const markers = [
-        `${exported ? 'export ' : ''}function ${name}(`,
-        `${exported ? 'export ' : ''}async function ${name}(`,
-    ];
-    const marker = markers.find(candidate => scriptSource.includes(candidate));
-    const start = marker ? scriptSource.indexOf(marker) : -1;
+afterEach(() => {
+    activeRuntime?.cleanup();
+    activeRuntime = null;
+    document.body.innerHTML = '';
+    document.head.innerHTML = '';
+    delete document.body.dataset.generating;
+    jest.restoreAllMocks();
+});
 
-    expect(start).toBeGreaterThanOrEqual(0);
+const GENERATION_DOM = `
+    <select id="main_api"><option value="openai" selected>openai</option></select>
+    <div id="send_form">
+        <textarea id="send_textarea"></textarea>
+        <div id="send_but"></div>
+        <div id="mes_stop" style="display: none;"></div>
+    </div>
+    <div id="chat"></div>
+    <div id="message_template" hidden>
+        <div class="mes">
+            <div class="mes_block">
+                <div class="ch_name"><span class="name_text"></span></div>
+                <div class="mes_text"></div>
+                <div class="mes_timer"></div>
+                <div class="tokenCounterDisplay"></div>
+            </div>
+            <div class="swipe_left"></div>
+            <div class="swipe_right"></div>
+            <div class="swipes-counter"></div>
+        </div>
+    </div>
+`;
 
-    const bodyStart = scriptSource.indexOf(') {', start) + 2;
-    let depth = 0;
-
-    for (let index = bodyStart; index < scriptSource.length; index++) {
-        const char = scriptSource[index];
-        if (char === '{') {
-            depth++;
-        } else if (char === '}') {
-            depth--;
-            if (depth === 0) {
-                return scriptSource.slice(start, index + 1);
-            }
-        }
-    }
-
-    throw new Error(`Unable to find function source for ${name}`);
-}
-
-// Minimal jQuery stand-in that mirrors mobile-styles.css:
-// `#send_form:not(.sb-generating-controls) #mes_stop { display: none !important; }`
-function createMobileStopButtonDom() {
-    const state = { generatingClass: true, inlineDisplay: 'flex' };
-    const elements = {
-        '#send_form': {
-            removeClass: () => { state.generatingClass = false; },
-        },
-        '#mes_stop': {
-            css: value => {
-                if (typeof value === 'string') {
-                    return state.generatingClass ? state.inlineDisplay : 'none';
-                }
-                state.inlineDisplay = value.display;
+async function createGenerationRuntime({
+    stream = false,
+    sendOpenAIRequest = jest.fn(async () => ({ choices: [{ message: { content: 'AI reply' } }] })),
+    dom = GENERATION_DOM,
+} = {}) {
+    const loaded = await importScriptModule({
+        dom,
+        mocks: {
+            'scripts/openai.js': {
+                sendOpenAIRequest,
+                prepareOpenAIMessages: jest.fn(async () => [[{ role: 'user', content: 'Hi' }], 10]),
             },
         },
+    });
+    activeRuntime = loaded;
+    loaded.state.oai_settings.stream_openai = stream;
+    loaded.state.oai_settings.chat_completion_source = 'openai';
+    loaded.state.oai_settings.openai_model = 'gpt-4o';
+
+    const { script, $ } = loaded;
+    await loaded.runReady();
+    $('#main_api').val('openai').trigger('change');
+    script.characters.push({
+        name: 'Aster',
+        avatar: 'aster.png',
+        chat: 'aster-chat',
+        description: '',
+        personality: '',
+        scenario: '',
+        first_mes: 'Hello',
+        mes_example: '',
+        data: { extensions: {} },
+    });
+    script.setCharacterId(0);
+    script.setCharacterName('Aster');
+    script.setOnlineStatus('connected');
+    script.chat.push({
+        name: 'User',
+        is_user: true,
+        is_system: false,
+        mes: 'Hello there',
+        extra: {},
+    });
+
+    return {
+        ...loaded,
+        sendOpenAIRequest,
     };
-
-    return { $: selector => elements[selector], state };
-}
-
-function getSourceBetween(startMarker, endMarker) {
-    const start = scriptSource.indexOf(startMarker);
-    expect(start).toBeGreaterThanOrEqual(0);
-
-    const end = scriptSource.indexOf(endMarker, start + startMarker.length);
-    expect(end).toBeGreaterThan(start);
-
-    return scriptSource.slice(start, end);
 }
 
 describe('generation lifecycle wiring', () => {
-    test('imports generation lifecycle decisions into the script adapter', () => {
-        expect(scriptSource).toContain('resolveGenerationUiLockState');
-        expect(scriptSource).toContain('resolveGenerationOutputBufferState');
-        expect(scriptSource).toContain('resolveGenerationUnblockState');
-        expect(scriptSource).toContain('resolveStopGenerationState');
+    test('deactivateSendButtons and activateSendButtons drive UI lock state and body generating marker', async () => {
+        const { script, eventSource } = await createGenerationRuntime();
+        const endedEvents = [];
+        eventSource.on(script.event_types.GENERATION_ENDED, (...args) => endedEvents.push(args));
+
+        script.deactivateSendButtons();
+        expect(document.body.dataset.generating).toBe('true');
+        expect(document.getElementById('send_form').classList.contains('sb-generating-controls')).toBe(true);
+        expect(document.getElementById('mes_stop').style.display).toBe('flex');
+
+        script.activateSendButtons();
+        expect(document.body.dataset.generating).toBeUndefined();
+        expect(document.getElementById('send_form').classList.contains('sb-generating-controls')).toBe(false);
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
+        expect(endedEvents).toEqual([[1]]);
+
+        // markBodyGenerating: false still shows stop controls without marking body.dataset.generating.
+        script.deactivateSendButtons({ markBodyGenerating: false });
+        expect(document.body.dataset.generating).toBeUndefined();
+        expect(document.getElementById('mes_stop').style.display).toBe('flex');
+
+        // When offline, activateSendButtons restores #send_but visibility.
+        script.setOnlineStatus('no_connection');
+        document.getElementById('send_but').classList.add('displayNone');
+        script.activateSendButtons({ emitGenerationEnded: false });
+        expect(document.getElementById('send_but').classList.contains('displayNone')).toBe(false);
+        expect(endedEvents).toHaveLength(1);
     });
 
-    test('routes send-button activation through lifecycle lock state', () => {
-        const activateSource = getFunctionSource('activateSendButtons', { exported: true });
+    test('emits GENERATION_ENDED once even when the mobile stylesheet hides the stop button on class removal', async () => {
+        const { script, eventSource } = await createGenerationRuntime();
+        const style = document.createElement('style');
+        style.textContent = '#send_form:not(.sb-generating-controls) #mes_stop { display: none !important; }';
+        document.head.appendChild(style);
 
-        expect(activateSource).toContain('resolveGenerationUiLockState({ isGenerating: false })');
-        expect(activateSource).toContain('lockState.shouldShowStopButton');
-        expect(activateSource).toContain('lockState.shouldHideSwipeButtons');
-        expect(activateSource).toContain('lockState.bodyGeneratingValue');
+        const endedEvents = [];
+        eventSource.on(script.event_types.GENERATION_ENDED, (...args) => endedEvents.push(args));
+
+        script.chat.push(
+            { name: 'Aster', is_user: false, is_system: false, mes: 'One', extra: {} },
+            { name: 'User', is_user: true, is_system: false, mes: 'Two', extra: {} },
+        );
+
+        script.deactivateSendButtons();
+        script.activateSendButtons();
+        script.activateSendButtons();
+
+        expect(endedEvents).toEqual([[3]]);
+        expect(document.getElementById('send_form').classList.contains('sb-generating-controls')).toBe(false);
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
     });
 
-    test('routes send-button deactivation through lifecycle lock state', () => {
-        const deactivateSource = getFunctionSource('deactivateSendButtons', { exported: true });
-
-        expect(deactivateSource).toContain('markBodyGenerating = true');
-        expect(deactivateSource).toContain('resolveGenerationUiLockState({ isGenerating: true, markBodyGenerating })');
-        expect(deactivateSource).toContain('lockState.shouldShowStopButton');
-        expect(deactivateSource).toContain('lockState.shouldHideSwipeButtons');
-        expect(deactivateSource).toContain('lockState.bodyGeneratingValue');
-        expect(deactivateSource).not.toContain('document.body.dataset.generating = \'true\';');
-    });
-
-    test('routes stop-generation decisions through lifecycle stop state', () => {
-        const stopSource = getFunctionSource('stopGeneration', { exported: true });
-
-        expect(stopSource).toContain('resolveStopGenerationState({');
-        expect(stopSource).toContain('isSendPressed: is_send_press');
-        expect(stopSource).toContain('isGroupGenerating: is_group_generating');
-        expect(stopSource).toContain('hasStreamingProcessor: Boolean(activeStreamingProcessor)');
-        expect(stopSource).toContain('streamingType: activeStreamingProcessor?.type');
-        expect(stopSource).toContain('activeStreamingProcessor.onStopStreaming();');
-        expect(stopSource).toContain('abortController.abort(stopState.abortReason);');
-        expect(stopSource).toContain('unblockGeneration(stopState.unblockType, { emitGenerationEnded: false, force: true });');
-        expect(stopSource).not.toContain('Clicked stop button');
-    });
-
-    test('routes unblock cleanup decisions through lifecycle unblock state', () => {
-        const unblockSource = getFunctionSource('unblockGeneration');
-
-        expect(unblockSource).toContain('resolveGenerationUnblockState({');
-        expect(unblockSource).toContain('type');
-        expect(unblockSource).toContain('hasStreamingProcessor: Boolean(streamingProcessor)');
-        expect(unblockSource).toContain('isStreamingFinished: Boolean(streamingProcessor?.isFinished)');
-        expect(unblockSource).toContain('forceUnblock: force');
-        expect(unblockSource).toContain('unblockState.shouldActivateSendButtons');
-        expect(unblockSource).toContain('unblockState.shouldResetProgress');
-        expect(unblockSource).toContain('unblockState.shouldFlushEphemeralState');
-        expect(unblockSource).not.toContain('type === \'quiet\' && streamingProcessor && !streamingProcessor.isFinished');
-    });
-
-    test('emits GENERATION_ENDED once even when the mobile stylesheet hides the stop button on class removal', () => {
-        const hideSource = getFunctionSource('hideStopButton');
-        const emitted = [];
-        const { $, state } = createMobileStopButtonDom();
-
-        vm.runInNewContext(`${hideSource}\nhideStopButton();\nhideStopButton();`, {
-            $,
-            eventSource: { emit: (...args) => emitted.push(args) },
-            event_types: { GENERATION_ENDED: 'generation_ended' },
-            chat: { length: 3 },
-            activeGenerationRun: null,
+    test('stopGeneration is a no-op when idle and aborts an active request with the lifecycle abort reason', async () => {
+        let capturedSignal = null;
+        let rejectRequest = null;
+        const sendOpenAIRequest = jest.fn((_type, _prompt, signal) => {
+            capturedSignal = signal;
+            return new Promise((_resolve, reject) => {
+                rejectRequest = reject;
+                signal?.addEventListener('abort', () => reject(new Error('Aborted')));
+            });
         });
 
-        expect(emitted).toEqual([['generation_ended', 3]]);
-        expect(state).toEqual({ generatingClass: false, inlineDisplay: 'none' });
+        const { script, eventSource } = await createGenerationRuntime({ sendOpenAIRequest });
+        const stoppedEvents = [];
+        const endedEvents = [];
+        eventSource.on(script.event_types.GENERATION_STOPPED, (...args) => stoppedEvents.push(args));
+        eventSource.on(script.event_types.GENERATION_ENDED, (...args) => endedEvents.push(args));
+
+        expect(script.stopGeneration()).toBe(false);
+        expect(stoppedEvents).toHaveLength(0);
+
+        const generation = script.Generate('normal');
+        for (let i = 0; i < 40 && !capturedSignal; i++) {
+            await Promise.resolve();
+        }
+        expect(capturedSignal).toBeTruthy();
+        expect(capturedSignal.aborted).toBe(false);
+
+        expect(script.stopGeneration()).toBe(true);
+        expect(capturedSignal.aborted).toBe(true);
+        expect(capturedSignal.reason).toBe(GENERATION_LIFECYCLE_ABORT_REASON);
+        expect(stoppedEvents).toHaveLength(1);
+        expect(endedEvents).toHaveLength(0);
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
+
+        rejectRequest?.(new Error('Aborted'));
+        await generation.catch(() => {});
+        expect(endedEvents).toHaveLength(0);
     });
 
-    test('routes provider-error cleanup through stopped lifecycle semantics', () => {
-        expect(scriptSource).toContain('this.markUIGenStopped({ emitGenerationEnded: false, emitGenerationStopped: true });');
-        expect(scriptSource).toContain('eventSource.emit(event_types.GENERATION_STOPPED, ...(agentGenerationContext ? [agentGenerationContext] : []));');
-        expect(scriptSource).toContain('unblockGeneration(type, { emitGenerationEnded: false });');
+    test('nested quiet generation does not unblock an active streaming main generation, while explicit stop does', async () => {
+        let yieldChunk = null;
+        let streamRequestCount = 0;
+        const sendOpenAIRequest = jest.fn(async (type) => {
+            if (type === 'quiet') {
+                return { choices: [{ message: { content: 'quiet helper result' } }] };
+            }
+            streamRequestCount++;
+            return async function* () {
+                yield { text: 'Partial stream', swipes: [], logprobs: null, toolCalls: [], state: {} };
+                await new Promise(resolve => { yieldChunk = resolve; });
+                yield { text: 'Partial stream finished', swipes: [], logprobs: null, toolCalls: [], state: {} };
+            };
+        });
+
+        const { script, eventSource } = await createGenerationRuntime({ stream: true, sendOpenAIRequest });
+        const stoppedEvents = [];
+        const endedEvents = [];
+        eventSource.on(script.event_types.GENERATION_STOPPED, (...args) => stoppedEvents.push(args));
+        eventSource.on(script.event_types.GENERATION_ENDED, (...args) => endedEvents.push(args));
+
+        const mainGen = script.Generate('normal');
+        for (let i = 0; i < 60 && !yieldChunk; i++) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        expect(streamRequestCount).toBe(1);
+        expect(document.getElementById('mes_stop').style.display).toBe('flex');
+
+        // Run a nested quiet generation while the main stream is active; it must not unlock main UI.
+        const quietResult = await script.Generate('quiet', { quiet_prompt: 'summarize' });
+        expect(String(quietResult)).toBe('quiet helper result');
+        expect(document.getElementById('mes_stop').style.display).toBe('flex');
+        expect(endedEvents).toHaveLength(0);
+
+        // Explicit Stop force-unblocks the UI and emits GENERATION_STOPPED without GENERATION_ENDED.
+        expect(script.stopGeneration()).toBe(true);
+        yieldChunk();
+        await mainGen.catch(() => {});
+
+        expect(stoppedEvents).toHaveLength(1);
+        expect(endedEvents).toHaveLength(0);
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
     });
 
-    test('routes post-main buffering decisions through lifecycle output state', () => {
-        const bufferSource = getFunctionSource('shouldBufferMainGenerationOutput');
+    test('routes streaming provider-error cleanup through GENERATION_STOPPED without GENERATION_ENDED', async () => {
+        const sendOpenAIRequest = jest.fn(async () => async function* () {
+            yield { text: 'Before error', swipes: [], logprobs: null, toolCalls: [], state: {} };
+            throw new Error('Upstream provider failed');
+        });
 
-        expect(bufferSource).toContain('event_types.GENERATION_OUTPUT_BUFFERING_DECISION');
-        expect(bufferSource).toContain('resolveGenerationOutputBufferState({');
-        expect(bufferSource).toContain('hasPostMainInterceptors: Boolean(eventData.hasPostMainInterceptors)');
-        expect(scriptSource).toContain('await shouldBufferMainGenerationOutput({ type, isStreaming: true })');
-        expect(scriptSource).toContain('await activeStreamingProcessor.generateBuffered()');
+        const { script, eventSource } = await createGenerationRuntime({ stream: true, sendOpenAIRequest });
+        const stoppedEvents = [];
+        const endedEvents = [];
+        eventSource.on(script.event_types.GENERATION_STOPPED, (...args) => stoppedEvents.push(args));
+        eventSource.on(script.event_types.GENERATION_ENDED, (...args) => endedEvents.push(args));
+
+        await script.Generate('normal').catch(() => {});
+
+        expect(stoppedEvents.length).toBeGreaterThanOrEqual(1);
+        expect(endedEvents).toHaveLength(0);
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
     });
 
-    test('keeps buffered streaming output hidden until post-main intercept completes', () => {
-        const bufferedSource = getSourceBetween('async generateBuffered() {', 'async generate() {');
-        const generateSource = getFunctionSource('Generate', { exported: true });
-        const normalizedGenerateSource = generateSource.replace(/\r\n/g, '\n');
+    test('keeps buffered streaming output hidden until post-main intercept completes and saves intercepted text', async () => {
+        let releaseSecondChunk = null;
+        let chatLengthDuringStream = null;
+        let domCountDuringStream = null;
+        const sendOpenAIRequest = jest.fn(async () => async function* () {
+            yield { text: 'First chunk', swipes: [], logprobs: null, toolCalls: [], state: {} };
+            await new Promise(resolve => { releaseSecondChunk = resolve; });
+            yield { text: 'First chunk and second chunk', swipes: [], logprobs: null, toolCalls: [], state: {} };
+        });
 
-        expect(bufferedSource).toContain('for await (const { text, swipes, logprobs, toolCalls, state } of this.generator())');
-        expect(bufferedSource).toContain('this.result = text;');
-        expect(bufferedSource).not.toContain('this.onStartStreaming');
-        expect(bufferedSource).not.toContain('this.onProgressStreaming');
-        expect(bufferedSource).not.toContain('this.onFinishStreaming');
+        const { script, eventSource } = await createGenerationRuntime({ stream: true, sendOpenAIRequest });
+        const events = [];
 
-        expect(generateSource).toContain('const shouldBufferOutput = await shouldBufferMainGenerationOutput({ type, isStreaming: true });');
-        expect(generateSource).toContain('await activeStreamingProcessor.generateBuffered()');
-        expect(normalizedGenerateSource).toMatch(/const interceptResult = await applyMainGenerationOutputInterceptors\(\{\s+type,\s+text: getMessage,\s+isStreaming: true,/);
-        expect(generateSource).toContain('const saveReplyType = originalType !== \'continue\' ? type : \'appendFinal\';');
-        expect(generateSource).toContain('type: saveReplyType,');
-        expect(generateSource).toContain('!shouldBufferOutput && hasToolCalls && !shouldDeleteMessage');
+        eventSource.on(script.event_types.GENERATION_OUTPUT_BUFFERING_DECISION, (eventData) => {
+            events.push(['buffering_decision', eventData.type, eventData.isStreaming]);
+            eventData.hasPostMainInterceptors = true;
+        });
+
+        eventSource.on(script.event_types.MAIN_GENERATION_OUTPUT_READY, (eventData) => {
+            events.push(['output_ready', eventData.type, eventData.isStreaming, eventData.text]);
+            // Still hidden before saveReply runs.
+            expect(script.chat).toHaveLength(1);
+            expect(document.querySelectorAll('#chat > .mes')).toHaveLength(0);
+            eventData.text = 'Intercepted streamed reply';
+        });
+
+        eventSource.on(script.event_types.MESSAGE_RECEIVED, (mesId) => {
+            events.push(['message_received', mesId, script.chat[mesId]?.mes]);
+        });
+
+        const pending = script.Generate('normal');
+        for (let i = 0; i < 60 && !releaseSecondChunk; i++) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        chatLengthDuringStream = script.chat.length;
+        domCountDuringStream = document.querySelectorAll('#chat > .mes').length;
+        releaseSecondChunk();
+        const result = await pending;
+
+        expect(chatLengthDuringStream).toBe(1);
+        expect(domCountDuringStream).toBe(0);
+        expect(String(result)).toBe('Intercepted streamed reply');
+        expect(script.chat).toHaveLength(2);
+        expect(script.chat[1].mes).toBe('Intercepted streamed reply');
+        expect(events).toEqual([
+            ['buffering_decision', 'normal', true],
+            ['output_ready', 'normal', true, 'First chunk and second chunk'],
+            ['message_received', 1, 'Intercepted streamed reply'],
+        ]);
     });
 
-    test('runs main output intercept event before saveReply stores non-streaming replies', () => {
-        const generateSource = getFunctionSource('Generate', { exported: true });
-        const interceptIndex = generateSource.indexOf('await applyMainGenerationOutputInterceptors({');
-        const saveIndex = generateSource.indexOf('await saveReply({ type, getMessage, title, swipes, reasoning, imageUrls, reasoningSignature, reasoningTokens: data.reasoningTokens, isCurrent })');
+    test('cancelling a buffered streaming intercept skips saving and unblocks cleanly', async () => {
+        const sendOpenAIRequest = jest.fn(async () => async function* () {
+            yield { text: 'Hidden draft', swipes: [], logprobs: null, toolCalls: [], state: {} };
+        });
 
-        expect(interceptIndex).toBeGreaterThanOrEqual(0);
-        expect(saveIndex).toBeGreaterThanOrEqual(0);
-        expect(interceptIndex).toBeLessThan(saveIndex);
+        const { script, eventSource } = await createGenerationRuntime({ stream: true, sendOpenAIRequest });
+        const endedEvents = [];
+        eventSource.on(script.event_types.GENERATION_ENDED, () => endedEvents.push('ended'));
+        eventSource.on(script.event_types.GENERATION_OUTPUT_BUFFERING_DECISION, (eventData) => {
+            eventData.hasPostMainInterceptors = true;
+        });
+        eventSource.on(script.event_types.MAIN_GENERATION_OUTPUT_READY, (eventData) => {
+            eventData.cancelled = true;
+        });
+
+        await script.Generate('normal');
+
+        expect(script.chat).toHaveLength(1);
+        expect(endedEvents).toHaveLength(1);
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
+    });
+
+    test('runs main output intercept before saveReply stores non-streaming replies and skips excluded types', async () => {
+        const sendOpenAIRequest = jest.fn(async () => ({
+            choices: [{ message: { content: 'Original non-stream reply' } }],
+        }));
+
+        const { script, eventSource } = await createGenerationRuntime({ stream: false, sendOpenAIRequest });
+        const order = [];
+
+        eventSource.on(script.event_types.MAIN_GENERATION_OUTPUT_READY, (eventData) => {
+            order.push(`intercept:${eventData.type}:${eventData.isStreaming}:${script.chat.length}`);
+            eventData.text = 'Rewritten non-stream reply';
+        });
+        eventSource.on(script.event_types.MESSAGE_RECEIVED, (mesId) => {
+            order.push(`saved:${mesId}:${script.chat[mesId]?.mes}`);
+        });
+
+        await script.Generate('normal');
+
+        expect(order).toEqual([
+            'intercept:normal:false:1',
+            'saved:1:Rewritten non-stream reply',
+        ]);
+        expect(script.chat[1].mes).toBe('Rewritten non-stream reply');
+
+        // Excluded generation types (quiet, impersonate) bypass MAIN_GENERATION_OUTPUT_READY.
+        order.length = 0;
+        const quietReply = await script.Generate('quiet', { quiet_prompt: 'internal check' });
+        expect(String(quietReply)).toBe('Original non-stream reply');
+        expect(order).toEqual([]);
     });
 });

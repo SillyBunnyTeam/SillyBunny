@@ -195,12 +195,32 @@ describe('companion card ui', () => {
 
     // Inline companion cards keep general actions small; tagged agents may add one purpose-built action.
     // Hiding an agent lives in the companion panel; agent settings live behind Workspace.
-    test('keeps inline card actions within the documented vocabulary', () => {
-        const source = fs.readFileSync(new URL('../public/scripts/extensions/in-chat-agents/companion/companion-ui.js', import.meta.url), 'utf8');
+    test('keeps inline card actions within the documented vocabulary', async () => {
+        const message = {
+            is_user: false,
+            is_system: false,
+            name: 'Aria',
+            extra: {
+                inChatAgentCompanionResults: {
+                    'companion-tracker': {
+                        status: 'done',
+                        content: 'Note body',
+                        agentName: 'Companion Tracker',
+                        displayMode: 'card',
+                    },
+                },
+            },
+        };
+        chat.push(message);
+        const ui = await importCompanionUi();
+        jqueryObject.length = 1;
 
-        expect(source).not.toContain('data-action="hide"');
-        expect(source).not.toContain('data-action="settings"');
-        expect(source).not.toContain('configureCompanionCardUi');
+        ui.renderCompanionResultsForMessage(0);
+
+        const renderedHtml = jqueryObject.html.mock.calls.at(-1)?.[0] ?? '';
+        expect(renderedHtml).not.toContain('data-action="hide"');
+        expect(renderedHtml).not.toContain('data-action="settings"');
+        expect(ui).not.toHaveProperty('configureCompanionCardUi');
     });
 
     test('shows the lorebook action only on tagged inline cards', async () => {

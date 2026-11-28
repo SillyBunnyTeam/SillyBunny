@@ -1,0 +1,507 @@
+[
+    {
+        "name": "let declares a variable",
+        "script": "/let x 1",
+        "expected": { "tree": { "variables": ["x"], "executors": [{ "name": "let", "unnamed": ["x", "1"] }] } }
+    },
+    {
+        "name": "let with a key argument declares the key",
+        "script": "/let key=y 1",
+        "expected": {
+            "tree": {
+                "variables": ["y"],
+                "executors": [{ "name": "let", "named": [{ "name": "key", "value": "y" }], "unnamed": ["1"] }]
+            }
+        }
+    },
+    {
+        "name": "several lets",
+        "script": "/let x 1 | /let y 2 | /stp-plain {{var::x}}",
+        "expected": {
+            "tree": {
+                "variables": ["x", "y"],
+                "executors": [
+                    { "name": "let", "unnamed": ["x", "1"] },
+                    { "name": "let", "unnamed": ["y", "2"] },
+                    { "name": "stp-plain", "unnamed": ["{{var::x}}"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "import declares its names",
+        "script": "/import from=Set a b",
+        "expected": {
+            "tree": {
+                "variables": ["a", "b"],
+                "executors": [{ "name": "import", "named": [{ "name": "from", "value": "Set" }], "unnamed": ["a", "b"] }]
+            }
+        }
+    },
+    {
+        "name": "import with an alias",
+        "script": "/import from=Set a as b",
+        "expected": {
+            "tree": {
+                "variables": ["b"],
+                "executors": [
+                    {
+                        "name": "import",
+                        "named": [{ "name": "from", "value": "Set" }],
+                        "unnamed": ["a", "as", "b"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "import mixing plain and aliased names",
+        "script": "/import from=Set a b as c d",
+        "expected": {
+            "tree": {
+                "variables": ["a", "c", "d"],
+                "executors": [
+                    {
+                        "name": "import",
+                        "named": [{ "name": "from", "value": "Set" }],
+                        "unnamed": ["a", "b", "as", "c", "d"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure arguments are variables of the closure",
+        "script": "/stp-plain {: x=1 y=2 :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " x=1 y=2 ",
+                                    "args": [{ "name": "x", "value": "1" }, { "name": "y", "value": "2" }],
+                                    "variables": ["x", "y"],
+                                    "executors": []
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "let inside a closure belongs to the closure",
+        "script": "/stp-plain {: /let inner 1 :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /let inner 1 ",
+                                    "variables": ["inner"],
+                                    "executors": [{ "name": "let", "unnamed": ["inner", "1"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure scopes are independent",
+        "script": "/let outer 1 | /stp-plain {: /let inner 2 :} | /stp-plain {: /let other 3 :}",
+        "expected": {
+            "tree": {
+                "variables": ["outer"],
+                "executors": [
+                    { "name": "let", "unnamed": ["outer", "1"] },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /let inner 2 ",
+                                    "variables": ["inner"],
+                                    "executors": [{ "name": "let", "unnamed": ["inner", "2"] }]
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /let other 3 ",
+                                    "variables": ["other"],
+                                    "executors": [{ "name": "let", "unnamed": ["other", "3"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "closure argument and let in one closure",
+        "script": "/stp-plain {: a=1 /let b 2 :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " a=1 /let b 2 ",
+                                    "args": [{ "name": "a", "value": "1" }],
+                                    "variables": ["a", "b"],
+                                    "executors": [{ "name": "let", "unnamed": ["b", "2"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "scope snapshots per command",
+        "script": "/let x 1 | /let y 2 | /stp-plain z",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "variables": ["x", "y"],
+                "executors": [
+                    {
+                        "name": "let",
+                        "unnamed": [{ "value": "x", "start": 5, "end": 6 }, { "value": "1", "end": 9 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 9,
+                            "startNamedArgs": 5,
+                            "endNamedArgs": 5,
+                            "startUnnamedArgs": 5,
+                            "endUnnamedArgs": 9
+                        }
+                    },
+                    {
+                        "name": "let",
+                        "unnamed": [{ "value": "y", "start": 16, "end": 17 }, { "value": "2", "end": 20 }],
+                        "pos": {
+                            "start": 12,
+                            "end": 20,
+                            "startNamedArgs": 16,
+                            "endNamedArgs": 16,
+                            "startUnnamedArgs": 16,
+                            "endUnnamedArgs": 20
+                        }
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "z", "start": 33, "end": 34 }],
+                        "pos": {
+                            "start": 23,
+                            "end": 34,
+                            "startNamedArgs": 33,
+                            "endNamedArgs": 33,
+                            "startUnnamedArgs": 33,
+                            "endUnnamedArgs": 34
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "let", "start": 1, "end": 9 },
+                    { "name": "let", "start": 12, "end": 20 },
+                    { "name": "stp-plain", "start": 23, "end": 34 }
+                ],
+                "closures": [{ "start": 1, "end": 33 }],
+                "macros": [],
+                "scopes": [[], ["x"], ["x", "y"]]
+            }
+        }
+    },
+    {
+        "name": "closure arguments are visible to inner commands",
+        "script": "/let x 1 | /stp-plain {: a=1 /stp-plain {{var::a}} :} | /stp-plain tail",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "variables": ["x"],
+                "executors": [
+                    {
+                        "name": "let",
+                        "unnamed": [{ "value": "x", "start": 5, "end": 6 }, { "value": "1", "end": 9 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 9,
+                            "startNamedArgs": 5,
+                            "endNamedArgs": 5,
+                            "startUnnamedArgs": 5,
+                            "endUnnamedArgs": 9
+                        }
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "value": {
+                                    "closure": {
+                                        "rawText": " a=1 /stp-plain {{var::a}} ",
+                                        "args": [{ "name": "a", "value": "1", "start": 25, "end": 28 }],
+                                        "variables": ["a"],
+                                        "executors": [
+                                            {
+                                                "name": "stp-plain",
+                                                "unnamed": [{ "value": "{{var::a}}", "start": 40, "end": 51 }],
+                                                "pos": {
+                                                    "start": 30,
+                                                    "end": 51,
+                                                    "startNamedArgs": 40,
+                                                    "endNamedArgs": 40,
+                                                    "startUnnamedArgs": 40,
+                                                    "endUnnamedArgs": 51
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                                "start": 22,
+                                "end": 53
+                            }
+                        ],
+                        "pos": {
+                            "start": 12,
+                            "end": 54,
+                            "startNamedArgs": 22,
+                            "endNamedArgs": 22,
+                            "startUnnamedArgs": 22,
+                            "endUnnamedArgs": 54
+                        }
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "tail", "start": 67, "end": 71 }],
+                        "pos": {
+                            "start": 57,
+                            "end": 71,
+                            "startNamedArgs": 67,
+                            "endNamedArgs": 67,
+                            "startUnnamedArgs": 67,
+                            "endUnnamedArgs": 71
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "let", "start": 1, "end": 9 },
+                    { "name": "stp-plain", "start": 12, "end": 54 },
+                    { "name": "stp-plain", "start": 30, "end": 51 },
+                    { "name": "stp-plain", "start": 57, "end": 71 }
+                ],
+                "closures": [{ "start": 1, "end": 70 }, { "start": 23, "end": 52 }],
+                "macros": [{ "name": "var", "start": 40, "end": 50 }],
+                "scopes": [[], ["x"], ["a", "x"], ["x"]]
+            }
+        }
+    },
+    {
+        "name": "nested closure scopes see their parents",
+        "script": "/let x 1 | /stp-plain {: /let y 2 | /stp-plain {: /let z 3 | /stp-plain end :} :}",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "variables": ["x"],
+                "executors": [
+                    {
+                        "name": "let",
+                        "unnamed": [{ "value": "x", "start": 5, "end": 6 }, { "value": "1", "end": 9 }],
+                        "pos": {
+                            "start": 1,
+                            "end": 9,
+                            "startNamedArgs": 5,
+                            "endNamedArgs": 5,
+                            "startUnnamedArgs": 5,
+                            "endUnnamedArgs": 9
+                        }
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "value": {
+                                    "closure": {
+                                        "rawText": " /let y 2 | /stp-plain {: /let z 3 | /stp-plain end :} ",
+                                        "variables": ["y"],
+                                        "executors": [
+                                            {
+                                                "name": "let",
+                                                "unnamed": [
+                                                    { "value": "y", "start": 30, "end": 31 },
+                                                    { "value": "2", "end": 34 }
+                                                ],
+                                                "pos": {
+                                                    "start": 26,
+                                                    "end": 34,
+                                                    "startNamedArgs": 30,
+                                                    "endNamedArgs": 30,
+                                                    "startUnnamedArgs": 30,
+                                                    "endUnnamedArgs": 34
+                                                }
+                                            },
+                                            {
+                                                "name": "stp-plain",
+                                                "unnamed": [
+                                                    {
+                                                        "value": {
+                                                            "closure": {
+                                                                "rawText": " /let z 3 | /stp-plain end ",
+                                                                "variables": ["z"],
+                                                                "executors": [
+                                                                    {
+                                                                        "name": "let",
+                                                                        "unnamed": [
+                                                                            {
+                                                                                "value": "z",
+                                                                                "start": 55,
+                                                                                "end": 56
+                                                                            },
+                                                                            { "value": "3", "end": 59 }
+                                                                        ],
+                                                                        "pos": {
+                                                                            "start": 51,
+                                                                            "end": 59,
+                                                                            "startNamedArgs": 55,
+                                                                            "endNamedArgs": 55,
+                                                                            "startUnnamedArgs": 55,
+                                                                            "endUnnamedArgs": 59
+                                                                        }
+                                                                    },
+                                                                    {
+                                                                        "name": "stp-plain",
+                                                                        "unnamed": [
+                                                                            {
+                                                                                "value": "end",
+                                                                                "start": 72,
+                                                                                "end": 76
+                                                                            }
+                                                                        ],
+                                                                        "pos": {
+                                                                            "start": 62,
+                                                                            "end": 76,
+                                                                            "startNamedArgs": 72,
+                                                                            "endNamedArgs": 72,
+                                                                            "startUnnamedArgs": 72,
+                                                                            "endUnnamedArgs": 76
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            }
+                                                        },
+                                                        "start": 47,
+                                                        "end": 78
+                                                    }
+                                                ],
+                                                "pos": {
+                                                    "start": 37,
+                                                    "end": 79,
+                                                    "startNamedArgs": 47,
+                                                    "endNamedArgs": 47,
+                                                    "startUnnamedArgs": 47,
+                                                    "endUnnamedArgs": 79
+                                                }
+                                            }
+                                        ]
+                                    }
+                                },
+                                "start": 22,
+                                "end": 81
+                            }
+                        ],
+                        "pos": {
+                            "start": 12,
+                            "end": 81,
+                            "startNamedArgs": 22,
+                            "endNamedArgs": 22,
+                            "startUnnamedArgs": 22,
+                            "endUnnamedArgs": 81
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [
+                    { "name": "let", "start": 1, "end": 9 },
+                    { "name": "stp-plain", "start": 12, "end": 81 },
+                    { "name": "let", "start": 26, "end": 34 },
+                    { "name": "stp-plain", "start": 37, "end": 79 },
+                    { "name": "let", "start": 51, "end": 59 },
+                    { "name": "stp-plain", "start": 62, "end": 76 }
+                ],
+                "closures": [{ "start": 1, "end": 80 }, { "start": 23, "end": 80 }, { "start": 48, "end": 77 }],
+                "macros": [],
+                "scopes": [[], ["x"], ["x"], ["y", "x"], ["y", "x"], ["z", "y", "x"]]
+            }
+        }
+    },
+    {
+        "name": "import names reach later commands",
+        "script": "/import from=Set a as b c | /stp-plain tail",
+        "positions": true,
+        "expected": {
+            "tree": {
+                "variables": ["b", "c"],
+                "executors": [
+                    {
+                        "name": "import",
+                        "named": [{ "name": "from", "value": "Set", "start": 8, "end": 16 }],
+                        "unnamed": [
+                            { "value": "a", "start": 17, "end": 18 },
+                            { "value": "as", "start": 19, "end": 21 },
+                            { "value": "b", "start": 22, "end": 23 },
+                            { "value": "c", "start": 24, "end": 25 }
+                        ],
+                        "pos": {
+                            "start": 1,
+                            "end": 26,
+                            "startNamedArgs": 8,
+                            "endNamedArgs": 16,
+                            "startUnnamedArgs": 17,
+                            "endUnnamedArgs": 26
+                        }
+                    },
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [{ "value": "tail", "start": 39, "end": 43 }],
+                        "pos": {
+                            "start": 29,
+                            "end": 43,
+                            "startNamedArgs": 39,
+                            "endNamedArgs": 39,
+                            "startUnnamedArgs": 39,
+                            "endUnnamedArgs": 43
+                        }
+                    }
+                ]
+            },
+            "index": {
+                "commands": [{ "name": "import", "start": 1, "end": 26 }, { "name": "stp-plain", "start": 29, "end": 43 }],
+                "closures": [{ "start": 1, "end": 42 }],
+                "macros": [],
+                "scopes": [[], ["b", "c"]]
+            }
+        }
+    }
+]

@@ -468,6 +468,7 @@ describe('what the other configs run', () => {
 
     test.each([
         ['default', '../playwright.config.js'],
+        ['smoke', '../playwright.smoke.config.js'],
         ['Firefox', '../playwright.firefox.config.js'],
         ['WebKit', '../playwright.webkit.config.js'],
         ['foundation', '../playwright.foundation.config.js'],

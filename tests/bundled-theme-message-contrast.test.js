@@ -1,15 +1,19 @@
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static CSS/theme-JSON contracts. */
 import { describe, expect, test } from '@jest/globals';
 import { readdirSync, readFileSync } from 'node:fs';
 
 import { MESSAGE_TEXT_CONTRAST, NAME_STYLES, PICTURE_STAND_INS, STYLE_SURFACES, lowestMessageContrast, lowestNameContrast, messageSurfaces, nameColours } from './helpers/theme-message-contrast.js';
+import { importPowerUserModule } from './util/power-user-harness.js';
 
 const themesDirectory = new URL('../default/content/themes/', import.meta.url);
 const themes = readdirSync(themesDirectory).filter(file => file.endsWith('.json')).sort()
     .map(file => JSON.parse(readFileSync(new URL(file, themesDirectory), 'utf8')));
-const powerUserSource = readFileSync(new URL('../public/scripts/power-user.js', import.meta.url), 'utf8');
 const chatStylesSource = readFileSync(new URL('../public/css/sillybunny-chat-styles.css', import.meta.url), 'utf8');
 
-/** The body class that each chat style puts on `<body>` (`CHAT_STYLE_BODY_CLASSES` in power-user.js), by the style's name in `STYLE_SURFACES`. */
+const { powerUser } = await importPowerUserModule();
+
+/** The body class that each chat style puts on `<body>`, by the style's name in `STYLE_SURFACES`. */
 const STYLE_BODY_CLASSES = Object.freeze({
     flat: 'flatchat',
     bubbles: 'bubblechat',
@@ -56,10 +60,17 @@ describe('bundled theme message text contrast', () => {
         expect(new Set(themes.map(theme => theme.name)).size).toBe(themes.length);
     });
 
-    test('has a surface recipe for each chat style of power-user.js, and for no other', () => {
-        const classesInSource = [...powerUserSource.matchAll(/\[chat_styles\.\w+\]: '(\w+)',/g)].map(match => match[1]);
+    test('has a surface recipe for each chat style applied by power-user.js, and for no other', async () => {
+        const appliedClasses = [];
+        const emptyData = { themes: [], context: [], instruct: [], sysprompt: [], reasoning: [] };
+        for (const styleValue of Object.values(powerUser.chat_styles)) {
+            document.body.className = '';
+            await powerUser.loadPowerUserSettings({ power_user: { chat_display: styleValue } }, emptyData);
+            const styleClass = [...document.body.classList].find(name => Object.values(STYLE_BODY_CLASSES).includes(name) || name.endsWith('chat') || name.endsWith('style'));
+            appliedClasses.push(styleClass);
+        }
 
-        expect(classesInSource.sort()).toEqual(Object.values(STYLE_BODY_CLASSES).sort());
+        expect(appliedClasses.sort()).toEqual(Object.values(STYLE_BODY_CLASSES).sort());
         expect(Object.keys(STYLE_SURFACES).sort()).toEqual(Object.keys(STYLE_BODY_CLASSES).sort());
     });
 

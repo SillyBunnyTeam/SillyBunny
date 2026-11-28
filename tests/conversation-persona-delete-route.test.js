@@ -6,6 +6,7 @@ import express from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
 import { header, line } from './util/conversation-store-sandbox.js';
+import { nativeTmpDir } from './util/platform-capabilities.js';
 
 const { createConversation, readConversationFolders, updateConversationFolders } = await import('../src/conversation-store.js');
 const { conversationIndex } = await import('../src/conversation-index.js');
@@ -52,7 +53,7 @@ describe('POST /api/avatars/delete calls the conversation store', () => {
     });
 
     beforeEach(() => {
-        root = fs.mkdtempSync(path.join(fs.realpathSync.native(process.env.TMPDIR || '/tmp'), 'sillybunny-persona-delete-'));
+        root = fs.mkdtempSync(path.join(nativeTmpDir(), 'sillybunny-persona-delete-'));
         previousDataRoot = globalThis.DATA_ROOT;
         globalThis.DATA_ROOT = root;
         const directories = {
@@ -78,7 +79,9 @@ describe('POST /api/avatars/delete calls the conversation store', () => {
         jest.restoreAllMocks();
         conversationIndex.close();
         globalThis.DATA_ROOT = previousDataRoot;
-        fs.rmSync(root, { recursive: true, force: true });
+        if (root) {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
 
     const remove = async (avatar) => {

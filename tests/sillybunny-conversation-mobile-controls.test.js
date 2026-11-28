@@ -1,7 +1,11 @@
+/** @jest-environment jsdom */
 import { parse } from '@adobe/css-tools';
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { MENU_SHEET_QUERY } from '../public/scripts/sillybunny-editor/breakpoints.js';
+
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 
 const css = readFileSync(fileURLToPath(new URL('../public/css/sillybunny-conversation.css', import.meta.url)), 'utf8');
 const ast = parse(css, { source: 'sillybunny-conversation.css' });
@@ -105,14 +109,125 @@ describe('Conversation mobile controls', () => {
         expect(getDeclarations(media, `:where(${PAGES}) .sb-conversation-message-meta`)).toMatchObject({ 'padding-inline-end': '0' });
     });
 
-    test('pickers are bottom sheets under the menu rule: the mobile width or a window too short for a popover', () => {
+    test('pickers are bottom sheets under the menu rule: the mobile width or a window too short for a popover', async () => {
         const sheet = findMediaRule(query => query === '(max-width: 768px), (max-height: 360px)');
         expect(sheet).toBeDefined();
         expect(getDeclarations(sheet, '#sheld[data-sb-conversation-mode=\'on\'] .sb-conversation-picker:not([hidden])')).toMatchObject({
             inset: 'auto 0 0',
         });
-        expect(readFileSync(fileURLToPath(new URL('../public/scripts/sillybunny-conversation/pickers.js', import.meta.url)), 'utf8'))
-            .toMatch(/PICKER_MOBILE_QUERY = MENU_SHEET_QUERY;/);
+        expect(MENU_SHEET_QUERY).toBe('(max-width: 768px), (max-height: 360px)');
+
+        // Run real pickers.js to verify it consults MENU_SHEET_QUERY to toggle sheet vs positioned popover.
+        const matchedQueries = [];
+        let sheetMatches = true;
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = jest.fn(query => {
+            matchedQueries.push(query);
+            return {
+                matches: query === MENU_SHEET_QUERY ? sheetMatches : false,
+                media: query,
+                addEventListener: () => {},
+                removeEventListener: () => {},
+            };
+        });
+
+        await jest.unstable_mockModule(pub('script.js'), () => ({
+            characters: [],
+            default_user_avatar: 'user.png',
+            getThumbnailUrl: (_t, u) => u,
+            name1: 'User',
+        }));
+        await jest.unstable_mockModule(pub('scripts/personas.js'), () => ({ user_avatar: 'user.png' }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/chrome.js'), () => ({
+            runConversationAction: jest.fn(),
+            selectConversation: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/screen-target.js'), () => ({
+            withConversationSwitch: fn => fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-motion.js'), () => ({
+            MOTION_EASE_OUT_CUBIC: 'ease',
+            MOTION_FAST: 0,
+            SPRING_SHEET: 'ease',
+            play: jest.fn(() => ({ finished: Promise.resolve() })),
+            stopMotion: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-editor/picker.js'), () => ({
+            closePicker: jest.fn(),
+            openPicker: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-editor/lazy-image.js'), () => ({
+            createLazyImage: () => document.createElement('img'),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/dialogs.js'), () => ({
+            promptConversationText: jest.fn(async () => null),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/context.js'), () => ({
+            getConversationGroupById: jest.fn(() => null),
+            getConversationGroupIdForAvatar: jest.fn(() => ''),
+            getConversationRecord: jest.fn(() => null),
+            getCurrentCharAvatar: jest.fn(() => ''),
+            makeConversationGroup: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-data-browser.js'), () => ({
+            conversationData: { list: jest.fn(() => []) },
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/media.js'), () => ({
+            getCharacterForAvatar: jest.fn(() => null),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/personas.js'), () => ({
+            getActiveConversationPersonaAppendixIds: jest.fn(() => []),
+            getConversationPersonaAppendices: jest.fn(() => []),
+            getPersonaOptions: jest.fn(() => [{ id: 'user.png', name: 'User', avatar: 'user.png' }]),
+            getUserPersonaStatus: jest.fn(() => 'online'),
+            getUserStatus: jest.fn(() => 'online'),
+            setUserPersonaStatus: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/render-scheduler.js'), () => ({
+            scheduleConversationListRender: jest.fn(),
+            scheduleInterfaceRefresh: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-pages.js'), () => ({
+            closeConversationList: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/character-picker-options.js'), () => ({
+            getCharacterPickerOptions: jest.fn(() => []),
+        }));
+
+        try {
+            const { CHROME_IDS } = await import(pub('scripts/sillybunny-conversation/constants.js'));
+            const { togglePersonaPicker, hideConversationPickers } = await import(pub('scripts/sillybunny-conversation/pickers.js'));
+            document.body.innerHTML = `
+                <div id="sheld" data-sb-conversation-mode="on">
+                    <button id="anchor" type="button">Persona</button>
+                    <div id="${CHROME_IDS.pickerBackdrop}" hidden></div>
+                    <div id="${CHROME_IDS.personaPicker}" class="sb-conversation-picker" hidden></div>
+                </div>
+            `;
+            const sheld = document.getElementById('sheld');
+            const anchor = document.getElementById('anchor');
+            const picker = document.getElementById(CHROME_IDS.personaPicker);
+            Object.defineProperty(picker, 'offsetParent', { configurable: true, get: () => sheld });
+            Object.defineProperty(picker, 'offsetWidth', { configurable: true, get: () => 240 });
+            sheld.getBoundingClientRect = () => ({ left: 0, top: 0, right: 900, bottom: 700, width: 900, height: 700 });
+            anchor.getBoundingClientRect = () => ({ left: 40, top: 20, right: 120, bottom: 56, width: 80, height: 36 });
+
+            // Sheet layout: queries MENU_SHEET_QUERY and omits popover coordinates so CSS anchors the bottom sheet.
+            sheetMatches = true;
+            togglePersonaPicker(anchor);
+            expect(matchedQueries).toContain(MENU_SHEET_QUERY);
+            expect(picker.style.left).toBe('');
+            hideConversationPickers({ restoreFocus: false, animate: false });
+
+            // Desktop layout: positions the popover relative to the anchor.
+            sheetMatches = false;
+            togglePersonaPicker(anchor);
+            expect(picker.style.left).not.toBe('');
+            hideConversationPickers({ restoreFocus: false, animate: false });
+        } finally {
+            window.matchMedia = originalMatchMedia;
+            document.body.innerHTML = '';
+        }
     });
 
     test('surfaces are opaque layers without backdrop-filter', () => {

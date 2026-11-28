@@ -1,148 +1,126 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* global globalThis */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static HTML contracts. */
+import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { importOpenAiModule } from './util/openai-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const openAiSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'openai.js'), 'utf8');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 const scriptSource = readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
+const jquerySource = readFileSync(path.join(repoRoot, 'public', 'lib', 'jquery-3.5.1.min.js'), 'utf8');
 
-function getFunctionSource(name) {
-    const marker = `function ${name}(`;
-    const start = openAiSource.indexOf(marker);
+(0, eval)(jquerySource);
+$.fn.select2 = function () { return this; };
+$.fn.sortable = function () { return this; };
 
-    expect(start).toBeGreaterThanOrEqual(0);
-
-    const bodyStart = openAiSource.indexOf(') {', start) + 2;
-    let depth = 0;
-
-    for (let index = bodyStart; index < openAiSource.length; index++) {
-        const char = openAiSource[index];
-        if (char === '{') {
-            depth++;
-        } else if (char === '}') {
-            depth--;
-            if (depth === 0) {
-                return openAiSource.slice(start, index + 1);
-            }
-        }
-    }
-
-    throw new Error(`Unable to find function source for ${name}`);
+// Mount top-level click targets (#save_proxy, #save_custom_endpoint) before importing openai.js because it binds them at module evaluation time.
+function createProxyAndCustomDom() {
+    document.body.innerHTML = `
+        <select id="chat_completion_source">
+            <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
+            <option value="makersuite">AI Studio</option>
+            <option value="custom">Custom</option>
+        </select>
+        <select id="settings_preset_openai">
+            <option value="0">Default</option>
+            <option value="1">StoryPreset</option>
+        </select>
+        <select id="openai_proxy_preset"></select>
+        <input id="openai_reverse_proxy_name" type="text" value="" />
+        <input id="openai_reverse_proxy" type="text" value="" />
+        <input id="openai_proxy_access_key" type="text" value="" />
+        <select id="openai_proxy_source">
+            <option value="">None (Don't switch)</option>
+            <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
+            <option value="makersuite">AI Studio</option>
+        </select>
+        <button id="save_proxy" type="button"></button>
+        <select id="custom_endpoint_preset"></select>
+        <input id="custom_endpoint_preset_name" type="text" value="" />
+        <input id="custom_api_url_text" type="text" value="" />
+        <input id="api_key_custom" type="text" value="" />
+        <input id="custom_model_id" type="text" value="" />
+        <select id="model_custom_select" class="model_custom_select"></select>
+        <textarea id="custom_include_body"></textarea>
+        <textarea id="custom_exclude_body"></textarea>
+        <textarea id="custom_include_headers"></textarea>
+        <button id="save_custom_endpoint" type="button"></button>
+        <button id="api_button_openai" type="button"></button>
+    `;
 }
 
-describe('OpenAI proxy preset wiring', () => {
-    test('saves reverse proxy presets with the selected backend binding', () => {
-        expect(openAiSource).toContain('buildReverseProxyPresetForSave({');
-        expect(openAiSource).toContain('source: $(\'#openai_proxy_source\').val() || \'\'');
-        expect(openAiSource).toContain('supportedSources: REVERSE_PROXY_SUPPORTED_SOURCES');
+createProxyAndCustomDom();
+const { openai, mocks } = await importOpenAiModule();
+const initialDefaults = structuredClone(openai.oai_settings);
+openai.initOpenAI();
+
+function resetDomValues() {
+    $('#chat_completion_source').val('openai');
+    $('#settings_preset_openai').val('0');
+    $('#openai_proxy_preset').empty();
+    $('#openai_reverse_proxy_name').val('');
+    $('#openai_reverse_proxy').val('');
+    $('#openai_proxy_access_key').val('');
+    $('#openai_proxy_source').val('');
+    $('#custom_endpoint_preset').empty();
+    $('#custom_endpoint_preset_name').val('');
+    $('#custom_api_url_text').val('');
+    $('#api_key_custom').val('').removeAttr('placeholder');
+    $('#custom_model_id').val('');
+    $('#model_custom_select').empty();
+    $('#custom_include_body').val('');
+    $('#custom_exclude_body').val('');
+    $('#custom_include_headers').val('');
+}
+
+describe('OpenAI proxy and Custom endpoint preset behaviour', () => {
+    let originalFetch;
+
+    beforeEach(async () => {
+        originalFetch = globalThis.fetch;
+        globalThis.fetch = jest.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ data: [{ id: 'fetched-model' }] }),
+        }));
+        Object.assign(openai.oai_settings, structuredClone(initialDefaults));
+        Object.keys(mocks.secrets.secret_state).forEach(key => delete mocks.secrets.secret_state[key]);
+        mocks.secrets.writeSecret.mockReset().mockResolvedValue('written-secret-id');
+        mocks.secrets.rotateSecret.mockReset().mockResolvedValue('rotated-secret-id');
+        mocks.script.saveSettings.mockReset().mockResolvedValue(true);
+        mocks.script.saveSettingsDebounced.mockReset();
+        mocks.script.setOnlineStatus.mockReset();
+        mocks.script.resultCheckStatus.mockReset();
+        mocks.script.startStatusLoading.mockReset();
+        mocks.fetchResumable.mockReset();
+        global.toastr.success.mockReset();
+        global.toastr.warning.mockReset();
+        global.toastr.error.mockReset();
+        resetDomValues();
+        await openai.loadCustomEndpointPresets({ custom_endpoint_presets: [], selected_custom_endpoint_preset: null });
+        openai.loadProxyPresets({ proxies: [{ name: 'None', url: '', password: '', source: '' }], selected_proxy: { name: 'None', url: '', password: '', source: '' } });
     });
 
-    test('shows an explicit reverse proxy backend selector', () => {
+    afterEach(async () => {
+        globalThis.fetch = originalFetch;
+        await Promise.resolve();
+    });
+
+    afterAll(async () => {
+        document.body.innerHTML = '';
+        await Promise.resolve();
+    });
+
+    test('shows explicit reverse proxy and Custom endpoint selectors in index.html', () => {
         expect(indexHtml).toContain('id="openai_proxy_source"');
         expect(indexHtml).toContain('None (Don\'t switch)');
         expect(indexHtml).toContain('value="makersuite"');
-    });
-
-    test('renders clean source indicators in proxy preset options', () => {
-        const optionTextSource = getFunctionSource('getReverseProxyPresetOptionText');
-
-        expect(openAiSource).toContain('function getReverseProxySourceLabel(source)');
-        expect(openAiSource).toContain('[chat_completion_sources.MAKERSUITE]: \'AI Studio\'');
-        expect(optionTextSource).toContain('`${normalizedPreset.name} [${sourceLabel}]`');
-    });
-
-    test('applies proxy credentials before switching Chat Completion source', () => {
-        const setProxyPresetSource = getFunctionSource('setProxyPreset');
-        const proxyUpdateIndex = setProxyPresetSource.indexOf('oai_settings.reverse_proxy = normalizedPreset.url;');
-        const passwordUpdateIndex = setProxyPresetSource.indexOf('oai_settings.proxy_password = normalizedPreset.password;');
-        const sourceChangeIndex = setProxyPresetSource.indexOf('$(\'#chat_completion_source\').val(normalizedPreset.source).trigger(\'change\');');
-
-        expect(proxyUpdateIndex).toBeGreaterThanOrEqual(0);
-        expect(passwordUpdateIndex).toBeGreaterThan(proxyUpdateIndex);
-        expect(sourceChangeIndex).toBeGreaterThan(passwordUpdateIndex);
-        expect(setProxyPresetSource).toContain('reconnectOpenAi();');
-    });
-
-    test('loads selected proxy preset credentials without overriding the saved backend', () => {
-        const loadProxyPresetsSource = getFunctionSource('loadProxyPresets');
-        const setProxyPresetIndex = loadProxyPresetsSource.indexOf('setProxyPreset(selected_proxy.name, selected_proxy.url, selected_proxy.password, selected_proxy.source, { applySource: false, silent: true });');
-
-        expect(setProxyPresetIndex).toBeGreaterThanOrEqual(0);
-        expect(loadProxyPresetsSource).not.toContain('{ applySource: true, silent: true }');
-    });
-
-    test('switches backend on silent load without triggering a reconnect', () => {
-        const setProxyPresetSource = getFunctionSource('setProxyPreset');
-        const silentBranchIndex = setProxyPresetSource.indexOf('if (silent) {');
-        const silentSourceAssignIndex = setProxyPresetSource.indexOf('oai_settings.chat_completion_source = normalizedPreset.source;');
-        const silentValIndex = setProxyPresetSource.indexOf('$(\'#chat_completion_source\').val(normalizedPreset.source);');
-        const silentRefreshIndex = setProxyPresetSource.indexOf('toggleChatCompletionForms();');
-        const silentReturnIndex = setProxyPresetSource.indexOf('return;', silentBranchIndex);
-        const reconnectIndex = setProxyPresetSource.indexOf('reconnectOpenAi();');
-
-        // Silent branch applies the source and refreshes UI before returning early.
-        expect(silentBranchIndex).toBeGreaterThanOrEqual(0);
-        expect(silentSourceAssignIndex).toBeGreaterThan(silentBranchIndex);
-        expect(silentValIndex).toBeGreaterThan(silentSourceAssignIndex);
-        expect(silentRefreshIndex).toBeGreaterThan(silentValIndex);
-        expect(silentReturnIndex).toBeGreaterThan(silentRefreshIndex);
-
-        // Silent branch must short-circuit before the reconnect path.
-        expect(reconnectIndex).toBeGreaterThan(silentReturnIndex);
-    });
-
-    test('keeps the backend binding two-way by syncing the proxy preset on source change', () => {
-        const syncSource = getFunctionSource('syncProxyPresetToBoundSource');
-
-        // Re-entrancy guard prevents feeding back into the source change handler.
-        expect(openAiSource).toContain('let isSyncingProxyBinding = false;');
-        expect(syncSource).toContain('if (isSyncingProxyBinding) {');
-        expect(syncSource).toContain('isSyncingProxyBinding = true;');
-        expect(syncSource).toContain('isSyncingProxyBinding = false;');
-
-        // Only acts on supported sources and finds a preset bound to that source.
-        expect(syncSource).toContain('REVERSE_PROXY_SUPPORTED_SOURCES.includes(source)');
-        expect(syncSource).toContain('proxies.find(preset => preset.name !== \'None\' && preset.source === source)');
-
-        // Applies the bound preset without re-triggering the source change or a redundant reconnect.
-        expect(syncSource).toContain('{ applySource: false, silent: true }');
-    });
-
-    test('invokes the reverse binding sync from the chat completion source change handler', () => {
-        const initSource = getFunctionSource('initOpenAI');
-        const sourceChangeIndex = initSource.indexOf('$(\'#chat_completion_source\').on(\'change\'');
-        const syncCallIndex = initSource.indexOf('syncProxyPresetToBoundSource(oai_settings.chat_completion_source);');
-        const reconnectIndex = initSource.indexOf('reconnectOpenAi();', sourceChangeIndex);
-
-        expect(sourceChangeIndex).toBeGreaterThanOrEqual(0);
-        expect(syncCallIndex).toBeGreaterThan(sourceChangeIndex);
-        // Proxy preset must be applied before reconnecting so the reconnect uses the bound proxy.
-        expect(reconnectIndex).toBeGreaterThan(syncCallIndex);
-    });
-
-    test('preserves the selected settings preset when switching backends', () => {
-        const restoreSource = getFunctionSource('restoreOpenAIPresetSelection');
-        const initSource = getFunctionSource('initOpenAI');
-        const sourceChangeIndex = initSource.indexOf('$(\'#chat_completion_source\').on(\'change\'');
-        const capturePresetIndex = initSource.indexOf('const presetName = oai_settings.preset_settings_openai;', sourceChangeIndex);
-        const sourceUpdateIndex = initSource.indexOf('oai_settings.chat_completion_source = String($(this).find(\':selected\').val());', sourceChangeIndex);
-        const syncCallIndex = initSource.indexOf('syncProxyPresetToBoundSource(oai_settings.chat_completion_source);', sourceChangeIndex);
-        const restoreCallIndex = initSource.indexOf('restoreOpenAIPresetSelection(presetName);', sourceChangeIndex);
-        const saveIndex = initSource.indexOf('saveSettingsDebounced();', sourceChangeIndex);
-
-        expect(restoreSource).toContain('const presetValue = openai_setting_names?.[presetName];');
-        expect(restoreSource).toContain('oai_settings.preset_settings_openai = presetName;');
-        expect(restoreSource).toContain('$(\'#settings_preset_openai\').val(String(presetValue));');
-
-        expect(capturePresetIndex).toBeGreaterThan(sourceChangeIndex);
-        expect(sourceUpdateIndex).toBeGreaterThan(capturePresetIndex);
-        expect(restoreCallIndex).toBeGreaterThan(syncCallIndex);
-        expect(saveIndex).toBeGreaterThan(restoreCallIndex);
-    });
-
-    test('shows an explicit Custom endpoint profile selector', () => {
         expect(indexHtml).toContain('id="custom_endpoint_preset"');
         expect(indexHtml).toContain('id="save_custom_endpoint"');
         expect(indexHtml).toContain('id="delete_custom_endpoint"');
@@ -150,184 +128,306 @@ describe('OpenAI proxy preset wiring', () => {
         expect(indexHtml).toMatch(/<span data-i18n="Saved Custom OpenAI-compatible URLs, API keys, model IDs, and Additional Parameters">\s*Saved Custom OpenAI-compatible URLs, API keys, model IDs, and Additional Parameters\s*<\/span>/);
     });
 
-    test('saves Custom endpoint profiles with URL, key, model, and secret fields', () => {
-        expect(openAiSource).toContain('buildCustomEndpointPresetForSave({');
-        expect(openAiSource).toContain('url: $(\'#custom_api_url_text\').val()');
-        expect(openAiSource).toContain('const keyInputValue = String($(\'#api_key_custom\').val()).trim();');
-        expect(openAiSource).toContain('key: keyInputValue');
-        expect(openAiSource).toContain('model: $(\'#custom_model_id\').val()');
-        expect(openAiSource).toContain('secretId: keyInputValue ? \'\' : existingPreset?.secretId');
-        expect(openAiSource).toContain('await activateCustomEndpointPresetSecret(preset, { forceWrite: true });');
-        expect(openAiSource).toContain('writeKey: false');
+    test('saves reverse proxy presets with their selected backend binding and renders clean source indicators', () => {
+        $('#openai_reverse_proxy_name').val('Gemini Proxy');
+        $('#openai_reverse_proxy').val('https://proxy.example/gemini');
+        $('#openai_proxy_access_key').val('secret-pw');
+        $('#openai_proxy_source').val(openai.chat_completion_sources.MAKERSUITE);
+
+        $('#save_proxy').trigger('click');
+
+        const saved = openai.proxies.find(preset => preset.name === 'Gemini Proxy');
+        expect(saved).toMatchObject({
+            name: 'Gemini Proxy',
+            url: 'https://proxy.example/gemini',
+            password: 'secret-pw',
+            source: openai.chat_completion_sources.MAKERSUITE,
+        });
+        const option = document.querySelector('#openai_proxy_preset option[value="Gemini Proxy"]');
+        expect(option?.innerText || option?.textContent).toBe('Gemini Proxy [AI Studio]');
     });
 
-    test('requires a profile name before saving a Custom endpoint profile', () => {
-        expect(openAiSource).toContain('if (!presetName || presetName === \'None\') {');
+    test('applies proxy credentials before switching Chat Completion source and keeps two-way source sync without redundant reconnects', () => {
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.OPENAI;
+        openai.loadProxyPresets({
+            proxies: [
+                { name: 'None', url: '', password: '', source: '' },
+                { name: 'Claude Proxy', url: 'https://claude.proxy/v1', password: 'cpw', source: 'claude' },
+            ],
+            selected_proxy: { name: 'None', url: '', password: '', source: '' },
+        });
+
+        // Selecting a bound proxy preset updates proxy credentials BEFORE #chat_completion_source fires change.
+        const credentialsDuringSourceChange = [];
+        const spyHandler = () => {
+            credentialsDuringSourceChange.push({
+                url: openai.oai_settings.reverse_proxy,
+                password: openai.oai_settings.proxy_password,
+            });
+        };
+        $('#chat_completion_source').on('change.testSpy', spyHandler);
+
+        try {
+            $('#openai_proxy_preset').val('Claude Proxy').trigger('change');
+            expect(credentialsDuringSourceChange[0]).toEqual({ url: 'https://claude.proxy/v1', password: 'cpw' });
+            expect(openai.oai_settings.chat_completion_source).toBe(openai.chat_completion_sources.CLAUDE);
+            expect(mocks.script.resultCheckStatus).toHaveBeenCalled();
+        } finally {
+            $('#chat_completion_source').off('change.testSpy');
+        }
+
+        // Reverse direction: switching source to Claude syncs the bound proxy preset BEFORE reconnecting,
+        // without causing recursive source-change loops.
+        openai.oai_settings.reverse_proxy = '';
+        openai.oai_settings.proxy_password = '';
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.OPENAI;
+        openai.loadProxyPresets({
+            proxies: [
+                { name: 'None', url: '', password: '', source: '' },
+                { name: 'Claude Proxy', url: 'https://claude.proxy/v1', password: 'cpw', source: 'claude' },
+            ],
+            selected_proxy: { name: 'None', url: '', password: '', source: '' },
+        });
+        mocks.script.resultCheckStatus.mockClear();
+
+        const proxyAtReconnect = [];
+        mocks.script.resultCheckStatus.mockImplementation(() => {
+            proxyAtReconnect.push(openai.oai_settings.reverse_proxy);
+        });
+
+        $('#chat_completion_source').val(openai.chat_completion_sources.CLAUDE).trigger('change');
+        expect(proxyAtReconnect).toEqual(['https://claude.proxy/v1']);
+        expect(openai.selected_proxy.name).toBe('Claude Proxy');
     });
 
-    test('allows saving keyless Custom endpoint profiles with a stable empty secret', () => {
-        expect(openAiSource).toContain('if (keyInputValue || !preset.secretId) {');
-        expect(openAiSource).not.toContain('API key cannot be empty');
+    test('loads selected proxy preset credentials silently without overriding the saved backend or triggering a reconnect', () => {
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.OPENAI;
+
+        openai.loadProxyPresets({
+            proxies: [
+                { name: 'None', url: '', password: '', source: '' },
+                { name: 'Bound Claude', url: 'https://bound.example/v1', password: 'pw', source: 'claude' },
+            ],
+            selected_proxy: { name: 'Bound Claude', url: 'https://bound.example/v1', password: 'pw', source: 'claude' },
+        });
+
+        // Credentials load, saved backend stays OpenAI, and no reconnect runs on startup.
+        expect(openai.oai_settings.reverse_proxy).toBe('https://bound.example/v1');
+        expect(openai.oai_settings.proxy_password).toBe('pw');
+        expect(openai.oai_settings.chat_completion_source).toBe(openai.chat_completion_sources.OPENAI);
+        expect(mocks.script.resultCheckStatus).not.toHaveBeenCalled();
     });
 
-    test('applies Custom endpoint profile values before reconnecting', () => {
-        const setCustomEndpointSource = getFunctionSource('setCustomEndpointPreset');
-        const urlUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_url = normalizedPreset.url;');
-        const modelUpdateIndex = setCustomEndpointSource.indexOf('oai_settings.custom_model = normalizedPreset.model;');
-        const secretActivateIndex = setCustomEndpointSource.indexOf('await activateCustomEndpointPresetSecret(selected_custom_endpoint_preset);');
-        const keyInputIndex = setCustomEndpointSource.indexOf('updateCustomEndpointKeyInput(selected_custom_endpoint_preset, normalizedPreset.key);');
-        const reconnectIndex = setCustomEndpointSource.indexOf('reconnectOpenAi();');
+    test('preserves the selected settings preset when switching Chat Completion sources', () => {
+        openai.loadOpenAISettings(
+            {
+                openai_settings: [JSON.stringify({ temp_openai: 1 }), JSON.stringify({ temp_openai: 0.7 })],
+                openai_setting_names: ['Default', 'StoryPreset'],
+            },
+            { ...openai.oai_settings, preset_settings_openai: 'StoryPreset', chat_completion_source: 'openai' },
+        );
+        $('#settings_preset_openai').val('1');
 
-        expect(urlUpdateIndex).toBeGreaterThanOrEqual(0);
-        expect(modelUpdateIndex).toBeGreaterThan(urlUpdateIndex);
-        expect(secretActivateIndex).toBeGreaterThan(modelUpdateIndex);
-        expect(keyInputIndex).toBeGreaterThan(secretActivateIndex);
-        expect(reconnectIndex).toBeGreaterThan(keyInputIndex);
-        expect(setCustomEndpointSource).not.toContain('writeSecret(SECRET_KEYS.CUSTOM, normalizedPreset.key');
+        $('#chat_completion_source').val(openai.chat_completion_sources.CLAUDE).trigger('change');
+
+        expect(openai.oai_settings.preset_settings_openai).toBe('StoryPreset');
+        expect($('#settings_preset_openai').val()).toBe('1');
     });
 
-    test('clears the Custom endpoint key input when a saved secret is bound', () => {
-        const inputSource = getFunctionSource('updateCustomEndpointKeyInput');
+    test('saves Custom endpoint profiles with URL, key, model, and secret id while allowing keyless profiles and rejecting empty names', async () => {
+        // Empty name is rejected before writing secrets.
+        $('#custom_endpoint_preset_name').val('');
+        $('#save_custom_endpoint').trigger('click');
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(mocks.secrets.writeSecret).not.toHaveBeenCalled();
+        expect(global.toastr.error).toHaveBeenCalled();
 
-        expect(inputSource).toContain('if (preset?.secretId) {');
-        expect(inputSource).toContain('$(\'#api_key_custom\').val(\'\').attr(\'placeholder\', t`(saved secret)`);');
-        expect(inputSource).toContain('$(\'#api_key_custom\').removeAttr(\'placeholder\').val(key);');
+        // Keyless profile saves cleanly with allowEmpty: true.
+        $('#custom_endpoint_preset_name').val('Local Ollama');
+        $('#custom_api_url_text').val('http://127.0.0.1:11434/v1');
+        $('#api_key_custom').val('');
+        $('#custom_model_id').val('llama3');
+        mocks.secrets.writeSecret.mockResolvedValueOnce('empty-secret-id');
+
+        $('#save_custom_endpoint').trigger('click');
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        expect(mocks.secrets.writeSecret).toHaveBeenCalledWith(
+            mocks.secrets.SECRET_KEYS.CUSTOM,
+            '',
+            undefined,
+            { allowEmpty: true },
+        );
+        const saved = openai.custom_endpoint_presets.find(p => p.name === 'Local Ollama');
+        expect(saved).toMatchObject({
+            name: 'Local Ollama',
+            url: 'http://127.0.0.1:11434/v1',
+            model: 'llama3',
+            secretId: 'empty-secret-id',
+        });
+        // Bound secret clears the key input and sets the saved-secret placeholder.
+        expect($('#api_key_custom').val()).toBe('');
+        expect($('#api_key_custom').attr('placeholder')).toBe('(saved secret)');
     });
 
-    test('activates Custom endpoint profile secrets by id instead of duplicate writes', () => {
-        const activationSource = getFunctionSource('activateCustomEndpointPresetSecret');
-        const rotateIndex = activationSource.indexOf('await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);');
-        const writeIndex = activationSource.indexOf('await writeSecret(SECRET_KEYS.CUSTOM, preset.key, undefined, { allowEmpty: true });');
+    test('activates Custom endpoint secrets by rotation (skipping already-active secrets) and applies values before reconnecting', async () => {
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [
+                { name: 'Profile A', url: 'https://a.example/v1', model: 'model-a', key: '', secretId: 'sec-a' },
+                { name: 'Profile B', url: 'https://b.example/v1', model: 'model-b', key: '', secretId: 'sec-b' },
+            ],
+            selected_custom_endpoint_preset: { name: 'Profile A', url: 'https://a.example/v1', model: 'model-a', key: '', secretId: 'sec-a' },
+        });
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.CUSTOM;
 
-        expect(openAiSource).toContain('import { rotateSecret, SECRET_KEYS, secret_state, writeSecret } from \'./secrets.js\';');
-        expect(rotateIndex).toBeGreaterThanOrEqual(0);
-        expect(writeIndex).toBeGreaterThan(rotateIndex);
+        const events = [];
+        mocks.secrets.rotateSecret.mockImplementation(async (key, id) => {
+            events.push(`rotate:${id}`);
+            return id;
+        });
+        mocks.script.resultCheckStatus.mockImplementation(() => {
+            events.push(`reconnect:${openai.oai_settings.custom_url}:${openai.oai_settings.custom_model}`);
+        });
+
+        // Switch to Profile B when sec-b is NOT yet active -> rotates sec-b before reconnecting, never writes a duplicate key.
+        $('#custom_endpoint_preset').val('Profile B').trigger('change');
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        expect(events[0]).toBe('rotate:sec-b');
+        expect(events[1]).toBe('reconnect:https://b.example/v1:model-b');
+        expect(mocks.secrets.writeSecret).not.toHaveBeenCalled();
+
+        // Switch to Profile A when sec-a IS already active -> skips rotateSecret.
+        mocks.secrets.rotateSecret.mockClear();
+        mocks.secrets.secret_state[mocks.secrets.SECRET_KEYS.CUSTOM] = [{ id: 'sec-a', active: true }];
+        $('#custom_endpoint_preset').val('Profile A').trigger('change');
+        await new Promise(resolve => setTimeout(resolve, 20));
+
+        expect(mocks.secrets.rotateSecret).not.toHaveBeenCalled();
     });
 
-    test('sends selected Custom endpoint secret id with chat requests', () => {
-        const sendRequestSource = getFunctionSource('sendOpenAIRequest');
-        const settingsReadyIndex = sendRequestSource.indexOf('await eventSource.emit(event_types.CHAT_COMPLETION_SETTINGS_READY, generate_data);');
-        const customSecretGuardIndex = sendRequestSource.indexOf('generate_data.chat_completion_source === chat_completion_sources.CUSTOM && selected_custom_endpoint_preset?.secretId');
-        const secretIdIndex = sendRequestSource.indexOf('generate_data.secret_id = selected_custom_endpoint_preset.secretId;');
-        const fetchIndex = sendRequestSource.indexOf('const response = await fetchResumable(generate_url, {');
+    test('sends selected Custom endpoint secret_id with both chat completion requests and status checks', async () => {
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [
+                { name: 'MyCustom', url: 'https://my.custom/v1', model: 'm-1', key: '', secretId: 'custom-sec-99' },
+            ],
+            selected_custom_endpoint_preset: { name: 'MyCustom', url: 'https://my.custom/v1', model: 'm-1', key: '', secretId: 'custom-sec-99' },
+        });
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.CUSTOM;
+        openai.oai_settings.custom_url = 'https://my.custom/v1';
+        openai.oai_settings.custom_include_headers = 'X-Test: 1';
+        openai.oai_settings.stream_openai = false;
 
-        expect(settingsReadyIndex).toBeGreaterThanOrEqual(0);
-        expect(customSecretGuardIndex).toBeGreaterThan(settingsReadyIndex);
-        expect(secretIdIndex).toBeGreaterThan(customSecretGuardIndex);
-        expect(fetchIndex).toBeGreaterThan(secretIdIndex);
+        // Status check forwards custom_url, custom_include_headers, and secret_id.
+        await openai.getStatusOpen();
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+            '/api/backends/chat-completions/status',
+            expect.objectContaining({ method: 'POST' }),
+        );
+        const statusBody = JSON.parse(globalThis.fetch.mock.calls[0][1].body);
+        expect(statusBody).toMatchObject({
+            chat_completion_source: 'custom',
+            custom_url: 'https://my.custom/v1',
+            custom_include_headers: 'X-Test: 1',
+            secret_id: 'custom-sec-99',
+        });
+
+        // Chat generation forwards secret_id after CHAT_COMPLETION_SETTINGS_READY.
+        mocks.fetchResumable.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: async () => ({ choices: [{ message: { content: 'hi' } }] }),
+        });
+        await openai.sendOpenAIRequest('normal', [{ role: 'user', content: 'hi' }], new AbortController().signal);
+        const generateBody = JSON.parse(mocks.fetchResumable.mock.calls[0][1].body);
+        expect(generateBody.secret_id).toBe('custom-sec-99');
     });
 
-    test('sends selected Custom endpoint secret id with status checks', () => {
-        const statusSource = getFunctionSource('getStatusOpen');
-        const customBranchIndex = statusSource.indexOf('if (oai_settings.chat_completion_source === chat_completion_sources.CUSTOM) {');
-        const customUrlIndex = statusSource.indexOf('data.custom_url = oai_settings.custom_url;', customBranchIndex);
-        const customHeadersIndex = statusSource.indexOf('data.custom_include_headers = substituteParams(oai_settings.custom_include_headers);', customBranchIndex);
-        const customSecretGuardIndex = statusSource.indexOf('selected_custom_endpoint_preset?.secretId', customBranchIndex);
-        const secretIdIndex = statusSource.indexOf('data.secret_id = selected_custom_endpoint_preset.secretId;', customBranchIndex);
-        const fetchIndex = statusSource.indexOf('const response = await fetch(\'/api/backends/chat-completions/status\', {');
+    test('preserves legacy Custom endpoint settings and skips load-time apply when None or no profile is saved, and shares array identity when loaded', async () => {
+        // Legacy install with no saved selected profile keeps typed URL/model and leaves preset name empty.
+        openai.oai_settings.custom_url = 'https://legacy.example/v1';
+        openai.oai_settings.custom_model = 'legacy-model';
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [{ name: 'Saved', url: 'https://saved.example/v1', model: 'saved-model', secretId: 's1' }],
+            selected_custom_endpoint_preset: null,
+        });
+        expect(openai.oai_settings.custom_url).toBe('https://legacy.example/v1');
+        expect(openai.oai_settings.custom_model).toBe('legacy-model');
+        expect($('#custom_endpoint_preset_name').val()).toBe('');
 
-        expect(customBranchIndex).toBeGreaterThanOrEqual(0);
-        expect(customUrlIndex).toBeGreaterThan(customBranchIndex);
-        expect(customHeadersIndex).toBeGreaterThan(customUrlIndex);
-        expect(customSecretGuardIndex).toBeGreaterThan(customHeadersIndex);
-        expect(secretIdIndex).toBeGreaterThan(customSecretGuardIndex);
-        expect(fetchIndex).toBeGreaterThan(secretIdIndex);
+        // Selecting None on reload also preserves typed URL and model.
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [{ name: 'Saved', url: 'https://saved.example/v1', model: 'saved-model', secretId: 's1' }],
+            selected_custom_endpoint_preset: { name: 'None' },
+        });
+        expect(openai.oai_settings.custom_url).toBe('https://legacy.example/v1');
+        expect(openai.oai_settings.custom_model).toBe('legacy-model');
+
+        // Loading a saved profile applies URL/model without rotating/writing secrets or overwriting live Additional Parameters,
+        // and selected_custom_endpoint_preset points to the exact entry in custom_endpoint_presets.
+        openai.oai_settings.custom_include_body = 'live_override: true';
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [
+                { name: 'Saved', url: 'https://saved.example/v1', model: 'saved-model', secretId: 's1', custom_include_body: 'profile_default: true' },
+            ],
+            selected_custom_endpoint_preset: { name: 'Saved' },
+        });
+        const arrayEntry = openai.custom_endpoint_presets.find(p => p.name === 'Saved');
+        expect(openai.selected_custom_endpoint_preset).toBe(arrayEntry);
+        expect(openai.oai_settings.custom_url).toBe('https://saved.example/v1');
+        expect(openai.oai_settings.custom_include_body).toBe('live_override: true');
+        expect(mocks.secrets.writeSecret).not.toHaveBeenCalled();
+        expect(mocks.secrets.rotateSecret).not.toHaveBeenCalled();
+        expect(mocks.script.resultCheckStatus).not.toHaveBeenCalled();
     });
 
-    test('loads and persists Custom endpoint profiles with settings', () => {
+    test('exposes /custom-endpoint-profile with exact-name lookup and stores additional parameters verbatim via slash commands', async () => {
+        await openai.loadCustomEndpointPresets({
+            custom_endpoint_presets: [
+                { name: 'Alpha', url: 'https://alpha.example/v1', model: 'alpha-m', key: '', secretId: 'sec-alpha', custom_include_body: 'a: 1' },
+                { name: 'Alpha-2', url: 'https://alpha2.example/v1', model: 'alpha2-m', key: '', secretId: 'sec-alpha2' },
+            ],
+            selected_custom_endpoint_preset: null,
+        });
+        openai.oai_settings.chat_completion_source = openai.chat_completion_sources.CUSTOM;
+
+        // /custom-endpoint-profile matches exact name (no fuzzy fallback for typos).
+        const profileCommand = mocks.registeredCommands.get('custom-endpoint-profile');
+        expect(profileCommand).toBeDefined();
+        await profileCommand.callback({}, 'Alph');
+        expect(openai.oai_settings.custom_url).not.toBe('https://alpha.example/v1');
+
+        await profileCommand.callback({}, 'Alpha');
+        expect(openai.oai_settings.custom_url).toBe('https://alpha.example/v1');
+        expect(openai.oai_settings.custom_model).toBe('alpha-m');
+        expect(openai.oai_settings.custom_include_body).toBe('a: 1');
+        expect($('#custom_endpoint_preset').val()).toBe('Alpha');
+
+        // Additional parameter slash commands preserve leading/trailing whitespace verbatim.
+        for (const [cmdName, settingKey] of [
+            ['custom-include-body', 'custom_include_body'],
+            ['custom-exclude-body', 'custom_exclude_body'],
+            ['custom-include-headers', 'custom_include_headers'],
+        ]) {
+            const cmd = mocks.registeredCommands.get(cmdName);
+            expect(cmd).toBeDefined();
+            const rawValue = '  indented: true  \n';
+            cmd.callback({}, rawValue);
+            expect(openai.oai_settings[settingKey]).toBe(rawValue);
+        }
+    });
+
+    test('loads and persists Custom endpoint profiles with settings in script.js', () => {
         expect(scriptSource).toContain('await loadCustomEndpointPresets(settings);');
         expect(scriptSource).toContain('custom_endpoint_presets: custom_endpoint_presets');
         expect(scriptSource).toContain('selected_custom_endpoint_preset: selected_custom_endpoint_preset');
-    });
 
-    test('loads the live OpenAI settings before the Custom endpoint profiles, which take their missing Additional Parameters from them', () => {
         const getSettingsSource = scriptSource.match(/export async function getSettings\(\) \{[\s\S]*?\n\}/)?.[0];
-
         expect(getSettingsSource).toBeDefined();
         const liveSettingsIndex = getSettingsSource.indexOf('\n        loadOpenAISettings(');
         const profilesIndex = getSettingsSource.indexOf('await loadCustomEndpointPresets(settings);');
-
-        // The live settings load synchronously, so a call that comes first has finished before the profiles load.
         expect(getSettingsSource).not.toContain('await loadOpenAISettings(');
-        expect(openAiSource).toMatch(/\nfunction loadOpenAISettings\(data, settings\) \{/);
         expect(liveSettingsIndex).toBeGreaterThanOrEqual(0);
         expect(profilesIndex).toBeGreaterThan(liveSettingsIndex);
-    });
-
-    test('preserves legacy Custom endpoint settings until a profile is selected', () => {
-        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
-        const selectedAssignmentIndex = loadCustomEndpointSource.indexOf('selected_custom_endpoint_preset = savedSelectedName');
-        const applyBranchIndex = loadCustomEndpointSource.indexOf('if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== \'None\') {');
-        const applyPresetIndex = loadCustomEndpointSource.indexOf('await setCustomEndpointPreset(', applyBranchIndex);
-        const fallbackNameIndex = loadCustomEndpointSource.indexOf('$(\'#custom_endpoint_preset_name\').val(\'\');');
-
-        expect(selectedAssignmentIndex).toBeGreaterThanOrEqual(0);
-        expect(applyBranchIndex).toBeGreaterThan(selectedAssignmentIndex);
-        expect(applyPresetIndex).toBeGreaterThan(applyBranchIndex);
-        expect(fallbackNameIndex).toBeGreaterThan(applyPresetIndex);
-        expect(loadCustomEndpointSource).not.toContain('savedSelectedPreset ||');
-    });
-
-    test('applies the saved profile on load without rotating or writing secrets', () => {
-        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
-        const applyPresetIndex = loadCustomEndpointSource.indexOf('await setCustomEndpointPreset(');
-        const optionsIndex = loadCustomEndpointSource.indexOf('{ secretId: selected_custom_endpoint_preset.secretId, writeKey: false, reconnect: false }', applyPresetIndex);
-
-        expect(applyPresetIndex).toBeGreaterThanOrEqual(0);
-        expect(optionsIndex).toBeGreaterThan(applyPresetIndex);
-        // The saved settings already hold the Additional Parameters in effect, which a connection profile can set after the endpoint profile.
-        const applyCallSource = loadCustomEndpointSource.slice(applyPresetIndex, loadCustomEndpointSource.indexOf(');', applyPresetIndex));
-        expect(applyCallSource).not.toMatch(/\bparameters\b/);
-    });
-
-    test('resolves the saved selection to the same object as the presets array entry', () => {
-        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
-
-        expect(loadCustomEndpointSource).toContain('custom_endpoint_presets.find(preset => preset.name === savedSelectedName) ?? null');
-    });
-
-    test('wires Custom endpoint profile selection from initOpenAI', () => {
-        const initSource = getFunctionSource('initOpenAI');
-
-        expect(initSource).toContain('$(\'#custom_endpoint_preset\').on(\'change\', onCustomEndpointPresetChange);');
-    });
-
-    test('skips the load-time apply for the None profile so typed URL and model survive reloads', () => {
-        const loadCustomEndpointSource = getFunctionSource('loadCustomEndpointPresets');
-
-        expect(loadCustomEndpointSource).toContain('if (selected_custom_endpoint_preset && selected_custom_endpoint_preset.name !== \'None\') {');
-    });
-
-    test('does not rotate a Custom endpoint profile secret that is already active', () => {
-        const activationSource = getFunctionSource('activateCustomEndpointPresetSecret');
-        const activeCheckIndex = activationSource.indexOf('secret_state[SECRET_KEYS.CUSTOM]?.some(secret => secret.id === preset.secretId && secret.active)');
-        const rotateIndex = activationSource.indexOf('await rotateSecret(SECRET_KEYS.CUSTOM, preset.secretId);');
-
-        expect(activeCheckIndex).toBeGreaterThanOrEqual(0);
-        expect(rotateIndex).toBeGreaterThan(activeCheckIndex);
-        expect(activationSource).toContain('if (!isAlreadyActive) {');
-    });
-
-    test('exposes /custom-endpoint-profile that selects saved profiles by exact name', () => {
-        const callbackSource = getFunctionSource('runCustomEndpointPresetCallback');
-        const initSource = getFunctionSource('initOpenAI');
-
-        expect(initSource).toContain('name: \'custom-endpoint-profile\',');
-        expect(initSource).toContain('callback: runCustomEndpointPresetCallback,');
-        expect(callbackSource).toContain('oai_settings.chat_completion_source === chat_completion_sources.CUSTOM');
-        expect(callbackSource).toContain('custom_endpoint_presets.find(p => p.name === name)');
-        expect(callbackSource).not.toContain('new Fuse(');
-        expect(callbackSource).toContain('$(\'#custom_endpoint_preset\').val(preset.name);');
-        expect(callbackSource).toContain('await setCustomEndpointPreset(preset.name, preset.url, preset.key, preset.model, { secretId: preset.secretId, parameters: preset });');
-    });
-
-    test('stores Custom endpoint additional parameters verbatim through their slash commands', () => {
-        const callbackSource = getFunctionSource('runCustomEndpointParameterCallback');
-
-        expect(callbackSource).toContain('oai_settings[settingName] = getSlashCommandStringValue(value);');
-        expect(callbackSource).not.toContain('.trim()');
-        expect(openAiSource).toContain('name: \'custom-include-body\',\n        callback: runCustomEndpointParameterCallback(\'custom_include_body\', \'#custom_include_body\'),');
-        expect(openAiSource).toContain('name: \'custom-exclude-body\',\n        callback: runCustomEndpointParameterCallback(\'custom_exclude_body\', \'#custom_exclude_body\'),');
-        expect(openAiSource).toContain('name: \'custom-include-headers\',\n        callback: runCustomEndpointParameterCallback(\'custom_include_headers\', \'#custom_include_headers\'),');
     });
 });

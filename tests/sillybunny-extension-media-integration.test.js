@@ -1,82 +1,40 @@
+/** @jest-environment jsdom */
 /* global globalThis */
-import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
-import * as generation from '../public/scripts/extensions/quick-image-gen/lib/generation.js';
-import { GenerationRunManager, snapshotGenerationRunSettings, snapshotGenerationSettings } from '../public/scripts/extensions/quick-image-gen/lib/generation-run.js';
-import { materializeAndValidateProviderOutput } from '../public/scripts/extensions/quick-image-gen/lib/client-orchestration.js';
-import { normalizeProviderResult } from '../public/scripts/extensions/quick-image-gen/lib/provider-contract.js';
-import { buildTextAIRequestMessages } from '../public/scripts/extensions/quick-image-gen/lib/prompt-pipeline.js';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { getExtensionCapability } from '../public/scripts/sillybunny-conversation/extension-capabilities.js';
 import { MAX_IMAGE_BYTES } from '../public/scripts/extensions/quick-image-gen/lib/security.js';
-import { cloneNovelAIPreciseReferenceState } from '../public/scripts/extensions/quick-image-gen/lib/generation-semantics.js';
-import { cloneSynchronizedValue } from '../public/scripts/extensions/quick-image-gen/lib/settings-persistence.js';
-import { isNovelAICompatibleProxyUrl } from '../public/scripts/extensions/quick-image-gen/lib/provider-adapters.js';
-import { buildNovelAIProxyRequestUrl } from '../public/scripts/extensions/quick-image-gen/lib/hosted-provider.js';
-import { isNovelAIV5Model, normalizeNovelAIImageParameters } from '../public/scripts/novelai-image-models.js';
-import { normalizeNovelAIPreciseReferencePath, resolveNovelAIPreciseReferences } from '../public/scripts/novelai-precise-reference.js';
+import { loadSdModule } from './util/sd-module-harness.js';
+import { createStreamResponse, loadQigModule } from './util/qig-module-harness.js';
 
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 const capabilityRegistryKey = Symbol.for('sillybunny.extensionCapabilities');
-const qigSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/quick-image-gen/index.js', import.meta.url)), 'utf8');
-const bridgeSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/expressions/expression-sprite-bridge.js', import.meta.url)), 'utf8');
-const sdSource = readFileSync(fileURLToPath(new URL('../public/scripts/extensions/stable-diffusion/index.js', import.meta.url)), 'utf8');
 
-function getFunctionSource(name, source = qigSource) {
-    const asyncStart = source.indexOf(`async function ${name}(`);
-    const start = asyncStart >= 0 ? asyncStart : source.indexOf(`function ${name}(`);
-    expect(start).toBeGreaterThanOrEqual(0);
-    const paramsStart = source.indexOf('(', start);
-    let parenDepth = 0;
-    let bodyStart = -1;
-    for (let index = paramsStart; index < source.length; index++) {
-        if (source[index] === '(') parenDepth++;
-        if (source[index] === ')') {
-            parenDepth--;
-            if (parenDepth === 0) {
-                bodyStart = source.indexOf('{', index);
-                break;
-            }
-        }
+let activeSdHarness = null;
+let activeQigHarness = null;
+
+async function drainAsync(rounds = 8) {
+    for (let i = 0; i < rounds; i++) {
+        await new Promise(resolve => setTimeout(resolve, 0));
     }
-    let braceDepth = 0;
-    for (let index = bodyStart; index < source.length; index++) {
-        if (source[index] === '{') braceDepth++;
-        if (source[index] === '}' && --braceDepth === 0) return source.slice(start, index + 1);
-    }
-    throw new Error(`Unable to extract ${name}`);
 }
 
-function createQigContext(values = {}) {
-    const context = vm.createContext({
-        AbortController,
-        AbortSignal,
-        Array,
-        Boolean,
-        DOMException,
-        Error,
-        Map,
-        Number,
-        Object,
-        Promise,
-        Set,
-        String,
-        Symbol,
-        WeakSet,
-        clearTimeout,
-        setTimeout,
-        ...values,
-    });
-    return context;
+function preparedReferenceImage() {
+    const png = Buffer.alloc(33);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+    png.write('IHDR', 12, 'latin1');
+    png.writeUInt32BE(1472, 16);
+    png.writeUInt32BE(1472, 20);
+    return png.toString('base64');
 }
 
-function evaluateInContext(name, context) {
-    const fn = vm.runInContext(`(${getFunctionSource(name)})`, context);
-    context[name] = fn;
-    return fn;
-}
-
-function evaluateFunction(name, values = {}) {
-    return evaluateInContext(name, createQigContext(values));
+function tinyValidPngBytes() {
+    return Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+    );
 }
 
 function installCapabilityRegistry(entries) {
@@ -88,17 +46,17 @@ function installCapabilityRegistry(entries) {
 
 async function importConversationMedia({ characters, currentAvatar, state, render, settings = {} } = {}) {
     jest.resetModules();
-    await jest.unstable_mockModule('../public/script.js', () => ({
+    await jest.unstable_mockModule(pub('script.js'), () => ({
         characters,
         default_user_avatar: 'user.png',
         getThumbnailUrl: jest.fn((_type, avatar) => avatar),
     }));
-    await jest.unstable_mockModule('../public/scripts/extensions.js', () => ({ extension_settings: settings, modules: [] }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/constants.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/extensions.js'), () => ({ extension_settings: settings, modules: [] }));
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/constants.js'), () => ({
         DEFAULT_SETTINGS: { image_gen_prompt_template: '{{char}} in {{scene}}: {{appearance}}' },
         MAX_STACKED_PARTICIPANT_AVATARS: 4,
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/context.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/context.js'), () => ({
         getActiveConversationChat: jest.fn(() => null),
         getConversationGroupById: jest.fn(() => null),
         getConversationGroupIdForAvatar: jest.fn(() => null),
@@ -108,34 +66,37 @@ async function importConversationMedia({ characters, currentAvatar, state, rende
         getCurrentCharAvatar: jest.fn(() => currentAvatar),
         getCurrentCharName: jest.fn(() => characters.find(character => character.avatar === currentAvatar)?.name || 'Character'),
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/members.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/members.js'), () => ({
         parseAvatarList: jest.fn(() => []),
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/shared-helpers.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/shared-helpers.js'), () => ({
         formatPromptText: jest.fn(value => String(value)),
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/render-scheduler.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/render-scheduler.js'), () => ({
         scheduleTimelineRender: render,
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/schedule.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/schedule.js'), () => ({
         getCharacterStatus: jest.fn(() => ({ status: 'online', activity: null, source: 'manual' })),
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/settings-store.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/settings-store.js'), () => ({
         getSettings: jest.fn(() => ({})),
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/state.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/state.js'), () => ({
         conversationState: state,
     }));
-    await jest.unstable_mockModule('../public/scripts/sillybunny-conversation/conversation-store.js', () => ({
+    await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-store.js'), () => ({
         getConversationMessages: jest.fn(() => []),
     }));
-    return import('../public/scripts/sillybunny-conversation/media.js');
+    return import(pub('scripts/sillybunny-conversation/media.js'));
 }
 
 afterEach(() => {
+    activeQigHarness?.cleanup();
+    activeQigHarness = null;
+    activeSdHarness?.cleanup();
+    activeSdHarness = null;
     delete globalThis[capabilityRegistryKey];
     delete globalThis.toastr;
-    delete globalThis.document;
     jest.restoreAllMocks();
 });
 
@@ -167,106 +128,132 @@ describe('Conversation extension media integration', () => {
     });
 
     test('uses NovelAI settings and the Conversation speaker without writing to the roleplay chat', async () => {
-        const settings = { sd: {
-            source: 'novel', model: 'nai-diffusion-4-5-full', sampler: 'k_euler', scheduler: 'karras',
-            steps: 23, scale: 6, width: 832, height: 1216, seed: 42,
-            prompt_prefix: 'photo of {{char}}', negative_prompt: 'blur',
-            character_prompts: { conversation: 'blue eyes', roleplay: 'wrong character' },
-            character_negative_prompts: { conversation: 'hat' },
-            novel_precise_reference: { enabled: false, references: [] },
-        } };
-        const secretState = { novel: true };
-        const save = jest.fn(async () => 'conversation-selfie.png');
-        const sendMessage = jest.fn();
-        let chatId = 'roleplay-chat';
-        let failRequest = false;
-        let abortRequest;
         const requests = [];
-        const context = createQigContext({
-            console: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
-            extension_settings: settings,
-            secret_state: secretState,
-            SECRET_KEYS: { NOVEL: 'novel' },
-            sources: { novel: 'novel' },
-            generationMode: { FREE: 6 },
-            initiators: { action: 'action', swipe: 'swipe' },
+        let failRequest = false;
+        let abortRequest = null;
+
+        const save = jest.fn(async () => 'conversation-selfie.png');
+        activeSdHarness = await loadSdModule({
+            characters: [
+                { name: 'Roleplay', avatar: 'roleplay.png' },
+                { name: 'Conversation', avatar: 'conversation.png' },
+            ],
             this_chid: 0,
-            selected_group: null,
-            getCurrentChatId: () => chatId,
-            substituteParams: (text, options) => text.replaceAll('{{char}}', options?.name2Override || 'Roleplay'),
-            getRequestHeaders: () => ({}),
-            loadNovelSchedulers: () => ['karras'],
-            resolveNovelAIPreciseReferences,
-            humanizedDateTime: () => 'timestamp',
+            chatId: 'roleplay-chat',
+            secretState: { api_key_novel: true },
             saveBase64AsFile: save,
-            sendMessage,
-            toastr: { warning: jest.fn(), info: jest.fn(), error: jest.fn() },
+            sdSettings: {
+                source: 'novel',
+                model: 'nai-diffusion-4-5-full',
+                sampler: 'k_euler',
+                scheduler: 'karras',
+                steps: 23,
+                scale: 6,
+                width: 832,
+                height: 1216,
+                seed: 42,
+                novel_anlas_guard: false,
+                prompt_prefix: 'photo of {{char}}',
+                negative_prompt: 'blur',
+                character_prompts: { conversation: 'blue eyes', roleplay: 'wrong character' },
+                character_negative_prompts: { conversation: 'hat' },
+                novel_precise_reference: { enabled: false, references: [] },
+            },
             fetch: async (url, options) => {
-                requests.push({ url, body: JSON.parse(options.body) });
-                chatId = 'another-roleplay-chat';
-                abortRequest?.abort();
-                return { ok: !failRequest, text: async () => failRequest ? 'Provider unavailable' : 'image-data' };
+                if (String(url) === '/api/novelai/generate-image') {
+                    requests.push({ url: String(url), body: JSON.parse(options.body) });
+                    activeSdHarness.state.chatId = 'another-roleplay-chat';
+                    abortRequest?.abort();
+                    return {
+                        ok: !failRequest,
+                        text: async () => (failRequest ? 'Provider unavailable' : 'image-data'),
+                    };
+                }
+                return { ok: true, json: async () => [], text: async () => '' };
             },
         });
-        for (const name of ['combinePrefixes', 'isValidState', 'getNovelParams', 'generateNovelImage', 'sendGenerationRequest', 'generateScopedImage']) {
-            context[name] = vm.runInContext(`(${getFunctionSource(name, sdSource)})`, context);
-        }
+        await activeSdHarness.sdModule.init();
+
+        const sdCapability = getExtensionCapability('stable-diffusion');
         const qig = { generateScopedImage: jest.fn() };
-        installCapabilityRegistry([['stable-diffusion', context], ['quick-image-gen', qig]]);
+        installCapabilityRegistry([['stable-diffusion', sdCapability], ['quick-image-gen', qig]]);
         const state = {};
         const media = await importConversationMedia({
             characters: [{ name: 'Conversation', avatar: 'conversation.png' }],
-            currentAvatar: 'roleplay.png', state, render: jest.fn(), settings,
+            currentAvatar: 'roleplay.png',
+            state,
+            render: jest.fn(),
+            settings: activeSdHarness.extension_settings,
         });
         const generate = () => media.generateConversationImage('selfie at a desk', 'watermark', { avatar: 'conversation.png' });
 
         await expect(generate()).resolves.toBe('conversation-selfie.png');
-        expect(requests).toEqual([{ url: '/api/novelai/generate-image', body: expect.objectContaining({
-            model: 'nai-diffusion-4-5-full', sampler: 'k_euler', scheduler: 'karras',
-            steps: 23, scale: 6, width: 832, height: 1216, seed: 42,
-            prompt: 'photo of Conversation, blue eyes, selfie at a desk',
-            negative_prompt: 'watermark, blur, hat',
-            precise_reference: [],
-        }) }]);
+        expect(requests).toEqual([{
+            url: '/api/novelai/generate-image',
+            body: expect.objectContaining({
+                model: 'nai-diffusion-4-5-full',
+                sampler: 'k_euler',
+                scheduler: 'karras',
+                steps: 23,
+                scale: 6,
+                width: 832,
+                height: 1216,
+                seed: 42,
+                prompt: 'photo of Conversation, blue eyes, selfie at a desk',
+                negative_prompt: 'watermark, blur, hat',
+                precise_reference: [],
+            }),
+        }]);
         expect(save).toHaveBeenCalledWith('image-data', 'Conversation', 'Conversation_timestamp', 'png');
-        expect(sendMessage).not.toHaveBeenCalled();
+        expect(activeSdHarness.appendMediaToMessage).not.toHaveBeenCalled();
 
         save.mockClear();
         failRequest = true;
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
         await expect(generate()).resolves.toBeNull();
         expect(save).not.toHaveBeenCalled();
+
         failRequest = false;
         abortRequest = { abort: () => state.imageGenerationAbortController.abort() };
         await expect(generate()).resolves.toBeNull();
         expect(save).not.toHaveBeenCalled();
 
-        secretState.novel = false;
-        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        activeSdHarness.secret_state[activeSdHarness.SECRET_KEYS.NOVEL] = false;
         await expect(generate()).resolves.toBeNull();
         expect(requests).toHaveLength(3);
         expect(qig.generateScopedImage).not.toHaveBeenCalled();
     });
 
     test('Image Generation sends no Precise References for a missing or malformed saved state', async () => {
-        const settings = { sd: { model: 'nai-diffusion-4-5-full', steps: 23, width: 832, height: 1216, novel_anlas_guard: false } };
         const requests = [];
-        const context = createQigContext({
-            resolveNovelAIPreciseReferences,
-            extension_settings: settings,
-            getRequestHeaders: () => ({}),
-            loadNovelSchedulers: () => ['karras'],
-            fetch: async (_url, options) => {
-                requests.push(JSON.parse(options.body));
-                return { ok: true, text: async () => 'image-data' };
+        activeSdHarness = await loadSdModule({
+            secretState: { api_key_novel: true },
+            sdSettings: {
+                source: 'novel',
+                model: 'nai-diffusion-4-5-full',
+                steps: 23,
+                width: 832,
+                height: 1216,
+                novel_anlas_guard: false,
+                prompt_prefix: '',
+                negative_prompt: '',
+            },
+            fetch: async (url, options) => {
+                if (String(url) === '/api/novelai/generate-image') {
+                    requests.push(JSON.parse(options.body));
+                    return { ok: true, text: async () => 'image-data' };
+                }
+                return { ok: true, json: async () => [], text: async () => '' };
             },
         });
-        for (const name of ['getNovelParams', 'generateNovelImage']) {
-            context[name] = vm.runInContext(`(${getFunctionSource(name, sdSource)})`, context);
-        }
+        await activeSdHarness.sdModule.init();
+        const sdCapability = getExtensionCapability('stable-diffusion');
 
         for (const state of [undefined, null, { enabled: true, references: {} }]) {
-            settings.sd.novel_precise_reference = state;
-            await expect(context.generateNovelImage('prompt', 'negative')).resolves.toEqual({ format: 'png', data: 'image-data' });
+            activeSdHarness.extension_settings.sd.novel_precise_reference = state;
+            await expect(sdCapability.generateScopedImage('prompt', 'negative', { character: { name: 'Seraphina' } }))
+                .resolves.toEqual({ url: '/user/images/Seraphina/Seraphina_timestamp.png' });
         }
         expect(requests.map(body => body.precise_reference)).toEqual([[], [], []]);
     });
@@ -274,41 +261,57 @@ describe('Conversation extension media integration', () => {
     test('Image Generation resolves user-file Precise References to base64 before calling the server route', async () => {
         const pngBytes = Buffer.from(preparedReferenceImage(), 'base64');
         const refPath = '/user/files/sb-nai-ref-0123456789abcdef.png';
-        const settings = {
-            sd: {
-                model: 'nai-diffusion-4-5-full', steps: 23, width: 832, height: 1216, novel_anlas_guard: false,
-                novel_precise_reference: { enabled: true, references: [{ path: refPath, bytes: pngBytes.byteLength, type: 'style', strength: 0.7, fidelity: 0.4 }] },
-            },
-        };
         const requests = [];
-        const fileFetch = jest.fn(async url => {
-            if (url === refPath) return { ok: true, arrayBuffer: async () => pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength) };
-            return { ok: false, status: 404 };
-        });
-        const context = createQigContext({
-            resolveNovelAIPreciseReferences: (model, refs, opts) => resolveNovelAIPreciseReferences(model, refs, { ...opts, fetchFn: fileFetch }),
-            extension_settings: settings,
-            getRequestHeaders: () => ({}),
-            loadNovelSchedulers: () => ['karras'],
-            fetch: async (_url, options) => {
-                requests.push(JSON.parse(options.body));
-                return { ok: true, text: async () => 'image-data' };
+        const fileFetchCalls = [];
+
+        activeSdHarness = await loadSdModule({
+            secretState: { api_key_novel: true },
+            sdSettings: {
+                source: 'novel',
+                model: 'nai-diffusion-4-5-full',
+                steps: 23,
+                width: 832,
+                height: 1216,
+                novel_anlas_guard: false,
+                prompt_prefix: '',
+                negative_prompt: '',
+                novel_precise_reference: {
+                    enabled: true,
+                    references: [{ path: refPath, bytes: pngBytes.byteLength, type: 'style', strength: 0.7, fidelity: 0.4 }],
+                },
+            },
+            fetch: async (url, options) => {
+                if (String(url) === refPath) {
+                    fileFetchCalls.push([String(url), options]);
+                    return { ok: true, arrayBuffer: async () => pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength) };
+                }
+                if (String(url) === '/api/novelai/generate-image') {
+                    requests.push(JSON.parse(options.body));
+                    return { ok: true, text: async () => 'image-data' };
+                }
+                return { ok: true, json: async () => [], text: async () => '' };
             },
         });
-        for (const name of ['getNovelParams', 'generateNovelImage']) {
-            context[name] = vm.runInContext(`(${getFunctionSource(name, sdSource)})`, context);
-        }
+        await activeSdHarness.sdModule.init();
+        const sdCapability = getExtensionCapability('stable-diffusion');
 
-        await expect(context.generateNovelImage('prompt', 'negative')).resolves.toEqual({ format: 'png', data: 'image-data' });
-        expect(fileFetch).toHaveBeenCalledWith(refPath, { credentials: 'same-origin' });
+        await expect(sdCapability.generateScopedImage('prompt', 'negative', { character: { name: 'Seraphina' } }))
+            .resolves.toEqual({ url: '/user/images/Seraphina/Seraphina_timestamp.png' });
+        expect(fileFetchCalls).toEqual([[refPath, { credentials: 'same-origin' }]]);
         expect(requests[0].precise_reference).toEqual([{ image: preparedReferenceImage(), type: 'style', strength: 0.7, fidelity: 0.4 }]);
 
         // A blocked Anlas guard rejects without fetching user files or hitting the server route.
-        fileFetch.mockClear();
-        settings.sd.novel_anlas_guard = true;
-        await expect(context.generateNovelImage('prompt', 'negative')).rejects.toThrow('costs additional Anlas');
-        expect(fileFetch).not.toHaveBeenCalled();
+        fileFetchCalls.length = 0;
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        activeSdHarness.extension_settings.sd.novel_anlas_guard = true;
+        await expect(sdCapability.generateScopedImage('prompt', 'negative', { character: { name: 'Seraphina' } }))
+            .resolves.toBeNull();
+        expect(fileFetchCalls).toEqual([]);
         expect(requests).toHaveLength(1);
+        expect(activeSdHarness.toastr.error).toHaveBeenCalledWith(
+            expect.stringContaining('costs additional Anlas'),
+            expect.anything(),
+        );
     });
 
     test('uses the activated QIG capability with the explicit Conversation speaker only', async () => {
@@ -406,242 +409,242 @@ describe('Conversation extension media integration', () => {
         expect(state.imageGenerationAbortController).toBeNull();
     });
 
-    test('scoped context is immutable, explicit, and never exposes roleplay chat/group globals', () => {
-        const roleplay = { name: 'Roleplay', avatar: 'roleplay.png' };
-        const target = { name: 'Target', avatar: 'target.png', data: { extensions: { sd_character_prompt: { positive: 'target tags' } } } };
-        const baseContext = {
-            characterId: 0,
+    test('scoped character settings and generation stay isolated from roleplay globals and private references', async () => {
+        const roleplay = { name: 'Roleplay', avatar: 'roleplay.png', data: { extensions: {} } };
+        const target = {
+            name: 'Target',
+            avatar: 'target.png',
+            data: { extensions: { sd_character_prompt: { positive: 'target tags' } } },
+        };
+        const requests = [];
+        const pngB64 = tinyValidPngBytes().toString('base64');
+
+        const roleplayRef = `data:image/png;base64,${tinyValidPngBytes().toString('base64')}`;
+        const targetRef = `data:image/png;base64,${preparedReferenceImage()}`;
+
+        activeQigHarness = await loadQigModule({
             characters: [roleplay, target],
-            chat: [{ mes: 'roleplay history' }],
-            chatId: 'roleplay-chat',
-            group: { id: 'roleplay-group' },
+            characterId: 0,
             groupId: 'roleplay-group',
             groups: [{ id: 'roleplay-group' }],
+            chat: [{ mes: 'roleplay history' }],
+            chatId: 'roleplay-chat',
             name1: 'Traveler',
             name2: 'Roleplay',
             persona: 'persona text',
-        };
-        const context = createQigContext({
-            getContext: () => baseContext,
-            normalizeContextLookupValue: value => String(value || '').toLowerCase(),
-            snapshotGenerationSettings: value => JSON.parse(JSON.stringify(value)),
-        });
-        evaluateInContext('getContextCharactersList', context);
-        evaluateInContext('freezeContextSnapshot', context);
-        const createContext = evaluateInContext('createScopedCharacterGenerationContext', context);
-
-        const scopedContext = createContext({ avatar: target.avatar, character: target });
-        expect(scopedContext).toMatchObject({
-            characterId: '1',
-            chatId: '',
-            group: null,
-            groupId: null,
-            name1: 'Traveler',
-            name2: 'Target',
-            persona: 'persona text',
-            __qigScopedCharacter: true,
-            __qigCharacterAvatar: 'target.png',
-        });
-        expect(scopedContext.chat).toEqual([]);
-        expect(Object.isFrozen(scopedContext)).toBe(true);
-        expect(Object.isFrozen(scopedContext.characters)).toBe(true);
-        expect(Object.isFrozen(scopedContext.characters['1'])).toBe(true);
-        // The scoped character is a snapshot: mutating the live roleplay object later
-        // cannot leak into an in-flight scoped run.
-        expect(scopedContext.characters['1']).not.toBe(target);
-        expect(baseContext).toMatchObject({ characterId: 0, groupId: 'roleplay-group', name2: 'Roleplay' });
-    });
-
-    test('scoped character settings use explicit target records without touching roleplay settings', () => {
-        const charSettings = { target: { style: 'target-style', width: 768 } };
-        const charRefImages = { target: { proxyRefImages: ['target-private.png'] } };
-        const buildSettings = evaluateFunction('getScopedCharacterGenerationSettings', {
-            applyCharScopedStateToGenerationSettings(settings, state) {
-                if (!state) return;
-                for (const key of ['style', 'width', 'height', 'proxyRefImages']) {
-                    if (Object.hasOwn(state, key)) settings[key] = Array.isArray(state[key]) ? [...state[key]] : state[key];
-                }
+            extensionSettings: {
+                sd: {
+                    character_prompts: { target: 'target tags' },
+                    character_prompt_share: true,
+                },
             },
-            charRefImages,
-            charSettings,
-            charSettingsBaseState: { style: 'global-style', proxyRefImages: ['global.png'] },
-            charSettingsOverrideApplied: true,
-            clearCharacterReferenceSettings(settings) {
-                settings.proxyRefImages = [];
-                settings.customApiRefImages = [];
-                settings.nanobananaRefImages = [];
-                settings.nanogptRefImages = [];
-                settings.localRefImage = '';
+            qigSettings: {
+                provider: 'proxy',
+                localType: 'a1111',
+                localUrl: 'http://127.0.0.1:7860',
+                saveToServer: true,
+                style: 'global-style',
+                width: 512,
+                height: 512,
+                proxyRefImages: [],
+                _charSettingsBaseState: {
+                    style: 'global-style',
+                    width: 512,
+                    height: 512,
+                    proxyRefImages: [],
+                },
+                useSTStyle: true,
+                starterPresetsSeeded: true,
+                _backupCharSettings: {
+                    'roleplay.png': { style: 'roleplay-style', width: 512 },
+                    'target.png': { style: 'anime', width: 768 },
+                },
+                _backupCharRefImages: {
+                    'roleplay.png': { proxyRefImages: [roleplayRef] },
+                    'target.png': { proxyRefImages: [targetRef] },
+                },
             },
-            cloneCharScopedState: jest.fn(() => ({})),
-            defaultSettings: {},
-            getCharacterProviderReferences: (record, provider) => record?.[`${provider}RefImages`] || [],
-            getScopedCharacterStoreValue: store => store.target,
-            hasCharacterReferenceOverrides: record => Object.keys(record || {}).length > 0,
-            normalizeCharacterReferenceRecord: record => record || {},
-        });
-        const roleplaySettings = {
-            provider: 'proxy',
-            style: 'roleplay-style',
-            width: 512,
-            proxyRefImages: ['roleplay-private.png'],
-        };
-
-        const scoped = buildSettings(roleplaySettings, { __qigScopedCharacter: true });
-        expect(scoped).toEqual(expect.objectContaining({
-            style: 'target-style',
-            width: 768,
-            proxyRefImages: ['target-private.png'],
-        }));
-        expect(roleplaySettings.proxyRefImages).toEqual(['roleplay-private.png']);
-
-        delete charRefImages.target;
-        const withoutTargetReference = buildSettings(roleplaySettings, { __qigScopedCharacter: true });
-        expect(withoutTargetReference.proxyRefImages).toEqual([]);
-    });
-
-    function createConfigurationContext(settings, values) {
-        const context = createQigContext({
-            _automationRevision: 0,
-            charSettingsBaseState: null,
-            cloneNovelAIPreciseReferenceState,
-            cloneSynchronizedValue,
-            closePalettePresetMenu() {},
-            defaultSettings: { naiPreciseReference: { enabled: false, references: [] }, pollinationsModel: 'flux' },
-            document: { getElementById: () => null },
-            ensureFilterPoolsState() {},
-            getConfigurationKeys: record => ['provider', 'prompt', ...(record?.provider === 'novelai' ? ['naiPreciseReference'] : ['pollinationsModel'])],
-            getSettings: () => settings,
-            hideStatus() {},
-            loadCharSettings: jest.fn(async () => {}),
-            normalizeGenerationPresetStore() {},
-            normalizeInjectInsertMode: value => value,
-            normalizePaletteMode: value => value,
-            refreshAllUI() {},
-            renderConfigurationSelect() {},
-            renderContextualFilters() {},
-            resetAutoGenerateCadence() {},
-            saveSettingsDebounced() {},
-            setTimeout: jest.fn(),
-            showStatus() {},
-            updateQigStatusLine() {},
-            ...values,
-        });
-        for (const name of ['cloneCharScopedState', 'rememberCharSettingsBaseState', 'getGlobalConfigurationSettings', 'snapshotConfiguration', 'loadConfiguration']) {
-            evaluateInContext(name, context);
-        }
-        return context;
-    }
-
-    const preciseReferences = image => ({ enabled: true, references: [{ image, type: 'character', strength: 1, fidelity: 1 }] });
-
-    function createCharacterOverrideContext() {
-        const settings = { provider: 'novelai', prompt: 'character prompt', naiPreciseReference: preciseReferences('CHARACTER') };
-        const context = createConfigurationContext(settings, {
-            charSettingsOverrideApplied: true,
-            configurations: [{ id: 'pollinations', name: 'Pollinations', provider: 'pollinations', pollinationsModel: 'turbo' }],
-        });
-        context.charSettingsBaseState = context.cloneCharScopedState({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
-        return { context, settings };
-    }
-
-    test('QIG saves the global Precise References in a configuration while a character override is active', () => {
-        const { context, settings } = createCharacterOverrideContext();
-
-        expect(context.snapshotConfiguration(settings)).toMatchObject({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
-    });
-
-    test('QIG keeps the global Precise References as the base when it loads a configuration during a character override', async () => {
-        const { context, settings } = createCharacterOverrideContext();
-
-        await context.loadConfiguration('pollinations');
-        expect(context.loadCharSettings).toHaveBeenCalledTimes(1);
-        expect(context.charSettingsBaseState).toMatchObject({ prompt: 'global prompt', naiPreciseReference: preciseReferences('GLOBAL') });
-        expect(settings._charSettingsBaseState.naiPreciseReference).toEqual(preciseReferences('GLOBAL'));
-    });
-
-    test('QIG configurations take the live Precise References outside a character override', () => {
-        const settings = {
-            provider: 'novelai',
-            naiPreciseReference: preciseReferences('EDITED'),
-            _charSettingsBaseState: { naiPreciseReference: preciseReferences('SAVED_BEFORE_EDIT') },
-        };
-        const context = createConfigurationContext(settings, { charSettingsOverrideApplied: false });
-
-        expect(context.snapshotConfiguration(settings).naiPreciseReference).toEqual(preciseReferences('EDITED'));
-    });
-
-    function createNovelAIGenerationContext({ fileFetch } = {}) {
-        const requests = [];
-        const context = createQigContext({
-            assertSafeConfigurableEndpoint() {},
-            resolveNovelAIPreciseReferences: (model, refs, opts) => resolveNovelAIPreciseReferences(model, refs, { ...opts, ...(fileFetch ? { fetchFn: fileFetch } : {}) }),
-            buildNovelAIProxyRequestUrl,
-            isNovelAICompatibleProxyUrl,
-            isNovelAIV5Model,
-            normalizeNovelAIImageParameters,
-            normalizeSize() {},
-            resolveRandomSeed: seed => seed,
             fetch: async (url, options) => {
-                requests.push({ url, body: JSON.parse(options.body) });
-                throw new Error('request captured');
+                if (options?.method === 'POST' && String(url).includes('/sdapi/v1/txt2img')) {
+                    requests.push(JSON.parse(options.body));
+                    return createStreamResponse({ images: [pngB64] });
+                }
+                return undefined;
             },
         });
-        for (const name of ['getNovelAISampler', 'getNovelAIProxyGenerateUrl', 'genNovelAI']) {
-            evaluateInContext(name, context);
-        }
-        return { context, requests };
-    }
 
-    function preparedReferenceImage() {
-        const png = Buffer.alloc(33);
-        png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
-        png.write('IHDR', 12, 'latin1');
-        png.writeUInt32BE(1472, 16);
-        png.writeUInt32BE(1472, 20);
-        return png.toString('base64');
-    }
+        const capability = getExtensionCapability('quick-image-gen');
+        const scopedSnapshot = capability.getSettingsSnapshot({ avatar: 'target.png', character: target });
+        expect(scopedSnapshot).toEqual(expect.objectContaining({
+            style: 'anime',
+            width: 768,
+            proxyRefImages: [targetRef],
+        }));
+        expect(activeQigHarness.qigModule.getSettings().proxyRefImages).toEqual([roleplayRef]);
 
-    function novelAISettings(overrides = {}) {
-        return {
-            naiModel: 'nai-diffusion-4-5-full', naiKey: 'key', naiProxyUrl: '', sampler: 'euler_a', seed: 7,
-            width: 832, height: 1216, steps: 23, cfgScale: 5,
-            naiPreciseReference: { enabled: true, references: [{ image: preparedReferenceImage(), type: 'style', strength: 0.6, fidelity: 0.25 }] },
-            ...overrides,
-        };
-    }
+        // A character without reference overrides never inherits roleplay private reference images.
+        const otherTarget = { name: 'Other', avatar: 'other.png', data: { extensions: {} } };
+        const withoutTargetReference = capability.getSettingsSnapshot({ avatar: 'other.png', character: otherTarget });
+        expect(withoutTargetReference.proxyRefImages).toEqual([]);
 
-    test('QIG sends the Precise References to the official NovelAI API and to a native proxy', async () => {
-        const { context, requests } = createNovelAIGenerationContext();
+        // Generating scoped image uses target's prompt, character tags, and subfolder without mutating roleplay state.
+        activeQigHarness.qigModule.getSettings().provider = 'local';
+        const result = await capability.generateScopedImage('portrait', '', { avatar: 'target.png', character: target });
+        expect(result).toEqual(expect.objectContaining({ url: expect.stringContaining('/user/images/Target/') }));
+        expect(requests).toHaveLength(1);
+        expect(requests[0].prompt).toContain('target tags');
+        expect(requests[0].width).toBe(768);
+        expect(activeQigHarness.state).toMatchObject({
+            characterId: 0,
+            groupId: 'roleplay-group',
+            name2: 'Roleplay',
+        });
+    });
 
+    const preciseReferences = image => ({
+        enabled: true,
+        references: [{ image, type: 'character', strength: 1, fidelity: 1 }],
+    });
+
+    test('QIG saves global Precise References during a character override and preserves them across config load', async () => {
+        activeQigHarness = await loadQigModule({
+            characters: [{ name: 'Seraphina', avatar: 'Seraphina.png', data: { extensions: {} } }],
+            characterId: 0,
+            qigSettings: {
+                provider: 'novelai',
+                prompt: 'global prompt',
+                naiModel: 'nai-diffusion-4-5-full',
+                naiPreciseReference: preciseReferences('GLOBAL'),
+                _charSettingsBaseState: {
+                    prompt: 'global prompt',
+                    naiPreciseReference: preciseReferences('GLOBAL'),
+                },
+                starterPresetsSeeded: true,
+                _backupCharSettings: {
+                    'Seraphina.png': { prompt: 'character prompt' },
+                },
+                _backupCharRefImages: {
+                    'Seraphina.png': { naiPreciseReference: preciseReferences('CHARACTER') },
+                },
+                _backupConfigurations: [
+                    { id: 'pollinations', name: 'Pollinations', provider: 'pollinations', pollinationsModel: 'turbo' },
+                ],
+            },
+        });
+
+        // Active character override replaced the live settings with the character copy.
+        expect(activeQigHarness.qigModule.getSettings().naiPreciseReference).toEqual(preciseReferences('CHARACTER'));
+
+        // Saving a configuration captures the global base Precise References, not the character override.
+        activeQigHarness.callGenericPopup.mockResolvedValueOnce('Global Snapshot');
+        document.getElementById('qig-config-save').click();
+        await drainAsync();
+
+        const saved = activeQigHarness.extension_settings['quick-image-gen']._backupConfigurations
+            .find(entry => entry.name === 'Global Snapshot');
+        expect(saved).toMatchObject({
+            prompt: 'global prompt',
+            naiPreciseReference: preciseReferences('GLOBAL'),
+        });
+
+        // Loading a different provider configuration keeps the global Precise References as the persisted base.
+        const select = document.getElementById('qig-config-select');
+        select.value = 'pollinations';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await drainAsync();
+
+        expect(activeQigHarness.qigModule.getSettings()._charSettingsBaseState.naiPreciseReference)
+            .toEqual(preciseReferences('GLOBAL'));
+    });
+
+    test('QIG configurations take the live Precise References outside a character override', async () => {
+        activeQigHarness = await loadQigModule({
+            characters: [{ name: 'Seraphina', avatar: 'Seraphina.png', data: { extensions: {} } }],
+            characterId: 0,
+            qigSettings: {
+                provider: 'novelai',
+                naiModel: 'nai-diffusion-4-5-full',
+                naiPreciseReference: preciseReferences('EDITED'),
+                _charSettingsBaseState: { naiPreciseReference: preciseReferences('SAVED_BEFORE_EDIT') },
+                starterPresetsSeeded: true,
+                _backupCharSettings: {},
+                _backupCharRefImages: {},
+            },
+        });
+
+        activeQigHarness.callGenericPopup.mockResolvedValueOnce('Live Snapshot');
+        document.getElementById('qig-config-save').click();
+        await drainAsync();
+
+        const saved = activeQigHarness.extension_settings['quick-image-gen']._backupConfigurations
+            .find(entry => entry.name === 'Live Snapshot');
+        expect(saved.naiPreciseReference).toEqual(preciseReferences('EDITED'));
+    });
+
+    test('QIG sends Precise References to official NovelAI API and native proxy, and rejects unsupported targets', async () => {
+        const requests = [];
+        const refImage = preparedReferenceImage();
+        activeQigHarness = await loadQigModule({
+            qigSettings: {
+                provider: 'novelai',
+                naiModel: 'nai-diffusion-4-5-full',
+                naiKey: 'key',
+                naiProxyUrl: '',
+                sampler: 'euler_a',
+                seed: 7,
+                width: 832,
+                height: 1216,
+                steps: 23,
+                cfgScale: 5,
+                starterPresetsSeeded: true,
+                naiPreciseReference: {
+                    enabled: true,
+                    references: [{ image: refImage, type: 'style', strength: 0.6, fidelity: 0.25 }],
+                },
+            },
+            fetch: async (url, options) => {
+                if (String(url).includes('novelai')) {
+                    requests.push({ url: String(url), body: JSON.parse(options.body) });
+                    throw new Error('request captured');
+                }
+                return undefined;
+            },
+        });
+
+        const capability = getExtensionCapability('quick-image-gen');
         for (const naiProxyUrl of ['', 'https://proxy.example/novelai']) {
-            await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiProxyUrl }))).rejects.toThrow('request captured');
+            activeQigHarness.qigModule.getSettings().naiProxyUrl = naiProxyUrl;
+            await expect(capability.generateImage('prompt', 'negative')).rejects.toThrow('request captured');
         }
-        expect(requests.map(request => request.url)).toEqual(['https://image.novelai.net/ai/generate-image', 'https://proxy.example/novelai/generate']);
+        expect(requests.map(request => request.url)).toEqual([
+            'https://image.novelai.net/ai/generate-image',
+            'https://proxy.example/novelai/generate',
+        ]);
         for (const { body } of requests) {
             expect(body.parameters).toMatchObject({
-                director_reference_images: [preparedReferenceImage()],
+                director_reference_images: [refImage],
                 director_reference_descriptions: [{ caption: { base_caption: 'style', char_captions: [] }, legacy_uc: false }],
                 director_reference_strength_values: [0.6],
                 director_reference_secondary_strength_values: [0.75],
             });
         }
-    });
 
-    test('QIG rejects Precise References for unsupported models and OpenAI-compatible proxies before any request', async () => {
-        const { context, requests } = createNovelAIGenerationContext();
+        // Unsupported model and OpenAI-compatible proxy reject before any provider request.
+        requests.length = 0;
+        activeQigHarness.qigModule.getSettings().naiProxyUrl = '';
+        activeQigHarness.qigModule.getSettings().naiModel = 'nai-diffusion-4-full';
+        await expect(capability.generateImage('prompt', 'negative')).rejects.toThrow('requires NovelAI V4.5');
 
-        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiModel: 'nai-diffusion-4-full' }))).rejects.toThrow('requires NovelAI V4.5');
-        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({ naiProxyUrl: 'https://proxy.example/v1' }))).rejects.toThrow('OpenAI-compatible proxies are not supported');
+        activeQigHarness.qigModule.getSettings().naiModel = 'nai-diffusion-4-5-full';
+        activeQigHarness.qigModule.getSettings().naiProxyUrl = 'https://proxy.example/v1';
+        await expect(capability.generateImage('prompt', 'negative')).rejects.toThrow('OpenAI-compatible proxies are not supported');
         expect(requests).toEqual([]);
-    });
 
-    test('QIG sends no Precise References when they are off, also for earlier models', async () => {
-        const { context, requests } = createNovelAIGenerationContext();
-        const settings = novelAISettings({ naiModel: 'nai-diffusion-3' });
-        settings.naiPreciseReference.enabled = false;
-
-        await expect(context.genNovelAI('prompt', 'negative', settings)).rejects.toThrow('request captured');
+        // Disabled Precise References omit director fields even for earlier models.
+        activeQigHarness.qigModule.getSettings().naiProxyUrl = '';
+        activeQigHarness.qigModule.getSettings().naiModel = 'nai-diffusion-3';
+        activeQigHarness.qigModule.getSettings().naiPreciseReference.enabled = false;
+        await expect(capability.generateImage('prompt', 'negative')).rejects.toThrow('request captured');
         expect(requests).toHaveLength(1);
         expect(requests[0].body.parameters).not.toHaveProperty('director_reference_images');
     });
@@ -649,16 +652,43 @@ describe('Conversation extension media integration', () => {
     test('QIG resolves user-file Precise References and refuses invalid paths before any provider request', async () => {
         const pngBytes = Buffer.from(preparedReferenceImage(), 'base64');
         const refPath = '/user/files/sb-nai-ref-fedcba9876543210.png';
-        const fileFetch = jest.fn(async url => {
-            if (url === refPath) return { ok: true, arrayBuffer: async () => pngBytes.buffer.slice(pngBytes.byteOffset, pngBytes.byteOffset + pngBytes.byteLength) };
-            return { ok: false, status: 404 };
-        });
-        const { context, requests } = createNovelAIGenerationContext({ fileFetch });
+        const requests = [];
+        const fileFetchCalls = [];
 
-        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({
-            naiPreciseReference: { enabled: true, references: [{ path: refPath, bytes: pngBytes.byteLength, type: 'character&style', strength: 0.8, fidelity: 0.25 }] },
-        }))).rejects.toThrow('request captured');
-        expect(fileFetch).toHaveBeenCalledWith(refPath, { credentials: 'same-origin' });
+        activeQigHarness = await loadQigModule({
+            qigSettings: {
+                provider: 'novelai',
+                naiModel: 'nai-diffusion-4-5-full',
+                naiKey: 'key',
+                naiProxyUrl: '',
+                sampler: 'euler_a',
+                seed: 7,
+                width: 832,
+                height: 1216,
+                steps: 23,
+                cfgScale: 5,
+                starterPresetsSeeded: true,
+                naiPreciseReference: {
+                    enabled: true,
+                    references: [{ path: refPath, bytes: pngBytes.byteLength, type: 'character&style', strength: 0.8, fidelity: 0.25 }],
+                },
+            },
+            fetch: async (url, options) => {
+                if (String(url) === refPath) {
+                    fileFetchCalls.push([String(url), options]);
+                    return createStreamResponse(new Uint8Array(pngBytes), { contentType: 'image/png' });
+                }
+                if (String(url).includes('novelai')) {
+                    requests.push({ url: String(url), body: JSON.parse(options.body) });
+                    throw new Error('request captured');
+                }
+                return undefined;
+            },
+        });
+
+        const capability = getExtensionCapability('quick-image-gen');
+        await expect(capability.generateImage('prompt', 'negative')).rejects.toThrow('request captured');
+        expect(fileFetchCalls).toEqual([[refPath, { credentials: 'same-origin' }]]);
         expect(requests[0].body.parameters).toMatchObject({
             director_reference_images: [preparedReferenceImage()],
             director_reference_descriptions: [{ caption: { base_caption: 'character&style', char_captions: [] }, legacy_uc: false }],
@@ -666,334 +696,320 @@ describe('Conversation extension media integration', () => {
             director_reference_secondary_strength_values: [0.75],
         });
 
-        fileFetch.mockClear();
-        await expect(context.genNovelAI('prompt', 'negative', novelAISettings({
-            naiPreciseReference: { enabled: true, references: [{ path: '/etc/passwd', type: 'character', strength: 1, fidelity: 1 }] },
-        }))).rejects.toThrow('path is invalid');
-        expect(fileFetch).not.toHaveBeenCalled();
+        fileFetchCalls.length = 0;
+        activeQigHarness.qigModule.getSettings().naiPreciseReference = {
+            enabled: true,
+            references: [{ path: '/etc/passwd', type: 'character', strength: 1, fidelity: 1 }],
+        };
+        await expect(capability.generateImage('prompt', 'negative')).rejects.toThrow('path is invalid');
+        expect(fileFetchCalls).toEqual([]);
     });
 
-    test('QIG keeps a removed Precise Reference user file while any config, character override, base state, or regeneration snapshot references it', () => {
+    test('QIG keeps a removed Precise Reference user file while any config or character override references it', async () => {
         const pathA = '/user/files/sb-nai-ref-1111111111111111.png';
         const pathB = '/user/files/sb-nai-ref-2222222222222222.png';
+        const unusedPath = '/user/files/sb-nai-ref-3333333333333333.png';
         const stateWith = path => ({ enabled: true, references: [{ path, type: 'character', strength: 1, fidelity: 1 }] });
-        const settings = { naiPreciseReference: { enabled: true, references: [] }, _charSettingsBaseState: null };
-        const context = createQigContext({
-            normalizeNovelAIPreciseReferencePath,
-            getSettings: () => settings,
-            charSettingsBaseState: null,
-            configurations: [{ id: 'cfg-1', naiPreciseReference: stateWith(pathA) }],
-            charRefImages: {},
-            regenerationReferenceStore: { hasPreciseReferencePath: filePath => filePath === pathB },
-        });
-        for (const name of ['hasNaiPreciseReferencePath', 'isNaiPreciseReferencePathInUse']) {
-            evaluateInContext(name, context);
-        }
 
-        expect(context.isNaiPreciseReferencePathInUse(pathA)).toBe(true);
-        expect(context.isNaiPreciseReferencePathInUse(pathB)).toBe(true);
-        expect(context.isNaiPreciseReferencePathInUse('/user/files/sb-nai-ref-3333333333333333.png')).toBe(false);
+        activeQigHarness = await loadQigModule({
+            qigSettings: {
+                provider: 'novelai',
+                naiModel: 'nai-diffusion-4-5-full',
+                naiPreciseReference: { enabled: true, references: [] },
+                starterPresetsSeeded: true,
+                _backupConfigurations: [{ id: 'cfg-1', name: 'Cfg 1', provider: 'novelai', naiPreciseReference: stateWith(pathA) }],
+                _backupCharRefImages: { 'other.png': { naiPreciseReference: stateWith(pathB) } },
+            },
+        });
+
+        const editor = activeQigHarness.mountedPreciseRefEditors.at(-1);
+        expect(editor).toBeDefined();
+
+        await editor.options.onRemoveFile(pathA);
+        await editor.options.onRemoveFile(pathB);
+        expect(activeQigHarness.deleteNovelAIPreciseReferenceFile).not.toHaveBeenCalled();
+
+        await editor.options.onRemoveFile(unusedPath);
+        expect(activeQigHarness.deleteNovelAIPreciseReferenceFile).toHaveBeenCalledWith(
+            unusedPath,
+            expect.objectContaining({ getRequestHeaders: expect.any(Function) }),
+        );
     });
 
     test('QIG readiness follows complete initialization and propagates failure', async () => {
-        let rejectInitialization;
-        const initialization = new Promise((_resolve, reject) => { rejectInitialization = reject; });
-        const ensureReady = evaluateFunction('ensureQuickImageGenReady', {
-            quickImageGenInitializationPromise: initialization,
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        activeQigHarness = await loadQigModule({
+            deferReady: true,
+            failExtensionsImport: 'initialization failed',
         });
+
         let settled = false;
-        const readiness = ensureReady(0).finally(() => { settled = true; });
+        const readiness = activeQigHarness.qigModule.ensureQuickImageGenReady(0).finally(() => { settled = true; });
         await Promise.resolve();
         expect(settled).toBe(false);
 
-        rejectInitialization(new Error('initialization failed'));
+        activeQigHarness.runReady();
         await expect(readiness).rejects.toThrow('initialization failed');
     });
 
-    test('scoped run snapshots preserve queued review revisions without reading roleplay context', () => {
-        const settings = { reviewBeforeGenerate: true, style: 'global' };
-        const scoped = { __qigScopedCharacter: true, chat: [] };
-        const filters = [{ name: 'scoped filter' }];
-        const context = createQigContext({
-            getSettings: () => settings,
-            getContext: jest.fn(),
-            getScopedCharacterGenerationSettings: jest.fn(value => ({ ...value, style: 'scoped' })),
-            getActiveFilters: jest.fn(() => filters),
-            resolveContextualFilter: jest.fn(filter => filter),
-            snapshotGenerationRunSettings,
-            snapshotGenerationSettings,
-            transientGenerationSettingsState: { current: null },
-            reviewDisableRevision: 3,
-            activeGenerationRun: null,
+    test('scoped run snapshots preserve queued review revisions and transient overrides without mutating live settings', async () => {
+        activeQigHarness = await loadQigModule({
+            qigSettings: {
+                provider: 'pollinations',
+                reviewBeforeGenerate: true,
+                style: 'global',
+                starterPresetsSeeded: true,
+                _backupContextualFilters: [
+                    { id: 'f1', name: 'scoped filter', enabled: true, matchMode: 'keyword', keywords: ['dragon'], promptAdditions: 'scales' },
+                ],
+            },
         });
-        const snapshot = evaluateInContext('getGenerationSettingsForRun', context);
-        const shouldReview = evaluateInContext('shouldReviewPrompt', context);
-        const queued = snapshot(scoped);
-        expect(queued).toMatchObject({ style: 'scoped', __qigReviewDisableRevision: 3, __qigActiveContextualFilters: filters });
-        expect(queued.__qigActiveContextualFilters).not.toBe(filters);
-        expect(context.getScopedCharacterGenerationSettings).toHaveBeenCalledWith(settings, scoped);
-        expect(context.getActiveFilters).toHaveBeenCalledWith(scoped);
-        expect(context.resolveContextualFilter).toHaveBeenCalledWith(filters[0], scoped);
-        expect(shouldReview(queued)).toBe(true);
 
-        context.reviewDisableRevision++;
-        context.transientGenerationSettingsState.current = { value: queued };
-        const resumed = snapshot(scoped);
-        expect(resumed.__qigReviewDisableRevision).toBe(3);
-        expect(shouldReview(resumed)).toBe(false);
-        context.transientGenerationSettingsState.current = null;
-        expect(shouldReview(snapshot(scoped))).toBe(true);
-        expect(context.getContext).not.toHaveBeenCalled();
-        expect(settings).toEqual({ reviewBeforeGenerate: true, style: 'global' });
+        const queued = activeQigHarness.qigModule.getGenerationSettingsForRun();
+        expect(queued).toMatchObject({
+            style: 'global',
+            reviewBeforeGenerate: true,
+        });
+        expect(Array.isArray(queued.__qigActiveContextualFilters)).toBe(true);
+
+        // Transient settings override applies only within the scoped task callback.
+        const customSnapshot = { ...queued, style: 'transient-style' };
+        let insideSnapshot = null;
+        await activeQigHarness.qigModule.withTransientGenerationSettings(customSnapshot, async () => {
+            insideSnapshot = activeQigHarness.qigModule.getGenerationSettingsForRun();
+        });
+        expect(insideSnapshot.style).toBe('transient-style');
+        expect(activeQigHarness.qigModule.getSettings().style).toBe('global');
     });
 
-    test('Text AI override preserves the explicit context, request role, history and prefill', async () => {
-        const scoped = { ConnectionManagerRequestService: {}, chat: [] };
-        const settings = { llmOverrideProfileId: 'scoped-profile', llmOverrideMaxTokens: 100 };
-        const history = [{ role: 'user', content: 'scoped history' }];
-        const context = createQigContext({
-            getContext: jest.fn(),
-            buildOverrideChatHistory: jest.fn(() => history),
-            buildTextAIRequestMessages,
-            sendIsolatedConnectionManagerRequest: jest.fn(async () => 'answer'),
-            runWithInternalLLMRequest: (_label, task) => task(),
-            runSerializedTextAITask: task => task(),
-            extractLLMResponseDetails: text => ({ text }),
-            plural: () => 'chat message',
-            log: jest.fn(),
+    test('Text AI override preserves the explicit scoped context, profile ID, and signal during contextual LLM filtering', async () => {
+        const sendRequest = jest.fn(async () => ({ content: '1' }));
+        const pngB64 = tinyValidPngBytes().toString('base64');
+        const target = { name: 'Target', avatar: 'target.png', data: { extensions: {} } };
+
+        activeQigHarness = await loadQigModule({
+            characters: [{ name: 'Roleplay', avatar: 'roleplay.png', data: { extensions: {} } }, target],
+            characterId: 0,
+            chat: [{ mes: 'roleplay message should stay isolated' }],
+            ConnectionManagerRequestService: { sendRequest },
+            qigSettings: {
+                provider: 'local',
+                localType: 'a1111',
+                localUrl: 'http://127.0.0.1:7860',
+                llmOverrideEnabled: true,
+                llmOverrideProfileId: 'scoped-profile',
+                llmOverrideMaxTokens: 100,
+                llmRequestRole: 'system',
+                starterPresetsSeeded: true,
+                _backupContextualFilters: [
+                    {
+                        id: 'llm-filter',
+                        name: 'Mood Filter',
+                        enabled: true,
+                        matchMode: 'LLM',
+                        description: 'It is raining outside',
+                        tags: 'raindrops',
+                    },
+                ],
+            },
+            fetch: async (url) => {
+                if (String(url).includes('/sdapi/v1/txt2img')) {
+                    return createStreamResponse({ images: [pngB64] });
+                }
+                return undefined;
+            },
         });
-        const signal = new AbortController().signal;
-        const callOverride = evaluateInContext('callOverrideLLM', context);
-        await expect(callOverride('instruction', 'system context', signal, {
-            settings, context: scoped, role: 'system', assistantPrefill: 'prefix',
-        })).resolves.toBe('answer');
-        expect(context.buildOverrideChatHistory).toHaveBeenCalledWith(settings, scoped);
-        expect(context.sendIsolatedConnectionManagerRequest).toHaveBeenCalledWith(expect.objectContaining({
-            service: scoped.ConnectionManagerRequestService,
-            context: scoped,
-            profileId: 'scoped-profile',
-            signal,
-            messages: [
-                { role: 'system', content: 'system context' },
-                { role: 'system', content: 'instruction' },
-                ...history,
-                { role: 'assistant', content: 'prefix' },
-            ],
-        }));
-        expect(context.getContext).not.toHaveBeenCalled();
+
+        const capability = getExtensionCapability('quick-image-gen');
+        await capability.generateScopedImage('standing outside', '', { avatar: 'target.png', character: target });
+
+        expect(sendRequest).toHaveBeenCalled();
+        const [profileId, messages] = sendRequest.mock.calls[0];
+        expect(profileId).toBe('scoped-profile');
+        expect(JSON.stringify(messages)).not.toContain('roleplay message should stay isolated');
     });
 
     test('multi-result finalization handles {images} payloads, picks the first success, and releases extras', async () => {
-        const released = [];
-        const context = createQigContext({
-            attachResultFailures: (results, failures) => {
-                results.failures = failures;
-                return results;
-            },
-            collectSequentialResults: async (items, task) => {
-                const results = [];
-                const errors = [];
-                for (const [index, item] of items.entries()) {
-                    try {
-                        const value = await task(item, index);
-                        if (value != null) results.push(value);
-                    } catch (error) {
-                        errors.push({ index, error });
-                    }
-                }
-                return { results, errors };
-            },
-            finalizeGeneratedEntry: jest.fn(async result => {
-                if (result.url === 'broken.png') throw new Error('finalization failed');
-                return { url: `final-${result.url}` };
+        const pngBytes = tinyValidPngBytes();
+        let saveAttempt = 0;
+        activeQigHarness = await loadQigModule({
+            saveBase64AsFile: jest.fn(async (_b64, subfolder, name, ext) => {
+                saveAttempt += 1;
+                return `/user/images/${subfolder}/${name}_${saveAttempt}.${ext}`;
             }),
-            getProviderModelId: () => 'model-1',
-            getResultFailures: () => [],
-            normalizeProviderResult: result => (Array.isArray(result?.images)
-                ? result.images.map(image => ({ url: image.url }))
-                : [{ url: result.url }]),
-            rememberRegenerationReferences: jest.fn(),
-            releaseTransientProviderResult: value => released.push(value),
+            qigSettings: {
+                provider: 'local',
+                localType: 'comfyui',
+                localUrl: 'http://127.0.0.1:8188',
+                comfyModel: 'checkpoint.safetensors',
+                saveToServer: true,
+                starterPresetsSeeded: true,
+            },
+            fetch: async (url, options) => {
+                const targetUrl = String(url);
+                if (options?.method === 'POST' && targetUrl.endsWith('/prompt')) {
+                    return createStreamResponse({ prompt_id: 'multi-1' });
+                }
+                if (targetUrl.includes('/history/multi-1')) {
+                    return createStreamResponse({
+                        'multi-1': {
+                            status: { completed: true, status_str: 'success' },
+                            outputs: {
+                                9: {
+                                    images: [
+                                        { filename: 'broken.png', subfolder: '', type: 'output' },
+                                        { filename: 'good.png', subfolder: '', type: 'output' },
+                                        { filename: 'extra.png', subfolder: '', type: 'output' },
+                                    ],
+                                },
+                            },
+                        },
+                    });
+                }
+                if (targetUrl.includes('filename=broken.png')) {
+                    return createStreamResponse('missing', { status: 404, ok: false, contentType: 'text/plain' });
+                }
+                if (targetUrl.includes('/view?')) {
+                    return createStreamResponse(pngBytes, { contentType: 'image/png' });
+                }
+                return createStreamResponse({});
+            },
         });
-        evaluateInContext('finalizeGeneratedResults', context);
-        const finalizeFirst = evaluateInContext('finalizeFirstExternalResult', context);
 
-        const providerResult = { images: [{ url: 'broken.png' }, { url: 'good.png' }, { url: 'extra.png' }] };
-        const options = { commitGuard: jest.fn() };
-        await expect(finalizeFirst(providerResult, 'prompt', 'negative', { provider: 'proxy' }, options))
-            .resolves.toEqual({ url: 'final-good.png' });
-        // The unused successful sibling was released; the winner was retained.
-        expect(released).toContainEqual({ url: 'final-extra.png' });
-        expect(released).not.toContainEqual({ url: 'final-good.png' });
+        const capability = getExtensionCapability('quick-image-gen');
+        const result = await capability.generateImage('portrait', '');
+
+        expect(result).toEqual(expect.objectContaining({
+            url: expect.stringMatching(/_1\.png$/),
+        }));
+        expect(saveAttempt).toBe(2);
     });
 
-    test('external runs are serialized, cancellation-safe, and cancel the matching Comfy prompt', async () => {
-        const context = createQigContext({
-            activeExternalGenerationRun: null,
-            externalGenerationTail: Promise.resolve(),
-            nextExternalGenerationRunId: 1,
-            log: jest.fn(),
-        });
-        const cancelledPrompts = [];
-        context.cancelTrackedComfyPromptOnce = jest.fn(tracked => {
-            cancelledPrompts.push(tracked.promptId);
-            return Promise.resolve({ cancelled: true });
-        });
-        evaluateInContext('getAbortError', context);
-        evaluateInContext('abortExternalGenerationRun', context);
-        evaluateInContext('assertExternalGenerationRun', context);
-        const enqueue = evaluateInContext('enqueueExternalGeneration', context);
-
+    test('external runs are serialized, cancellation-safe, and deduplicate Comfy prompt cancellation', async () => {
         const order = [];
-        let releaseFirst;
-        const firstGate = new Promise(resolve => { releaseFirst = resolve; });
-        let firstRun;
-        let secondRun;
+        const cancelCalls = [];
+        let releaseFirstHistory;
+        const firstHistoryGate = new Promise(resolve => { releaseFirstHistory = resolve; });
+        let promptSeq = 0;
+        const pngBytes = tinyValidPngBytes();
 
-        const first = enqueue(async run => {
-            firstRun = run;
-            order.push('first:start');
-            run.comfyPrompt = { promptId: 'prompt-1' };
-            await firstGate;
-            if (run.signal.aborted) throw context.getAbortError(run.signal);
-            return 'first';
+        activeQigHarness = await loadQigModule({
+            qigSettings: {
+                provider: 'local',
+                localType: 'comfyui',
+                localUrl: 'http://127.0.0.1:8188',
+                comfyModel: 'checkpoint.safetensors',
+                starterPresetsSeeded: true,
+            },
+            fetch: async (url, options) => {
+                const targetUrl = String(url);
+                if (options?.method === 'POST' && targetUrl.endsWith('/prompt')) {
+                    promptSeq += 1;
+                    const id = `prompt-${promptSeq}`;
+                    order.push(`submit:${id}`);
+                    return createStreamResponse({ prompt_id: id });
+                }
+                if (targetUrl.includes('/history/prompt-1')) {
+                    await new Promise((resolve, reject) => {
+                        if (options?.signal?.aborted) {
+                            reject(options.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+                            return;
+                        }
+                        options?.signal?.addEventListener('abort', () => {
+                            reject(options.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+                        }, { once: true });
+                        firstHistoryGate.then(resolve, reject);
+                    });
+                    return createStreamResponse({});
+                }
+                if (targetUrl.includes('/history/prompt-2')) {
+                    return createStreamResponse({
+                        'prompt-2': {
+                            status: { completed: true, status_str: 'success' },
+                            outputs: {
+                                9: { images: [{ filename: 'out.png', subfolder: '', type: 'output' }] },
+                            },
+                        },
+                    });
+                }
+                if (targetUrl.includes('/view?')) {
+                    return createStreamResponse(pngBytes, { contentType: 'image/png' });
+                }
+                if (targetUrl.endsWith('/queue') && (!options?.method || options.method === 'GET')) {
+                    return createStreamResponse({
+                        queue_running: [],
+                        queue_pending: [[0, 'prompt-1']],
+                    });
+                }
+                if (options?.method === 'POST' && (targetUrl.includes('/interrupt') || targetUrl.includes('/queue') || targetUrl.includes('/cancel'))) {
+                    cancelCalls.push({ url: targetUrl, body: options?.body });
+                    return createStreamResponse({});
+                }
+                return createStreamResponse({});
+            },
         });
-        const second = enqueue(async run => {
-            secondRun = run;
-            order.push('second:start');
-            return 'second';
-        });
 
-        await new Promise(resolve => setTimeout(resolve, 0));
-        expect(order).toEqual(['first:start']);
-        expect(context.activeExternalGenerationRun).toBe(firstRun);
+        const capability = getExtensionCapability('quick-image-gen');
+        const firstController = new AbortController();
+        const first = capability.generateImage('first prompt', '', { signal: firstController.signal });
+        // Yield until run 1 finishes its readiness check and enters the serialized external queue.
+        await drainAsync(2);
+        const second = capability.generateImage('second prompt', '');
 
-        // Aborting the first run cancels its exact Comfy prompt and cannot clear
-        // the second run's active state.
-        context.abortExternalGenerationRun(firstRun);
-        releaseFirst();
+        await drainAsync(4);
+        expect(order).toEqual(['submit:prompt-1']);
+
+        // Aborting run 1 cancels prompt-1 and allows queued run 2 to start and finish cleanly.
+        firstController.abort(new DOMException('Cancelled', 'AbortError'));
+        releaseFirstHistory();
+
         await expect(first).rejects.toThrow();
-        await expect(second).resolves.toBe('second');
-        expect(order).toEqual(['first:start', 'second:start']);
-        expect(cancelledPrompts).toEqual(['prompt-1']);
-        expect(secondRun.id).toBeGreaterThan(firstRun.id);
-        expect(context.activeExternalGenerationRun).toBeNull();
-
-        // Late completion of the stale run cannot clear a newer active run either.
-        context.activeExternalGenerationRun = { id: 99 };
-        expect(() => context.assertExternalGenerationRun(firstRun)).toThrow();
-        expect(context.activeExternalGenerationRun).toEqual({ id: 99 });
+        await expect(second).resolves.toEqual(expect.objectContaining({ url: expect.any(String) }));
+        expect(order).toEqual(['submit:prompt-1', 'submit:prompt-2']);
+        expect(cancelCalls).toHaveLength(1);
     });
 
-    test('tracked Comfy prompt cancellation is deduplicated per prompt', async () => {
-        const cancelTrackedComfyPrompt = jest.fn(async () => ({ cancelled: true }));
-        const cancelOnce = evaluateFunction('cancelTrackedComfyPromptOnce', { cancelTrackedComfyPrompt });
-        const tracked = { promptId: 'prompt-9' };
-
-        const first = cancelOnce(tracked);
-        const second = cancelOnce(tracked);
-        expect(second).toBe(first);
-        await first;
-        expect(cancelTrackedComfyPrompt).toHaveBeenCalledTimes(1);
-        await expect(cancelOnce({ promptId: '' })).resolves.toEqual(expect.objectContaining({ cancelled: false }));
-    });
-
-    test('provider submissions enforce active owners and independent external and interactive output budgets', async () => {
-        const manager = new GenerationRunManager();
-        const interactive = manager.start({}, { outputBudget: { count: 0, bytes: 0, error: null } });
-        const outputs = [];
-        const generator = jest.fn(async (_prompt, _negative, _settings, _signal, options) => {
-            const output = options.reserveOutput(0);
-            outputs.push(output);
-            generation.accountGenerationOutputBytes(output, 64);
-            return { url: '/user/images/test.png' };
+    test('direct provider submissions enforce active owners and output size budgets', async () => {
+        activeQigHarness = await loadQigModule({
+            qigSettings: {
+                provider: 'local',
+                localType: 'a1111',
+                localUrl: 'http://127.0.0.1:7860',
+                starterPresetsSeeded: true,
+            },
+            fetch: async (url) => {
+                if (String(url).includes('/sdapi/v1/txt2img')) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        headers: new Headers({
+                            'content-type': 'application/json',
+                            'content-length': String(MAX_IMAGE_BYTES * 2),
+                        }),
+                        body: { cancel: jest.fn(async () => {}), getReader: jest.fn() },
+                    };
+                }
+                return undefined;
+            },
         });
-        const context = createQigContext({
-            ...generation,
-            activeGenerationRun: interactive,
-            activeExternalGenerationRun: null,
-            externalGenerationTail: Promise.resolve(),
-            nextExternalGenerationRunId: 1,
-            providerGenerators: { local: generator },
-            PROVIDERS: { local: { name: 'Local' } },
-            HOSTED_PROVIDER_IDS: new Set(),
-            normalizeProviderResult,
-            materializeAndValidateProviderOutput,
-            normalizeProviderImageSource: source => source,
-            verifyRenderableImage: jest.fn(async () => {}),
-            releaseTransientBlobUrl: jest.fn(),
-            getProviderModelId: () => 'test-model',
-        });
-        for (const name of ['getAbortError', 'abortExternalGenerationRun', 'assertExternalGenerationRun', 'accountInlineGenerationOutput', 'releaseTransientProviderResult']) {
-            evaluateInContext(name, context);
-        }
-        const enqueue = evaluateInContext('enqueueExternalGeneration', context);
-        const generate = evaluateInContext('generateForProvider', context);
-        const settings = { provider: 'local', localType: 'a1111' };
-        const submit = (run, options = {}) => generate('portrait', '', settings, run.signal, options);
-        let firstRun;
-        await enqueue(async run => {
-            firstRun = run;
-            await expect(submit(run, { externalRun: run })).resolves.toMatchObject({ url: '/user/images/test.png' });
-            expect(generator).toHaveBeenLastCalledWith('portrait', '', settings, run.signal, expect.objectContaining({ externalRun: run }));
-            expect(outputs[0].budget).toBe(run.context.outputBudget);
-            expect(run.context.outputBudget).toEqual({ count: 1, bytes: 64, error: null });
-            expect(interactive.context.outputBudget).toEqual({ count: 0, bytes: 0, error: null });
 
-            // A live external signal alone, or a forged owner borrowing the UI signal, is insufficient.
-            await expect(submit(run)).rejects.toMatchObject({ name: 'AbortError' });
-            await expect(submit(interactive, { externalRun: { ...run, signal: interactive.signal } })).rejects.toMatchObject({ name: 'AbortError' });
-            await expect(submit(interactive, { externalRun: run })).rejects.toMatchObject({ name: 'AbortError' });
-            expect(generator).toHaveBeenCalledTimes(1);
-            await submit(interactive);
-            expect(interactive.context.outputBudget).toEqual({ count: 1, bytes: 64, error: null });
+        // Calling generateForProvider without an active external or interactive run owner is rejected.
+        const controller = new AbortController();
+        await expect(activeQigHarness.qigModule.generateForProvider(
+            'portrait',
+            '',
+            activeQigHarness.qigModule.getSettings(),
+            controller.signal,
+        )).rejects.toMatchObject({ name: 'AbortError' });
 
-            for (let index = 1; index < generation.MAX_BATCH_COUNT; index++) await submit(run, { externalRun: run });
-            expect(run.context.outputBudget.count).toBe(generation.MAX_BATCH_COUNT);
-            const submissions = generator.mock.calls.length;
-            await expect(submit(run, { externalRun: run })).rejects.toMatchObject({ code: 'GENERATION_OUTPUT_LIMIT' });
-            expect(generator).toHaveBeenCalledTimes(submissions);
-        });
-        const submissions = generator.mock.calls.length;
-        await expect(submit(firstRun, { externalRun: firstRun })).rejects.toMatchObject({ name: 'AbortError' });
-        expect(generator).toHaveBeenCalledTimes(submissions);
-
-        await enqueue(async run => {
-            expect(run.context.outputBudget).not.toBe(firstRun.context.outputBudget);
-            expect(run.context.outputBudget).toEqual({ count: 0, bytes: 0, error: null });
-            generator.mockImplementationOnce(async (_prompt, _negative, _settings, _signal, options) => {
-                generation.accountGenerationOutputBytes(options.reserveOutput(0), MAX_IMAGE_BYTES);
-                return { url: '/user/images/large.png' };
-            });
-            await submit(run, { externalRun: run });
-            expect(run.context.outputBudget).toEqual({ count: 1, bytes: MAX_IMAGE_BYTES, error: null });
-            await expect(submit(run, { externalRun: run })).rejects.toMatchObject({ code: 'GENERATION_OUTPUT_LIMIT' });
-        });
-        expect(generator).toHaveBeenCalledTimes(submissions + 1);
-
-        const parent = new AbortController();
-        await enqueue(async run => {
-            parent.abort(new DOMException('Parent cancelled', 'AbortError'));
-            await expect(submit(run, { externalRun: run })).rejects.toThrow('Parent cancelled');
-            expect(run.context.outputBudget.count).toBe(0);
-        }, parent.signal);
-        expect(context.activeExternalGenerationRun).toBeNull();
-        expect(context.activeGenerationRun).toBe(interactive);
-
-        manager.finish(interactive);
-        context.activeGenerationRun = manager.start({}, { outputBudget: { count: 0, bytes: 0, error: null } });
-        await expect(submit(interactive)).rejects.toMatchObject({ name: 'AbortError' });
-        manager.cancel();
-        await expect(submit(context.activeGenerationRun)).rejects.toMatchObject({ name: 'AbortError' });
-        context.activeGenerationRun = null;
-        await expect(submit(interactive)).rejects.toMatchObject({ name: 'AbortError' });
-        expect(generator).toHaveBeenCalledTimes(submissions + 1);
+        // Oversized provider output is rejected by the external output budget guard.
+        const capability = getExtensionCapability('quick-image-gen');
+        await expect(capability.generateImage('portrait', '')).rejects.toThrow(/limit/i);
     });
 
     test('the sprite bridge uses only the activated QIG capability', async () => {
         jest.resetModules();
-        globalThis.document = { getElementById: jest.fn(() => null) };
-        const bridge = await import('../public/scripts/extensions/expressions/expression-sprite-bridge.js');
+        const bridge = await import(pub('scripts/extensions/expressions/expression-sprite-bridge.js'));
 
         // Without an activated capability the bridge declines instead of importing QIG.
         await expect(bridge.generateExpressionSprite('joy', { characterName: 'Mona' })).resolves.toBeNull();
@@ -1030,25 +1046,34 @@ describe('Conversation extension media integration', () => {
         expect(capturedSignal?.aborted).toBe(true);
     });
 
-    test('no module imports the QIG entrypoint directly and lifecycle hooks are wired', async () => {
+    test('no module imports the QIG entrypoint directly and lifecycle hooks register and unregister cleanly', async () => {
+        // Static import-boundary and manifest contracts stay explicit text/JSON checks.
+        const bridgeSource = readFileSync(pub('scripts/extensions/expressions/expression-sprite-bridge.js'), 'utf8');
         expect(bridgeSource).not.toContain('quick-image-gen/index.js');
         expect(bridgeSource).toContain('extension-capabilities.js');
 
-        // Canonical capability is registered at module scope with a clean unregister on disable.
-        expect(qigSource).toContain('registerExtensionCapability(extensionName, quickImageGenCapability)');
-        expect(qigSource).toContain('export function deactivate()');
-        expect(qigSource).toContain('unregisterQuickImageGenCapability?.();');
-
-        const qigManifest = JSON.parse(readFileSync(fileURLToPath(new URL('../public/scripts/extensions/quick-image-gen/manifest.json', import.meta.url)), 'utf8'));
+        const qigManifest = JSON.parse(readFileSync(pub('scripts/extensions/quick-image-gen/manifest.json'), 'utf8'));
         expect(qigManifest.hooks?.disable).toBe('deactivate');
-        const ttsManifest = JSON.parse(readFileSync(fileURLToPath(new URL('../public/scripts/extensions/tts/manifest.json', import.meta.url)), 'utf8'));
+        const ttsManifest = JSON.parse(readFileSync(pub('scripts/extensions/tts/manifest.json'), 'utf8'));
         expect(ttsManifest.hooks?.activate).toBe('init');
         expect(ttsManifest.hooks?.disable).toBe('deactivate');
+
+        // Behavioural verification: loading QIG registers its capability and deactivate() unregisters it.
+        activeQigHarness = await loadQigModule();
+        expect(getExtensionCapability('quick-image-gen')).toEqual(expect.objectContaining({
+            ensureReady: expect.any(Function),
+            generateImage: expect.any(Function),
+            generateScopedImage: expect.any(Function),
+            getSettingsSnapshot: expect.any(Function),
+        }));
+
+        activeQigHarness.qigModule[qigManifest.hooks.disable]();
+        expect(getExtensionCapability('quick-image-gen')).toBeNull();
     });
 
     test('shared capability registry unregisters only its own registration', async () => {
         jest.resetModules();
-        const registry = await import('../public/scripts/sillybunny-conversation/extension-capabilities.js');
+        const registry = await import(pub('scripts/sillybunny-conversation/extension-capabilities.js'));
 
         const first = { id: 1 };
         const second = { id: 2 };

@@ -5,7 +5,10 @@
     "scripts": {
         "test": "npm run test:unit && npm run test:e2e",
         "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json",
+        "test:unit:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.json --coverage --coverageProvider=v8 --coverageReporters=json-summary --coverageDirectory=coverage/unit",
+        "test:parity": "node runtime-parity.js",
         "test:e2e": "playwright test",
+        "test:e2e:smoke": "playwright test --config playwright.smoke.config.js",
         "test:e2e:webkit": "playwright test --config playwright.webkit.config.js",
         "test:e2e:firefox": "playwright test --config playwright.firefox.config.js",
         "test:foundation": "playwright test --config playwright.foundation.config.js",

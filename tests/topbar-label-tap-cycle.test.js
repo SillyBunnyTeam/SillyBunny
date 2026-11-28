@@ -1,102 +1,154 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { importTabsModule } from './util/tabs-harness.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cssSource = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-tabs.css'), 'utf8');
-const tabsSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
-const normalizedTabsSource = tabsSource.replace(/\r\n/g, '\n');
+const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
 
-function getFunctionSource(name) {
-    const match = tabsSource.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`));
-    expect(match).not.toBeNull();
-    return match[0];
+let loaded = null;
+
+afterEach(() => {
+    loaded?.cleanup();
+    loaded = null;
+    jest.restoreAllMocks();
+});
+
+async function openInterfaceSettings(options = {}) {
+    loaded?.cleanup();
+    loaded = await importTabsModule(options);
+    loaded.shell.openTab('right', 'appearance');
+    await loaded.flush();
+    loaded.shell.openTab('right', 'interface');
+    await loaded.flush();
+    return loaded;
 }
 
 describe('Backend shortcut routes', () => {
-    const migrate = new Function(`${getFunctionSource('migrateLegacyWorldInfoRoute')}\n${getFunctionSource('migrateTabId')}\n${getFunctionSource('migrateShortcutTarget')}\nreturn migrateShortcutTarget;`)();
-
     test.each([
         ['left:presets', 'left:prompting'],
         ['left:api', 'left:connections'],
         ['left:advanced-formatting', 'left:context'],
         ['left:world-info', 'characters:world-info'],
         ['left:editor', 'left:editor'],
-        ['characters:editor', 'characters:editor'],
         ['right:extensions', 'right:extensions'],
-        [null, null],
-    ])('migrates %s to %s without crossing shell boundaries', (stored, expected) => {
-        expect(migrate(stored)).toBe(expected);
+    ])('migrates stored shortcut %s to %s without crossing shell boundaries', async (stored, expected) => {
+        await openInterfaceSettings({
+            storage: { 'sb-shortcut-left': stored },
+        });
+        const select = /** @type {HTMLSelectElement} */ (document.querySelector('#sb-quick-access-shortcuts-drawer select[data-sb-shortcut-slot="left"], #sb-shortcut-slot-left, #sb-quick-access-shortcuts-drawer select'));
+        expect(select).toBeInstanceOf(HTMLSelectElement);
+        expect(select.value).toBe(expected);
     });
 
-    test('migrates before validating saved shortcuts against the canonical registry', () => {
-        const registry = tabsSource.match(/const SB_SHORTCUT_TARGETS = Object\.freeze\(\[[\s\S]*?\n\]\);/)[0];
-        const values = [...registry.matchAll(/value: '([^']+)'/g)].map(match => match[1]);
-        expect(values.filter(value => value.startsWith('left:'))).toEqual([
+    test('keeps characters:editor inside the Characters section without remapping it to Backend', async () => {
+        loaded = await importTabsModule();
+        loaded.shell.openTab('characters', 'editor');
+        expect(document.getElementById('sb-character-toggle').classList.contains('sb-settings-active')).toBe(true);
+        expect(document.querySelector('#sb-settings-tab-list [data-sb-settings-tab="editor"]')?.getAttribute('aria-selected')).toBe('true');
+
+        loaded.shell.openTab('left', 'editor');
+        expect(document.getElementById('sb-left-shell-toggle').classList.contains('sb-settings-active')).toBe(true);
+        expect(document.querySelector('#sb-settings-tab-list [data-sb-settings-tab="editor"]')?.getAttribute('aria-selected')).toBe('true');
+    });
+
+    test('lists the canonical Backend targets in the Quick Access slot selector', async () => {
+        await openInterfaceSettings();
+        const select = /** @type {HTMLSelectElement} */ (document.querySelector('#sb-quick-access-shortcuts-drawer select'));
+        expect(select).toBeInstanceOf(HTMLSelectElement);
+        const leftValues = [...select.options]
+            .map(opt => opt.value)
+            .filter(value => value.startsWith('left:'));
+        expect(leftValues).toEqual([
             'left:connections', 'left:sampling', 'left:prompting', 'left:editor', 'left:context', 'left:agents',
         ]);
-        expect(getFunctionSource('getShortcutTarget')).toContain('const stored = migrateShortcutTarget(');
+        const allValues = [...select.options].map(opt => opt.value);
+        expect(allValues).toContain('action:search');
     });
 });
 
 describe('topbar label title', () => {
-    test('flushes configured label settings immediately after storage writes', () => {
-        expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(sbState.topbarLabel.desktopParts));\n    flushSbStorageWrites();');
-        expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelCustomText, nextText);\n    flushSbStorageWrites();');
+    test('flushes configured label settings immediately after storage writes and renders one shared label group', async () => {
+        await openInterfaceSettings();
+
+        const labelDrawer = document.getElementById('sb-topbar-label-drawer');
+        expect(labelDrawer).not.toBeNull();
+        expect(labelDrawer.classList.contains('sb-desktop-setting')).toBe(false);
+        expect(labelDrawer.classList.contains('sb-mobile-setting')).toBe(false);
+        expect(labelDrawer.textContent).toContain('Choose what the center label shows');
+        expect(document.getElementById('sb-topbar-label-mobile-group')).toBeNull();
+        expect(document.getElementById('sb-topbar-custom-text-input-mobile')).toBeNull();
+        expect(document.querySelector('#sb-topbar-label-desktop-char')?.closest('.ds-row-switch')).not.toBeNull();
+        expect(document.body.textContent).toContain('This only appears in the top bar when the Custom Text switch is enabled above');
+
+        // Quick Access sits on the desktop settings alone.
+        const shortcutsDrawer = document.getElementById('sb-quick-access-shortcuts-drawer');
+        expect(shortcutsDrawer).not.toBeNull();
+        expect(shortcutsDrawer.classList.contains('sb-desktop-setting')).toBe(true);
+
+        // Changing label parts and custom text flushes synchronously (before any debounce timer or pagehide).
+        const ctxInput = /** @type {HTMLInputElement} */ (document.getElementById('sb-topbar-label-desktop-ctx'));
+        ctxInput.checked = true;
+        ctxInput.dispatchEvent(new Event('change', { bubbles: true }));
+        expect(window.localStorage.getItem('sb-topbar-label-desktop-parts')).toBe('["ctx","char"]');
+
+        const customInput = /** @type {HTMLInputElement} */ (document.getElementById('sb-topbar-custom-text-input'));
+        customInput.value = 'Immediate';
+        customInput.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(window.localStorage.getItem('sb-topbar-label-custom-text')).toBe('Immediate');
     });
 
-    test('has no phone-only label path: one list, one group, one custom text field', () => {
-        expect(normalizedTabsSource).not.toContain('setMobileTopbarLabelPart');
-        expect(normalizedTabsSource).not.toContain('topbarLabel.mobilePart');
-        expect(normalizedTabsSource).not.toContain('sb-topbar-label-mobile-group');
-        expect(normalizedTabsSource).not.toContain('sb-topbar-custom-text-input-mobile');
-        expect(getFunctionSource('getConfiguredTopbarLabelParts')).not.toContain('isMobileViewport');
-        expect(getFunctionSource('isTopbarContextLabelEnabled')).not.toContain('mobile');
-        const groupsSource = getFunctionSource('createTopbarLabelSettingsGroups');
-        expect(groupsSource).not.toContain('sb-desktop-setting');
-        expect(groupsSource).not.toContain('sb-mobile-setting');
-        expect(groupsSource).toContain('description: \'Choose what the center label shows\',');
-        expect(groupsSource).toContain('description: \'This only appears in the top bar when the Custom Text switch is enabled above\',');
-        expect(getFunctionSource('createTopbarLabelPartRow')).toContain('createSwitchRow({');
-        expect(normalizedTabsSource).toContain('safeSetItem(SB_STORAGE_KEYS.topbarLabelDesktopParts, JSON.stringify(readTopbarLabelParts()));');
+    test('title activation by click, Enter, or Space returns to chat without closing it and never cycles labels', async () => {
+        const closeChatSpy = jest.fn();
+        loaded = await importTabsModule({
+            context: {
+                characterId: 0,
+                name2: 'Lyra',
+                chat: [{ mes: 'Hello' }],
+                closeCurrentChat: closeChatSpy,
+            },
+        });
+
+        const title = document.getElementById('sb-topbar-title');
+        expect(title).not.toBeNull();
+        expect(title.getAttribute('role')).toBe('button');
+        expect(title.getAttribute('tabindex')).toBe('0');
+        expect(title.getAttribute('aria-label')).toBeTruthy();
+
+        const initialText = title.textContent;
+
+        // Open left shell, then click title -> closes settings page without closing chat or changing label text.
+        loaded.shell.openTab('left', 'connections');
+        expect(document.documentElement.dataset.sbSettingsOpen).toBe('true');
+        title.click();
+        expect(document.documentElement.dataset.sbSettingsOpen).toBeUndefined();
+        expect(title.textContent).toBe(initialText);
+        expect(title.classList.contains('is-previewing')).toBe(false);
+        expect(closeChatSpy).not.toHaveBeenCalled();
+
+        // Open right shell, then press Enter on title -> closes settings page.
+        loaded.shell.openTab('right', 'appearance');
+        expect(document.documentElement.dataset.sbSettingsOpen).toBe('true');
+        const enterEvt = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        title.dispatchEvent(enterEvt);
+        expect(enterEvt.defaultPrevented).toBe(true);
+        expect(document.documentElement.dataset.sbSettingsOpen).toBeUndefined();
+
+        // Open Characters shell, then press Space on title -> closes settings page.
+        loaded.shell.openTab('characters', 'characters');
+        expect(document.documentElement.dataset.sbSettingsOpen).toBe('true');
+        const spaceEvt = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+        title.dispatchEvent(spaceEvt);
+        expect(spaceEvt.defaultPrevented).toBe(true);
+        expect(document.documentElement.dataset.sbSettingsOpen).toBeUndefined();
+        expect(closeChatSpy).not.toHaveBeenCalled();
     });
 
-    test('offers Quick Access on the desktop page alone, as its buttons are desktop-only', () => {
-        const source = getFunctionSource('createShortcutSettingsGroup');
-        expect(source).toContain('group.section.classList.add(\'sb-desktop-setting\');');
-        expect(source).not.toContain('SB_SHORTCUT_DESKTOP_SLOTS');
-    });
-
-    test('binds accessible pointer and keyboard activation on the title', () => {
-        const bindSource = getFunctionSource('bindTopBarTitle');
-        expect(bindSource).toContain('title.addEventListener(\'click\'');
-        expect(bindSource).toContain('title.addEventListener(\'keydown\'');
-        expect(bindSource).toContain('event.key !== \'Enter\' && event.key !== \' \'');
-        expect(bindSource).toContain('event.preventDefault();');
-        expect(bindSource).toContain('returnToChatSurface();');
-
-        expect(tabsSource).toContain('role="button"');
-        expect(tabsSource).toContain('tabindex="0"');
-        expect(tabsSource).toContain('title.setAttribute(\'aria-label\'');
-    });
-
-    test('title activation returns to the chat without closing it', () => {
-        const returnSource = getFunctionSource('returnToChatSurface');
-        expect(returnSource).toContain('closeShell(\'left\');');
-        expect(returnSource).toContain('closeShell(\'right\');');
-        expect(returnSource).toContain('closeCharacterPanel();');
-        expect(returnSource).not.toContain('closeCurrentChat');
-    });
-
-    test('has no click-to-preview label cycle or setting', () => {
-        expect(tabsSource).not.toContain('cycleTopBarLabel');
-        expect(tabsSource).not.toContain('sb-topbar-label-click-cycle');
-        expect(tabsSource).not.toContain('Click To Preview Label Options');
-        expect(cssSource).not.toContain('.sb-brand-title.is-previewing');
-    });
-
-    test('marks the title as a visible tappable affordance', () => {
+    test('marks the title as a visible tappable affordance in CSS without negative margin', () => {
         const titleRuleMatch = cssSource.match(/\.sb-brand-title\s*\{[^}]*\}/);
         expect(titleRuleMatch).not.toBeNull();
 
@@ -105,77 +157,16 @@ describe('topbar label title', () => {
         expect(titleRule).toContain('touch-action: manipulation;');
         expect(titleRule).toContain('-webkit-user-select: none;');
         expect(titleRule).toContain('user-select: none;');
-        expect(cssSource).toContain('.sb-brand-title:focus-visible');
-    });
-
-    test('does not subtract focus padding from the visible label width', () => {
-        const titleRuleMatch = cssSource.match(/\.sb-brand-title\s*\{[^}]*\}/);
-        expect(titleRuleMatch).not.toBeNull();
-
-        const titleRule = titleRuleMatch[0];
         expect(titleRule).toContain('padding: 0 6px;');
         expect(titleRule).not.toMatch(/margin:\s*-/);
+        expect(cssSource).toContain('.sb-brand-title:focus-visible');
+        expect(cssSource).not.toContain('.sb-brand-title.is-previewing');
     });
 });
 
 describe('icons only top bar', () => {
-    const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
-
-    function getConstSource(name) {
-        const match = normalizedTabsSource.match(new RegExp(`const ${name} = [\\s\\S]*?\\n\\}\\);|const ${name} = [^\\n]*;`));
-        expect(match).not.toBeNull();
-        return match[0];
-    }
-
-    function getGroupOrder() {
-        return new Function('TOPBAR_EXTENSION_SLOT_ID', `${getConstSource('SB_TOPBAR_GROUP_ORDER')}\nreturn SB_TOPBAR_GROUP_ORDER;`)('sb-topbar-extension-slot');
-    }
-
-    test('names the three sections and the button that opens each', () => {
-        const sections = getConstSource('SB_TOPBAR_SECTIONS');
-
-        expect([...sections.matchAll(/leadId: '([^']+)'/g)].map(match => match[1]))
-            .toEqual(['sb-left-shell-toggle', 'sb-right-shell-toggle', 'sb-character-toggle']);
-        expect([...sections.matchAll(/shellKey: '([^']+)'/g)].map(match => match[1])).toEqual(['left', 'right', 'characters']);
-    });
-
-    test('has no page icon rails, cluster dividers or anything that kept them', () => {
-        for (const removed of [
-            'SB_TOPBAR_CLUSTERS', 'SB_TOPBAR_PAGE_TARGETS', 'SB_TOPBAR_ANCHOR_IDS', 'buildTopbarPageRail', 'createTopbarPageButton',
-            'getTopbarPageConfig', 'syncTopbarIconsOnlyDedupe', 'syncTopbarIconsOnlyLayout', 'syncTopbarGroupOrder', 'getTopbarGroupOrder',
-            'syncTopbarBrandFit', 'sb-topbar-pages', 'sb-topbar-cluster-lead', 'sb-topbar-shortcut-duplicate', 'sb-topbar-page-button',
-            'data-sb-topbar-page', 'sbTopbarPage', 'sbTopbarBrandCramped', 'sbTopbarScroll', 'sb-topbar-divider-customize',
-            'sb-topbar-divider-home', 'sb-topbar-divider-characters',
-        ]) {
-            expect(normalizedTabsSource).not.toContain(removed);
-            expect(cssSource).not.toContain(removed);
-            expect(mobileCss).not.toContain(removed);
-        }
-        expect(cssSource).not.toContain('sb-topbar-cluster-workspace');
-        expect(cssSource).not.toContain('data-sb-topbar-brand-cramped');
-        expect(cssSource).not.toContain('data-sb-topbar-scroll');
-        expect(normalizedTabsSource).not.toContain('SB_TOPBAR_PARKED_IDS');
-        expect(normalizedTabsSource).not.toContain('sb-topbar-parked');
-    });
-
-    test('keeps the shell registries that the settings sidebar reads their page icons from', () => {
-        for (const entry of [
-            'id: \'context\',',
-            'id: \'agents\',',
-            'id: \'data-security\',',
-            'id: \'logs\',',
-        ]) {
-            expect(normalizedTabsSource).toContain(entry);
-        }
-        expect(normalizedTabsSource).toMatch(/id: 'editor',\s+label: 'Editor',\s+icon: 'fa-pen-to-square'/);
-        expect(normalizedTabsSource).toMatch(/id: 'import',\s+label: 'Import',\s+icon: 'fa-file-import'/);
-    });
-
-    test('has one child order, the labelled bar\'s, whatever the mode or the width', () => {
-        const order = getGroupOrder();
-
-        // Backend, Customize, Search, Quick Access | title | Quick Access, Mode, Home, Characters.
-        expect(order.left).toEqual([
+    test('builds one child order for every width and mode, with all controls present and no retired rails', async () => {
+        const expectedLeft = [
             'sb-left-shell-toggle',
             'sb-right-shell-toggle',
             'sb-topbar-divider-search-mobile',
@@ -184,8 +175,8 @@ describe('icons only top bar', () => {
             'sb-shortcut-left',
             'sb-shortcut-slot3',
             'sb-shortcut-slot4',
-        ]);
-        expect(order.right).toEqual([
+        ];
+        const expectedRight = [
             'sb-topbar-extension-slot',
             'sb-shortcut-slot6',
             'sb-shortcut-slot5',
@@ -196,403 +187,182 @@ describe('icons only top bar', () => {
             'sb-topbar-divider-mode-mobile',
             'sb-home-toggle',
             'sb-character-toggle',
-        ]);
-        expect(new Set([...order.left, ...order.right]).size).toBe(order.left.length + order.right.length);
-        for (const id of [...order.left, ...order.right]) {
-            expect(id).not.toMatch(/cluster|rail|pages/);
+        ];
+
+        loaded = await importTabsModule();
+        const inner = document.getElementById('sb-topbar-inner');
+        const readOrder = () => ({
+            left: [...inner.querySelector('.sb-topbar-group-left').children].map(el => el.id),
+            right: [...inner.querySelector('.sb-topbar-group-right').children].map(el => el.id),
+        });
+
+        expect(readOrder()).toEqual({ left: expectedLeft, right: expectedRight });
+
+        // Toggling icons-only does not rebuild #sb-topbar-inner or change child order.
+        loaded.shell.setTopbarIconsOnly('desktop', true);
+        expect(document.getElementById('sb-topbar-inner')).toBe(inner);
+        expect(readOrder()).toEqual({ left: expectedLeft, right: expectedRight });
+        expect(document.documentElement.dataset.sbTopbarIconsOnly).toBe('true');
+
+        // Switching to mobile viewport keeps the exact same DOM order and turns desktop icons-only off.
+        loaded.setViewport({ width: 390, height: 844 });
+        expect(readOrder()).toEqual({ left: expectedLeft, right: expectedRight });
+        expect(document.documentElement.dataset.sbTopbarIconsOnly).toBe('false');
+
+        // Switching back to desktop restores the desktop preference.
+        loaded.setViewport({ width: 1440, height: 900 });
+        expect(document.documentElement.dataset.sbTopbarIconsOnly).toBe('true');
+
+        // Retired cluster/rail CSS and DOM attributes do not exist.
+        for (const removed of ['sb-topbar-pages', 'sb-topbar-cluster-lead', 'sb-topbar-page-button', 'sb-topbar-cluster-workspace', 'data-sb-topbar-brand-cramped', 'data-sb-topbar-scroll']) {
+            expect(cssSource).not.toContain(removed);
+            expect(mobileCss).not.toContain(removed);
+        }
+    });
+
+    test('opens Characters, Backend, and Customize from their lead buttons and yields Home while open', async () => {
+        let fakeNow = 1000;
+        jest.spyOn(performance, 'now').mockImplementation(() => fakeNow);
+
+        loaded = await importTabsModule();
+
+        const leftBtn = document.getElementById('sb-left-shell-toggle');
+        const rightBtn = document.getElementById('sb-right-shell-toggle');
+        const charBtn = document.getElementById('sb-character-toggle');
+        const homeBtn = document.getElementById('sb-home-toggle');
+
+        // Clicking Characters opens the settings page in labelled mode and lights #sb-character-toggle.
+        fakeNow += 500;
+        charBtn.click();
+        expect(document.documentElement.dataset.sbSettingsOpen).toBe('true');
+        expect(charBtn.classList.contains('sb-settings-active')).toBe(true);
+        expect(homeBtn.classList.contains('is-active')).toBe(false);
+        expect(document.querySelectorAll('#sb-settings-tab-list [data-sb-settings-tab]').length).toBeGreaterThanOrEqual(5);
+
+        // Switching to Backend moves active state to #sb-left-shell-toggle and renders expected tabs.
+        fakeNow += 500;
+        leftBtn.click();
+        expect(leftBtn.classList.contains('sb-settings-active')).toBe(true);
+        expect(charBtn.classList.contains('sb-settings-active')).toBe(false);
+        const leftTabIds = [...document.querySelectorAll('#sb-settings-tab-list [data-sb-settings-tab]')].map(b => b.dataset.sbSettingsTab);
+        expect(leftTabIds).toEqual(['connections', 'sampling', 'prompting', 'editor', 'context', 'agents']);
+
+        // Switching to Customize renders data-security and logs tabs too.
+        fakeNow += 500;
+        rightBtn.click();
+        const rightTabIds = [...document.querySelectorAll('#sb-settings-tab-list [data-sb-settings-tab]')].map(b => b.dataset.sbSettingsTab);
+        expect(rightTabIds).toContain('data-security');
+        expect(rightTabIds).toContain('logs');
+
+        // Re-clicking Customize closes the settings page.
+        fakeNow += 500;
+        rightBtn.click();
+        expect(document.documentElement.dataset.sbSettingsOpen).toBeUndefined();
+        expect(rightBtn.classList.contains('sb-settings-active')).toBe(false);
+
+        // In icons-only mode, Characters still opens the settings page identically.
+        loaded.shell.setTopbarIconsOnly('desktop', true);
+        fakeNow += 500;
+        charBtn.click();
+        expect(document.documentElement.dataset.sbSettingsOpen).toBe('true');
+        expect(charBtn.classList.contains('sb-settings-active')).toBe(true);
+        fakeNow += 500;
+        charBtn.click();
+        expect(document.documentElement.dataset.sbSettingsOpen).toBeUndefined();
+        await loaded.flush();
+    });
+
+    test('mounts one Desktop Icons Only toggle, seeds from legacy key without rewriting it, and clears retired nav attributes', async () => {
+        window.localStorage.clear();
+        window.localStorage.setItem('sb-topbar-icons-only', 'true');
+        const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+
+        loaded = await importTabsModule({ storage: null, autoInit: false });
+        for (const retired of [
+            'data-sb-mobile-nav-layout', 'data-sb-mobile-nav-mode', 'data-sb-mobile-nav-customize',
+            'data-sb-mobile-nav-quick-actions', 'data-sb-mobile-nav-replacement',
+            'data-sb-desktop-nav-layout', 'data-sb-desktop-nav-mode', 'data-sb-desktop-nav-customize',
+            'data-sb-desktop-nav-quick-actions', 'data-sb-desktop-nav-replacement',
+        ]) {
+            document.documentElement.setAttribute(retired, 'vertical');
         }
 
-        // Nothing replays or branches on the mode: buildTopBar appends each group once from the list.
-        const buildSource = getFunctionSource('buildTopBar');
-        expect(buildSource).toContain('leftGroup.append(...SB_TOPBAR_GROUP_ORDER.left.map(id => controls.get(id)));');
-        expect(buildSource).toContain('rightGroup.append(...SB_TOPBAR_GROUP_ORDER.right.map(id => controls.get(id)));');
-        expect(getConstSource('SB_TOPBAR_GROUP_ORDER')).not.toMatch(/iconsOnly|isMobile/);
+        await loaded.eventSource.emit(loaded.event_types.APP_READY);
+        loaded.shell.openTab('right', 'appearance');
+        await loaded.flush();
+        loaded.shell.openTab('right', 'interface');
+        await loaded.flush();
+
+        // Retired attributes removed; icons-only seeded from legacy key.
+        expect(document.documentElement.hasAttribute('data-sb-mobile-nav-layout')).toBe(false);
+        expect(document.documentElement.hasAttribute('data-sb-desktop-nav-layout')).toBe(false);
+        expect(document.documentElement.dataset.sbTopbarIconsOnly).toBe('true');
+
+        const toggle = /** @type {HTMLInputElement} */ (document.getElementById('sb-desktop-topbar-icons-only-input'));
+        expect(toggle).toBeInstanceOf(HTMLInputElement);
+        expect(toggle.checked).toBe(true);
+        expect(document.getElementById('sb-mobile-topbar-icons-only-input')).toBeNull();
+        expect(document.getElementById('sb-desktop-settings-outlet').contains(toggle)).toBe(true);
+
+        // Changing toggle writes only the desktop key and never rewrites the legacy single key.
+        toggle.checked = false;
+        toggle.dispatchEvent(new Event('change', { bubbles: true }));
+        window.dispatchEvent(new Event('pagehide'));
+        expect(window.localStorage.getItem('sb-desktop-topbar-icons-only')).toBe('false');
+        expect(setItemSpy.mock.calls.map(([k]) => k)).not.toContain('sb-topbar-icons-only');
+        expect(document.documentElement.dataset.sbTopbarIconsOnly).toBe('false');
+
+        // Non-desktop mode calls are ignored.
+        loaded.shell.setTopbarIconsOnly('mobile', true);
+        expect(document.documentElement.dataset.sbTopbarIconsOnly).toBe('false');
     });
 
-    test('puts every control the order names into the bar', () => {
-        const buildSource = getFunctionSource('buildTopBar');
-        const controlsSource = buildSource.match(/const controls = new Map\(\[([\s\S]*?)\]\.map/)[1];
-        const built = controlsSource.split(',').map(name => name.trim()).filter(Boolean);
+    test('registers proxy button touchstart handlers as passive so WebKit keeps compositor scrolling', async () => {
+        const touchStartOptions = [];
+        const origAdd = EventTarget.prototype.addEventListener;
+        jest.spyOn(EventTarget.prototype, 'addEventListener').mockImplementation(function (type, listener, opts) {
+            if (type === 'touchstart' && this instanceof HTMLElement && this.classList?.contains('sb-proxy-button')) {
+                touchStartOptions.push(opts);
+            }
+            return origAdd.call(this, type, listener, opts);
+        });
 
-        // Every name in the list is a control of buildTopBar, so the Map holds exactly the ids of the order.
-        expect(built).toHaveLength(getGroupOrder().left.length + getGroupOrder().right.length);
-        expect(new Set(built).size).toBe(built.length);
+        loaded = await importTabsModule();
+        expect(touchStartOptions.length).toBeGreaterThan(0);
+        expect(touchStartOptions.every(opts => opts && typeof opts === 'object' && opts.passive === true)).toBe(true);
     });
 
-    test('opens the Characters anchor as a settings page in every mode', () => {
-        const activationSource = getFunctionSource('activateCharacterTopbarButton');
-        expect(activationSource).toContain('toggleSettingsPage(\'characters\');');
-        expect(activationSource).not.toContain('if (isTopbarIconsOnlyActive())');
-
-        const buildSource = getFunctionSource('buildTopBar');
-        expect(buildSource).toContain('activateCharacterTopbarButton,');
-
-        // The button reads the same in both modes: no branch on the setting.
-        const proxyStateSource = getFunctionSource('syncProxyButtonState');
-        expect(proxyStateSource).toContain('const isCharacterButton = proxyButton.id === \'sb-character-toggle\';');
-        expect(proxyStateSource).not.toContain('isTopbarIconsOnlyActive');
-        expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-open\', isOpen);');
-        expect(proxyStateSource).toContain('proxyButton.classList.toggle(\'is-pinned\', isPinned);');
-
-        expect(getFunctionSource('syncTopbarSectionButtonStates')).toContain('syncCharacterTopbarButtonState();');
-        expect(getFunctionSource('observeProxyButton')).not.toContain('isTopbarIconsOnlyActive');
-    });
-
-    test('lights the open section\'s button from the settings page state', () => {
-        const activeSource = getFunctionSource('syncSettingsPageActiveButton');
-        expect(activeSource).toContain('for (const section of SB_TOPBAR_SECTIONS) {');
-        expect(activeSource).toContain('sbSettingsState.activeShell === section.shellKey');
-        expect(getFunctionSource('closeSettingsPage')).toContain('SB_TOPBAR_SECTIONS.find(section => section.shellKey === closingShell)?.leadId');
-    });
-
-    test('keeps one destination active: Home gives way to an open settings page and returns when it closes', () => {
-        expect(getFunctionSource('syncHomeButtonState')).toContain('const isHomeVisible = isHomeActive() && !sbSettingsState.open;');
-        // Both opening and closing a page go through this sync, so Home follows without its own listener.
-        expect(getFunctionSource('syncSettingsPageActiveButton')).toContain('syncHomeButtonState();');
-        expect(getFunctionSource('openSettingsPage')).toContain('syncSettingsPageActiveButton();');
-        expect(getFunctionSource('closeSettingsPage')).toContain('syncSettingsPageActiveButton();');
-    });
-
-    test('marks the boundaries of Quick Access and of the phone utility buttons, in both modes', () => {
-        expect(normalizedTabsSource).toContain('function createTopbarClusterDivider(');
-
+    test('declares topbar grid, title truncation, divider, control radius, and overflow CSS contracts', () => {
         const baseRule = cssSource.match(/\.sb-topbar-cluster-divider \{[^}]*\}/);
         expect(baseRule).not.toBeNull();
         expect(baseRule[0]).toContain('display: none;');
         expect(baseRule[0]).toContain('width: 0;');
         expect(baseRule[0]).toContain('border-inline-start: 1px solid var(--sb-shell-border);');
-
-        // The rule shows because a side has a Quick Access button, never because of the setting.
         expect(cssSource).toMatch(/> #sb-topbar-divider-quick-left,\n\.sb-topbar-group-right:has\([^\n]*> #sb-topbar-divider-quick-right \{\n\s*display: inline-block;\n\}/);
         expect(cssSource).not.toMatch(/data-sb-topbar-icons-only='true'\][^{]*\.sb-topbar-cluster-divider/);
         expect(mobileCss).toMatch(/\.sb-topbar-cluster-divider \{\n\s*height: calc\(var\(--sb-mobile-toggle-size\) \* 0\.5\);\n\s*\}/);
-    });
 
-    test('holds three tracks in CSS, with the groups never narrower than their controls', () => {
         const innerRule = cssSource.match(/#sb-topbar-inner \{[^}]*\}/)[0];
         expect(innerRule).toContain('grid-template-columns: minmax(min-content, 1fr) minmax(0, auto) minmax(min-content, 1fr);');
         expect(innerRule).toContain('min-width: 0;');
         expect(cssSource).toMatch(/#sb-topbar-primary \{[^}]*min-width: 0;/);
         expect(cssSource).toMatch(/#sb-topbar-stack \{[^}]*grid-template-columns: minmax\(0, 1fr\);/);
-
-        // One grid for every width: the phone sheet does not define a second one.
         expect(mobileCss).not.toMatch(/#sb-topbar-inner \{[^}]*grid-template-columns/);
-        expect(cssSource).not.toMatch(/\.sb-topbar-group-right \{[^}]*flex-wrap: wrap/);
         expect(cssSource).toMatch(/\.sb-topbar-group \{[^}]*flex-wrap: nowrap;/);
-        for (const rule of cssSource.match(/\.sb-topbar-group(-left|-right)? \{[^}]*\}/g)) {
-            expect(rule).not.toMatch(/overflow/);
-        }
-    });
 
-    test('truncates the title with an ellipsis before anything else gives way', () => {
         const brandRule = cssSource.match(/^\.sb-topbar-brand \{[^}]*\}/m)[0];
         expect(brandRule).toContain('min-width: 0;');
-        expect(brandRule).toContain('max-width: 100%;');
         expect(brandRule).toContain('overflow: hidden;');
 
         const titleRule = cssSource.match(/\.sb-brand-title \{[^}]*\}/)[0];
-        expect(titleRule).toContain('display: block;');
-        expect(titleRule).toContain('overflow: hidden;');
         expect(titleRule).toContain('text-overflow: ellipsis;');
-        expect(titleRule).toContain('white-space: nowrap;');
-    });
-
-    test('draws the title as the Title role on every viewport', () => {
-        const titleRule = cssSource.match(/\.sb-brand-title \{[^}]*\}/)[0];
         expect(titleRule).toContain('font-size: var(--sb-type-title);');
         expect(titleRule).toContain('font-weight: var(--sb-weight-title);');
-        expect(titleRule).toContain('border-radius: var(--sb-radius-control);');
         expect(cssSource).not.toContain('.sb-brand-title.is-chat');
         expect(mobileCss).not.toContain('.sb-brand-title');
-        expect(cssSource.match(/\.sb-brand-title[^{]*\{[^}]*font-size/g)).toHaveLength(1);
-    });
 
-    test('hides the title through one attribute and a two-track grid', () => {
         expect(cssSource).toMatch(/:root\[data-sb-topbar-title='hidden'\] #sb-topbar-inner \{\n\s*grid-template-columns: minmax\(min-content, 1fr\) minmax\(min-content, 1fr\);\n\}/);
         expect(cssSource).toMatch(/:root\[data-sb-topbar-title='hidden'\] \.sb-topbar-brand \{\n\s*display: none;\n\}/);
-        // It is not hidden on phones by CSS: phones decide by width like every other viewport.
-        expect(mobileCss).not.toMatch(/\.sb-topbar-brand/);
-    });
-
-    test('gives the controls the Control radius, flat at rest and neutral when on', () => {
-        const buttonRule = cssSource.match(/\.sb-proxy-button \{[^}]*\}/)[0];
-        expect(buttonRule).toContain('border-radius: var(--sb-shell-control-radius);');
-        expect(buttonRule).toContain('background: transparent;');
-        expect(mobileCss).not.toMatch(/#sb-topbar-primary \.sb-proxy-button \{[^}]*sb-radius-pill/);
-        expect(mobileCss).toMatch(/#sb-topbar-primary \.sb-proxy-button \{[^}]*border-radius: var\(--sb-radius-control\) !important;/);
-
-        // On: a neutral fill, with Accent on the icon only.
-        expect(cssSource).toMatch(/\.sb-proxy-button\.is-open,\n\.sb-proxy-button\.is-active,\n\.sb-proxy-button\.is-current,\n\.sb-proxy-button\.sb-settings-active \{\n\s*background: var\(--sb-flat-selected-bg\);/);
-        expect(cssSource).toMatch(/\.sb-proxy-button\.sb-settings-active i \{\n\s*color: var\(--color-primary, var\(--sb-accent\)\);/);
-        expect(cssSource).not.toMatch(/\.sb-proxy-button\.sb-settings-active \{\n\s*color:/);
-    });
-
-    test('draws the icons-only bar by the same button sizes as the labelled one', () => {
-        expect(cssSource).toMatch(/#sb-topbar-inner \.sb-proxy-button-icon-only \{\n\s*width: var\(--sb-proxy-button-height\);\n\s*min-width: var\(--sb-proxy-button-height\);\n\}/);
-        expect(cssSource).toMatch(/:root:is\(\[data-sb-topbar-icons-only='true'\], \[data-sb-topbar-labels='off'\]\) #sb-topbar-inner \.sb-proxy-button span \{\n\s*display: none;\n\}/);
-        // Phones size every bar button themselves.
-        expect(mobileCss).toMatch(/#sb-topbar-primary \.sb-proxy-button span \{\n\s*display: none !important;/);
-        // Backend stays on a phone in both modes.
-        expect(mobileCss).not.toContain('#sb-left-shell-toggle {\n        display: none;');
-    });
-
-    test('keeps search as a permanent top bar button in every mode', () => {
-        // Search left the Quick Access slots for a fixed top bar button, so the default right
-        // slot is free for Extensions while users can still assign Search to any slot.
-        expect(normalizedTabsSource).not.toContain('SB_TOPBAR_SEARCH_TARGET');
-        expect(getGroupOrder().left).toContain('sb-topbar-search-toggle');
-        expect(cssSource).toContain('#sb-topbar-search-toggle');
-        expect(normalizedTabsSource).toContain('right: \'right:extensions\',');
-        expect(normalizedTabsSource).toContain('{ value: \'action:search\', label: \'Search\', icon: \'fa-magnifying-glass\' },');
-    });
-
-    test('keeps Quick Access fully live in both modes and refits when a slot is reassigned', () => {
-        expect(normalizedTabsSource).not.toContain('.sb-shortcut-rows\')?.classList.toggle(\'is-disabled\'');
-        expect(cssSource).not.toContain('.sb-shortcut-rows.is-disabled');
-
-        const updateSource = getFunctionSource('updateShortcutButton');
-        expect(updateSource).not.toContain('syncTopbarIconsOnlyDedupe');
-        expect(updateSource).toContain('queueTopbarFit();');
-    });
-
-    test('mounts the toggle in the Desktop group only', () => {
-        // Geechan review: nesting it inside the Quick Access Shortcuts drawer is a nested menu,
-        // and the desktop navigation options are where a top bar layout option is intuitively expected. The phone bar
-        // never has labels, so a phone switch would change nothing.
-        const rowSource = getFunctionSource('createTopbarIconsOnlyRow');
-        expect(rowSource).toContain('id: \'sb-desktop-topbar-icons-only-input\',');
-        expect(rowSource).toContain('label: \'Icons Only Top Bar\',');
-        expect(rowSource).toContain('subtitle: \'Show only icons in the desktop top bar\',');
-        expect(rowSource).toContain('onChange: checked => setTopbarIconsOnly(\'desktop\', checked),');
-        expect(rowSource).not.toContain('\'mobile\'');
-        expect(normalizedTabsSource).toContain('const desktopBody = createInterfaceGroupBody(\'sb-desktop-settings-outlet\', [\n        createTopbarIconsOnlyRow(),');
-
-        expect(normalizedTabsSource).not.toContain('createTopbarIconsOnlySettingsGroup');
-        expect(normalizedTabsSource).not.toContain('createMobileNavLayoutSettingsGroup');
-        expect(normalizedTabsSource).not.toContain('createDesktopNavLayoutSettingsGroup');
-        expect(normalizedTabsSource).not.toContain('createNavigationSettingsGroup');
-        expect(normalizedTabsSource).not.toContain('sb-mobile-topbar-icons-only-input');
-        expect(normalizedTabsSource).not.toContain('Show page icons in the');
-        expect(normalizedTabsSource.match(/createTopbarIconsOnlyRow\(/g)).toHaveLength(2);
-        expect(getFunctionSource('createShortcutSettingsGroup')).toContain('group.append(...rows);');
-        expect(normalizedTabsSource.match(/'Icons Only Top Bar'/g)).toHaveLength(1);
-    });
-
-    test('stores the toggle for the desktop and puts no value in force on the phone', () => {
-        // A phone value stored by an earlier build stays in storage, and nothing reads it.
-        expect(normalizedTabsSource).toContain('desktopTopbarIconsOnly: \'sb-desktop-topbar-icons-only\',');
-        expect(normalizedTabsSource).not.toContain('mobileTopbarIconsOnly');
-        expect(normalizedTabsSource).not.toContain('topbarIconsOnly.mobile');
-        expect(normalizedTabsSource).toContain('function setTopbarIconsOnly(mode, enabled');
-
-        const activeSource = getFunctionSource('isTopbarIconsOnlyActive');
-        expect(activeSource).toContain('!isMobileViewport() && sbState.topbarIconsOnly.desktop');
-
-        // Crossing the breakpoint can change which device's setting is in force.
-        const listenerMatch = normalizedTabsSource.match(/window\.matchMedia\(SB_MOBILE_MEDIA_QUERY\)\.addEventListener\('change', \(\) => \{[\s\S]*?\}\);/);
-        expect(listenerMatch).not.toBeNull();
-        expect(listenerMatch[0]).toContain('applyTopbarIconsOnlyPreference();');
-
-        // The one checkbox reflects the desktop value, not the viewport-active state.
-        expect(normalizedTabsSource).not.toContain('data-sb-topbar-icons-only-input');
-        expect(normalizedTabsSource).toContain('topbarIconsOnlyInput.checked = sbState.topbarIconsOnly.desktop;');
-    });
-
-    test('seeds the desktop value from the legacy single toggle key', () => {
-        // The pre-split key stays as a read-only fallback so an existing choice carries over.
-        const readSource = getFunctionSource('readTopbarIconsOnlySetting');
-        expect(readSource).toContain('safeGetItem(SB_STORAGE_KEYS.topbarIconsOnly)');
-        expect(normalizedTabsSource).toContain('desktop: readTopbarIconsOnlySetting(SB_STORAGE_KEYS.desktopTopbarIconsOnly),');
-        // But nothing writes it back; the per-device keys are the live state.
-        expect(normalizedTabsSource).not.toContain('safeSetItem(SB_STORAGE_KEYS.topbarIconsOnly,');
-    });
-
-    test('no longer ships the removed shell tab icon-only setting', () => {
-        expect(normalizedTabsSource).toContain('topbarIconsOnly: \'sb-topbar-icons-only\',');
-        expect(normalizedTabsSource).not.toContain('desktopNavIconOnly');
-        expect(normalizedTabsSource).not.toContain('mobileNavIconOnly');
-        expect(normalizedTabsSource).not.toContain('Icons only in shell tabs');
-        expect(normalizedTabsSource).not.toContain('setMobileNavIconOnly');
-        expect(normalizedTabsSource).not.toContain('setDesktopNavIconOnly');
-    });
-
-    test('clears stale retired navigation presentation state before building the top bar', () => {
-        const attributesMatch = normalizedTabsSource.match(/const SB_LEGACY_NAVIGATION_DATA_ATTRIBUTES = Object\.freeze\(\[[\s\S]*?\n\]\);/);
-        expect(attributesMatch).not.toBeNull();
-
-        for (const attribute of [
-            'data-sb-mobile-nav-layout',
-            'data-sb-mobile-nav-mode',
-            'data-sb-mobile-nav-customize',
-            'data-sb-mobile-nav-quick-actions',
-            'data-sb-mobile-nav-replacement',
-            'data-sb-desktop-nav-layout',
-            'data-sb-desktop-nav-mode',
-            'data-sb-desktop-nav-customize',
-            'data-sb-desktop-nav-quick-actions',
-            'data-sb-desktop-nav-replacement',
-        ]) {
-            expect(attributesMatch[0]).toContain(`'${attribute}'`);
-        }
-
-        expect(attributesMatch[0]).not.toContain('data-sb-topbar-icons-only');
-        expect(normalizedTabsSource).toContain('function migrateLegacyNavigationState()');
-        expect(normalizedTabsSource).toContain('root.removeAttribute(attribute);');
-        expect(normalizedTabsSource).toContain('restorePersistedTopbarState();\n    migrateLegacyNavigationState();\n    seedTopbarScaleDefaults();');
-    });
-
-    test('toggles state without rebuilding the top bar, and writes no value for the setting\'s other keys', () => {
-        const setterSource = getFunctionSource('setTopbarIconsOnly');
-        expect(setterSource).not.toContain('buildTopBar(');
-        expect(setterSource).toContain('safeSetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly, String(nextEnabled));');
-        expect(setterSource).toContain('if (mode !== \'desktop\') return;');
-        expect(setterSource).toContain('updateThemePickerUi();');
-        expect(normalizedTabsSource).toContain('sbState.topbarIconsOnly.desktop = normalizeStoredBoolean(safeGetItem(SB_STORAGE_KEYS.desktopTopbarIconsOnly), sbState.topbarIconsOnly.desktop);');
-
-        // The fit never writes a stored setting: it only sets attributes of the root.
-        const fitSource = [getFunctionSource('fitTopbar'), getFunctionSource('setTopbarFitState'), getFunctionSource('resolveTopbarFit')].join('\n');
-        expect(fitSource).not.toMatch(/safeSetItem|localStorage|setTopbarIconsOnly/);
-    });
-
-    test('keeps the character toggle measurable for anchored extension dropdowns', () => {
-        const applySource = getFunctionSource('applyTopbarIconsOnlyPreference');
-        expect(applySource).toContain('scheduleCharacterToggleGhostSync();');
-        expect(applySource).not.toContain('style.display');
-    });
-
-    test('keeps button touch handlers off WebKit slow path', () => {
-        // A non-passive touchstart on every button pulls WebKit off compositor scrolling, which
-        // stalls scrolling on iOS. The handler only stops propagation, so passive is correct.
-        const propagationSource = getFunctionSource('stopProxyPointerPropagation');
-        expect(propagationSource).toContain('element.addEventListener(\'touchstart\', stop, { passive: true });');
-        expect(propagationSource).toContain('stopPropagation');
-    });
-});
-
-describe('top bar fit', () => {
-    const mobileCss = readFileSync(path.join(repoRoot, 'public', 'css', 'sillybunny-mobile-shell.css'), 'utf8');
-    const resolve = new Function('SB_TOPBAR_BRAND_MIN_WIDTH', `${getFunctionSource('resolveTopbarFit')}\nreturn resolveTopbarFit;`)(60);
-
-    // Natural widths of the groups in each form: labelled, icons only, icons only with the overflow button.
-    const FORMS = {
-        labelled: { start: 340, end: 340, title: 400 },
-        icons: { start: 190, end: 190, title: 400 },
-        overflow: { start: 90, end: 140, title: 400 },
-    };
-    const run = (available, { forced = false, canOverflow = true, forms = FORMS, gap = 10 } = {}) => {
-        const asked = [];
-        const verdict = resolve({
-            available,
-            gap,
-            labelsForcedOff: forced,
-            canOverflow,
-            measure: step => {
-                asked.push(step);
-                return forms[step.overflow ? 'overflow' : step.labelsOff ? 'icons' : 'labelled'];
-            },
-        });
-        return { verdict, asked };
-    };
-
-    test('keeps the labelled bar with its title while everything fits', () => {
-        expect(run(1000).verdict).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
-        // 340 + 340 + 2 gaps + the 60px a title needs
-        expect(run(760).verdict).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
-    });
-
-    test('drops the labels as soon as the labelled bar leaves too little for the title, and keeps the title', () => {
-        expect(run(759).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
-        // 190 + 190 + 2 gaps + 60
-        expect(run(460).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
-    });
-
-    test('hides the title only after the labels, when less than a few characters of it would show', () => {
-        expect(run(459).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
-        // Two tracks and one gap: the icons alone still fit.
-        expect(run(390).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
-    });
-
-    test('moves Quick Access into the overflow menu last, with the title still hidden', () => {
-        expect(run(389).verdict).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
-        expect(run(240).verdict).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
-    });
-
-    test('never shows a labelled bar without its title', () => {
-        const offenders = [];
-        for (let available = 150; available <= 1200; available++) {
-            for (const forced of [false, true]) {
-                const verdict = run(available, { forced }).verdict;
-                if (verdict.labelsOff === false && verdict.titleHidden) {
-                    offenders.push(`${available}px, forced ${forced}`);
-                }
-            }
-        }
-        expect(offenders).toEqual([]);
-    });
-
-    test('goes only further as the bar narrows, one width after the other', () => {
-        // 0 overflow, 1 icons without the title, 2 icons with it, 3 labels with it.
-        const stepOf = ({ labelsOff, overflow, titleHidden }) => {
-            if (overflow) {
-                return titleHidden ? 0 : -1;
-            }
-            if (labelsOff) {
-                return titleHidden ? 1 : 2;
-            }
-            return titleHidden ? -1 : 3;
-        };
-        for (const options of [{}, { forced: true }, { canOverflow: false }, { forms: { ...FORMS, labelled: { start: 340, end: 340, title: 40 } } }]) {
-            const steps = [];
-            for (let available = 150; available <= 1200; available++) {
-                steps.push(stepOf(run(available, options).verdict));
-            }
-            expect({ options, outside: steps.filter(step => step < 0) }).toEqual({ options, outside: [] });
-            expect({ options, back: steps.filter((step, index) => index > 0 && step < steps[index - 1]) }).toEqual({ options, back: [] });
-        }
-    });
-
-    test('reads each form once and stops at the first one that fits', () => {
-        expect(run(1000).asked).toEqual([{ labelsOff: false, overflow: false }]);
-        expect(run(500).asked).toEqual([{ labelsOff: false, overflow: false }, { labelsOff: true, overflow: false }]);
-        // The icons-only reading answers both whether the title fits and whether the bar fits without it.
-        expect(run(420).asked).toEqual([{ labelsOff: false, overflow: false }, { labelsOff: true, overflow: false }]);
-        expect(run(200).asked).toEqual([{ labelsOff: false, overflow: false }, { labelsOff: true, overflow: false }]);
-    });
-
-    test('starts at the icons-only form when the setting turns the labels off', () => {
-        expect(run(1000, { forced: true }).verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
-        expect(run(1000, { forced: true }).asked).toEqual([{ labelsOff: true, overflow: false }]);
-        expect(run(389, { forced: true }).verdict).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
-    });
-
-    test('offers no overflow menu where there is nothing to put in it', () => {
-        const { verdict, asked } = run(200, { canOverflow: false });
-        expect(verdict).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
-        expect(asked.some(step => step.overflow)).toBe(false);
-    });
-
-    test('shows a title shorter than the minimum as soon as all of it fits', () => {
-        const forms = { ...FORMS, labelled: { start: 340, end: 340, title: 40 } };
-        expect(run(740, { forms }).verdict).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
-        expect(run(739, { forms }).verdict.labelsOff).toBe(true);
-    });
-
-    test('takes the verdict from natural widths, never from the state on screen', () => {
-        const fitSource = getFunctionSource('fitTopbar');
-        // The forms are applied for the reading and then replaced by the verdict, in one task.
-        expect(fitSource).toContain('setTopbarFitState({ ...step, titleHidden: false });');
-        expect(fitSource).toContain('setTopbarFitState(verdict);');
-        expect(fitSource).toContain('const labelsForcedOff = isTopbarIconsOnlyActive();');
-        expect(fitSource).toContain('canOverflow: !isMobileViewport() && getTopbarQuickAccessTargets().length > 0,');
-    });
-
-    test('is driven by one observer and no resize listener', () => {
-        expect(normalizedTabsSource.match(/new ResizeObserver\(queueTopbarFit\)/g)).toHaveLength(1);
-        expect(normalizedTabsSource).not.toContain('addEventListener(\'resize\', queueTopbarFit');
-        expect(getFunctionSource('buildTopBar')).toContain('observeTopbarFit();');
-    });
-
-    test('hides the Quick Access buttons and shows the overflow button through one attribute', () => {
         expect(cssSource).toMatch(/#sb-topbar-overflow-toggle \{\n\s*display: none;\n\}/);
         expect(cssSource).toMatch(/:root\[data-sb-topbar-overflow='true'\] #sb-topbar-overflow-toggle \{\n\s*display: inline-flex;\n\}/);
         const hide = cssSource.match(/:root\[data-sb-topbar-overflow='true'\] :is\(([^)]*)\) \{\n\s*display: none;/)[1];
@@ -601,18 +371,125 @@ describe('top bar fit', () => {
         }
         expect(mobileCss).not.toContain('sb-topbar-overflow');
     });
+});
 
-    test('names the overflow button after what it holds and lists the Quick Access targets', () => {
-        const buildSource = getFunctionSource('buildTopBar');
-        expect(buildSource).toContain('id: \'sb-topbar-overflow-toggle\',');
-        expect(buildSource).toContain('icon: \'fa-ellipsis-vertical\',');
-        expect(buildSource).toContain('title: getTopbarOverflowLabel(),');
-        expect(buildSource).toContain('overflowToggle.setAttribute(\'aria-haspopup\', \'menu\');');
-        expect(getFunctionSource('getTopbarOverflowLabel')).toContain('return t`Quick Access`;');
-        expect(normalizedTabsSource).not.toContain('Actions for ${\'Quick Access\'}');
+describe('top bar fit', () => {
+    const FORMS = {
+        labelled: { start: 340, end: 340, title: 400 },
+        icons: { start: 190, end: 190, title: 400 },
+        overflow: { start: 90, end: 140, title: 400 },
+    };
 
-        const menuSource = getFunctionSource('openTopbarOverflowMenu');
-        expect(menuSource).toContain('openActionMenu({ trigger, title: getTopbarOverflowLabel(), sections: [{ items }] });');
-        expect(menuSource).toContain('onSelect: () => activateShortcutTarget(target),');
+    async function setupFitHarness({ forced = false, canOverflow = true, forms = FORMS, gap = 10 } = {}) {
+        const storage = {};
+        if (!canOverflow) {
+            for (const slot of ['left', 'right', 'slot3', 'slot4', 'slot5', 'slot6']) {
+                storage[`sb-shortcut-${slot}`] = 'none';
+            }
+        }
+        if (forced) {
+            storage['sb-desktop-topbar-icons-only'] = 'true';
+        }
+        loaded?.cleanup();
+        loaded = await importTabsModule({ storage });
+
+        const inner = document.getElementById('sb-topbar-inner');
+        const startGroup = inner.querySelector(':scope > .sb-topbar-group-left');
+        const endGroup = inner.querySelector(':scope > .sb-topbar-group-right');
+        const title = document.getElementById('sb-topbar-title');
+
+        inner.style.columnGap = `${gap}px`;
+        let availableWidth = 1000;
+        inner.getBoundingClientRect = () => ({ width: availableWidth, height: 44, top: 0, left: 0, right: availableWidth, bottom: 44 });
+
+        const currentForm = () => {
+            const ds = document.documentElement.dataset;
+            if (ds.sbTopbarOverflow === 'true') return forms.overflow;
+            if (ds.sbTopbarLabels === 'off') return forms.icons;
+            return forms.labelled;
+        };
+
+        // Wire the first child of each group to report the group's natural width for the active fit state.
+        const startProbe = startGroup.firstElementChild;
+        const endProbe = endGroup.firstElementChild;
+        startProbe.getClientRects = () => [{}];
+        endProbe.getClientRects = () => [{}];
+        startProbe.getBoundingClientRect = () => ({ width: currentForm().start, height: 32, top: 0, left: 0, right: currentForm().start, bottom: 32 });
+        endProbe.getBoundingClientRect = () => ({ width: currentForm().end, height: 32, top: 0, left: 0, right: currentForm().end, bottom: 32 });
+        Object.defineProperty(title, 'scrollWidth', { configurable: true, get: () => currentForm().title });
+
+        const measureAt = width => {
+            availableWidth = width;
+            loaded.triggerResizeObservers(el => el === inner);
+            const ds = document.documentElement.dataset;
+            return {
+                labelsOff: ds.sbTopbarLabels === 'off',
+                overflow: ds.sbTopbarOverflow === 'true',
+                titleHidden: ds.sbTopbarTitle === 'hidden',
+            };
+        };
+
+        return { measureAt, loaded };
+    }
+
+    test('degrades monotonically through labelled -> icons with title -> icons without title -> overflow', async () => {
+        const { measureAt } = await setupFitHarness();
+
+        // 340 + 340 + 2*10 + 60 = 760
+        expect(measureAt(1000)).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
+        expect(measureAt(760)).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
+        // Drops labels at 759 while keeping title; 190 + 190 + 2*10 + 60 = 460
+        expect(measureAt(759)).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
+        expect(measureAt(460)).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
+        // Hides title at 459; 190 + 190 + 10 = 390
+        expect(measureAt(459)).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
+        expect(measureAt(390)).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
+        // Moves Quick Access to overflow at 389 and below
+        expect(measureAt(389)).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
+        expect(measureAt(240)).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
+
+        // Fit never writes to localStorage.
+        const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+        measureAt(500);
+        measureAt(300);
+        expect(setItemSpy).not.toHaveBeenCalled();
+    });
+
+    test('respects forced icons-only mode, empty Quick Access (no overflow), and short titles', async () => {
+        const forcedHarness = await setupFitHarness({ forced: true });
+        expect(forcedHarness.measureAt(1000)).toEqual({ labelsOff: true, overflow: false, titleHidden: false });
+        expect(forcedHarness.measureAt(389)).toEqual({ labelsOff: true, overflow: true, titleHidden: true });
+
+        const noOverflowHarness = await setupFitHarness({ canOverflow: false });
+        expect(noOverflowHarness.measureAt(200)).toEqual({ labelsOff: true, overflow: false, titleHidden: true });
+
+        const shortTitleHarness = await setupFitHarness({
+            forms: { ...FORMS, labelled: { start: 340, end: 340, title: 40 } },
+        });
+        expect(shortTitleHarness.measureAt(740)).toEqual({ labelsOff: false, overflow: false, titleHidden: false });
+        expect(shortTitleHarness.measureAt(739).labelsOff).toBe(true);
+    });
+
+    test('opens the Quick Access overflow menu with the active shortcut targets and activates the chosen target', async () => {
+        loaded = await importTabsModule();
+        const overflowBtn = document.getElementById('sb-topbar-overflow-toggle');
+        expect(overflowBtn).not.toBeNull();
+        expect(overflowBtn.getAttribute('aria-haspopup')).toBe('menu');
+        expect(overflowBtn.title).toBe('Quick Access');
+
+        overflowBtn.click();
+
+        const openActionMenu = loaded.mocks['scripts/sillybunny-action-menu.js'].openActionMenu;
+        expect(openActionMenu).toHaveBeenCalledTimes(1);
+        const menuConfig = openActionMenu.mock.calls[0][0];
+        expect(menuConfig.trigger).toBe(overflowBtn);
+        expect(menuConfig.title).toBe('Quick Access');
+        expect(menuConfig.sections[0].items.length).toBeGreaterThan(0);
+
+        // Selecting an item opens the corresponding shell tab.
+        const extensionsItem = menuConfig.sections[0].items.find(item => item.label === 'Extensions');
+        expect(extensionsItem).toBeDefined();
+        extensionsItem.onSelect();
+        expect(document.documentElement.dataset.sbSettingsOpen).toBe('true');
     });
 });

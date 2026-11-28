@@ -1,40 +1,73 @@
-import { beforeEach, describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { parse } from 'acorn';
+/* global globalThis */
+import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { fileURLToPath } from 'node:url';
 
-/**
- * @param {string} name Top-level declaration to take from the KoboldCpp models script
- * @returns {string} Source of that declaration
- */
-function getDeclarationSource(name) {
-    const source = readFileSync(new URL('../public/scripts/sillybunny-koboldcpp-models.js', import.meta.url), 'utf8');
-    const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
-    const node = ast.body.map(node => node.declaration ?? node)
-        .find(node => node.id?.name === name || node.declarations?.some(item => item.id.name === name));
-    if (!node) throw new Error(`Missing declaration: ${name}`);
-    return source.slice(node.start, node.end);
-}
+const resolvePublic = (relativePath) => fileURLToPath(new URL(`../public/${relativePath}`, import.meta.url));
 
 const fetchMock = jest.fn();
-const context = vm.createContext({
-    fetch: fetchMock,
+let originalFetch;
+
+await jest.unstable_mockModule(resolvePublic('script.js'), () => ({
+    abortStatusCheck: new AbortController(),
+    eventSource: { on: () => {} },
+    event_types: { ONLINE_STATUS_CHANGED: 'online_status_changed' },
     getRequestHeaders: () => ({ 'Content-Type': 'application/json' }),
-    getServerUrl: () => 'http://localhost:5001',
-    textgen_types: { KOBOLDCPP: 'koboldcpp' },
+    is_send_press: false,
+    main_api: 'openai',
     online_status: 'Valid',
-    console: { error: () => {} },
-});
-vm.runInContext(getDeclarationSource('countKoboldCppChatTokens'), context);
+    resultCheckStatus: () => {},
+    setOnlineStatus: () => {},
+    startStatusLoading: () => {},
+    stopStatusLoading: () => {},
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/i18n.js'), () => ({
+    t: (strings, ...values) => String.raw({ raw: strings }, ...values),
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/openai.js'), () => ({
+    chat_completion_sources: { KOBOLDCPP: 'koboldcpp' },
+    getStatusOpen: async () => {},
+    oai_settings: { chat_completion_source: 'koboldcpp', koboldcpp_url: 'http://localhost:5001' },
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/popup.js'), () => ({
+    POPUP_TYPE: { TEXT: 1 },
+    Popup: class {},
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/server-history.js'), () => ({
+    onServerConnectClick: () => {},
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommand.js'), () => ({
+    SlashCommand: { fromProps: props => props },
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandArgument.js'), () => ({
+    ARGUMENT_TYPE: { STRING: 'string' },
+    SlashCommandArgument: { fromProps: props => props },
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandEnumValue.js'), () => ({
+    SlashCommandEnumValue: class {},
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/slash-commands/SlashCommandParser.js'), () => ({
+    SlashCommandParser: { addCommandObject: () => {} },
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/textgen-settings.js'), () => ({
+    getStatusTextgen: async () => {},
+    getTextGenServer: () => 'http://localhost:5001',
+    textgen_types: { KOBOLDCPP: 'koboldcpp' },
+    textgenerationwebui_settings: { type: 'koboldcpp', server_urls: { koboldcpp: 'http://localhost:5001' } },
+}));
+await jest.unstable_mockModule(resolvePublic('scripts/utils.js'), () => ({
+    delay: async () => {},
+}));
+
+const { countKoboldCppChatTokens } = await import('../public/scripts/sillybunny-koboldcpp-models.js');
 
 /**
  * @param {object[]} messages Chat Completion messages
  * @returns {Promise<{ count: number|null, text: string }>} Count that the function returned, and the text it sent to KoboldCpp
  */
 async function count(messages) {
-    const count = await context.countKoboldCppChatTokens(messages);
+    const tokenCount = await countKoboldCppChatTokens(messages);
     const [, options] = fetchMock.mock.calls[0] ?? [];
-    return { count, text: options ? JSON.parse(options.body).text : '' };
+    return { count: tokenCount, text: options ? JSON.parse(options.body).text : '' };
 }
 
 const IMAGE = { type: 'image_url', image_url: { url: `data:image/png;base64,${'A'.repeat(4096)}`, detail: 'auto' } };
@@ -42,6 +75,15 @@ const AUDIO = { type: 'audio_url', audio_url: { url: `data:audio/wav;base64,${'B
 const VIDEO = { type: 'video_url', video_url: { url: `data:video/mp4;base64,${'C'.repeat(4096)}`, detail: 'auto' } };
 
 describe('KoboldCpp Chat Completion token counts', () => {
+    beforeAll(() => {
+        originalFetch = globalThis.fetch;
+        globalThis.fetch = fetchMock;
+    });
+
+    afterAll(() => {
+        globalThis.fetch = originalFetch;
+    });
+
     beforeEach(() => {
         fetchMock.mockReset();
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({ count: 7 }) });

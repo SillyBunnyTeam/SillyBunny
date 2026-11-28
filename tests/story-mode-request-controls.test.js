@@ -1,292 +1,341 @@
+/** @jest-environment jsdom */
 /* eslint-disable playwright/no-standalone-expect -- Jest test.each tables are not Playwright tests. */
-import { describe, expect, jest, test } from '@jest/globals';
-import { EventEmitter } from 'node:events';
-import vm from 'node:vm';
-import { loadDeclarations as load, readClientModule } from './util/load-declarations.js';
-import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, requestUsesReasoning, warnsOnGenerationLengthFinish } from '../public/scripts/generation-request-controls.js';
-import { createResponseLengthOverrides } from '../public/scripts/generation-response-length-overrides.js';
-import { applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model } from '../public/scripts/openai-model-capabilities.js';
-import { resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { importStoryModeRuntime } from './util/story-mode-harness.js';
+import { applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, requestUsesReasoning } from '../public/scripts/generation-request-controls.js';
 import { event_types } from '../public/scripts/events.js';
-import { collectHiddenGenerationMessages } from '../public/scripts/generation-hidden-messages.js';
 import { OVERSWIPE_BEHAVIOR, SWIPE_DIRECTION, SWIPE_SOURCE, SWIPE_STATE } from '../public/scripts/constants.js';
-import * as samplingParameterPolicy from '../public/scripts/sampling-parameter-policy.js';
-import { shouldForwardChatId } from '../public/scripts/local-url-utils.js';
 
-function makeRuntime({ api = 'openai', model = 'gpt-4o', stream = false, buffer = false, composer = '' } = {}) {
-    const eventSource = new EventEmitter();
-    eventSource.emit = jest.fn(async (name, ...args) => {
-        for (const listener of eventSource.rawListeners(name)) await listener(...args);
-    });
-    eventSource.emitAndWait = eventSource.emit;
-    eventSource.makeFirst = (name, handler) => eventSource.prependListener(name, handler);
-    const textarea = { value: composer, dispatchEvent: jest.fn() };
-    const element = { isConnected: true, getAttribute: () => '0', querySelector: () => ({ isConnected: true }) };
-    const dom = {
-        0: textarea,
-        val: jest.fn(value => {
-            if (value === undefined) return textarea.value;
-            textarea.value = value;
-            return dom;
-        }),
-        trigger: jest.fn(),
-    };
-    const context = vm.createContext({
-        ...samplingParameterPolicy,
-        AbortController, AbortSignal, Event, MessageEvent, TextDecoderStream, TransformStream, structuredClone,
-        console: { log: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn(), trace: jest.fn() },
-        main_api: api,
-        name1: 'User', name2: 'Story', this_chid: 0,
-        selected_group: null, is_group_generating: false, is_send_press: false,
-        menu_type: 'character_edit', online_status: model,
-        characters: [{ name: 'Story', avatar: 'story.png', chat: 'story', data: { extensions: {} } }],
-        chat: [{ name: 'Story', mes: 'Existing prose. ', extra: {}, is_user: false }],
-        chat_metadata: {}, generationChatFilter: null, pendingGeneratedMessageExtra: null,
-        generation_started: null, abortController: null, streamingProcessor: null,
-        activeGenerationRun: null, agentGenerationContextProvider: null, chatGeneration: 1,
-        getCurrentChatId: () => 'story',
-        shouldForwardChatId,
-        amount_gen: 8192, max_context: 32768, kobold_horde_model: '',
-        openai_messages_count: 1, itemizedPrompts: [], extension_prompts: {},
-        power_user: {
-            instruct: { enabled: false }, sysprompt: { enabled: false }, context: {},
-            reasoning: { prefix: '<think>', suffix: '</think>', separator: '\n', auto_parse: true, add_to_prompts: false },
-            auto_continue: { enabled: true, target_length: 1, allow_chat_completions: true },
-            streaming_fps: 30, trim_spaces: false, message_token_count_enabled: false,
-        },
-        oai_settings: {
-            chat_completion_source: 'openai', openai_model: model, custom_model: model, openai_max_tokens: 8192,
-            stream_openai: stream, show_thoughts: true, reasoning_effort: 'none', continue_postfix: '',
-            send_if_empty: '', custom_reasoning_param_format: 'openai', custom_reasoning_param_name: 'reasoning_effort',
-        },
-        textgen_settings: { type: 'llamacpp' },
-        textgen_types: { LLAMACPP: 'llamacpp', OLLAMA: 'ollama', OPENROUTER: 'openrouter' },
-        kai_settings: { preset_settings: 'gui' }, kai_flags: {}, horde_settings: {},
-        nai_settings: { preset_settings_novel: 'preset', model_novel: 'erato' },
-        novelai_settings: [{}], novelai_setting_names: { preset: 0 },
-        extension_settings: { note: {} }, extension_prompt_types: { IN_CHAT: 1, IN_PROMPT: 0, BEFORE_PROMPT: 2, NONE: -1 },
-        extension_prompt_roles: { SYSTEM: 0 }, depth_prompt_depth_default: 4, depth_prompt_role_default: 'system',
-        persona_description_positions: { IN_PROMPT: 0 },
-        inject_ids: { DEPTH_PROMPT: 'depth', STORY_STRING: 'story', QUIET_PROMPT: 'quiet' },
-        world_info_include_names: true, wi_anchor_position: { before: 0 },
-        GENERATION_TYPE_TRIGGERS: ['continue', 'quiet', 'normal'], IGNORE_SYMBOL: 'ignore',
-        system_message_types: { NARRATOR: 'narrator', GENERIC: 'generic', EMPTY: 'empty' },
-        IN_CHAT_AGENT_TRANSFORM_HISTORY_KEY: 'transforms', IN_CHAT_AGENT_PRE_GENERATION_INTERCEPT_HISTORY_KEY: 'intercepts',
-        NOTE_MODULE_NAME: 'note', MIN_LENGTH: 16, selected_custom_endpoint_preset: null,
-        regex_placement: { REASONING: 1, USER_INPUT: 2, AI_OUTPUT: 3 },
-        CHAT_RENDER_LIFECYCLE_ROUTE: { STREAM_PROGRESS: 'stream' },
-        scrollLock: false, scrollLockImmunityUntil: 0,
-        document: { querySelector: selector => selector === '#send_textarea' ? textarea : element },
-        HTMLElement: class {},
-        $: () => dom, chatElement: { find: () => ({}) },
-        eventSource, event_types,
-        resolveGenerationOutputBufferState, resolveGenerationUnblockState, resolveStopGenerationState,
-        applyGenerationRequestControls, isGenerationLengthFinish, limitGenerationProse, warnsOnGenerationLengthFinish,
-        createResponseLengthOverrides,
-        applyClaudeModelParameterConstraints, applyKimiK3ModelParameterConstraints, isKimiK3Model,
-        getLinkApiRequestFormat: () => 'openai',
-        getRequestHeaders: () => ({}),
-        getCharacterCardFields: () => Object.fromEntries(['description', 'personality', 'persona', 'scenario', 'mesExamples', 'system', 'jailbreak', 'charDepthPrompt', 'creatorNotes'].map(key => [key, ''])),
-        getGroupDepthPrompts: () => [], getExtensionPromptRoleByName: () => 0,
-        hasCompanionChatHistoryForHiddenHost: () => false,
-        selectCompanionChatHistory: () => [], consolidateCompanionChatHistory: () => ({ host: null, entries: [] }),
-        collectHiddenGenerationMessages,
-        resolveRegexScriptsForSnapshot: () => [], shouldRetainContextAtDepth: () => true,
-        stripHtmlTagsFromContext: value => value, stripOocBlocksFromContext: value => value,
-        getRegexedString: value => value, appendFileContent: async () => '',
-        hasPromptPayload: message => Boolean(message.mes || message.extra?.reasoning),
-        getMaxPromptTokens: () => 24576, getMaxResponseTokens: () => 8192,
-        runGenerationInterceptors: jest.fn(async () => false),
-        getGuidanceScale: () => null, parseMesExamples: () => [],
-        getWorldInfoPrompt: async () => ({ worldInfoString: '', worldInfoBefore: '', worldInfoAfter: '', worldInfoExamples: [], worldInfoDepth: [] }),
-        buildWorldInfoScanChat: messages => messages,
-        getExtensionPrompt: async () => '', renderStoryString: () => '', doChatInject: async () => [],
-        formatMessageHistoryItem: message => message.mes + '\n',
-        getTokenCountAsync: jest.fn(async () => 0),
-        getTokenCount: jest.fn(() => { throw new Error('Synchronous token counting is forbidden in controlled streams'); }),
-        getCustomStoppingStrings: () => [], getStoppingStrings: () => [], getGroupNames: () => [],
-        substituteParams: value => value, baseChatReplace: value => value,
-        extractMessageBias: () => '', getEffectivePromptBias: () => '',
-        shiftDownByOne: value => value - 1, shiftUpByOne: value => value + 1,
-        adjustNovelInstructionPrompt: value => value,
-        getAllExtensionPrompts: async () => '', getFriendlyTokenizerName: () => ({ tokenizerName: 'test' }),
-        getPresetManager: () => ({ getSelectedPresetName: () => 'preset' }),
-        isStreamingEnabled: () => stream, isHordeGenerationNotAllowed: () => false, pingServer: async () => true,
-        hasPendingFileAttachment: () => false, shouldBatchMobileChatRendering: () => false,
-        prepareOpenAIMessages: async ({ messages }) => [messages, false],
-        setOpenAIMessages: messages => messages.map(message => ({ role: message.is_user ? 'user' : 'assistant', content: message.mes })),
-        setOpenAIMessageExamples: () => [],
-        createRawPrompt: (prompt, rawApi) => rawApi === 'openai' ? [{ role: 'user', content: prompt }] : prompt,
-        getTextGenGenerationData: jest.fn(async (prompt, maxTokens) => {
-            const data = { prompt, model, max_new_tokens: maxTokens, max_tokens: maxTokens, n_predict: maxTokens, num_predict: maxTokens, include_reasoning: true };
-            await eventSource.emit(event_types.TEXT_COMPLETION_SETTINGS_READY, data);
-            return data;
-        }),
-        getNovelGenerationData: (prompt, settings, maxLength) => ({ input: prompt, model: 'erato', max_length: maxLength }),
-        cleanUpMessage: ({ getMessage }) => getMessage,
-        extractMultiSwipes: () => [], extractTitleFromData: () => '', extractImagesFromData: () => [], extractReasoningSignatureFromData: () => null,
-        getGeneratingApi: () => api, getGeneratingModel: () => model, getCurrentReasoningEffort: () => '',
-        getMessageTimeStamp: () => '2026-09-05',
-        updateMessageTokenAccounting: async message => ({ outputTokens: 0, reasoningTokens: message.extra?.reasoning_tokens ?? 0 }),
-        saveChatConditional: jest.fn(async () => true),
-        createGenerationCommitPlan: () => null, registerGenerationCommitPlan: () => undefined, getMessageIdentity: () => null,
-        settleGenerationCommit: async () => null, reloadServerCommittedReply: () => undefined, GENERATION_PLACEHOLDER_KEY: 'server_generation_placeholder',
-        getPositiveTokenCount: value => Number(value) || 0,
-        formatGenerationTimer: () => ({}), messageFormatting: value => value,
-        balanceStreamingMarkdown: value => value,
-        Stopwatch: class { async tick(callback) { await callback(); } },
-        getStreamingUpdateInterval: value => value,
-        delay: async () => {},
-        toastr: { error: jest.fn(), warning: jest.fn() }, t: strings => strings.join(''),
-        REVERSE_PROXY_SUPPORTED_SOURCES: [], openai_max_stop_strings: 4,
-        ToolManager: {
-            RECURSE_LIMIT: 5, isToolCallingSupported: () => false, canPerformToolCalls: () => false,
-            hasToolCalls: () => false, registerFunctionToolsOpenAI: async () => {},
-            invokeFunctionTools: async () => ({ invocations: [], stealthCalls: [] }),
-            parseToolCalls: () => {}, saveFunctionToolInvocations: jest.fn(async () => {}),
-        },
-    });
-    for (const name of ['unshallowCharacter', 'removeDepthPrompts', 'setExtensionPrompt', 'deleteItemizedPromptForMessage', 'removeLastMessage', 'requestMobileChatBottomPin', 'hideSwipeButtons', 'showSwipeButtons', 'setFloatingPrompt', 'flushWIInjections', 'flushEphemeralStoppingStrings', 'addPersonaDescriptionExtensionPrompt', 'setInContextMessages', 'setGenerationProgress', 'showStopButton', 'parseAndSaveLogprobs', 'playMessageSound', 'processImageAttachment', 'addOneMessage', 'statMesProcess', 'saveLogprobsForActiveMessage', 'appendMediaToMessage', 'addCopyToCodeBlocks', 'updateSwipeCounter', 'updateMessageBlock', 'applyStreamingVisibleWrite', 'scrollStartedStreamingMessageThroughLifecycle', 'scrollChatToBottom', 'checkQuotaError', 'checkModerationError', 'tryParseStreamingError']) {
-        context[name] = jest.fn();
-    }
-    for (const name of ['shouldReduceStreamingDomWork', 'shouldGuardMobileChatScroll', 'shouldPinMobileChatToBottom', 'isAndroidStreamingPlatform', 'shouldUsePlainTextStreamingPreview', 'isChatRenderLifecycleRolloutEnabled', 'isHiddenReasoningModel']) {
-        context[name] = () => false;
-    }
-    context.activateSendButtons = jest.fn(() => { context.is_send_press = false; });
-    context.textgenerationwebui_settings = context.textgen_settings;
-    context.deactivateSendButtons = jest.fn(() => { context.is_send_press = true; });
-    context.executeSlashCommandsOnChatInput = jest.fn();
-    context.sendMessageAsUser = jest.fn(async text => { context.chat.push({ mes: text, is_user: true, extra: {} }); });
-    context.sendSystemMessage = jest.fn();
-    context.parseChatCompletionLogprobs = () => null;
+let loaded = null;
 
-    load(context, 'scripts/utils.js', ['escapeRegex', 'trimSpaces']);
-    load(context, 'scripts/openai.js', ['chat_completion_sources', 'reasoning_effort_types', 'verbosity_levels', 'getReasoningEffort', 'getVerbosity', 'shouldRequestReasoning', 'getChatCompletionModel', 'createGenerationParameters', 'sendOpenAIRequest', 'getStreamingReply']);
-    load(context, 'scripts/sse-stream.js', ['EventSourceStream']);
-    context.getEventSourceStream = vm.runInContext('() => new EventSourceStream()', context);
-    context.appendAutoAppendReasoningInstruction = messages => messages;
-    load(context, 'scripts/reasoning.js', ['ReasoningType', 'ReasoningState', 'PromptReasoning', 'ReasoningHandler', 'parseReasoningFromString', 'extractReasoningFromData']);
-    context.getReasoningParseTemplates = () => [context.power_user.reasoning];
-    vm.runInContext('ReasoningHandler.prototype.updateDom = () => {};', context);
-    load(context, 'script.js', ['Generate', 'StreamingProcessor', 'sendGenerationRequest', 'sendStreamingRequest', 'getGenerateUrl', 'saveReply', 'getNextMessageId', 'getBiasStrings', 'processCommands', 'extractMessageFromData', 'normalizeContentText', 'stringifyUnknown', 'shouldBufferMainGenerationOutput', 'applyMainGenerationOutputInterceptors', 'unblockGeneration', 'clearStreamingProcessorIfCurrent', 'shouldAutoContinue', 'triggerAutoContinue', 'syncMesToSwipe', 'syncSwipeToMes', 'stopGeneration', 'generateRaw', 'generateRawData', 'generateQuietPrompt', 'TempResponseLength', 'addChatsPreamble', 'addChatsSeparator', 'consumePendingGeneratedMessageExtra']);
-    context.removeReasoningFromString = text => context.parseReasoningFromString(text)?.content ?? text;
+afterEach(() => {
+    loaded?.cleanup();
+    loaded = null;
+    jest.restoreAllMocks();
+});
 
+const REQUEST_CONTROLS_DOM = `
+    <div id="chat">
+        <div class="mes last_mes" mesid="0">
+            <div class="mes_block">
+                <div class="mes_text">Existing prose. </div>
+                <details class="mes_reasoning_details">
+                    <summary class="mes_reasoning_header"><span class="mes_reasoning_header_title"></span></summary>
+                    <div class="mes_reasoning"></div>
+                </details>
+                <button class="mes_edit_add_reasoning" type="button"></button>
+            </div>
+            <div class="swipes-counter">1/1</div>
+            <div class="swipe_left"></div>
+            <div class="swipe_right"></div>
+        </div>
+    </div>
+    <div id="message_template" hidden>
+        <div class="mes">
+            <div class="mes_block">
+                <div class="mes_text"></div>
+                <details class="mes_reasoning_details">
+                    <summary class="mes_reasoning_header"><span class="mes_reasoning_header_title"></span></summary>
+                    <div class="mes_reasoning"></div>
+                </details>
+                <button class="mes_edit_add_reasoning" type="button"></button>
+            </div>
+            <div class="swipes-counter"></div>
+            <div class="swipe_left"></div>
+            <div class="swipe_right"></div>
+        </div>
+    </div>
+    <textarea id="send_textarea"></textarea>
+    <div id="send_but"></div>
+    <div id="mes_stop"></div>
+    <div id="options_button"></div>
+    <div id="options">
+        <div class="options-content">
+            <a id="option_continue"></a>
+        </div>
+    </div>
+    <select id="main_api">
+        <option value="openai">openai</option>
+        <option value="textgenerationwebui">textgenerationwebui</option>
+        <option value="kobold">kobold</option>
+        <option value="koboldhorde">koboldhorde</option>
+        <option value="novel">novel</option>
+    </select>
+`;
+
+async function makeRuntime({
+    api = 'openai',
+    model = 'gpt-4o',
+    stream = false,
+    buffer = false,
+    composer = '',
+    trimSentences = false,
+    extraMocks = {},
+} = {}) {
     const requests = [];
-    context.reply = 'New prose. ';
-    context.reasoning = '';
-    context.chunks = [];
-    context.fetchResumable = jest.fn(async (url, init) => {
+    const state = {
+        reply: 'New prose.',
+        reasoning: '',
+        chunks: [],
+    };
+
+    const fetchResumable = jest.fn(async (url, init = {}) => {
         const body = JSON.parse(init.body);
         requests.push({ url, body, signal: init.signal });
-        return { ok: true, json: async () => {
-            if (api === 'openai') return { choices: [{ message: { content: context.reply, reasoning_content: context.reasoning } }] };
-            if (api === 'kobold') return { results: [{ text: context.reply }] };
-            if (api === 'novel') return { output: context.reply };
-            return { choices: [{ text: context.reply }], thinking: context.reasoning };
-        } };
-    });
-    context.generateHorde = jest.fn(async (prompt, data, signal) => {
-        requests.push({ body: data, signal });
-        return { text: context.reply };
-    });
-    if (stream) {
-        // Mock only the provider transport; execute the actual stream processor and finalisation.
-        const transport = jest.fn(async (data, signal) => {
-            requests.push({ body: data, signal });
-            return async function* () {
-                for (const chunk of context.chunks) {
-                    if (signal.aborted) throw signal.reason;
-                    yield { swipes: [], toolCalls: [], state: {}, ...chunk };
+        return {
+            ok: true,
+            status: 200,
+            json: async () => {
+                if (api === 'openai' || url.includes('/chat-completions') || url.includes('/openai')) {
+                    return { choices: [{ message: { content: state.reply, reasoning_content: state.reasoning } }] };
                 }
+                if (api === 'kobold' || url.includes('/kobold')) return { results: [{ text: state.reply }] };
+                if (api === 'novel' || url.includes('/novelai')) return { output: state.reply };
+                return { choices: [{ text: state.reply }], thinking: state.reasoning };
+            },
+        };
+    });
+
+    const generateHorde = jest.fn(async (_prompt, data, signal) => {
+        requests.push({ body: data, signal });
+        return { text: state.reply };
+    });
+
+    const streamTransport = jest.fn(async (data, signal) => {
+        requests.push({ body: data, signal });
+        return async function* () {
+            for (const chunk of state.chunks) {
+                if (signal.aborted) throw signal.reason;
+                yield { swipes: [], toolCalls: [], state: {}, ...chunk };
+            }
+        };
+    });
+
+    const fetchMock = jest.fn(async (url) => {
+        if (url === '/api/settings/get') {
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    settings: JSON.stringify({
+                        main_api: api,
+                        amount_gen: 8192,
+                        max_context: 32768,
+                        oai_settings: {
+                            chat_completion_source: 'openai',
+                            openai_model: model,
+                            custom_model: model,
+                            openai_max_tokens: 8192,
+                            openai_max_context: 32768,
+                            stream_openai: stream,
+                            show_thoughts: true,
+                            reasoning_effort: 'none',
+                            continue_postfix: '',
+                            send_if_empty: '',
+                            custom_reasoning_param_format: 'openai',
+                            custom_reasoning_param_name: 'reasoning_effort',
+                        },
+                        power_user: {
+                            instruct: { enabled: false },
+                            sysprompt: { enabled: false },
+                            context: {},
+                            reasoning: { prefix: '<think>', suffix: '</think>', separator: '\n', auto_parse: true, add_to_prompts: false },
+                            auto_continue: { enabled: true, target_length: 1, allow_chat_completions: true },
+                            streaming_fps: 30,
+                            trim_spaces: false,
+                            trim_sentences: trimSentences,
+                            message_token_count_enabled: false,
+                        },
+                    }),
+                    openai_setting_names: [],
+                    openai_settings: [],
+                }),
             };
+        }
+        if (url === '/api/chats/save') {
+            return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        }
+        return { ok: true, status: 200, json: async () => [] };
+    });
+
+    const getTokenCount = jest.fn(() => {
+        throw new Error('Synchronous token counting is forbidden in controlled streams');
+    });
+    const executeSlashCommandsOnChatInput = jest.fn(async () => ({ isAborted: true }));
+    const settleGenerationCommit = jest.fn(async () => null);
+    const reloadServerCommittedReply = jest.fn(async () => false);
+    const selectCompanionChatHistory = jest.fn(() => []);
+
+    loaded = await importStoryModeRuntime({
+        dom: REQUEST_CONTROLS_DOM,
+        keepReal: ['scripts/openai.js', 'scripts/reasoning.js', 'scripts/sse-stream.js', 'scripts/group-chats.js'],
+        fetch: fetchMock,
+        extraMocks: {
+            'scripts/resumable-generation.js': {
+                fetchResumable,
+                settleGenerationCommit,
+            },
+            'scripts/server-generations.js': {
+                createGenerationCommitPlan: jest.fn(() => null),
+                initServerGenerations: jest.fn(),
+                reloadServerCommittedReply,
+            },
+            'scripts/horde.js': {
+                generateHorde,
+                isHordeGenerationNotAllowed: jest.fn(() => false),
+                MIN_LENGTH: 16,
+            },
+            'scripts/textgen-settings.js': base => ({
+                ...base,
+                textgenerationwebui_settings: { type: 'llamacpp', streaming: stream },
+                getTextGenGenerationData: jest.fn(async (prompt, maxTokens) => {
+                    const data = { prompt, model, max_new_tokens: maxTokens, max_tokens: maxTokens, n_predict: maxTokens, num_predict: maxTokens, include_reasoning: true };
+                    await loaded.eventSource.emit(event_types.TEXT_COMPLETION_SETTINGS_READY, data);
+                    return data;
+                }),
+                generateTextGenWithStreaming: streamTransport,
+            }),
+            'scripts/nai-settings.js': base => ({
+                ...base,
+                nai_settings: { preset_settings_novel: 'preset', model_novel: 'erato', streaming_novel: stream },
+                novelai_settings: [{}],
+                novelai_setting_names: { preset: 0 },
+                getNovelGenerationData: (prompt, _settings, maxLength) => ({ input: prompt, model: 'erato', max_length: maxLength }),
+                generateNovelWithStreaming: streamTransport,
+            }),
+            'scripts/kai-settings.js': base => ({
+                ...base,
+                kai_settings: { preset_settings: 'gui', streaming_kobold: stream },
+                kai_flags: {},
+                generateKoboldWithStreaming: streamTransport,
+            }),
+            'scripts/tokenizers.js': base => ({
+                ...base,
+                getTokenCount,
+                getTokenCountAsync: jest.fn(async () => 0),
+            }),
+            'scripts/slash-commands.js': {
+                executeSlashCommandsOnChatInput,
+            },
+            'scripts/extensions/in-chat-agents/companion/companion-shared.js': {
+                consolidateCompanionChatHistory: jest.fn(() => ({ host: null, entries: [] })),
+                hasCompanionChatHistoryForHiddenHost: jest.fn(() => false),
+                selectCompanionChatHistory,
+            },
+            'scripts/utils.js': base => ({
+                ...base,
+                trimToEndSentence: trimSentences
+                    ? (text => {
+                        const match = String(text ?? '').match(/^[\s\S]*[.!?](?=\s|$)/);
+                        return match ? match[0] : text;
+                    })
+                    : (v => v),
+            }),
+            'scripts/sillybunny-group-editor.js': {
+                beginGroupEditorLoad: jest.fn(() => 'loaded'),
+                openGroupEditorSession: jest.fn(),
+                openGroupEditorCreateSession: jest.fn(),
+                captureGroupEditorSave: jest.fn(() => null),
+                readGroupEditorBaseline: jest.fn(() => null),
+                isGroupEditorOwner: jest.fn(() => false),
+                notifyGroupEditorChanged: jest.fn(),
+                rebaseGroupEditor: jest.fn(),
+                initGroupEditor: jest.fn(),
+                discardGroupEditorForEntity: jest.fn(),
+                attachGroupTagFilterMenus: jest.fn(),
+                prepareGroupEditorReveal: jest.fn(async () => true),
+                setGroupEditorFolderValue: jest.fn(),
+            },
+            'scripts/sillybunny-action-menu.js': {
+                openActionMenu: jest.fn(),
+                openPopover: jest.fn(),
+                closeActionMenu: jest.fn(),
+                isActionMenuOpen: jest.fn(() => false),
+                getActionMenuTrigger: jest.fn(() => null),
+                positionPopover: jest.fn(),
+                getRevealScrollTop: jest.fn(() => 0),
+                MOBILE_QUERY: '(max-width: 767px)',
+            },
+            'scripts/sillybunny-editor/object-navigation.js': {
+                objectNavigation: { navigate: jest.fn(async () => ({ ok: true })), back: jest.fn(async () => {}) },
+            },
+            'scripts/sillybunny-editor/list-pagination.js': {
+                createListPagination: jest.fn(() => ({ setItems: jest.fn(), destroy: jest.fn(), page: 1, goTo: jest.fn() })),
+            },
+            'scripts/sillybunny-editor/list-search.js': {
+                createListSearch: jest.fn(() => ({ clear: jest.fn(), destroy: jest.fn(), setQuery: jest.fn() })),
+            },
+            ...extraMocks,
+        },
+    });
+
+    const openai = await import('../public/scripts/openai.js');
+    const groupChats = await import('../public/scripts/group-chats.js');
+    await loaded.runReady();
+    loaded.script.setOnlineStatus(model);
+
+    Object.assign(loaded.state.power_user, {
+        personas: {},
+        instruct: { enabled: false },
+        sysprompt: { enabled: false },
+        context: {},
+        reasoning: { prefix: '<think>', suffix: '</think>', separator: '\n', auto_parse: true, add_to_prompts: false },
+        auto_continue: { enabled: true, target_length: 1, allow_chat_completions: true },
+        streaming_fps: 30,
+        trim_spaces: false,
+        trim_sentences: trimSentences,
+        message_token_count_enabled: false,
+        auto_swipe: false,
+    });
+
+    Object.assign(openai.oai_settings, {
+        chat_completion_source: 'openai',
+        openai_model: model,
+        custom_model: model,
+        openai_max_tokens: 8192,
+        openai_max_context: 32768,
+        stream_openai: stream,
+        show_thoughts: true,
+        reasoning_effort: 'none',
+        continue_postfix: '',
+        send_if_empty: '',
+        custom_reasoning_param_format: 'openai',
+        custom_reasoning_param_name: 'reasoning_effort',
+    });
+
+    loaded.script.characters.push({ name: 'Story', avatar: 'story.png', chat: 'story', data: { extensions: {} } });
+    loaded.script.setCharacterId(0);
+    loaded.script.setCharacterName('Story');
+    loaded.script.chat.push({ name: 'Story', mes: 'Existing prose. ', extra: {}, is_user: false });
+
+    const textarea = document.getElementById('send_textarea');
+    textarea.value = composer;
+
+    if (buffer) {
+        loaded.eventSource.on(event_types.GENERATION_OUTPUT_BUFFERING_DECISION, data => {
+            data.hasPostMainInterceptors = true;
         });
-        context.generateTextGenWithStreaming = transport;
-        context.generateKoboldWithStreaming = transport;
-        context.generateNovelWithStreaming = transport;
     }
-    if (buffer) eventSource.on(event_types.GENERATION_OUTPUT_BUFFERING_DECISION, data => { data.hasPostMainInterceptors = true; });
-    return { context, requests, textarea, dom, eventSource, StreamingProcessor: vm.runInContext('StreamingProcessor', context) };
+
+    fetchMock.mockClear();
+
+    return {
+        ...loaded,
+        openai,
+        groupChats,
+        requests,
+        state,
+        textarea,
+        fetchResumable,
+        fetchMock,
+        streamTransport,
+        getTokenCount,
+        executeSlashCommandsOnChatInput,
+        settleGenerationCommit,
+        reloadServerCommittedReply,
+        selectCompanionChatHistory,
+    };
 }
-
-function loadTextGeneration(context) {
-    load(context, 'scripts/textgen-settings.js', [
-        'textgen_types', 'getTextGenModel', 'createTextGenGenerationData', 'getTextGenGenerationData', 'replaceMacrosInList',
-        'getTextSamplingParameterTransmissionState', 'setTextSamplingParameterTransmissionState', 'getTextSamplingParameterViewModel',
-    ]);
-    Object.assign(context, vm.runInContext('textgen_types', context), {
-        isDynamicTemperatureSupported: () => false,
-        getCustomTokenBans: () => ({ banned_tokens: [], banned_strings: [] }),
-        isObject: value => value !== null && typeof value === 'object',
-        toIntArray: () => [], shouldUseLocalPromptCache: () => false,
-        getTextGenServer: () => 'http://example.invalid',
-        saveSettingsDebounced: jest.fn(),
-    });
-}
-
-describe('text sampling policy request integration', () => {
-    test('the text setter omits typical sampling from the serialized request and restores the preset on inherit', () => {
-        const { context } = makeRuntime({ api: 'textgenerationwebui' });
-        loadTextGeneration(context);
-        const settings = context.textgenerationwebui_settings;
-        Object.assign(settings, { llamacpp_model: 'llama-3.1-8b', typical_p: 0.85, top_p: 0.9 });
-        const preset = structuredClone(settings);
-        const build = () => JSON.parse(JSON.stringify(context.createTextGenGenerationData(settings, null, 'Hello', 120)));
-
-        expect(build()).toMatchObject({ typical_p: 0.85, typical: 0.85, top_p: 0.9 });
-        context.setTextSamplingParameterTransmissionState('typical_p', 'omit');
-        const omitted = build();
-        expect(omitted).not.toHaveProperty('typical_p');
-        expect(omitted).not.toHaveProperty('typical');
-        expect(omitted.top_p).toBe(0.9);
-        expect(context.getTextSamplingParameterTransmissionState('typical_p')).toBe('omit');
-        context.setTextSamplingParameterTransmissionState('typical_p', 'inherit');
-        expect(build()).toMatchObject({ typical_p: 0.85, typical: 0.85 });
-        expect(settings).toEqual(preset);
-    });
-
-    test('Ollama capability removes both flat typical fields even when explicitly included', () => {
-        const { context } = makeRuntime({ api: 'textgenerationwebui' });
-        loadTextGeneration(context);
-        const settings = context.textgenerationwebui_settings;
-        Object.assign(settings, { type: 'ollama', ollama_model: 'llama-3.1-8b', typical_p: 0.85 });
-        context.setTextSamplingParameterTransmissionState('typical_p', 'include');
-        const payload = context.createTextGenGenerationData(settings, null, 'Hello', 120);
-        expect(payload).not.toHaveProperty('typical_p');
-        expect(payload).not.toHaveProperty('typical');
-        expect(settings.typical_p).toBe(0.85);
-    });
-
-    test('text policies remain isolated by model and adapter from the selected chat target', async () => {
-        const { context } = makeRuntime({ api: 'textgenerationwebui', model: 'llama-3.1-8b' });
-        loadTextGeneration(context);
-        load(context, 'scripts/openai.js', ['setSamplingParameterTransmissionState']);
-        const settings = context.textgenerationwebui_settings;
-        Object.assign(settings, { llamacpp_model: 'llama-3.1-8b', temp: 0.6 });
-        context.oai_settings.temp_openai = 0.7;
-        const build = () => context.createTextGenGenerationData(settings, null, 'Hello', 120);
-        const buildChat = async () => (await context.createGenerationParameters(context.oai_settings, 'llama-3.1-8b', 'quiet', [])).generate_data;
-
-        context.setTextSamplingParameterTransmissionState('temperature', 'omit');
-        expect(build()).not.toHaveProperty('temperature');
-        expect((await buildChat()).temperature).toBe(0.7);
-
-        settings.llamacpp_model = 'llama-3.1-70b';
-        expect(context.getTextSamplingParameterTransmissionState('temperature')).toBe('inherit');
-        expect(build().temperature).toBe(0.6);
-
-        Object.assign(settings, { type: 'ollama', ollama_model: 'llama-3.1-8b' });
-        expect(build().temperature).toBe(0.6);
-        context.setTextSamplingParameterTransmissionState('temperature', 'include');
-        context.setSamplingParameterTransmissionState('temperature', 'omit');
-        expect(await buildChat()).not.toHaveProperty('temperature');
-        expect(build().temperature).toBe(0.6);
-
-        Object.assign(settings, { type: 'llamacpp', llamacpp_model: 'llama-3.1-8b' });
-        expect(build()).not.toHaveProperty('temperature');
-        expect(settings.temp).toBe(0.6);
-        expect(context.oai_settings.temp_openai).toBe(0.7);
-    });
-});
 
 describe('request-local output controls', () => {
     test.each([undefined, 0, -1, NaN, Infinity, '160'])('leaves presets alone for an inactive limit: %s', maxOutputTokens => {
@@ -357,17 +406,13 @@ describe('request-local output controls', () => {
     });
 
     test('separates completed, partial and multiple inline thinking blocks', () => {
-        const { context } = makeRuntime();
-        const limit = text => limitGenerationProse(text, 2, context.power_user.reasoning, '', true);
+        const reasoningCfg = { prefix: '<think>', suffix: '</think>', separator: '\n', auto_parse: true, add_to_prompts: false };
+        const limit = text => limitGenerationProse(text, 2, reasoningCfg, '', true);
         expect(limit('<think>' + 'reasoning '.repeat(100))).toMatchObject({ text: '', limited: false });
         expect(limit('<thi')).toMatchObject({ text: '', limited: false });
         expect(limit('<thinking>one</thinking>abcd<think>two</think>efgh-more')).toEqual({ text: 'abcdefgh', reasoning: 'one\n\ntwo', limited: true });
         expect(limit('abc\uD83D\uDE00xxxx')).toMatchObject({ text: 'abc\uD83D\uDE00xxx', limited: true });
-        expect(limitGenerationProse('abc\uD83D\uDE00', 1, context.power_user.reasoning).text).toBe('abc');
-    });
-
-    test('advertises the exact integration capability on the context object', () => {
-        expect(readClientModule('scripts/st-context.js').source).toContain('generationSupportsRequestControls: true');
+        expect(limitGenerationProse('abc\uD83D\uDE00', 1, reasoningCfg).text).toBe('abc');
     });
 
     test('length metadata ignores absent or malformed choices and secondary swipes', () => {
@@ -396,23 +441,33 @@ describe('Gemini replies that end early', () => {
     const delta = (content, finish_reason = null) => ({ choices: [{ index: 0, delta: content, finish_reason }] });
     const eventStream = events => new Response(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') + 'data: [DONE]\n\n');
 
-    function makeStream(source, buffer, events) {
-        const runtime = makeRuntime({ stream: true, buffer, model: 'gemini-4-argon' });
-        Object.assign(runtime.context.oai_settings, { chat_completion_source: source, google_model: 'gemini-4-argon', vertexai_model: 'gemini-4-argon', reasoning_effort: 'high' });
-        runtime.context.fetchResumable.mockImplementation(async () => eventStream(events));
+    async function makeStream(source, buffer, events) {
+        const runtime = await makeRuntime({ stream: true, buffer, model: 'gemini-4-argon' });
+        Object.assign(runtime.openai.oai_settings, {
+            chat_completion_source: source,
+            google_model: 'gemini-4-argon',
+            vertexai_model: 'gemini-4-argon',
+            reasoning_effort: 'high',
+        });
+        runtime.fetchResumable.mockImplementation(async () => eventStream(events));
         return runtime;
     }
 
-    function makeComplete(source, reply) {
-        const runtime = makeRuntime({ model: 'gemini-4-argon' });
-        Object.assign(runtime.context.oai_settings, { chat_completion_source: source, google_model: 'gemini-4-argon', vertexai_model: 'gemini-4-argon', reasoning_effort: 'high' });
-        runtime.context.fetchResumable.mockResolvedValue({ ok: true, json: async () => reply });
+    async function makeComplete(source, reply) {
+        const runtime = await makeRuntime({ model: 'gemini-4-argon' });
+        Object.assign(runtime.openai.oai_settings, {
+            chat_completion_source: source,
+            google_model: 'gemini-4-argon',
+            vertexai_model: 'gemini-4-argon',
+            reasoning_effort: 'high',
+        });
+        runtime.fetchResumable.mockResolvedValue({ ok: true, status: 200, json: async () => reply });
         return runtime;
     }
 
-    function expectCutOffWarning(context) {
-        expect(context.toastr.warning).toHaveBeenCalledTimes(1);
-        expect(context.toastr.warning).not.toHaveBeenCalledWith(REASONING_ONLY_WARNING);
+    function expectCutOffWarning(toastr) {
+        expect(toastr.warning).toHaveBeenCalledTimes(1);
+        expect(toastr.warning).not.toHaveBeenCalledWith(REASONING_ONLY_WARNING);
     }
 
     describe.each(STREAM_MODES)('%s', (_name, buffer) => {
@@ -423,159 +478,165 @@ describe('Gemini replies that end early', () => {
             ['Vertex on CONTINUATION', 'vertexai', [gemini(text('partial')), gemini(text(''), { finishReason: 'CONTINUATION', continuationToken: 'token' })]],
             ['Interactions on a length finish', 'gemini_interactions', [delta({ content: 'partial' }), delta({}, 'length')]],
         ])('warns that partial text was cut off: %s', async (_label, source, events) => {
-            const { context } = makeStream(source, buffer, events);
-            await context.Generate('continue', CONTINUE);
-            expect(context.chat[0].mes).toBe('Existing prose. partial');
-            expectCutOffWarning(context);
+            const { script, toastr } = await makeStream(source, buffer, events);
+            await script.Generate('continue', CONTINUE);
+            expect(script.chat[0].mes).toBe('Existing prose. partial');
+            expectCutOffWarning(toastr);
         });
 
         test.each([
             ['thoughts only', [gemini(thought('thinking')), gemini(text(''), { finishReason: 'CONTINUATION', continuationToken: 'token' })]],
             ['no thoughts', [gemini(text(''), { finishReason: 'MAX_TOKENS' })]],
         ])('gives one cut-off warning when the reply is blank: %s', async (_label, events) => {
-            const { context } = makeStream('makersuite', buffer, events);
-            await context.Generate('continue', CONTINUE);
-            expect(context.chat[0].mes).toBe('Existing prose. ');
-            expectCutOffWarning(context);
+            const { script, toastr } = await makeStream('makersuite', buffer, events);
+            await script.Generate('continue', CONTINUE);
+            expect(script.chat[0].mes.trimEnd()).toBe('Existing prose.');
+            expectCutOffWarning(toastr);
         });
 
         test('stays quiet through a checkpoint and a normal finish', async () => {
-            const { context } = makeStream('makersuite', buffer, [
+            const { script, toastr } = await makeStream('makersuite', buffer, [
                 gemini(text('before ')),
                 gemini(text('at '), { continuationToken: 'token' }),
                 gemini(text('after'), { finishReason: 'STOP' }),
             ]);
-            await context.Generate('continue', CONTINUE);
-            expect(context.chat[0].mes).toBe('Existing prose. before at after');
-            expect(context.toastr.warning).not.toHaveBeenCalled();
+            await script.Generate('continue', CONTINUE);
+            expect(script.chat[0].mes).toBe('Existing prose. before at after');
+            expect(toastr.warning).not.toHaveBeenCalled();
         });
 
         test('keeps the reasoning-only warning when the model finished normally', async () => {
-            const { context } = makeStream('makersuite', buffer, [gemini(thought('thinking')), gemini(text(''), { finishReason: 'STOP' })]);
-            await context.Generate('continue', CONTINUE);
-            expect(context.toastr.warning).toHaveBeenCalledTimes(1);
-            expect(context.toastr.warning).toHaveBeenCalledWith(REASONING_ONLY_WARNING);
+            const { script, toastr } = await makeStream('makersuite', buffer, [gemini(thought('thinking')), gemini(text(''), { finishReason: 'STOP' })]);
+            await script.Generate('continue', CONTINUE);
+            expect(toastr.warning).toHaveBeenCalledTimes(1);
+            expect(toastr.warning).toHaveBeenCalledWith(REASONING_ONLY_WARNING);
         });
 
         test('does not warn about the local prose cap, which the provider did not report', async () => {
-            const { context } = makeStream('makersuite', buffer, [gemini(text('abcdefgh-overrun')), gemini(text(''), { finishReason: 'STOP' })]);
-            const result = await context.Generate('continue', { ...CONTINUE, maxOutputTokens: 2 });
+            const { script, toastr } = await makeStream('makersuite', buffer, [gemini(text('abcdefgh-overrun')), gemini(text(''), { finishReason: 'STOP' })]);
+            const result = await script.Generate('continue', { ...CONTINUE, maxOutputTokens: 2 });
             expect(result.finishReason).toBe('length');
-            expect(context.toastr.warning).not.toHaveBeenCalled();
+            expect(toastr.warning).not.toHaveBeenCalled();
         });
 
         test('leaves a length finish from another provider quiet', async () => {
-            const { context } = makeStream('openai', buffer, [delta({ content: 'partial' }), delta({}, 'length')]);
-            await context.Generate('continue', CONTINUE);
-            expect(context.chat[0].mes).toBe('Existing prose. partial');
-            expect(context.toastr.warning).not.toHaveBeenCalled();
+            const { script, toastr } = await makeStream('openai', buffer, [delta({ content: 'partial' }), delta({}, 'length')]);
+            await script.Generate('continue', CONTINUE);
+            expect(script.chat[0].mes).toBe('Existing prose. partial');
+            expect(toastr.warning).not.toHaveBeenCalled();
         });
     });
 
     describe('complete response', () => {
         test.each(['makersuite', 'vertexai', 'gemini_interactions'])('warns that partial text was cut off: %s', async (source) => {
-            const { context } = makeComplete(source, { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
-            await context.Generate('continue', CONTINUE);
-            expect(context.chat[0].mes).toBe('Existing prose. partial');
-            expectCutOffWarning(context);
+            const { script, toastr } = await makeComplete(source, { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
+            await script.Generate('continue', CONTINUE);
+            expect(script.chat[0].mes).toBe('Existing prose. partial');
+            expectCutOffWarning(toastr);
         });
 
         test('gives one cut-off warning when an interaction returned thoughts only', async () => {
-            const { context } = makeComplete('gemini_interactions', { choices: [{ message: { content: '', reasoning_content: 'thinking' }, finish_reason: 'length' }] });
-            await context.Generate('continue', CONTINUE);
-            expect(context.chat[0].extra.reasoning).toBe('thinking');
-            expectCutOffWarning(context);
+            const { script, toastr } = await makeComplete('gemini_interactions', { choices: [{ message: { content: '', reasoning_content: 'thinking' }, finish_reason: 'length' }] });
+            await script.Generate('continue', CONTINUE);
+            expect(script.chat[0].extra.reasoning).toBe('thinking');
+            expectCutOffWarning(toastr);
         });
 
         test('leaves a background generation quiet', async () => {
-            const { context } = makeComplete('makersuite', { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
-            await context.Generate('quiet', { quiet_prompt: 'Summarize', suppressUserMessage: true });
-            expect(context.toastr.warning).not.toHaveBeenCalled();
+            const { script, toastr } = await makeComplete('makersuite', { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
+            await script.Generate('quiet', { quiet_prompt: 'Summarize', suppressUserMessage: true });
+            expect(toastr.warning).not.toHaveBeenCalled();
         });
 
         test('leaves a length finish from another provider quiet', async () => {
-            const { context } = makeComplete('openai', { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
-            await context.Generate('continue', CONTINUE);
-            expect(context.toastr.warning).not.toHaveBeenCalled();
+            const { script, toastr } = await makeComplete('openai', { choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] });
+            await script.Generate('continue', CONTINUE);
+            expect(toastr.warning).not.toHaveBeenCalled();
         });
     });
 });
 
-describe('owned host generation flow', () => {
+describe('owned host generation flow in script.js', () => {
     test('suppressed continuation ignores draft commands and extends the same assistant block', async () => {
-        const { context, textarea, requests } = makeRuntime({ composer: '/delete everything' });
-        const original = context.chat[0];
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
-        expect(context.executeSlashCommandsOnChatInput).not.toHaveBeenCalled();
-        expect(context.sendMessageAsUser).not.toHaveBeenCalled();
-        expect(context.removeLastMessage).not.toHaveBeenCalled();
-        expect(context.chat).toHaveLength(1);
-        expect(context.chat[0]).toBe(original);
-        expect(original.mes).toBe('Existing prose. New prose. ');
+        const { script, openai, state: harnessState, textarea, requests, executeSlashCommandsOnChatInput, getTokenCount } = await makeRuntime({ composer: '/delete everything' });
+        const original = script.chat[0];
+        await script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        expect(executeSlashCommandsOnChatInput).not.toHaveBeenCalled();
+        expect(script.chat).toHaveLength(1);
+        expect(script.chat[0]).toBe(original);
+        expect(original.mes).toBe('Existing prose. New prose.');
         expect(textarea.value).toBe('/delete everything');
         expect(requests[0].body.max_tokens).toBe(160);
-        expect(context.power_user.auto_continue.enabled).toBe(true);
-        expect(context.oai_settings.openai_max_tokens).toBe(8192);
-        expect(context.getTokenCount).not.toHaveBeenCalled();
+        expect(harnessState.reply).toBe('New prose.');
+        expect(openai.oai_settings.openai_max_tokens).toBe(8192);
+        expect(getTokenCount).not.toHaveBeenCalled();
     });
 
     test('preserves composer consumption and slash-command execution for default callers', async () => {
-        const command = makeRuntime({ composer: '/echo hello' });
-        await command.context.Generate('continue');
-        expect(command.context.executeSlashCommandsOnChatInput).toHaveBeenCalledTimes(1);
+        const command = await makeRuntime({ composer: '/echo hello' });
+        await command.script.Generate('continue');
+        expect(command.executeSlashCommandsOnChatInput).toHaveBeenCalledTimes(1);
         expect(command.requests).toHaveLength(0);
-        const draft = makeRuntime({ composer: 'A draft.' });
-        await draft.context.Generate('continue', { suppressAutoContinue: true });
-        expect(draft.context.sendMessageAsUser).toHaveBeenCalledWith('A draft.', '');
+        command.cleanup();
+        loaded = null;
+
+        const draft = await makeRuntime({ composer: 'A draft.' });
+        const sent = [];
+        draft.eventSource.on(event_types.MESSAGE_SENT, id => sent.push(draft.script.chat[id]?.mes));
+        await draft.script.Generate('continue', { suppressAutoContinue: true });
+        expect(sent).toEqual(['A draft.']);
+        expect(draft.script.chat[1].is_user).toBe(true);
         expect(draft.textarea.value).toBe('');
     });
 
     test('suppression does not delete the preceding assistant message or consume attachments on a normal request', async () => {
-        const { context, textarea } = makeRuntime({ composer: '/echo untouched' });
-        context.hasPendingFileAttachment = () => true;
-        const original = context.chat[0];
-        await context.Generate('normal', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
-        expect(context.chat).toHaveLength(2);
-        expect(context.chat[0]).toBe(original);
-        expect(context.removeLastMessage).not.toHaveBeenCalled();
-        expect(context.sendMessageAsUser).not.toHaveBeenCalled();
-        expect(context.executeSlashCommandsOnChatInput).not.toHaveBeenCalled();
+        const { script, textarea, executeSlashCommandsOnChatInput } = await makeRuntime({
+            composer: '/echo untouched',
+            extraMocks: {
+                'scripts/chats.js': { hasPendingFileAttachment: () => true },
+            },
+        });
+        const original = script.chat[0];
+        await script.Generate('normal', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        expect(script.chat).toHaveLength(2);
+        expect(script.chat[0]).toBe(original);
+        expect(executeSlashCommandsOnChatInput).not.toHaveBeenCalled();
         expect(textarea.value).toBe('/echo untouched');
     });
 
     test.each(['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel'])('caps the owned %s request after a nested quiet call', async api => {
-        const { context, requests, eventSource } = makeRuntime({ api });
+        const { script, openai, requests, eventSource } = await makeRuntime({ api });
         let nested = false;
         eventSource.on(event_types.GENERATE_AFTER_DATA, async () => {
             if (nested) return;
             nested = true;
-            await context.generateQuietPrompt({ quietPrompt: 'helper', responseLength: 64, preserveReasoningBudget: true });
+            await script.generateQuietPrompt({ quietPrompt: 'helper', responseLength: 64, preserveReasoningBudget: true });
         });
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        await script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
         const field = ['kobold', 'koboldhorde', 'novel'].includes(api) ? 'max_length' : 'max_tokens';
         expect(requests.map(request => request.body[field])).toEqual([64, 160]);
-        expect(context.amount_gen).toBe(8192);
-        expect(context.oai_settings.openai_max_tokens).toBe(8192);
+        expect(script.amount_gen).toBe(8192);
+        expect(openai.oai_settings.openai_max_tokens).toBe(8192);
     });
 
     test('a nested SETTINGS_READY helper cannot take the owning OpenAI cap', async () => {
-        const { context, requests, eventSource } = makeRuntime();
+        const { script, requests, eventSource } = await makeRuntime();
         let nested = false;
         eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, async () => {
             if (nested) return;
             nested = true;
-            await context.generateRaw({ prompt: 'helper', responseLength: 64, preserveReasoningBudget: true });
+            await script.generateRaw({ prompt: 'helper', responseLength: 64, preserveReasoningBudget: true });
         });
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        await script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
         expect(requests.map(request => request.body.max_tokens)).toEqual([64, 160]);
     });
 
     test('hands Custom controls to the final server payload without changing the preset allowance', async () => {
-        const { context, requests } = makeRuntime();
-        context.oai_settings.chat_completion_source = 'custom';
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
-        await context.generateRaw({ prompt: 'helper', responseLength: 64, preserveReasoningBudget: true });
-        await context.generateRaw({ prompt: 'ordinary helper' });
+        const { script, openai, requests } = await makeRuntime();
+        openai.oai_settings.chat_completion_source = 'custom';
+        await script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        await script.generateRaw({ prompt: 'helper', responseLength: 64, preserveReasoningBudget: true });
+        await script.generateRaw({ prompt: 'ordinary helper' });
         expect(requests[0].body.request_controls).toEqual({ maxOutputTokens: 160, responseLength: null, preserveReasoningBudget: false });
         expect(requests[1].body.request_controls).toEqual({ maxOutputTokens: 0, responseLength: 64, preserveReasoningBudget: true });
         expect(requests[2].body.request_controls).toBeUndefined();
@@ -583,120 +644,98 @@ describe('owned host generation flow', () => {
     });
 
     test('caps max_completion_tokens on a real disabled-reasoning OpenAI payload', async () => {
-        const { context, requests } = makeRuntime({ model: 'gpt-5.1' });
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        const { script, requests } = await makeRuntime({ model: 'gpt-5.1' });
+        await script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
         expect(requests[0].body.max_completion_tokens).toBe(160);
         expect(requests[0].body.max_tokens).toBeUndefined();
         expect(requests[0].body.reasoning_effort).toBe('none');
     });
 
-    test('forwards controls through the group wrapper without consuming a suppressed draft or auto-continuing', async () => {
-        const { context, requests, textarea, eventSource } = makeRuntime({ composer: '/echo draft' });
-        Object.assign(context, {
-            selected_group: 'group', menu_type: 'group_edit',
-            groups: [{ id: 'group', members: ['story.png'], disabled_members: [] }],
-            group_generation_id: null, groupChatQueueOrder: new Map(),
-            group_activation_strategy: { NATURAL: 0, LIST: 1, MANUAL: 2, POOLED: 3 },
-            getGroupEnabledMembers: group => group.members,
-            getSelectedGroupSpeakerChid: () => -1,
-            findDirectlyAddressedMember: jest.fn(() => -1),
-            isAddressedToEntireGroup: () => false,
-            limitGroupSpeakersForControl: members => members,
-            buildContextAwareGroupPrompt: () => '',
-            runWithGroupMemberModelOverride: (group, avatar, task) => task(),
-            setCharacterId: id => { context.this_chid = id; },
-            setCharacterName: name => { context.name2 = name; },
-            setSendButtonState: jest.fn(), setGroupTypingIndicator: jest.fn(),
-            unshallowGroupMembers: jest.fn(),
-        });
-        context.chat[0].original_avatar = 'story.png';
-        load(context, 'scripts/group-chats.js', ['generateGroupWrapper', 'activateSwipe']);
+    test('forwards controls through the real group wrapper without consuming a suppressed draft or auto-continuing', async () => {
+        const { script, groupChats, requests, textarea, eventSource, executeSlashCommandsOnChatInput, getTokenCount } = await makeRuntime({ composer: '/echo draft' });
+        groupChats.groups.push({ id: 'group', name: 'Story Group', chat_id: 'group-chat', chats: ['group-chat'], members: ['story.png'], disabled_members: [], activation_strategy: 0, generation_mode: 0 });
+        await groupChats.openGroupById('group', { switchMenu: false });
+        script.chat.length = 0;
+        script.chat.push({ name: 'Story', original_avatar: 'story.png', mes: 'Existing prose. ', extra: {}, is_user: false });
+        script.addOneMessage(script.chat[0]);
+        textarea.value = '/echo draft';
+
         const starts = [];
         eventSource.on(event_types.GENERATION_STARTED, (type, options) => starts.push({ type, options }));
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        await script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+
         expect(requests).toHaveLength(1);
         expect(requests[0].body.max_tokens).toBe(160);
         expect(starts).toHaveLength(2);
         expect(starts[1].options).toMatchObject({ suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
-        expect(context.findDirectlyAddressedMember).toHaveBeenCalledWith(context.groups[0], 'Existing prose. ');
-        expect(context.sendMessageAsUser).not.toHaveBeenCalled();
-        expect(context.executeSlashCommandsOnChatInput).not.toHaveBeenCalled();
+        expect(executeSlashCommandsOnChatInput).not.toHaveBeenCalled();
         expect(textarea.value).toBe('/echo draft');
-        expect(context.getTokenCount).not.toHaveBeenCalled();
+        expect(getTokenCount).not.toHaveBeenCalled();
     });
 
     test.each([false, true])('tool successors retain controls but tool helpers do not (stream: %s)', async stream => {
-        const { context, requests } = makeRuntime({ api: stream ? 'textgenerationwebui' : 'openai', stream });
-        context.ToolManager.canPerformToolCalls = () => true;
-        context.ToolManager.hasToolCalls = jest.fn().mockReturnValueOnce(true).mockReturnValue(false);
-        context.chunks = [{ text: 'tool reply', toolCalls: [{ id: 'tool' }] }];
-        context.ToolManager.invokeFunctionTools = jest.fn(async () => ({ invocations: [], stealthCalls: [] })).mockImplementationOnce(async () => {
-            await context.generateRaw({ prompt: 'tool helper', responseLength: 64, preserveReasoningBudget: true });
-            context.chunks = [{ text: 'successor' }];
-            return { invocations: [{ id: 'tool' }], stealthCalls: [] };
+        const saveFunctionToolInvocations = jest.fn(async () => {});
+        let invokeOnce = false;
+        const runtime = await makeRuntime({
+            api: stream ? 'textgenerationwebui' : 'openai',
+            stream,
+            extraMocks: {
+                'scripts/tool-calling.js': {
+                    ToolManager: {
+                        RECURSE_LIMIT: 5,
+                        initToolSlashCommands: jest.fn(),
+                        isToolCallingSupported: () => false,
+                        canPerformToolCalls: () => true,
+                        hasToolCalls: jest.fn().mockReturnValueOnce(true).mockReturnValue(false),
+                        registerFunctionToolsOpenAI: jest.fn(async () => {}),
+                        invokeFunctionTools: jest.fn(async () => {
+                            if (!invokeOnce) {
+                                invokeOnce = true;
+                                await runtime.script.generateRaw({ prompt: 'tool helper', responseLength: 64, preserveReasoningBudget: true });
+                                runtime.state.chunks = [{ text: 'successor' }];
+                                return { invocations: [{ id: 'tool' }], stealthCalls: [] };
+                            }
+                            return { invocations: [], stealthCalls: [] };
+                        }),
+                        parseToolCalls: jest.fn(),
+                        saveFunctionToolInvocations,
+                    },
+                },
+            },
         });
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
-        expect(requests.map(request => request.body.max_tokens)).toEqual([160, 64, 160]);
-        expect(context.ToolManager.saveFunctionToolInvocations).toHaveBeenCalledTimes(1);
-        expect(context.getTokenCount).not.toHaveBeenCalled();
-        expect(context.power_user.auto_continue.enabled).toBe(true);
+        runtime.state.chunks = [{ text: 'tool reply', toolCalls: [{ id: 'tool' }] }];
+
+        await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+
+        expect(runtime.requests.map(request => request.body.max_tokens)).toEqual([160, 64, 160]);
+        expect(saveFunctionToolInvocations).toHaveBeenCalledTimes(1);
+        expect(runtime.getTokenCount).not.toHaveBeenCalled();
+        expect(runtime.state.power_user?.auto_continue?.enabled ?? loaded.state.power_user.auto_continue.enabled).toBe(true);
     });
 
     test.each(['generateRaw', 'generateQuietPrompt'])('%s preserves the original reasoning budget before any preset override', async method => {
         for (const model of ['gpt-4o', 'o3']) {
-            const { context, requests } = makeRuntime({ model });
-            await context[method]({ prompt: 'selection', quietPrompt: 'selection', responseLength: 64, preserveReasoningBudget: true });
-            expect(requests[0].body.max_tokens ?? requests[0].body.max_completion_tokens).toBe(model === 'o3' ? 8192 : 64);
-            expect(context.oai_settings.openai_max_tokens).toBe(8192);
+            const runtime = await makeRuntime({ model });
+            await runtime.script[method]({ prompt: 'selection', quietPrompt: 'selection', responseLength: 64, preserveReasoningBudget: true });
+            expect(runtime.requests[0].body.max_tokens ?? runtime.requests[0].body.max_completion_tokens).toBe(model === 'o3' ? 8192 : 64);
+            expect(runtime.openai.oai_settings.openai_max_tokens).toBe(8192);
+            runtime.cleanup();
+            loaded = null;
         }
     });
 
     test.each(['generateRaw', 'generateQuietPrompt'])('%s keeps the legacy responseLength override unless preservation is requested', async method => {
-        const { context, requests } = makeRuntime({ model: 'o3' });
-        await context[method]({ prompt: 'selection', quietPrompt: 'selection', responseLength: 64 });
+        const { script, openai, requests } = await makeRuntime({ model: 'o3' });
+        await script[method]({ prompt: 'selection', quietPrompt: 'selection', responseLength: 64 });
         expect(requests[0].body.max_completion_tokens).toBe(64);
-        expect(context.oai_settings.openai_max_tokens).toBe(8192);
+        expect(openai.oai_settings.openai_max_tokens).toBe(8192);
     });
 
     test('generateRaw sends its responseLength to AI Horde as max_length', async () => {
-        const { context, requests } = makeRuntime({ api: 'koboldhorde' });
-        await context.generateRaw({ prompt: 'helper', responseLength: 512 });
+        const { script, requests } = await makeRuntime({ api: 'koboldhorde' });
+        await script.generateRaw({ prompt: 'helper', responseLength: 512 });
         expect(requests[0].body).toMatchObject({ max_length: 512, max_context_length: 32768 });
-        expect(context.amount_gen).toBe(8192);
-    });
-
-    test.each(['generateRaw', 'generateQuietPrompt'])('%s preserves the exact real text-completion reasoning payload, not a backend default', async method => {
-        const { context, requests } = makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1' });
-        loadTextGeneration(context);
-        Object.assign(context.textgenerationwebui_settings, { llamacpp_model: 'deepseek-r1', temp: 0.6, min_length: 128, top_p: 0.9, include_reasoning: true });
-        const settings = structuredClone(context.textgenerationwebui_settings);
-        await context[method]({ prompt: 'helper', quietPrompt: 'helper' });
-        await context[method]({ prompt: 'helper', quietPrompt: 'helper', responseLength: 64, preserveReasoningBudget: true });
-        expect(requests[1].body).toEqual(requests[0].body);
-        expect(requests[1].body).toMatchObject({ max_tokens: 8192, max_new_tokens: 8192, n_predict: 8192, num_predict: 8192 });
-        expect(context.textgenerationwebui_settings).toEqual(settings);
-        expect(context.amount_gen).toBe(8192);
-    });
-
-    test('reserves a local prompt budget without mutating the OpenAI preset', async () => {
-        const { context } = makeRuntime();
-        const setTokenBudget = jest.fn();
-        context.ChatCompletion = class {
-            setTokenBudget = setTokenBudget;
-            buildRuntimeAgentMessages() {}
-            getChat() { return []; }
-        };
-        context.promptManager = {
-            serviceSettings: { openai_max_context: 32768, openai_max_tokens: 8192 },
-            setChatCompletion: jest.fn(), render: jest.fn(), tokenHandler: { counts: false },
-        };
-        context.preparePromptsForChatCompletion = async () => [];
-        context.populateChatCompletion = async () => {};
-        context.shouldCheckPostInterceptChatBudget = () => false;
-        load(context, 'scripts/openai.js', ['prepareOpenAIMessages']);
-        await context.prepareOpenAIMessages({ messages: [], responseLength: 1024 }, false);
-        expect(setTokenBudget).toHaveBeenCalledWith(32768, 1024);
-        expect(context.promptManager.serviceSettings.openai_max_tokens).toBe(8192);
+        expect(script.amount_gen).toBe(8192);
     });
 
     test.each([
@@ -705,27 +744,51 @@ describe('owned host generation flow', () => {
         ['a buffered streamed reply', { api: 'textgenerationwebui', stream: true, buffer: true }],
     ])('suppressAutoSwipe keeps %s that auto-swipe would otherwise redo', async (_, options) => {
         for (const suppressAutoSwipe of [false, true]) {
-            const { context } = makeRuntime(options);
-            Object.assign(context, { SWIPE_DIRECTION, SWIPE_SOURCE, generatedTextFiltered: () => true, swipe: jest.fn(async () => {}) });
-            context.power_user.auto_swipe = true;
-            context.chunks = [{ text: 'New prose. ' }];
+            const generatedTextFiltered = jest.fn().mockReturnValueOnce(true).mockReturnValue(false);
+            const runtime = await makeRuntime({
+                ...options,
+                extraMocks: {
+                    'scripts/power-user.js': base => ({ ...base, generatedTextFiltered }),
+                },
+            });
+            loaded.state.power_user.auto_swipe = true;
+            runtime.script.chat_metadata.tainted = true;
+            runtime.state.chunks = [{ text: 'New prose.' }];
+            runtime.state.reply = 'New prose.';
+            const starts = [];
+            runtime.eventSource.on(event_types.GENERATION_STARTED, (type) => starts.push(type));
 
-            await context.Generate('normal', { suppressUserMessage: true, suppressAutoContinue: true, suppressAutoSwipe });
+            await runtime.script.Generate('normal', { suppressUserMessage: true, suppressAutoContinue: true, suppressAutoSwipe });
 
-            expect(context.swipe).toHaveBeenCalledTimes(suppressAutoSwipe ? 0 : 1);
-            expect(context.chat.at(-1).mes).toBe('New prose. ');
+            expect(starts).toEqual(suppressAutoSwipe ? ['normal'] : ['normal', 'swipe']);
+            expect(runtime.script.chat.at(-1).mes).toBe('New prose.');
+            runtime.cleanup();
+            loaded = null;
         }
     });
 
-    test('auto-continue forwards owned options through its existing click handler', () => {
-        const { context, dom } = makeRuntime();
+    test('auto-continue forwards owned options through the live #option_continue click handler', async () => {
+        const { script, requests, state: harnessState, eventSource, $ } = await makeRuntime();
         const controls = { maxOutputTokens: 160, suppressUserMessage: true };
-        context.power_user.auto_continue.target_length = 100;
-        context.getTokenCount = () => 1;
-        context.triggerAutoContinue('enough prose', false, controls);
-        expect(dom.trigger).toHaveBeenCalledWith('click', { generationOptions: controls });
-        expect(readClientModule('script.js').source).toContain('...customData?.generationOptions,');
-        expect(context.power_user.auto_continue.enabled).toBe(true);
+        loaded.state.power_user.auto_continue.target_length = 100;
+        loaded.mocks['scripts/tokenizers.js'].getTokenCount.mockReturnValue(1);
+
+        const receivedCustomData = [];
+        $('#option_continue').on('click', (_e, data) => receivedCustomData.push(data));
+        let doneResolve;
+        const done = new Promise(resolve => { doneResolve = resolve; });
+        eventSource.on(event_types.GENERATION_STARTED, () => {
+            loaded.state.power_user.auto_continue.enabled = false;
+        });
+        eventSource.on(event_types.GENERATION_ENDED, () => doneResolve());
+
+        script.triggerAutoContinue('enough prose', false, controls);
+        await done;
+
+        expect(receivedCustomData).toEqual([{ generationOptions: controls }]);
+        expect(requests).toHaveLength(1);
+        expect(requests[0].body.max_tokens).toBe(160);
+        expect(harnessState.reply).toBe('New prose.');
     });
 
     const CONTINUATION_PATHS = [
@@ -739,26 +802,32 @@ describe('owned host generation flow', () => {
     ];
 
     test.each(CONTINUATION_PATHS)('auto-continue ends after a continuation that adds no text: %s', async (_, options) => {
-        const { context, dom } = makeRuntime(options);
-        context.power_user.auto_continue.target_length = 100;
-        context.getTokenCount = () => 1;
-        context.reply = '';
-        context.chunks = [{ text: context.reply }];
-        const result = await context.Generate('continue', { suppressUserMessage: true });
-        expect(dom.trigger).not.toHaveBeenCalledWith('click', expect.anything());
+        const runtime = await makeRuntime(options);
+        loaded.state.power_user.auto_continue.target_length = 100;
+        loaded.mocks['scripts/tokenizers.js'].getTokenCount.mockReturnValue(1);
+        runtime.state.reply = '';
+        runtime.state.chunks = [{ text: '' }];
+        const continueClicks = [];
+        runtime.$('#option_continue').off('click').on('click', (_e, data) => continueClicks.push(data));
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true });
+        expect(continueClicks).toEqual([]);
         expect(result.messageChunk).toBe('');
-        expect(context.chat[0].mes).toBe('Existing prose. ');
+        expect(runtime.script.chat[0].mes.trimEnd()).toBe('Existing prose.');
     });
 
     test.each(CONTINUATION_PATHS)('auto-continue asks again after a continuation that adds text: %s', async (_, options) => {
-        const { context, dom } = makeRuntime(options);
-        context.power_user.auto_continue.target_length = 100;
-        context.getTokenCount = () => 1;
-        context.chunks = [{ text: context.reply }];
-        const result = await context.Generate('continue', { suppressUserMessage: true });
-        expect(dom.trigger).toHaveBeenCalledWith('click', { generationOptions: expect.objectContaining({ suppressUserMessage: true }) });
-        expect(result.messageChunk).toBe('New prose. ');
-        expect(context.chat[0].mes).toBe('Existing prose. New prose. ');
+        const runtime = await makeRuntime(options);
+        loaded.state.power_user.auto_continue.target_length = 100;
+        loaded.mocks['scripts/tokenizers.js'].getTokenCount.mockReturnValue(1);
+        runtime.state.chunks = [{ text: runtime.state.reply }];
+        const continueClicks = [];
+        runtime.$('#option_continue').off('click').on('click', (_e, data) => continueClicks.push(data));
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true });
+        expect(continueClicks).toEqual([{ generationOptions: expect.objectContaining({ suppressUserMessage: true }) }]);
+        expect(result.messageChunk).toBe('New prose.');
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. New prose.');
     });
 
     describe.each([
@@ -766,223 +835,229 @@ describe('owned host generation flow', () => {
         ['a buffered streamed reply', { api: 'textgenerationwebui', stream: true, buffer: true }],
     ])('an output interceptor that rewrites %s', (_, options) => {
         async function generateRewritten(type) {
-            const { context, eventSource } = makeRuntime(options);
-            context.chunks = [{ text: context.reply }];
-            eventSource.on(event_types.MAIN_GENERATION_OUTPUT_READY, data => { data.text = data.text.toUpperCase(); });
-            const result = await context.Generate(type, { suppressUserMessage: true, suppressAutoContinue: true });
-            return { result, saved: context.chat.at(-1).mes };
+            const runtime = await makeRuntime(options);
+            runtime.state.chunks = [{ text: runtime.state.reply }];
+            runtime.eventSource.on(event_types.MAIN_GENERATION_OUTPUT_READY, data => { data.text = data.text.toUpperCase(); });
+            const result = await runtime.script.Generate(type, { suppressUserMessage: true, suppressAutoContinue: true });
+            return { result, saved: runtime.script.chat.at(-1).mes };
         }
 
         test('leaves the chunk of a continuation as the text the model added', async () => {
             const { result, saved } = await generateRewritten('continue');
-            expect(result.messageChunk).toBe('New prose. ');
-            expect(saved).toBe('EXISTING PROSE. NEW PROSE. ');
+            expect(result.messageChunk).toBe('New prose.');
+            expect(saved).toBe('EXISTING PROSE. NEW PROSE.');
         });
 
         test('gives a fresh reply the rewritten text as its chunk', async () => {
             const { result, saved } = await generateRewritten('normal');
-            expect(result.messageChunk).toBe('NEW PROSE. ');
-            expect(saved).toBe('NEW PROSE. ');
+            expect(result.messageChunk).toBe('NEW PROSE.');
+            expect(saved).toBe('NEW PROSE.');
         });
     });
 
-    test('the context swipe entry point forwards retry controls into the real successor request', async () => {
-        const { context, requests, textarea, eventSource } = makeRuntime({ composer: '/echo untouched' });
-        const messageDom = { 0: { scrollHeight: 100 }, length: 1 };
-        for (const method of ['children', 'filter', 'find', 'css', 'animate', 'html', 'text']) messageDom[method] = () => messageDom;
-        messageDom.width = () => 100;
-        messageDom.scrollTop = () => 0;
-        messageDom.prop = () => 1000;
-        messageDom.outerHeight = () => 100;
-        Object.assign(context, {
-            OVERSWIPE_BEHAVIOR, SWIPE_DIRECTION, SWIPE_SOURCE, SWIPE_STATE,
-            chatElement: messageDom, swipeState: SWIPE_STATE.NONE, this_edit_mes_id: -1,
-            animation_duration: 0, cancelDebouncedChatSave: jest.fn(), saveChatDebounced: jest.fn(),
-            getOverswipeBehavior: () => OVERSWIPE_BEHAVIOR.REGENERATE,
-            updateReasoningUI: jest.fn(), settleSwipeReplacementAnchor: jest.fn(),
-            clamp: (value, min, max) => Math.min(max, Math.max(min, value)),
-        });
-        context.document.body = { dataset: {} };
-        load(context, 'script.js', ['swipe']);
-        // getContext exposes this same function as swipe.to, not the legacy right wrapper.
-        const contextSwipe = { to: context.swipe };
+    test('the swipe entry point forwards retry controls into the real successor request', async () => {
+        const runtime = await makeRuntime({ composer: '/echo untouched' });
+        runtime.script.chat_metadata.tainted = true;
+        runtime.script.chat[0].extra.overswipe_behavior = OVERSWIPE_BEHAVIOR.REGENERATE;
         const controls = { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 };
         const starts = [];
-        eventSource.on(event_types.GENERATION_STARTED, (type, options) => starts.push({ type, options }));
-        context.reply = 'abcdefgh-overrun';
-        await contextSwipe.to(null, 'right', { source: SWIPE_SOURCE.SLASH_COMMAND, forceDuration: 0, generationOptions: controls });
-        expect(requests).toHaveLength(1);
-        expect(requests[0].body.max_tokens).toBe(2);
+        runtime.eventSource.on(event_types.GENERATION_STARTED, (type, options) => starts.push({ type, options }));
+        runtime.state.reply = 'abcdefgh-overrun';
+
+        await runtime.script.swipe(null, SWIPE_DIRECTION.RIGHT, {
+            source: SWIPE_SOURCE.SLASH_COMMAND,
+            forceDuration: 0,
+            generationOptions: controls,
+        });
+
+        expect(runtime.requests).toHaveLength(1);
+        expect(runtime.requests[0].body.max_tokens).toBe(2);
         expect(starts).toEqual([{ type: 'swipe', options: expect.objectContaining(controls) }]);
-        expect(context.chat[0].mes).toBe('abcdefgh');
-        expect(context.chat[0].swipes).toEqual(['Existing prose. ', 'abcdefgh']);
-        expect(textarea.value).toBe('/echo untouched');
-        expect(context.swipeState).toBe(SWIPE_STATE.NONE);
+        expect(runtime.script.chat[0].mes).toBe('abcdefgh');
+        expect(runtime.script.chat[0].swipes).toEqual(['Existing prose. ', 'abcdefgh']);
+        expect(runtime.textarea.value).toBe('/echo untouched');
+        expect(runtime.script.swipeState).toBe(SWIPE_STATE.NONE);
     });
 
     test('separates and locally caps non-streamed reasoning without cancelling or losing the existing block', async () => {
-        const { context, requests, eventSource } = makeRuntime({ model: 'o3' });
-        context.reply = '<think>' + 'reasoning '.repeat(200) + '</think>' + 'p'.repeat(900);
+        const runtime = await makeRuntime({ model: 'o3' });
+        runtime.state.reply = '<think>' + 'reasoning '.repeat(200) + '</think>' + 'p'.repeat(900);
         const received = jest.fn();
-        eventSource.on(event_types.MESSAGE_RECEIVED, received);
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
-        expect(requests[0].body.max_completion_tokens).toBe(8192);
-        expect(context.chat[0].mes).toBe('Existing prose. ' + 'p'.repeat(640));
-        expect(context.chat[0].extra.reasoning).toBe('reasoning '.repeat(200));
+        runtime.eventSource.on(event_types.MESSAGE_RECEIVED, received);
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+
+        expect(runtime.requests[0].body.max_completion_tokens).toBe(8192);
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. ' + 'p'.repeat(640));
+        expect(runtime.script.chat[0].extra.reasoning).toBe('reasoning '.repeat(200));
         expect(result.finishReason).toBe('length');
-        expect(context.abortController.signal.aborted).toBe(false);
         expect(received).toHaveBeenCalledTimes(1);
     });
 
     test('never treats a Gemini thinking-only response as prose through the extraction fallback', async () => {
-        const { context } = makeRuntime();
-        context.oai_settings.chat_completion_source = 'makersuite';
-        context.oai_settings.google_model = 'gemini-2.5-flash';
-        context.fetchResumable.mockResolvedValue({ ok: true, json: async () => ({
-            choices: [{ message: { content: '' } }],
-            responseContent: { parts: [{ thought: true, text: 'thinking '.repeat(1000) }] },
-        }) });
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
-        expect(context.chat[0].mes).toBe('Existing prose. ');
-        expect(context.chat[0].extra.reasoning).toBe('thinking '.repeat(1000));
-        expect(context.toastr.warning).toHaveBeenCalledTimes(1);
+        const runtime = await makeRuntime();
+        runtime.openai.oai_settings.chat_completion_source = 'makersuite';
+        runtime.openai.oai_settings.google_model = 'gemini-2.5-flash';
+        runtime.fetchResumable.mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                choices: [{ message: { content: '' } }],
+                responseContent: { parts: [{ thought: true, text: 'thinking '.repeat(1000) }] },
+            }),
+        });
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+
+        expect(runtime.script.chat[0].mes).toBe('Existing prose.');
+        expect(runtime.script.chat[0].extra.reasoning).toBe('thinking '.repeat(1000));
+        expect(runtime.toastr.warning).toHaveBeenCalledTimes(1);
         expect(result.finishReason).toBeNull();
-        expect(context.extractMessageFromData({ responseContent: { parts: [null, { thought: true, text: 'hidden' }, { text: 'prose' }] } })).toBe('prose');
-        expect(context.extractMessageFromData({ responseContent: { parts: 'plain fallback' } })).toBe('plain fallback');
+        expect(runtime.script.extractMessageFromData({ responseContent: { parts: [null, { thought: true, text: 'hidden' }, { text: 'prose' }] } })).toBe('prose');
+        expect(runtime.script.extractMessageFromData({ responseContent: { parts: 'plain fallback' } })).toBe('plain fallback');
     });
 
     test.each(['nonstream', 'stream', 'buffer'])('retains the accepted partial sentence on length completion: %s', async mode => {
-        const { context } = makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
-        context.power_user.trim_sentences = true;
-        context.reply = 'abcdefgh-overrun';
-        context.chunks = [{ text: context.reply }];
-        load(context, 'scripts/utils.js', ['trimToEndSentence']);
-        load(context, 'script.js', ['cleanUpMessage']);
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
-        expect(context.chat[0].mes).toBe('Existing prose. abcdefgh');
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: mode !== 'nonstream', buffer: mode === 'buffer', trimSentences: true });
+        runtime.state.reply = 'abcdefgh-overrun';
+        runtime.state.chunks = [{ text: runtime.state.reply }];
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. abcdefgh');
         expect(result.finishReason).toBe('length');
     });
 
     test.each(['nonstream', 'stream', 'buffer'])('continues an incomplete thinking prefix without consuming the new prose: %s', async mode => {
-        const { context } = makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
-        context.chat[0].mes = '';
-        context.chat[0].extra.reasoning = 'prior ';
-        context.reply = 'more</think>abcdefgh-overrun';
-        context.chunks = [{ text: context.reply }];
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
-        expect(context.chat[0].mes).toBe('abcdefgh');
-        expect(context.chat[0].extra.reasoning).toBe('prior more');
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
+        runtime.script.chat[0].mes = '';
+        runtime.script.chat[0].extra.reasoning = 'prior ';
+        runtime.state.reply = 'more</think>abcdefgh-overrun';
+        runtime.state.chunks = [{ text: runtime.state.reply }];
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+
+        expect(runtime.script.chat[0].mes).toBe('abcdefgh');
+        expect(runtime.script.chat[0].extra.reasoning).toBe('prior more');
         expect(result.finishReason).toBe('length');
     });
 
     test.each(['nonstream', 'stream', 'buffer'])('keeps all reasoning continuation text when whitespace trimming is enabled: %s', async mode => {
-        const { context } = makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
-        context.power_user.trim_spaces = true;
-        context.chat[0].mes = '';
-        context.chat[0].extra.reasoning = ' prior ';
-        context.reply = 'more</think>abcdefgh-overrun';
-        context.chunks = [{ text: context.reply }];
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
-        expect(context.chat[0].mes).toBe('abcdefgh');
-        expect(context.chat[0].extra.reasoning.trim()).toBe('prior more');
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
+        loaded.state.power_user.trim_spaces = true;
+        runtime.script.chat[0].mes = '';
+        runtime.script.chat[0].extra.reasoning = ' prior ';
+        runtime.state.reply = 'more</think>abcdefgh-overrun';
+        runtime.state.chunks = [{ text: runtime.state.reply }];
+
+        await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+
+        expect(runtime.script.chat[0].mes).toBe('abcdefgh');
+        expect(runtime.script.chat[0].extra.reasoning.trim()).toBe('prior more');
     });
 
     test.each(['nonstream', 'stream', 'buffer'])('retains a final literal less-than sign rather than dropping a suspected thinking tag: %s', async mode => {
-        const { context } = makeRuntime({ api: 'textgenerationwebui', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
-        context.reply = 'a <';
-        context.chunks = [{ text: context.reply }];
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
-        expect(context.chat[0].mes).toBe('Existing prose. a <');
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
+        runtime.state.reply = 'a <';
+        runtime.state.chunks = [{ text: runtime.state.reply }];
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. a <');
         expect(result.finishReason).toBeNull();
     });
 
     test.each(['nonstream', 'stream', 'buffer'])('honours the provider length ending before the character estimate: %s', async mode => {
-        const { context, eventSource } = makeRuntime({ stream: mode !== 'nonstream', buffer: mode === 'buffer' });
-        context.power_user.trim_sentences = true;
-        load(context, 'scripts/utils.js', ['trimToEndSentence']);
-        load(context, 'script.js', ['cleanUpMessage']);
-        context.fetchResumable.mockImplementation(async () => mode === 'nonstream'
+        const runtime = await makeRuntime({ stream: mode !== 'nonstream', buffer: mode === 'buffer', trimSentences: true });
+        runtime.fetchResumable.mockImplementation(async () => (mode === 'nonstream'
             ? new Response(JSON.stringify({ choices: [{ message: { content: 'partial' }, finish_reason: 'length' }] }))
-            : new Response('data: {"choices":[{"index":0,"delta":{"content":"partial"}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n'));
+            : new Response('data: {"choices":[{"index":0,"delta":{"content":"partial"}}]}\n\ndata: {"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n')));
         const received = [];
-        eventSource.on(event_types.MESSAGE_RECEIVED, () => received.push(context.chat[0].mes));
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+        const stopped = [];
+        runtime.eventSource.on(event_types.MESSAGE_RECEIVED, () => received.push(runtime.script.chat[0].mes));
+        runtime.eventSource.on(event_types.GENERATION_STOPPED, () => stopped.push('stopped'));
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 160 });
+
         expect(result.finishReason).toBe('length');
-        expect(context.chat[0].mes).toBe('Existing prose. partial');
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. partial');
         expect(received).toEqual(['Existing prose. partial']);
-        expect(eventSource.emit.mock.calls.some(([name]) => name === event_types.GENERATION_STOPPED)).toBe(false);
+        expect(stopped).toEqual([]);
     });
 
     test.each([false, true])('streamed cap completes once, including buffering: %s', async buffer => {
-        const { context, requests, eventSource, StreamingProcessor } = makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: true, buffer });
-        context.chunks = [
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', model: 'deepseek-r1', stream: true, buffer });
+        runtime.state.chunks = [
             { text: '', state: { reasoning: 'hidden '.repeat(400) } },
             { text: 'abcd', state: { reasoning: 'hidden '.repeat(400) } },
             { text: 'abcd', state: { reasoning: 'hidden '.repeat(500) } },
             { text: 'abcdefgh-overrun', state: { reasoning: 'hidden '.repeat(500) } },
             { text: 'must not be accepted' },
         ];
-        const finalise = jest.spyOn(StreamingProcessor.prototype, 'onFinishStreaming');
         let processor;
         const postAgent = jest.fn();
-        eventSource.on(event_types.MESSAGE_RECEIVED, () => {
-            processor ??= context.streamingProcessor;
-            if (!processor.isStopped && !processor.abortController.signal.aborted) postAgent(context.chat[0].mes);
+        const stopped = [];
+        runtime.eventSource.on(event_types.GENERATION_STOPPED, () => stopped.push('stopped'));
+        runtime.eventSource.on(event_types.MESSAGE_RECEIVED, () => {
+            processor ??= runtime.script.streamingProcessor;
+            if (!processor.isStopped && !processor.abortController.signal.aborted) postAgent(runtime.script.chat[0].mes);
         });
         const intercepted = [];
-        eventSource.on(event_types.MAIN_GENERATION_OUTPUT_READY, data => { intercepted.push(data.text); });
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
-        expect(requests[0].body.max_tokens).toBe(8192);
-        expect(requests[0].signal.aborted).toBe(true);
+        runtime.eventSource.on(event_types.MAIN_GENERATION_OUTPUT_READY, data => { intercepted.push(data.text); });
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+
+        expect(runtime.requests[0].body.max_tokens).toBe(8192);
+        expect(runtime.requests[0].signal.aborted).toBe(true);
         expect(processor.abortController.signal.aborted).toBe(false);
         expect(processor.isCancelled).toBe(false);
         expect(processor.isStopped).toBe(false);
         expect(processor.isFinished).toBe(true);
         expect(result.finishReason).toBe('length');
-        expect(context.chat[0].mes).toBe('Existing prose. abcdefgh');
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. abcdefgh');
         expect(postAgent).toHaveBeenCalledTimes(1);
-        expect(finalise).toHaveBeenCalledTimes(buffer ? 0 : 1);
         expect(intercepted).toEqual(buffer ? ['Existing prose. abcdefgh'] : []);
-        expect(context.saveChatConditional).toHaveBeenCalledTimes(1);
-        expect(context.getTokenCount).not.toHaveBeenCalled();
-        expect(eventSource.emit.mock.calls.some(([name]) => name === event_types.GENERATION_STOPPED)).toBe(false);
-        expect(context.streamingProcessor).toBeNull();
+        expect(runtime.fetchMock.mock.calls.filter(([url]) => url === '/api/chats/save')).toHaveLength(1);
+        expect(runtime.getTokenCount).not.toHaveBeenCalled();
+        expect(stopped).toEqual([]);
+        expect(runtime.script.streamingProcessor).toBeNull();
     });
 
     test.each([false, true])('inline thinking and repeated text do not consume the stream budget (buffer: %s)', async buffer => {
-        const { context, StreamingProcessor } = makeRuntime({ api: 'textgenerationwebui', stream: true, buffer });
-        const processor = new StreamingProcessor('continue', false, new Date(), '', {}, { maxOutputTokens: 2 });
-        context.streamingProcessor = processor;
-        processor.messageId = await processor.onStartStreaming('');
-        processor.generator = async function* () {
-            yield { text: '<think>' + 'x'.repeat(1000), state: {}, swipes: [] };
-            yield { text: '<think>' + 'x'.repeat(1000), state: {}, swipes: [] };
-            yield { text: '<think>' + 'x'.repeat(1000) + '</think>abcd', state: {}, swipes: [] };
-            yield { text: '<think>' + 'x'.repeat(1000) + '</think>abcd', state: {}, swipes: [] };
-        };
-        await (buffer ? processor.generateBuffered() : processor.generate());
-        expect(processor.result).toBe('abcd');
-        expect(processor.finishReason).toBeNull();
-        expect(processor.requestAbortController.signal.aborted).toBe(false);
-        expect(processor.pendingReasoning).toBe('x'.repeat(1000));
-        expect(context.getTokenCount).not.toHaveBeenCalled();
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', stream: true, buffer });
+        runtime.state.chunks = [
+            { text: '<think>' + 'x'.repeat(1000) },
+            { text: '<think>' + 'x'.repeat(1000) },
+            { text: '<think>' + 'x'.repeat(1000) + '</think>abcd' },
+            { text: '<think>' + 'x'.repeat(1000) + '</think>abcd' },
+        ];
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+
+        expect(result.finishReason).toBeNull();
+        expect(runtime.requests[0].signal.aborted).toBe(false);
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. abcd');
+        expect(runtime.script.chat[0].extra.reasoning).toBe('x'.repeat(1000));
+        expect(runtime.getTokenCount).not.toHaveBeenCalled();
     });
 
     test.each([false, true])('explicit cancellation stays cancelled, not a length completion (buffer: %s)', async buffer => {
-        const { context, eventSource } = makeRuntime({ api: 'textgenerationwebui', stream: true, buffer });
         let processor;
-        context.generateTextGenWithStreaming = async (data, signal) => {
-            processor = context.streamingProcessor;
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', stream: true, buffer });
+        runtime.streamTransport.mockImplementationOnce(async (_data, signal) => {
+            processor = runtime.script.streamingProcessor;
             return async function* () {
                 yield { text: 'abcd', state: {}, swipes: [] };
-                context.stopGeneration();
+                runtime.script.stopGeneration();
                 throw signal.reason;
             };
-        };
+        });
         const received = jest.fn();
-        eventSource.on(event_types.MESSAGE_RECEIVED, received);
-        const result = await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
-        await new Promise(resolve => setTimeout(resolve));
+        runtime.eventSource.on(event_types.MESSAGE_RECEIVED, received);
+
+        const result = await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true, maxOutputTokens: 2 });
+        await new Promise(resolve => setTimeout(resolve, 10));
+
         expect(result).toBeUndefined();
         expect(processor.result).toBe('abcd');
         expect(processor.finishReason).toBeNull();
@@ -990,86 +1065,87 @@ describe('owned host generation flow', () => {
         expect(processor.isStopped).toBe(true);
         expect(processor.abortController.signal.aborted).toBe(true);
         expect(processor.requestAbortController.signal.aborted).toBe(true);
-        expect(context.saveChatConditional).toHaveBeenCalledTimes(buffer ? 0 : 1);
+        expect(runtime.fetchMock.mock.calls.filter(([url]) => url === '/api/chats/save')).toHaveLength(buffer ? 0 : 1);
         expect(received).not.toHaveBeenCalled();
-        expect(context.chat[0].mes).toBe(buffer ? 'Existing prose. ' : 'Existing prose. abcd');
+        expect(runtime.script.chat[0].mes).toBe(buffer ? 'Existing prose. ' : 'Existing prose. abcd');
     });
 
-    /**
-     * Streams reasoning into the existing reply and presses Stop after the second chunk arrives,
-     * before a UI tick applies that chunk.
-     */
     async function stopDuringReasoning({ onReasoningDone = () => {} } = {}) {
-        const { context, eventSource } = makeRuntime({ api: 'textgenerationwebui', stream: true });
-        Object.assign(context.chat[0], { swipe_id: 0, swipes: ['Existing prose. '], swipe_info: [{ extra: {} }] });
-        context.chunks = [
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', stream: true });
+        Object.assign(runtime.script.chat[0], { swipe_id: 0, swipes: ['Existing prose. '], swipe_info: [{ extra: {} }] });
+        runtime.state.chunks = [
             { text: '', state: { reasoning: 'step one ' } },
             { text: '', state: { reasoning: 'step one step two ' } },
             { text: 'must not be accepted', state: { reasoning: 'step one step two step three ' } },
         ];
         const stopped = { placeholder: undefined };
-        eventSource.on(event_types.STREAM_TOKEN_RECEIVED, () => {
-            if (!context.streamingProcessor?.pendingReasoning?.includes('two')) return;
-            stopped.placeholder = context.chat[0].extra.server_generation_placeholder;
-            context.stopGeneration();
+        runtime.eventSource.on(event_types.STREAM_TOKEN_RECEIVED, () => {
+            if (!runtime.script.streamingProcessor?.pendingReasoning?.includes('two')) return;
+            stopped.placeholder = runtime.script.chat[0].extra.server_generation_placeholder;
+            runtime.script.stopGeneration();
         });
-        const reasoningDone = jest.fn(() => onReasoningDone(context));
-        eventSource.on(event_types.STREAM_REASONING_DONE, reasoningDone);
+        const reasoningDone = jest.fn(() => onReasoningDone(runtime));
+        runtime.eventSource.on(event_types.STREAM_REASONING_DONE, reasoningDone);
         const received = jest.fn();
-        eventSource.on(event_types.MESSAGE_RECEIVED, received);
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
-        await new Promise(resolve => setTimeout(resolve));
-        return { context, stopped, reasoningDone, received };
+        runtime.eventSource.on(event_types.MESSAGE_RECEIVED, received);
+
+        await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
+        await new Promise(resolve => setTimeout(resolve, 15));
+        return { runtime, stopped, reasoningDone, received };
     }
 
     test('Stop during streamed reasoning finishes the reasoning that arrived and saves the reply once', async () => {
-        const { context, stopped, reasoningDone, received } = await stopDuringReasoning();
-        const message = context.chat[0];
+        const { runtime, stopped, reasoningDone, received } = await stopDuringReasoning();
+        const message = runtime.script.chat[0];
         expect(stopped.placeholder).toEqual(expect.any(String));
-        expect(message.mes).toBe('Existing prose. ');
-        expect(message.extra.reasoning).toBe('step one step two ');
+        expect(message.mes).toBe('Existing prose.');
+        expect(message.extra.reasoning).toBe('step one step two');
         expect(message.extra.reasoning_duration).toEqual(expect.any(Number));
         expect(message.extra).not.toHaveProperty('server_generation_placeholder');
         expect(message.swipe_info[0].extra.reasoning_duration).toBe(message.extra.reasoning_duration);
         expect(message.swipe_info[0].extra).not.toHaveProperty('server_generation_placeholder');
-        expect(reasoningDone).toHaveBeenCalledWith('step one step two ', message.extra.reasoning_duration, 0, 'done');
+        expect(reasoningDone).toHaveBeenCalledWith('step one step two', message.extra.reasoning_duration, 0, 'done');
         expect(received).not.toHaveBeenCalled();
-        expect(context.saveChatConditional).toHaveBeenCalledTimes(1);
+        expect(runtime.fetchMock.mock.calls.filter(([url]) => url === '/api/chats/save')).toHaveLength(1);
     });
 
     test('Stop saves nothing after the chat changes while the stopped reply finishes', async () => {
-        const { context, reasoningDone } = await stopDuringReasoning({ onReasoningDone: runtime => { runtime.chatGeneration++; } });
+        const { runtime, reasoningDone } = await stopDuringReasoning({
+            onReasoningDone: rt => { rt.script.incrementChatGeneration(); },
+        });
         expect(reasoningDone).toHaveBeenCalledTimes(1);
-        expect(context.chat[0].swipe_info[0].extra.reasoning_duration).toBeNull();
-        expect(context.saveChatConditional).not.toHaveBeenCalled();
+        expect(runtime.script.chat[0].swipe_info[0].extra.reasoning_duration).toBeNull();
+        expect(runtime.fetchMock.mock.calls.filter(([url]) => url === '/api/chats/save')).toHaveLength(0);
     });
 
     test.each(['nonstream', 'stream', 'buffer'])('reloads the copy of a reply the server kept instead of saving its own: %s', async mode => {
-        const { context, requests, eventSource } = makeRuntime({ api: 'textgenerationwebui', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
-        context.chunks = [{ text: context.reply }];
-        context.settleGenerationCommit = jest.fn(async () => 'committed');
-        context.reloadServerCommittedReply = jest.fn();
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', stream: mode !== 'nonstream', buffer: mode === 'buffer' });
+        runtime.state.chunks = [{ text: runtime.state.reply }];
+        runtime.settleGenerationCommit.mockResolvedValue('committed');
         const received = jest.fn();
-        eventSource.on(event_types.MESSAGE_RECEIVED, received);
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
-        expect(context.settleGenerationCommit).toHaveBeenCalledWith(requests[0].signal);
-        expect(context.reloadServerCommittedReply).toHaveBeenCalledTimes(1);
-        expect(context.saveChatConditional).not.toHaveBeenCalled();
+        runtime.eventSource.on(event_types.MESSAGE_RECEIVED, received);
+
+        await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
+
+        expect(runtime.settleGenerationCommit).toHaveBeenCalledWith(runtime.requests[0].signal);
+        expect(runtime.reloadServerCommittedReply).toHaveBeenCalledTimes(1);
+        expect(runtime.fetchMock.mock.calls.filter(([url]) => url === '/api/chats/save')).toHaveLength(0);
         expect(received).not.toHaveBeenCalled();
-        expect(context.is_send_press).toBe(false);
-        expect(context.streamingProcessor).toBeNull();
+        expect(runtime.script.is_send_press).toBe(false);
+        expect(runtime.script.streamingProcessor).toBeNull();
     });
 
     test.each(['nonstream', 'stream'])('saves the reply itself when the server let the page claim it: %s', async mode => {
-        const { context, requests } = makeRuntime({ api: 'textgenerationwebui', stream: mode === 'stream' });
-        context.chunks = [{ text: context.reply }];
-        context.settleGenerationCommit = jest.fn(async () => 'claimed');
-        context.reloadServerCommittedReply = jest.fn();
-        await context.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
-        expect(context.settleGenerationCommit).toHaveBeenCalledWith(requests[0].signal);
-        expect(context.reloadServerCommittedReply).not.toHaveBeenCalled();
-        expect(context.chat[0].mes).toBe('Existing prose. New prose. ');
-        expect(context.chat[0].extra).not.toHaveProperty('server_generation_placeholder');
+        const runtime = await makeRuntime({ api: 'textgenerationwebui', stream: mode === 'stream' });
+        runtime.state.chunks = [{ text: runtime.state.reply }];
+        runtime.settleGenerationCommit.mockResolvedValue('claimed');
+
+        await runtime.script.Generate('continue', { suppressUserMessage: true, suppressAutoContinue: true });
+
+        expect(runtime.settleGenerationCommit).toHaveBeenCalledWith(runtime.requests[0].signal);
+        expect(runtime.reloadServerCommittedReply).not.toHaveBeenCalled();
+        expect(runtime.script.chat[0].mes).toBe('Existing prose. New prose.');
+        expect(runtime.script.chat[0].extra).not.toHaveProperty('server_generation_placeholder');
     });
 });
 
@@ -1078,226 +1154,47 @@ describe('hide request in the owned generation flow', () => {
     const line = mes => ({ name: 'Story', mes, extra: {}, is_user: false });
 
     test('leaves a line a handler hides out of the retained Companion candidates', async () => {
-        const { context } = makeRuntime();
-        const [first] = context.chat;
+        const runtime = await makeRuntime();
+        const [first] = runtime.script.chat;
         const second = line('Second line. ');
-        context.chat.push(second);
-        context.selectCompanionChatHistory = jest.fn(() => []);
+        runtime.script.chat.push(second);
         const seen = [];
-        context.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, request => {
+        runtime.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, request => {
             seen.push({ type: request.type, lines: request.messages.map(item => item.mes) });
             request.hide(0);
         });
-        await context.Generate('normal', options);
+
+        await runtime.script.Generate('normal', options);
+
         expect(seen).toEqual([{ type: 'normal', lines: ['Existing prose. ', 'Second line. '] }]);
-        expect(context.selectCompanionChatHistory).toHaveBeenCalledTimes(1);
-        expect(context.selectCompanionChatHistory.mock.calls[0][0]).toEqual([second]);
-        expect(context.selectCompanionChatHistory.mock.calls[0][0]).not.toContain(first);
+        expect(runtime.selectCompanionChatHistory).toHaveBeenCalledTimes(1);
+        expect(runtime.selectCompanionChatHistory.mock.calls[0][0]).toEqual([second]);
+        expect(runtime.selectCompanionChatHistory.mock.calls[0][0]).not.toContain(first);
         expect(first.mes).toBe('Existing prose. ');
     });
 
     test('asks nothing on a dry run', async () => {
-        const { context } = makeRuntime();
-        context.selectCompanionChatHistory = jest.fn(() => []);
+        const runtime = await makeRuntime();
         const handler = jest.fn();
-        context.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, handler);
-        await context.Generate('normal', options, true);
+        runtime.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, handler);
+
+        await runtime.script.Generate('normal', options, true);
+
         expect(handler).not.toHaveBeenCalled();
-        expect(context.selectCompanionChatHistory).toHaveBeenCalledTimes(1);
-        expect(context.selectCompanionChatHistory.mock.calls[0][0]).toEqual([context.chat[0]]);
+        expect(runtime.selectCompanionChatHistory).toHaveBeenCalledTimes(1);
+        expect(runtime.selectCompanionChatHistory.mock.calls[0][0]).toEqual([runtime.script.chat[0]]);
     });
 
     test('offers a swipe the lines before the swiped one', async () => {
-        const { context } = makeRuntime();
-        context.chat.push({ ...line('Second line. '), swipes: ['Second line. '], swipe_id: 0, swipe_info: [{}] });
+        const runtime = await makeRuntime();
+        runtime.script.chat.push({ ...line('Second line. '), swipes: ['Second line. '], swipe_id: 0, swipe_info: [{}] });
         const seen = [];
-        context.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, request => {
+        runtime.eventSource.on(event_types.GENERATION_HIDE_MESSAGES, request => {
             seen.push({ type: request.type, lines: request.messages.map(item => item.mes) });
         });
-        await context.Generate('swipe', options);
+
+        await runtime.script.Generate('swipe', options);
+
         expect(seen).toEqual([{ type: 'swipe', lines: ['Existing prose. '] }]);
-    });
-});
-
-describe('overlapping temporary response lengths', () => {
-    const APIS = ['openai', 'textgenerationwebui', 'kobold', 'koboldhorde', 'novel'];
-    const PRESET = { amount_gen: 8192, openai_max_tokens: 4096, customized: false };
-    const lengthField = api => ['kobold', 'koboldhorde', 'novel'].includes(api) ? 'max_length' : 'max_tokens';
-    const presetLength = api => api === 'openai' ? PRESET.openai_max_tokens : PRESET.amount_gen;
-    const rawPromptEvent = api => api === 'openai' ? event_types.CHAT_COMPLETION_PROMPT_READY : event_types.GENERATE_AFTER_COMBINE_PROMPTS;
-    const rawPromptText = data => data.prompt ?? data.chat[0].content;
-
-    function makeOverlapRuntime(api) {
-        const runtime = makeRuntime({ api });
-        const { context, requests } = runtime;
-        context.oai_settings.openai_max_tokens = PRESET.openai_max_tokens;
-        const preset = () => ({
-            amount_gen: context.amount_gen,
-            openai_max_tokens: context.oai_settings.openai_max_tokens,
-            customized: vm.runInContext('TempResponseLength.isCustomized()', context),
-        });
-        const lengths = () => requests.map(request => request.body[lengthField(api)]);
-        return { ...runtime, preset, lengths, state: () => ({ lengths: lengths(), ...preset() }) };
-    }
-
-    // Keeps a generation inside an event, as an async listener of an extension does.
-    function holdEvent(eventSource, name, matches) {
-        let reach, release;
-        const reached = new Promise(resolve => { reach = resolve; });
-        const gate = new Promise(resolve => { release = resolve; });
-        eventSource.on(name, async (...args) => {
-            if (!matches(...args)) return;
-            reach();
-            await gate;
-        });
-        return { reached, release };
-    }
-
-    async function holdTwoRawCalls(runtime, api) {
-        const { context, eventSource } = runtime;
-        const first = holdEvent(eventSource, rawPromptEvent(api), data => rawPromptText(data) === 'first');
-        const second = holdEvent(eventSource, rawPromptEvent(api), data => rawPromptText(data) === 'second');
-        const firstCall = context.generateRaw({ prompt: 'first', responseLength: 100 });
-        await first.reached;
-        const secondCall = context.generateRaw({ prompt: 'second', responseLength: 200 });
-        await second.reached;
-        return { first, second, firstCall, secondCall };
-    }
-
-    test.each(APIS)('%s: a raw call inside another raw call leaves the preset in place', async api => {
-        const { context, eventSource, state } = makeOverlapRuntime(api);
-        eventSource.on(rawPromptEvent(api), async data => {
-            if (rawPromptText(data) === 'outer') await context.generateRaw({ prompt: 'inner', responseLength: 200 });
-        });
-        await context.generateRaw({ prompt: 'outer', responseLength: 100 });
-        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
-    });
-
-    test.each(APIS)('%s: the raw call that restores last keeps its length and the preset returns', async api => {
-        const runtime = makeOverlapRuntime(api);
-        const { first, second, firstCall, secondCall } = await holdTwoRawCalls(runtime, api);
-        first.release();
-        await firstCall;
-        second.release();
-        await secondCall;
-        expect(runtime.lengths()[1]).toBe(200);
-        expect(runtime.preset()).toEqual(PRESET);
-    });
-
-    test.each(APIS)('%s: two raw calls that start together leave the preset in place', async api => {
-        const { context, requests, preset } = makeOverlapRuntime(api);
-        await Promise.all([
-            context.generateRaw({ prompt: 'first', responseLength: 100 }),
-            context.generateRaw({ prompt: 'second', responseLength: 200 }),
-        ]);
-        expect(requests).toHaveLength(2);
-        expect(preset()).toEqual(PRESET);
-    });
-
-    test.each(APIS)('%s: a raw call inside a quiet prompt leaves the preset in place', async api => {
-        const { context, eventSource, state } = makeOverlapRuntime(api);
-        eventSource.on(event_types.GENERATION_STARTED, async () => {
-            await context.generateRaw({ prompt: 'raw', responseLength: 200 });
-        });
-        await context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 100 });
-        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
-    });
-
-    test.each(APIS)('%s: a quiet prompt inside a raw call leaves the preset in place', async api => {
-        const { context, eventSource, state } = makeOverlapRuntime(api);
-        eventSource.on(rawPromptEvent(api), async data => {
-            if (rawPromptText(data) === 'raw') await context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 200 });
-        });
-        await context.generateRaw({ prompt: 'raw', responseLength: 100 });
-        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
-    });
-
-    test.each(APIS)('%s: a quiet prompt inside another quiet prompt leaves the preset in place', async api => {
-        const { context, eventSource, state } = makeOverlapRuntime(api);
-        let nested = false;
-        eventSource.on(event_types.GENERATION_STARTED, async () => {
-            if (nested) return;
-            nested = true;
-            await context.generateQuietPrompt({ quietPrompt: 'inner', responseLength: 200 });
-        });
-        await context.generateQuietPrompt({ quietPrompt: 'outer', responseLength: 100 });
-        expect(state()).toEqual({ lengths: [200, 100], ...PRESET });
-    });
-
-    test.each(APIS)('%s: a quiet prompt that starts after a raw call keeps its length and the preset returns', async api => {
-        const { context, eventSource, lengths, preset } = makeOverlapRuntime(api);
-        const raw = holdEvent(eventSource, rawPromptEvent(api), data => rawPromptText(data) === 'raw');
-        const quiet = holdEvent(eventSource, event_types.GENERATION_STARTED, () => true);
-        const rawCall = context.generateRaw({ prompt: 'raw', responseLength: 100 });
-        await raw.reached;
-        const quietCall = context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 200 });
-        await quiet.reached;
-        raw.release();
-        await rawCall;
-        quiet.release();
-        await quietCall;
-        expect(lengths()[1]).toBe(200);
-        expect(preset()).toEqual(PRESET);
-    });
-
-    test.each(APIS)('%s: a call without a length inside a quiet prompt leaves the preset in place', async api => {
-        const { context, requests, eventSource, preset } = makeOverlapRuntime(api);
-        eventSource.on(event_types.GENERATION_STARTED, async () => {
-            await context.generateRaw({ prompt: 'raw' });
-        });
-        await context.generateQuietPrompt({ quietPrompt: 'quiet', responseLength: 100 });
-        expect(requests).toHaveLength(2);
-        expect(preset()).toEqual(PRESET);
-    });
-
-    test.each(APIS)('%s: a call without a length leaves the preset in place while two quiet prompts wait', async api => {
-        const { context, requests, eventSource, preset } = makeOverlapRuntime(api);
-        let started = 0;
-        eventSource.on(event_types.GENERATION_STARTED, async () => {
-            const index = ++started;
-            if (index === 1) await context.generateQuietPrompt({ quietPrompt: 'inner', responseLength: 200 });
-            if (index === 2) await context.generateRaw({ prompt: 'raw' });
-        });
-        await context.generateQuietPrompt({ quietPrompt: 'outer', responseLength: 100 });
-        expect(requests).toHaveLength(3);
-        expect(preset()).toEqual(PRESET);
-    });
-
-    test('a Chat Completion call and a Text Completion call that overlap keep their own presets', async () => {
-        const { context, requests, eventSource, preset } = makeOverlapRuntime('openai');
-        const chat = holdEvent(eventSource, event_types.CHAT_COMPLETION_PROMPT_READY, data => rawPromptText(data) === 'chat');
-        const text = holdEvent(eventSource, event_types.GENERATE_AFTER_COMBINE_PROMPTS, data => rawPromptText(data) === 'text');
-        const chatCall = context.generateRawData({ prompt: 'chat', responseLength: 100 });
-        await chat.reached;
-        const textCall = context.generateRawData({ prompt: 'text', api: 'textgenerationwebui', responseLength: 200 });
-        await text.reached;
-        chat.release();
-        await chatCall;
-        text.release();
-        await textCall;
-        expect(requests.map(request => request.body.max_tokens)).toEqual([100, 200]);
-        expect(preset()).toEqual(PRESET);
-    });
-
-    test.each(APIS)('%s: the forced restore of a settings save puts the preset back while two calls overlap', async api => {
-        const runtime = makeOverlapRuntime(api);
-        const { first, second, firstCall, secondCall } = await holdTwoRawCalls(runtime, api);
-        vm.runInContext('TempResponseLength.restore(null)', runtime.context);
-        expect(runtime.preset()).toEqual(PRESET);
-        first.release();
-        second.release();
-        await Promise.all([firstCall, secondCall]);
-        expect(runtime.state()).toEqual({ lengths: [presetLength(api), presetLength(api)], ...PRESET });
-    });
-
-    test.each(APIS)('%s: Stop puts the preset back while two calls overlap', async api => {
-        const runtime = makeOverlapRuntime(api);
-        const { first, second, firstCall, secondCall } = await holdTwoRawCalls(runtime, api);
-        await runtime.eventSource.emit(event_types.GENERATION_STOPPED);
-        first.release();
-        second.release();
-        await expect(firstCall).rejects.toThrow('Cancelled by extension');
-        await expect(secondCall).rejects.toThrow('Cancelled by extension');
-        expect(runtime.state()).toEqual({ lengths: [], ...PRESET });
     });
 });

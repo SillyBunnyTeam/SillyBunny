@@ -1,25 +1,44 @@
-import fs from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+import { describe, expect, jest, test } from '@jest/globals';
 import { getDebouncedChatSaveAbortReason, getQueuedChatSaveAbortReason } from '../public/scripts/chat-save-guard.js';
+import { importExtensionsModule } from './util/extensions-module-harness.js';
 
 describe('debounced metadata save', () => {
     test('aborts when a chat load happens between scheduling and firing', async () => {
-        const extensionsSource = await fs.readFile(fileURLToPath(new URL('../public/scripts/extensions.js', import.meta.url)), 'utf8');
-        const scriptSource = await fs.readFile(fileURLToPath(new URL('../public/script.js', import.meta.url)), 'utf8');
-        const debouncedBody = extensionsSource.slice(
-            extensionsSource.indexOf('export function saveMetadataDebounced()'),
-            extensionsSource.indexOf('}', extensionsSource.indexOf('}, debounce_timeout.relaxed);')),
-        );
-
         // Reopening the same chat leaves group, character and chat id all unchanged while the
-        // messages are cleared, so only the generation distinguishes a loaded chat from a loading one.
-        expect(scriptSource).toContain('export function getChatGeneration()');
-        expect(debouncedBody).toContain('const generation = getChatGeneration();');
-        expect(debouncedBody).toContain('if (generation !== getChatGeneration()) {');
-        expect(debouncedBody.indexOf('const generation = getChatGeneration();'))
-            .toBeLessThan(debouncedBody.indexOf('saveMetadataTimeout = setTimeout'));
+        // messages are cleared, so only getChatGeneration() distinguishes a loaded chat from a loading one.
+        let generation = 1;
+        const saveChatConditional = jest.fn(async () => true);
+        const { extensions } = await importExtensionsModule({
+            script: {
+                getChatGeneration: () => generation,
+                saveChatConditional,
+                chat_metadata: { note_prompt: 'hello' },
+            },
+        });
+        extensions.setExtensionContextGetter(() => ({
+            saveMetadata: saveChatConditional,
+            saveChat: saveChatConditional,
+            chatId: 'chat-1',
+            characterId: 0,
+            groupId: null,
+            chatMetadata: { note_prompt: 'hello' },
+        }));
+        try {
+            // 1. When chat generation changes before the relaxed debounce fires, the save is aborted.
+            extensions.saveMetadataDebounced();
+            generation = 2;
+            await new Promise(resolve => setTimeout(resolve, 25));
+            expect(saveChatConditional).not.toHaveBeenCalled();
+
+            // 2. When chat generation stays unchanged, the debounced metadata save completes.
+            extensions.saveMetadataDebounced();
+            await new Promise(resolve => setTimeout(resolve, 25));
+            expect(saveChatConditional).toHaveBeenCalledTimes(1);
+        } finally {
+            extensions.cancelDebouncedMetadataSave();
+            extensions.setExtensionContextGetter(null);
+        }
     });
 });
 

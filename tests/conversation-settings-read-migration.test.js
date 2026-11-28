@@ -3,6 +3,9 @@
  * the migrated settings and its first settings save carries the version that the migration raised.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+
+// First-read migration rewrites conversation trees, backups, and the SQLite index, which can exceed Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';

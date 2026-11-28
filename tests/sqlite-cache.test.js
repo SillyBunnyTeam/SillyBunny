@@ -298,8 +298,9 @@ describe('sqlite cache helpers', () => {
     });
 
     test('getFileKey gives the absolute folder and the file name', () => {
+        const absoluteFolder = path.resolve(path.sep, 'data', 'chats');
         expect(getFileKey(path.join('relative', 'folder', '..', 'chat.jsonl'))).toEqual([path.resolve('relative'), 'chat.jsonl']);
-        expect(getFileKey(path.join(path.sep, 'data', 'chats', 'chat.jsonl'))).toEqual([path.join(path.sep, 'data', 'chats'), 'chat.jsonl']);
+        expect(getFileKey(path.join(absoluteFolder, 'chat.jsonl'))).toEqual([absoluteFolder, 'chat.jsonl']);
     });
 
     test('getFileStamp gives the size and the modification time in milliseconds', () => {

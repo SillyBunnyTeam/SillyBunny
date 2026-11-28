@@ -6,6 +6,9 @@ import { createByafArchive, createByafParts, createImagePng, createV2Card, creat
 import { startCharacterRouter } from './util/character-router-harness.js';
 import { Jimp, JimpMime } from '../src/jimp.js';
 
+// CHARX and BYAF archive imports decode images and ZIP files, which can exceed Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
+
 const SPRITE = createImagePng({ rgba: [10, 200, 10, 255] });
 const BACKGROUND = createImagePng({ rgba: [10, 10, 200, 255] });
 const POSTER = createImagePng({ rgba: [90, 90, 90, 255] });

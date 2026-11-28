@@ -1,41 +1,110 @@
-import { describe, expect, test } from '@jest/globals';
+import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import express from 'express';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInNewContext } from 'node:vm';
 
 import { CHAT_COMPLETION_SOURCES } from '../src/constants.js';
+import { setConfigFilePath } from '../src/util.js';
+import { importOpenAiModule } from './util/openai-harness.js';
 
-const readSource = (relativePath) => fs.readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), 'utf8');
+const { default: actualNodeFetch } = await import('node-fetch');
+const nodeFetchMock = jest.fn((url, options) => actualNodeFetch(url, options));
+await jest.unstable_mockModule('node-fetch', () => ({
+    default: nodeFetchMock,
+}));
 
-const indexSource = readSource('../public/index.html');
-const openAiSource = readSource('../public/scripts/openai.js').replace(/\r\n/g, '\n');
-const toolCallingSource = readSource('../public/scripts/tool-calling.js').replace(/\r\n/g, '\n');
-const chatCompletionsSource = readSource('../src/endpoints/backends/chat-completions.js');
+const { openai } = await importOpenAiModule({ mockToolCalling: false });
+const { ToolManager } = await import('../public/scripts/tool-calling.js');
+const indexSource = fs.readFileSync(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
 
-function loadGetReasoningEffort() {
-    const declarations = ['chat_completion_sources', 'reasoning_effort_types'].map(name =>
-        openAiSource.match(new RegExp(`export const ${name} = \\{[\\s\\S]*?\\n\\};`))[0].replace('export ', ''),
+async function resolveClientEffort(source, model, effort = 'none') {
+    const { generate_data } = await openai.createGenerationParameters(
+        {
+            ...openai.oai_settings,
+            chat_completion_source: source,
+            reasoning_effort: effort,
+        },
+        model,
+        'normal',
+        [{ role: 'user', content: 'Question' }],
     );
-    const effortSource = openAiSource.match(/function getReasoningEffort\([\s\S]*?\n\}/)[0];
-    const context = { model_list: [] };
-    runInNewContext([...declarations, effortSource].join('\n'), context);
-    return context.getReasoningEffort;
+    return generate_data.reasoning_effort;
 }
 
 describe('reasoning effort \'none\'', () => {
-    test('the client resolves \'none\' to a literal only for OpenAI-style sources on GPT-5.1+ models', () => {
+    /** @type {import('http').Server} */
+    let appServer;
+    let baseUrl;
+    let capturedBody;
+    const tempDirs = [];
+
+    beforeAll(async () => {
+        const configRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-effort-none-config-'));
+        const configPath = path.join(configRoot, 'config.yaml');
+        fs.copyFileSync(fileURLToPath(new URL('../default/config.yaml', import.meta.url)), configPath);
+        tempDirs.push(configRoot);
+        setConfigFilePath(configPath);
+
+        const { router: chatCompletionsRouter } = await import('../src/endpoints/backends/chat-completions.js');
+        const { SecretManager, SECRET_KEYS } = await import('../src/endpoints/secrets.js');
+        const userRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sillybunny-effort-none-user-'));
+        tempDirs.push(userRoot);
+        new SecretManager({ root: userRoot, backups: userRoot }).writeSecret(SECRET_KEYS.NANOGPT, 'nanogpt-test-key');
+
+        const app = express();
+        app.use(express.json());
+        app.use((req, _res, next) => {
+            req.user = { directories: { root: userRoot, backups: userRoot } };
+            next();
+        });
+        app.use('/api/backends/chat-completions', chatCompletionsRouter);
+
+        await new Promise((resolve) => {
+            appServer = app.listen(0, '127.0.0.1', resolve);
+        });
+        baseUrl = `http://127.0.0.1:${appServer.address().port}`;
+    });
+
+    beforeEach(() => {
+        capturedBody = undefined;
+        nodeFetchMock.mockReset();
+        nodeFetchMock.mockImplementation(async (_url, options) => {
+            capturedBody = JSON.parse(options?.body ?? '{}');
+            return new Response(JSON.stringify({
+                choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        });
+    });
+
+    afterAll(async () => {
+        if (appServer) {
+            await new Promise((resolve, reject) => appServer.close(error => error ? reject(error) : resolve()));
+        }
+        for (const dir of tempDirs.splice(0)) {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+        nodeFetchMock.mockImplementation((url, options) => actualNodeFetch(url, options));
+    });
+
+    test('the client resolves \'none\' to a literal only for OpenAI-style sources on GPT-5.1+ models', async () => {
         // GPT-5.1 and newer accept 'none' as a value that pins thinking off. Omitting the field
         // there lets the model pick its own default depth, which defeats picking None. Every
         // other source keeps omitting it, because endpoints that do not list the value reject it.
-        const getReasoningEffort = loadGetReasoningEffort();
-
-        const results = ['openai', 'openai_responses', 'azure_openai', 'custom', 'fireworks', 'openrouter'].flatMap(source =>
-            ['gpt-5', 'gpt-5.1', 'gpt-5.6', 'gpt-5.10', 'other-model'].map(model => ({
-                source,
-                model,
-                effort: getReasoningEffort({ chat_completion_source: source, reasoning_effort: 'none' }, model),
-            })),
-        );
+        const results = [];
+        for (const source of ['openai', 'openai_responses', 'azure_openai', 'custom', 'fireworks', 'openrouter']) {
+            for (const model of ['gpt-5', 'gpt-5.1', 'gpt-5.6', 'gpt-5.10', 'other-model']) {
+                results.push({
+                    source,
+                    model,
+                    effort: await resolveClientEffort(source, model, 'none'),
+                });
+            }
+        }
         expect(results.filter(result => result.effort === 'none')).toEqual(
             ['openai', 'openai_responses', 'azure_openai', 'custom'].flatMap(source =>
                 ['gpt-5.1', 'gpt-5.6', 'gpt-5.10'].map(model => ({ source, model, effort: 'none' })),
@@ -44,28 +113,25 @@ describe('reasoning effort \'none\'', () => {
         expect(results.every(result => result.effort === 'none' || result.effort === undefined)).toBe(true);
     });
 
-    test('None pins thinking off on GPT-6 Sol and Luna and stays unsent on Astra', () => {
-        const getReasoningEffort = loadGetReasoningEffort();
-
+    test('None pins thinking off on GPT-6 Sol and Luna and stays unsent on Astra', async () => {
         for (const source of ['openai', 'openai_responses', 'azure_openai', 'custom']) {
-            const settings = { chat_completion_source: source, reasoning_effort: 'none' };
-            expect(getReasoningEffort(settings, 'gpt-6-sol')).toBe('none');
-            expect(getReasoningEffort(settings, 'gpt-6-luna')).toBe('none');
-            expect(getReasoningEffort(settings, 'gpt-6-astra')).toBeUndefined();
+            expect(await resolveClientEffort(source, 'gpt-6-sol', 'none')).toBe('none');
+            expect(await resolveClientEffort(source, 'gpt-6-luna', 'none')).toBe('none');
+            expect(await resolveClientEffort(source, 'gpt-6-astra', 'none')).toBeUndefined();
         }
     });
 
     test('GPT-6 Sol and Luna get Chat Completions tools only with None, and Astra never does', () => {
         // SillyTavern opens this gate on Min because it sends Min as 'none'. SillyBunny sends Min as 'minimal', so None opens it here.
-        const toolSupport = toolCallingSource.match(/static isToolCallingSupported\([\s\S]*?\n {4}\}/)[0].replace('static ', 'function ');
-        const supportsTools = (source, model, reasoningEffort) => runInNewContext(`(${toolSupport})(settings, model)`, {
-            main_api: 'openai',
-            chat_completion_sources: CHAT_COMPLETION_SOURCES,
-            custom_prompt_post_processing_types: { NONE: 0 },
-            model_list: [],
+        const supportsTools = (source, model, reasoningEffort) => ToolManager.isToolCallingSupported(
+            {
+                chat_completion_source: source,
+                reasoning_effort: reasoningEffort,
+                function_calling: true,
+                custom_prompt_post_processing: openai.custom_prompt_post_processing_types.NONE,
+            },
             model,
-            settings: { chat_completion_source: source, reasoning_effort: reasoningEffort, function_calling: true, custom_prompt_post_processing: 0 },
-        });
+        );
 
         for (const source of [CHAT_COMPLETION_SOURCES.OPENAI, CHAT_COMPLETION_SOURCES.AZURE_OPENAI]) {
             for (const effort of ['auto', 'min', 'low', 'max']) {
@@ -79,11 +145,39 @@ describe('reasoning effort \'none\'', () => {
         }
     });
 
-    test('the NanoGPT handler forwards \'none\' untouched', () => {
+    test('the NanoGPT handler forwards \'none\' untouched and omits \'auto\'', async () => {
         // NanoGPT's documented ladder starts at none. Gating on a translation table made the
         // caller omit the reasoning key entirely, letting the model default to thinking.
-        expect(chatCompletionsSource).toContain('if (request.body.reasoning_effort && request.body.reasoning_effort !== \'auto\') {');
-        expect(chatCompletionsSource).toContain('bodyParams[\'reasoning\'] = { effort: toWireReasoningEffort(request.body.reasoning_effort) };');
+        const noneResponse = await fetch(`${baseUrl}/api/backends/chat-completions/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_completion_source: CHAT_COMPLETION_SOURCES.NANOGPT,
+                model: 'test-model',
+                stream: false,
+                max_tokens: 128,
+                messages: [{ role: 'user', content: 'Question' }],
+                reasoning_effort: 'none',
+            }),
+        });
+        expect(noneResponse.status).toBe(200);
+        expect(capturedBody.reasoning).toEqual({ effort: 'none' });
+
+        capturedBody = undefined;
+        const autoResponse = await fetch(`${baseUrl}/api/backends/chat-completions/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_completion_source: CHAT_COMPLETION_SOURCES.NANOGPT,
+                model: 'test-model',
+                stream: false,
+                max_tokens: 128,
+                messages: [{ role: 'user', content: 'Question' }],
+                reasoning_effort: 'auto',
+            }),
+        });
+        expect(autoResponse.status).toBe(200);
+        expect(Object.hasOwn(capturedBody, 'reasoning')).toBe(false);
     });
 
     test('the UI no longer promises that None is never sent', () => {

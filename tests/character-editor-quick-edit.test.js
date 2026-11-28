@@ -1,99 +1,93 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom assertions and static HTML contracts. */
+import { beforeEach, describe, expect, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import vm from 'node:vm';
+
+import { importPowerUserModule } from './util/power-user-harness.js';
+import { THEME_TEXT_REVISION } from '../public/scripts/sillybunny-theme-revisions.js';
+import { ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY } from '../public/scripts/mobile-streaming.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const powerUserSource = readFileSync(path.join(repoRoot, 'public', 'scripts', 'power-user.js'), 'utf8').replace(/\r\n/g, '\n');
 const indexHtml = readFileSync(path.join(repoRoot, 'public', 'index.html'), 'utf8');
 
-function getFunctionSource(name) {
-    const start = powerUserSource.indexOf(`function ${name}(`);
-    expect(start).toBeGreaterThanOrEqual(0);
+document.body.innerHTML = `
+    <div id="form_create"></div>
+    <button id="sb_character_editor_quick_edit" type="button"></button>
+    <input id="spoiler_free_mode" type="checkbox" />
+`;
 
-    const bodyStart = powerUserSource.indexOf('{', powerUserSource.indexOf(')', start));
-    let depth = 0;
-    for (let index = bodyStart; index < powerUserSource.length; index++) {
-        if (powerUserSource[index] === '{') depth++;
-        if (powerUserSource[index] === '}' && --depth === 0) {
-            return powerUserSource.slice(start, index + 1);
-        }
-    }
-    throw new Error(`Unterminated function ${name}`);
-}
+const { powerUser, mocks, runReady } = await importPowerUserModule();
+const initialDefaults = structuredClone(powerUser.power_user);
+await runReady();
 
-function createModeHarness({ quickEdit = false, spoilerFree = false } = {}) {
-    const classes = new Set();
-    const jqueryState = {};
-    const saves = [];
-    const context = {
-        power_user: { characterEditorQuickEdit: quickEdit, spoiler_free_mode: spoilerFree },
-        document: {
-            getElementById: (id) => id === 'form_create'
-                ? { classList: { toggle: (name, force) => (force ? classes.add(name) : classes.delete(name)) } }
-                : null,
-        },
-        $: (selector) => ({
-            prop: (key, value) => { jqueryState[`${selector}:${key}`] = value; },
-            attr: (key, value) => { jqueryState[`${selector}:${key}`] = value; },
-        }),
-        saveSettingsDebounced: () => saves.push(true),
-    };
-
-    vm.runInNewContext([
-        getFunctionSource('applyCharacterEditorQuickEdit'),
-        getFunctionSource('setCharacterEditorQuickEdit'),
-        getFunctionSource('applyCharacterEditorSpoilerFree'),
-        getFunctionSource('setCharacterEditorSpoilerFree'),
-        'globalThis.applyQuick = applyCharacterEditorQuickEdit; globalThis.setQuick = setCharacterEditorQuickEdit;',
-        'globalThis.applySpoiler = applyCharacterEditorSpoilerFree; globalThis.setSpoiler = setCharacterEditorSpoilerFree;',
-    ].join('\n'), context);
-
-    return { context, classes, jqueryState, saves };
-}
+const emptyData = { themes: [], context: [], instruct: [], sysprompt: [], reasoning: [] };
+// Pre-seed migration markers so loadPowerUserSettings tests isolate quick-edit/spoiler-free saves.
+const migratedBaseline = () => ({
+    ...structuredClone(initialDefaults),
+    sb_theme_text_revision: THEME_TEXT_REVISION,
+    [ANDROID_STREAMING_SETTINGS_INITIALIZED_KEY]: true,
+});
 
 describe('character editor quick edit', () => {
-    test('applying the stored preference syncs the sheet class and the toolbar button without saving', () => {
-        const { context, classes, jqueryState, saves } = createModeHarness({ quickEdit: true });
+    beforeEach(() => {
+        Object.assign(powerUser.power_user, structuredClone(initialDefaults));
+        document.getElementById('form_create').className = '';
+        $('#sb_character_editor_quick_edit').removeAttr('aria-pressed');
+        $('#spoiler_free_mode').prop('checked', false);
+        mocks.script.saveSettingsDebounced.mockClear();
+    });
 
-        context.applyQuick();
+    test('applying the stored preference syncs the sheet class and the toolbar button without saving', async () => {
+        await powerUser.loadPowerUserSettings(
+            { power_user: { ...migratedBaseline(), characterEditorQuickEdit: true, spoiler_free_mode: false } },
+            emptyData,
+        );
 
-        expect(classes.has('sb-editor-sheet--quick-edit')).toBe(true);
-        expect(jqueryState['#sb_character_editor_quick_edit:aria-pressed']).toBe('true');
-        expect(saves).toHaveLength(0);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--quick-edit')).toBe(true);
+        expect($('#sb_character_editor_quick_edit').attr('aria-pressed')).toBe('true');
+        expect(mocks.script.saveSettingsDebounced).not.toHaveBeenCalled();
     });
 
     test('quick edit does not touch the Spoiler Free Mode checkbox or class', () => {
-        const { context, classes, jqueryState } = createModeHarness({ quickEdit: true, spoilerFree: false });
+        powerUser.power_user.spoiler_free_mode = false;
+        powerUser.setCharacterEditorQuickEdit(true);
 
-        context.applyQuick();
-        context.setQuick(true);
-
-        expect(jqueryState['#spoiler_free_mode:checked']).toBeUndefined();
-        expect(classes.has('sb-editor-sheet--spoiler-free')).toBe(false);
-        expect(context.power_user.spoiler_free_mode).toBe(false);
+        expect($('#spoiler_free_mode').prop('checked')).toBe(false);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--spoiler-free')).toBe(false);
+        expect(powerUser.power_user.spoiler_free_mode).toBe(false);
     });
 
     test('setting quick edit normalizes the value, updates the sheet, and persists once', () => {
-        const { context, classes, jqueryState, saves } = createModeHarness({ quickEdit: true });
+        powerUser.power_user.characterEditorQuickEdit = true;
+        document.getElementById('form_create').classList.add('sb-editor-sheet--quick-edit');
 
-        context.setQuick(0);
+        powerUser.setCharacterEditorQuickEdit(0);
 
-        expect(context.power_user.characterEditorQuickEdit).toBe(false);
-        expect(classes.has('sb-editor-sheet--quick-edit')).toBe(false);
-        expect(jqueryState['#sb_character_editor_quick_edit:aria-pressed']).toBe('false');
-        expect(saves).toHaveLength(1);
+        expect(powerUser.power_user.characterEditorQuickEdit).toBe(false);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--quick-edit')).toBe(false);
+        expect($('#sb_character_editor_quick_edit').attr('aria-pressed')).toBe('false');
+        expect(mocks.script.saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
-    test('does not migrate spoiler_free_mode into quick edit', () => {
-        expect(powerUserSource).not.toMatch(/characterEditorQuickEdit = !!savedPowerUserSettings/);
-        expect(powerUserSource).not.toContain('savedPowerUserSettings.spoiler_free_mode');
-        expect(powerUserSource).toMatch(/^ {4}characterEditorQuickEdit: false,$/m);
+    test('defaults to false and does not migrate spoiler_free_mode into quick edit', async () => {
+        expect(initialDefaults.characterEditorQuickEdit).toBe(false);
+
+        await powerUser.loadPowerUserSettings(
+            { power_user: { spoiler_free_mode: true } },
+            emptyData,
+        );
+
+        expect(powerUser.power_user.spoiler_free_mode).toBe(true);
+        expect(powerUser.power_user.characterEditorQuickEdit).toBe(false);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--quick-edit')).toBe(false);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--spoiler-free')).toBe(true);
     });
 
     test('retires the spoiler-free sub-tab plumbing', () => {
-        expect(powerUserSource).not.toMatch(/function (switchSpoilerMode|peekSpoilerMode|setCharacterSpoilerFreeFieldsHidden)\(/);
+        expect(powerUser.switchSpoilerMode).toBeUndefined();
+        expect(powerUser.peekSpoilerMode).toBeUndefined();
         expect(indexHtml).not.toContain('id="spoiler_free_desc_button"');
         expect(indexHtml).not.toContain('id="sb_character_editor_subtabs"');
         expect(indexHtml).toContain('id="sb_character_editor_quick_edit"');
@@ -101,36 +95,50 @@ describe('character editor quick edit', () => {
 });
 
 describe('character editor spoiler free mode', () => {
-    test('is its own stored setting on the upstream key', () => {
-        expect(powerUserSource).toMatch(/^ {4}spoiler_free_mode: false,$/m);
+    beforeEach(() => {
+        Object.assign(powerUser.power_user, structuredClone(initialDefaults));
+        document.getElementById('form_create').className = '';
+        $('#sb_character_editor_quick_edit').removeAttr('aria-pressed');
+        $('#spoiler_free_mode').prop('checked', false);
+        mocks.script.saveSettingsDebounced.mockClear();
     });
 
-    test('applying the stored setting syncs the sheet class and the checkbox without saving', () => {
-        const { context, classes, jqueryState, saves } = createModeHarness({ spoilerFree: true });
+    test('is its own stored setting on the upstream key', () => {
+        expect(initialDefaults.spoiler_free_mode).toBe(false);
+    });
 
-        context.applySpoiler();
+    test('applying the stored setting syncs the sheet class and the checkbox without saving', async () => {
+        await powerUser.loadPowerUserSettings(
+            { power_user: { ...migratedBaseline(), spoiler_free_mode: true } },
+            emptyData,
+        );
 
-        expect(classes.has('sb-editor-sheet--spoiler-free')).toBe(true);
-        expect(jqueryState['#spoiler_free_mode:checked']).toBe(true);
-        expect(saves).toHaveLength(0);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--spoiler-free')).toBe(true);
+        expect($('#spoiler_free_mode').prop('checked')).toBe(true);
+        expect(mocks.script.saveSettingsDebounced).not.toHaveBeenCalled();
     });
 
     test('setting it writes spoiler_free_mode, persists once and leaves quick edit alone', () => {
-        const { context, classes, jqueryState, saves } = createModeHarness({ quickEdit: true });
+        powerUser.power_user.characterEditorQuickEdit = true;
 
-        context.setSpoiler(1);
+        powerUser.setCharacterEditorSpoilerFree(1);
 
-        expect(context.power_user.spoiler_free_mode).toBe(true);
-        expect(context.power_user.characterEditorQuickEdit).toBe(true);
-        expect(classes.has('sb-editor-sheet--spoiler-free')).toBe(true);
-        expect(classes.has('sb-editor-sheet--quick-edit')).toBe(false);
-        expect(jqueryState['#sb_character_editor_quick_edit:aria-pressed']).toBeUndefined();
-        expect(saves).toHaveLength(1);
+        expect(powerUser.power_user.spoiler_free_mode).toBe(true);
+        expect(powerUser.power_user.characterEditorQuickEdit).toBe(true);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--spoiler-free')).toBe(true);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--quick-edit')).toBe(false);
+        expect($('#sb_character_editor_quick_edit').attr('aria-pressed')).toBeUndefined();
+        expect(mocks.script.saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
     test('the Customize checkbox drives spoiler free mode and not quick edit', () => {
-        expect(powerUserSource).toMatch(/\$\('#spoiler_free_mode'\)\.on\('input', function \(\) \{\s*setCharacterEditorSpoilerFree\(/);
-        expect(powerUserSource).toMatch(/\n {4}applyCharacterEditorSpoilerFree\(\);/);
+        $('#spoiler_free_mode').prop('checked', true).trigger('input');
+
+        expect(powerUser.power_user.spoiler_free_mode).toBe(true);
+        expect(powerUser.power_user.characterEditorQuickEdit).toBe(false);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--spoiler-free')).toBe(true);
+        expect(document.getElementById('form_create').classList.contains('sb-editor-sheet--quick-edit')).toBe(false);
+        expect(mocks.script.saveSettingsDebounced).toHaveBeenCalledTimes(1);
     });
 
     test('the sheet offers one reveal row that is not a Quick Edit section', () => {

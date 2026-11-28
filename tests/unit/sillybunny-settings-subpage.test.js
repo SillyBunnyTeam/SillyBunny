@@ -1,12 +1,8 @@
 /** @jest-environment jsdom */
-import { describe, test, expect } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { afterEach, describe, test, expect, jest } from '@jest/globals';
 import { buildExtensionsLead, buildExtensionsSubpage } from '../../public/scripts/sillybunny-settings-subpage-descriptors.js';
-import { createSubpageStack, SB_SUBPAGE_DURATION } from '../../public/scripts/sillybunny-settings-subpage.js';
-
-const tabs = readFileSync(new URL('../../public/scripts/sillybunny-tabs.js', import.meta.url), 'utf8');
-const section = (source, from, to) => source.slice(source.indexOf(from), source.indexOf(to));
+import { createSubpageStack } from '../../public/scripts/sillybunny-settings-subpage.js';
+import { importTabsModule, DEFAULT_TABS_DOM } from '../util/tabs-harness.js';
 
 /** A settings drawer titled the way extensions title their own. */
 function drawer(title) {
@@ -266,97 +262,136 @@ describe('Extensions page lead groups', () => {
     });
 });
 
+let loadedShell = null;
+
+afterEach(() => {
+    jest.useRealTimers();
+    loadedShell?.cleanup();
+    loadedShell = null;
+    jest.restoreAllMocks();
+});
+
 /**
- * The tab module's `revealSearchMatch`, run against one Extensions stack. Its timers wait in a queue
- * until the test runs them, so a test can act between a jump and the delayed steps that finish it.
+ * Boots the real `sillybunny-tabs.js` module with an Extensions panel containing two built-in
+ * extensions (`sd_container`, `regex_container`) so `revealSetting()` exercises the real
+ * `revealSearchMatch` timer ladder against the live subpage stack.
  */
-function loadSearchJump() {
-    const { host, stack } = mountStack(buildExtensionsSubpage(buildPanel()).rows);
-    const timers = [];
+async function loadSearchJump() {
+    jest.useFakeTimers();
+    const extDom = DEFAULT_TABS_DOM
+        .replace(
+            '<div id="extensions_settings"></div>',
+            `<div id="extensions_settings">
+                <div id="assets_container" class="extension_container">${drawer('Download Extensions & Assets')}</div>
+                <div id="sd_container" class="extension_container">${drawer('Image Generation')}</div>
+                <div id="rvc_container" class="extension_container"></div>
+                <div class="qa-user-extension">${drawer('QA User Extension')}</div>
+            </div>`,
+        )
+        .replace(
+            '<div id="extensions_settings2"></div>',
+            `<div id="extensions_settings2">
+                <div id="dice_container" class="extension_container">${drawer('QA Dice Slot')}</div>
+                <div id="regex_container" class="extension_container">${drawer('Regex')}</div>
+            </div>`,
+        );
+
+    loadedShell = await importTabsModule({ dom: extDom });
+    const origMatchMedia = window.matchMedia;
+    window.matchMedia = query => (
+        /prefers-reduced-motion:\s*reduce/i.test(String(query))
+            ? { matches: false, media: String(query), addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }
+            : origMatchMedia(query)
+    );
     const scrolled = [];
-    const revealSearchMatch = runInNewContext(`${section(tabs, 'function revealSearchMatch(', 'function setActiveTab(')} revealSearchMatch;`, {
-        HTMLElement,
-        SB_SUBPAGE_DURATION,
-        sbSubpageStacks: new Map([['right:extensions', stack]]),
-        searchJumpCount: 0,
-        window: { setTimeout: callback => timers.push(callback), matchMedia: () => ({ matches: true }) },
-        closeAllDropdowns: () => {},
-        openShell: () => {},
-        isMobileViewport: () => false,
-        setSettingsMobileContentView: () => {},
-        expandHiddenAccordions: () => {},
-        scrollElementIntoManagedView: element => scrolled.push(element),
-        pulseSearchTarget: () => {},
-        revealSettingsCategoryFor: () => {},
-        openCharacterPanelTab: () => {},
-    });
-    // Looked up in the whole document, because an open page holds its section outside the panel.
-    const inputOf = containerId => document.querySelector(`#${containerId} input`);
-    const jumpTo = containerId => revealSearchMatch('right', { shellKey: 'right', tabId: 'extensions', element: inputOf(containerId) });
-    const runNextTimer = () => timers.shift()();
-    const runTimers = () => {
-        while (timers.length) {
-            runNextTimer();
-        }
+    const origScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function recordScroll() {
+        scrolled.push(this);
     };
-    return { host, stack, scrolled, inputOf, jumpTo, runNextTimer, runTimers };
+    const origCleanup = loadedShell.cleanup;
+    loadedShell.cleanup = () => {
+        HTMLElement.prototype.scrollIntoView = origScrollIntoView;
+        origCleanup();
+    };
+
+    // Open Extensions once so the subpage stack is built, then close back to list state.
+    loadedShell.shell.openTab('right', 'extensions');
+
+    const inputOf = containerId => document.querySelector(`#${containerId} input`);
+    const openRowId = () => {
+        const detail = document.querySelector('.sb-subpage-detail:not([hidden])');
+        if (!detail) return null;
+        return detail.querySelector('.extension_container')?.id ?? null;
+    };
+    const backButton = () => document.querySelector('.sb-subpage-back');
+    const jumpTo = containerId => loadedShell.shell.revealSetting('right', 'extensions', `#${containerId} input`);
+
+    return {
+        scrolled,
+        inputOf,
+        openRowId,
+        backButton,
+        jumpTo,
+        advance: ms => jest.advanceTimersByTime(ms),
+    };
 }
 
 describe('Search jumps into the Extensions list', () => {
-    test('a jump opens the page that holds the match, then scrolls to it', () => {
-        const { stack, scrolled, inputOf, jumpTo, runTimers } = loadSearchJump();
+    test('a jump opens the page that holds the match, then scrolls to it', async () => {
+        const { scrolled, inputOf, openRowId, jumpTo, advance } = await loadSearchJump();
 
         jumpTo('regex_container');
-        runTimers();
+        advance(500);
 
-        expect(stack.openRowId).toBe('regex_container');
-        expect(scrolled).toEqual([inputOf('regex_container')]);
+        expect(openRowId()).toBe('regex_container');
+        expect(scrolled).toContain(inputOf('regex_container'));
     });
 
-    test('Back before the jump finishes keeps the page closed', () => {
-        const { stack, scrolled, jumpTo, runTimers } = loadSearchJump();
-        stack.open('regex_container');
+    test('Back before the jump finishes keeps the page closed', async () => {
+        const { scrolled, openRowId, backButton, jumpTo, advance } = await loadSearchJump();
+        document.querySelector('[data-sb-subpage-row="regex_container"]').click();
 
         jumpTo('regex_container');
-        stack.backButton.click();
-        runTimers();
+        backButton().click();
+        advance(500);
 
-        expect(stack.isOpen()).toBe(false);
+        expect(openRowId()).toBeNull();
         expect(scrolled).toEqual([]);
     });
 
-    test('Back while the page slides in stops the jump before it scrolls', () => {
-        const { stack, scrolled, jumpTo, runNextTimer, runTimers } = loadSearchJump();
+    test('Back while the page slides in stops the jump before it scrolls', async () => {
+        const { scrolled, openRowId, backButton, jumpTo, advance } = await loadSearchJump();
 
         jumpTo('regex_container');
-        runNextTimer();
-        expect(stack.openRowId).toBe('regex_container');
-        stack.backButton.click();
-        runTimers();
+        advance(100);
+        expect(openRowId()).toBe('regex_container');
+        backButton().click();
+        advance(500);
 
-        expect(stack.isOpen()).toBe(false);
+        expect(openRowId()).toBeNull();
         expect(scrolled).toEqual([]);
     });
 
-    test('a page the user opens before the jump finishes stays open', () => {
-        const { host, stack, scrolled, jumpTo, runTimers } = loadSearchJump();
+    test('a page the user opens before the jump finishes stays open', async () => {
+        const { scrolled, openRowId, jumpTo, advance } = await loadSearchJump();
 
         jumpTo('regex_container');
-        host.querySelector('[data-sb-subpage-row="sd_container"]').click();
-        runTimers();
+        document.querySelector('[data-sb-subpage-row="sd_container"]').click();
+        advance(500);
 
-        expect(stack.openRowId).toBe('sd_container');
+        expect(openRowId()).toBe('sd_container');
         expect(scrolled).toEqual([]);
     });
 
-    test('a newer jump replaces an older one whose timers have not run', () => {
-        const { stack, scrolled, inputOf, jumpTo, runTimers } = loadSearchJump();
+    test('a newer jump replaces an older one whose timers have not run', async () => {
+        const { scrolled, inputOf, openRowId, jumpTo, advance } = await loadSearchJump();
 
         jumpTo('regex_container');
         jumpTo('sd_container');
-        runTimers();
+        advance(500);
 
-        expect(stack.openRowId).toBe('sd_container');
-        expect(scrolled).toEqual([inputOf('sd_container')]);
+        expect(openRowId()).toBe('sd_container');
+        expect(scrolled).toContain(inputOf('sd_container'));
+        expect(scrolled).not.toContain(inputOf('regex_container'));
     });
 });

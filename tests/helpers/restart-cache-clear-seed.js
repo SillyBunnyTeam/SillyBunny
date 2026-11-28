@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { SERVER_LIST_VARIABLE } from '../e2e-servers.js';
 
 /*
  * After a server start, the first load of every browser clears the caches twice and reloads each time
@@ -65,14 +66,14 @@ export function buildClearedCookies({ bootCookie, progressCookie, passes }, { bo
 }
 
 /**
- * Playwright `globalSetup`: writes the storage state of a browser whose restart cache clear is done.
- * A server that does not ask for a clear gets an empty state.
- * @param {import('@playwright/test').FullConfig} config
+ * Fetches the restart-cache-clear cookies for a server start and verifies that sending them stops the clear.
+ * Returns an empty list when the server does not ask for a cache clear.
+ * @param {string} baseURL
+ * @returns {Promise<import('@playwright/test').Cookie[]>}
  */
-export default async function seedRestartCacheClear(config) {
-    const baseURL = config.projects[0].use.baseURL;
-    const statePath = restartCacheClearStatePath(baseURL);
-    const index = await fetch(`${baseURL}/`);
+export async function fetchRestartCacheClearCookies(baseURL) {
+    // Do not follow a redirect to /login: restartCacheClear runs on `/` before the login redirect.
+    const index = await fetch(`${baseURL}/`, { redirect: 'manual' });
     const setCookies = index.headers.getSetCookie();
 
     const script = await fetch(new URL(PAGE_SCRIPT_PATH, baseURL));
@@ -82,17 +83,47 @@ export default async function seedRestartCacheClear(config) {
     const names = parseRestartCacheClear(await script.text());
     const bootLine = setCookies.find(line => line.startsWith(`${names.bootCookie}=`));
     if (!bootLine) {
-        fs.writeFileSync(statePath, JSON.stringify({ cookies: [], origins: [] }));
-        return;
+        return [];
     }
 
     const cookies = buildClearedCookies(names, {
         bootId: decodeURIComponent(bootLine.split(';')[0].slice(names.bootCookie.length + 1)),
         hostname: new URL(baseURL).hostname,
     });
-    const seeded = await fetch(`${baseURL}/`, { headers: { cookie: cookies.map(({ name, value }) => `${name}=${value}`).join('; ') } });
+    const seeded = await fetch(`${baseURL}/`, {
+        redirect: 'manual',
+        headers: { cookie: cookies.map(({ name, value }) => `${name}=${value}`).join('; ') },
+    });
     if (seeded.headers.has('clear-site-data')) {
         throw new Error('The server still asks for a cache clear after the cookies were seeded, so the cookie format no longer matches restartCacheClear.js.');
     }
+    return cookies;
+}
+
+/**
+ * Writes the cleared restart-cache-clear storage state for one server URL.
+ * A server that does not ask for a clear gets an empty state.
+ * @param {string} baseURL
+ * @returns {Promise<string>} Path to the written storage state file
+ */
+export async function seedRestartCacheClearForUrl(baseURL) {
+    const statePath = restartCacheClearStatePath(baseURL);
+    const cookies = await fetchRestartCacheClearCookies(baseURL);
     fs.writeFileSync(statePath, JSON.stringify({ cookies, origins: [] }));
+    return statePath;
+}
+
+/**
+ * Playwright `globalSetup`: writes the storage state of a browser whose restart cache clear is done.
+ * Seeds every server in `SILLYBUNNY_TEST_SERVER_LIST` when set, otherwise the project's base URL.
+ * @param {import('@playwright/test').FullConfig} config
+ */
+export default async function seedRestartCacheClear(config) {
+    const serverList = process.env[SERVER_LIST_VARIABLE];
+    if (serverList) {
+        const servers = JSON.parse(serverList);
+        await Promise.all(servers.map(({ url }) => seedRestartCacheClearForUrl(url)));
+        return;
+    }
+    return seedRestartCacheClearForUrl(config.projects[0].use.baseURL);
 }

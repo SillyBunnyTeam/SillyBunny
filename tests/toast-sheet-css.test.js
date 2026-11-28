@@ -1,8 +1,13 @@
-import { describe, expect, test } from '@jest/globals';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest CSS contracts and jsdom behavioural assertions. */
+import { describe, expect, jest, test } from '@jest/globals';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BUTTON_SELECTOR, TOAST_BUTTON_CLASS, TOAST_BUTTON_HOLDER_CLASS } from '../public/scripts/sillybunny-toast-form.js';
+import { BUTTON_SELECTOR, TOAST_BUTTON_CLASS, TOAST_BUTTON_HOLDER_CLASS, classifyToast, markButtons } from '../public/scripts/sillybunny-toast-form.js';
+import { ACTIONS_CLASS, arrangeButtons } from '../public/scripts/sillybunny-toast-notification.js';
+
+const resolvePublic = (relativePath) => fileURLToPath(new URL(`../public/${relativePath}`, import.meta.url));
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (...segments) => readFileSync(path.join(repoRoot, ...segments), 'utf8');
@@ -92,7 +97,29 @@ describe('the toast layer', () => {
 
     test('the buttons that the notification row styles are the buttons that the classifier counts, and the script finds the same ones', () => {
         expect(themeCss).toContain(`${NOTIFICATION} .sb-toast-actions > :is(${BUTTONS.join(', ')}):focus-visible`);
-        expect(read('public', 'scripts', 'sillybunny-toast-notification.js')).toContain('BUTTON_SELECTOR');
+
+        // Build one element for every selector in BUTTON_SELECTOR and verify arrangeButtons wraps every one.
+        const message = document.createElement('div');
+        message.className = 'toast-message';
+        const roleButton = document.createElement('span');
+        roleButton.setAttribute('role', 'button');
+        const controls = [
+            Object.assign(document.createElement('button'), { textContent: 'Button' }),
+            roleButton,
+            Object.assign(document.createElement('input'), { type: 'button', value: 'InputBtn' }),
+            Object.assign(document.createElement('input'), { type: 'submit', value: 'Submit' }),
+            Object.assign(document.createElement('input'), { type: 'reset', value: 'Reset' }),
+            Object.assign(document.createElement('div'), { className: 'menu_button', textContent: 'Menu' }),
+        ];
+        expect(controls).toHaveLength(BUTTONS.length);
+        message.append(...controls);
+
+        arrangeButtons(message);
+
+        const row = message.querySelector(`.${ACTIONS_CLASS}`);
+        expect(row).not.toBeNull();
+        expect([...row.children]).toEqual(controls);
+        expect(controls.every(control => control.matches(BUTTON_SELECTOR))).toBe(true);
     });
 
     test('the button of a notification has a 44px target on a coarse pointer, drawn as 32px', () => {
@@ -158,8 +185,24 @@ describe('the toast layer', () => {
     test('no surface styles a toast or a button inside one: the two forms own every container and button', () => {
         expect(read('public', 'css', 'sillybunny-home.css')).not.toMatch(/sbHomeToast/);
         expect(read('public', 'css', 'sillybunny-tabs.css')).not.toMatch(/sb-draft-toast|#toast-container|#sb-toast-overlay/);
-        const scripts = ['sillybunny-toast-motion.js', 'sillybunny-toast-form.js', 'sillybunny-toast-notification.js'];
-        expect(scripts.filter(script => read('public', 'scripts', script).includes('sb-toast--action'))).toEqual([]);
+
+        for (const buttonCount of [0, 1, 2]) {
+            const toast = document.createElement('div');
+            const message = document.createElement('div');
+            message.className = 'toast-message';
+            message.textContent = 'Notice';
+            for (let i = 0; i < buttonCount; i += 1) {
+                const btn = document.createElement('button');
+                btn.textContent = `Action ${i}`;
+                message.append(btn);
+            }
+            toast.append(message);
+            classifyToast(toast, { timeOut: 5000 });
+            markButtons(toast);
+            arrangeButtons(message);
+            expect(toast.classList.contains('sb-toast--action')).toBe(false);
+            expect(toast.querySelector('.sb-toast--action')).toBeNull();
+        }
     });
 
     test('a toast has libadwaita\'s metrics: 12px margin and 24px at its edge, 6px padding and 12px at the start, 6px between parts', () => {
@@ -303,10 +346,69 @@ describe('bottom sheets and the safe area', () => {
         expect(rule).toContain('max(6px, env(safe-area-inset-right, 0px))');
     });
 
-    test('the two clamps that keep a floating layer off the screen edge read the insets', () => {
+    test('the two clamps that keep a floating layer off the screen edge read the insets', async () => {
         expect(themeCss).toContain('--sb-safe-area-left: env(safe-area-inset-left, 0px)');
         expect(themeCss).toContain('--sb-safe-area-right: env(safe-area-inset-right, 0px)');
-        expect(read('public', 'scripts', 'sillybunny-message-actions.js')).toContain('safeAreaInset(\'right\')');
+
+        jest.useFakeTimers();
+        await jest.unstable_mockModule(resolvePublic('scripts/events.js'), () => ({
+            eventSource: { on: () => {} },
+            event_types: { CHARACTER_MESSAGE_RENDERED: 'a', USER_MESSAGE_RENDERED: 'b', MESSAGE_UPDATED: 'c', MESSAGE_EDITED: 'd', MESSAGE_SWIPED: 'e', CHAT_CHANGED: 'f' },
+        }));
+        await jest.unstable_mockModule(resolvePublic('scripts/i18n.js'), () => ({ translate: text => text }));
+        await jest.unstable_mockModule(resolvePublic('scripts/sillybunny-action-menu.js'), () => ({
+            closeActionMenu: () => {},
+            getActionMenuTrigger: () => null,
+            isActionMenuOpen: () => false,
+            openActionMenu: () => {},
+        }));
+        await jest.unstable_mockModule(resolvePublic('scripts/sillybunny-conversation/message-menu.js'), () => ({
+            initializeConversationMessageMenu: () => {},
+        }));
+        await jest.unstable_mockModule(resolvePublic('scripts/sillybunny-motion.js'), () => ({
+            animateIn: () => null,
+            MOTION_FAST: 120,
+            MOTION_EASE_OUT_QUAD: 'ease-out',
+            stopMotion: () => {},
+        }));
+
+        const { initializeMessageActions } = await import('../public/scripts/sillybunny-message-actions.js');
+        document.body.innerHTML = '<div id="chat"><div class="mes"><div class="ch_name"><div class="mes_buttons"><button class="mes_button" title="Edit">Edit</button></div></div></div></div>';
+        const button = document.querySelector('.mes_button');
+        button.getBoundingClientRect = () => ({ left: 380, right: 400, top: 80, bottom: 110, width: 20, height: 30 });
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
+        const realGetComputedStyle = window.getComputedStyle.bind(window);
+        const computedSpy = jest.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+            if (element === document.documentElement) {
+                return {
+                    getPropertyValue: (prop) => (prop === '--sb-safe-area-right' ? '40px' : prop === '--sb-safe-area-left' ? '20px' : ''),
+                };
+            }
+            return realGetComputedStyle(element);
+        });
+
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = () => ({ matches: true, addEventListener: () => {} });
+        try {
+            initializeMessageActions();
+            const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+            Object.defineProperties(down, { pointerType: { value: 'touch' }, pointerId: { value: 1 }, clientX: { value: 390 }, clientY: { value: 95 } });
+            button.dispatchEvent(down);
+
+            // Provide a realistic tooltip box width before the long-press timer fires.
+            jest.advanceTimersByTime(450);
+            const tooltip = document.getElementById('sb-press-tooltip');
+            expect(tooltip).not.toBeNull();
+            expect(tooltip.hidden).toBe(false);
+            // With right safe-area inset 40px on a 400px viewport and width 0, tooltip clamps at 360px instead of 392px.
+            expect(tooltip.style.left).toBe('360px');
+        } finally {
+            window.matchMedia = originalMatchMedia;
+            computedSpy.mockRestore();
+            jest.useRealTimers();
+            document.body.innerHTML = '';
+        }
+
         expect(read('public', 'scripts', 'sillybunny-tabs.js')).toContain('--sb-safe-area-right');
     });
 });

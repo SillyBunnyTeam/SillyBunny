@@ -15,7 +15,6 @@ const {
 } = await import('../public/scripts/extensions/in-chat-agents/regex-scripts.js');
 
 const templateDir = new URL('../public/scripts/extensions/in-chat-agents/templates/', import.meta.url);
-const catalogueSourceUrl = new URL('../public/scripts/extensions/in-chat-agents/catalogue.js', import.meta.url);
 const sourceFilenames = [
     'achievements-tracker.json',
     'actor-interview-companion.json',
@@ -69,15 +68,9 @@ function readTemplate(filename) {
     return JSON.parse(fs.readFileSync(new URL(filename, templateDir), 'utf8'));
 }
 
-function readCatalogueSetBody(name) {
-    const source = fs.readFileSync(catalogueSourceUrl, 'utf8');
-    const match = source.match(new RegExp(`${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`));
-
-    if (!match) {
-        throw new Error(`Missing set definition: ${name}`);
-    }
-
-    return match[1];
+async function importCatalogue() {
+    await importAgentStore();
+    return await import('../public/scripts/extensions/in-chat-agents/catalogue.js');
 }
 
 async function importAgentStore() {
@@ -263,6 +256,7 @@ describe('in-chat agent bundled templates', () => {
 
     test('keeps Level Up and User-based Stats connected by default', () => {
         const catalog = readTemplate('index.json');
+        expect(catalog.length).toBeGreaterThan(0);
 
         expectLevelUpStatsDefaults(
             findCatalogTemplate(catalog, 'tpl-level-up-companion'),
@@ -276,6 +270,7 @@ describe('in-chat agent bundled templates', () => {
 
     test('keeps existing stat update instructions on User-based Stats', () => {
         const catalog = readTemplate('index.json');
+        expect(catalog.length).toBeGreaterThan(0);
 
         expectExistingStatsSectionOnStatsTemplate(
             findCatalogTemplate(catalog, 'tpl-level-up-companion'),
@@ -648,13 +643,19 @@ describe('in-chat agent bundled templates', () => {
         expect(agent).not.toHaveProperty('subcategory');
     });
 
-    test('hides Pathfinder from the in-chat template browser without purging the internal agent', () => {
-        const pathfinderTemplateId = '\'tpl-pathfinder\'';
+    test('hides Pathfinder from the in-chat template browser without purging the internal agent', async () => {
+        const catalogue = await importCatalogue();
+        const catalog = readTemplate('index.json');
+        const pathfinderTemplateId = 'tpl-pathfinder';
 
-        expect(readCatalogueSetBody('HIDDEN_TEMPLATE_BROWSER_IDS')).toContain(pathfinderTemplateId);
-        expect(readCatalogueSetBody('INTERNAL_BUNDLED_TEMPLATE_IDS')).toContain(pathfinderTemplateId);
-        expect(readCatalogueSetBody('REMOVED_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
-        expect(readCatalogueSetBody('DEFAULT_BUNDLED_TEMPLATE_IDS')).not.toContain(pathfinderTemplateId);
+        expect(catalogue.HIDDEN_TEMPLATE_BROWSER_IDS.has(pathfinderTemplateId)).toBe(true);
+        expect(catalogue.INTERNAL_BUNDLED_TEMPLATE_IDS.has(pathfinderTemplateId)).toBe(true);
+        expect(catalogue.REMOVED_BUNDLED_TEMPLATE_IDS.has(pathfinderTemplateId)).toBe(false);
+        expect(catalogue.DEFAULT_BUNDLED_TEMPLATE_IDS.has(pathfinderTemplateId)).toBe(false);
+
+        const entries = catalogue.listAgentEntries({ agents: [], templates: catalog });
+        expect(entries.some(entry => entry.template?.id === pathfinderTemplateId)).toBe(false);
+        expect(catalogue.getDefaultBundledTemplates(catalog).some(template => template.id === pathfinderTemplateId)).toBe(true);
     });
 
     test('keeps every catalog template category renderable in the browser', async () => {
@@ -669,15 +670,17 @@ describe('in-chat agent bundled templates', () => {
         expect(unknownCategories).toEqual([]);
     });
 
-    test('keeps bundled content metadata such as HTML Toggle after retiring the install browser', () => {
+    test('keeps bundled content metadata such as HTML Toggle after retiring the install browser', async () => {
         const catalog = readTemplate('index.json');
         const htmlToggle = findCatalogTemplate(catalog, 'tpl-html-toggle');
 
         expect(htmlToggle.category).toBe('content');
         expect(htmlToggle.subcategory).toBe('behaviour');
 
-        const source = fs.readFileSync(new URL('../public/scripts/extensions/in-chat-agents/index.js', import.meta.url), 'utf8');
-        expect(source).not.toContain('function openTemplateBrowser(');
-        expect(source).toContain('categories: AGENT_CATEGORIES');
+        const catalogue = await importCatalogue();
+        const entries = catalogue.listAgentEntries({ agents: [], templates: catalog });
+        const htmlEntry = entries.find(entry => entry.template?.id === 'tpl-html-toggle');
+        expect(htmlEntry).toBeDefined();
+        expect(htmlEntry.agent.category).toBe('content');
     });
 });

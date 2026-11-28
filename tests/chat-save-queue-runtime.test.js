@@ -1,143 +1,170 @@
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { parse } from 'acorn';
-import { describe, expect, jest, test } from '@jest/globals';
-import { getQueuedChatSaveAbortReason } from '../public/scripts/chat-save-guard.js';
-import { getChatBackupSaveOptions } from '../public/scripts/chat-backup-sequence.js';
-import { randomUUID } from 'node:crypto';
+/** @jest-environment jsdom */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { importScriptModule } from './util/script-harness.js';
 
-const source = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
-const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
+let activeRuntime = null;
 
-function createSaveRuntime() {
-    let releaseQueue;
-    const runtime = vm.createContext({
-        console: { trace: jest.fn(), warn: jest.fn(), error: jest.fn() },
-        structuredClone,
-        chatSaveQueue: new Promise(resolve => { releaseQueue = resolve; }),
-        chat: [{ mes: 'queued message', extra: { value: 'queued' } }],
-        chat_metadata: { integrity: 'original' },
-        chatGeneration: 1,
-        this_chid: 0,
-        selected_group: null,
-        characters: [{ name: 'Bunny', avatar: 'bunny.png', chat: 'original-chat' }],
-        name2: 'Bunny', neutralCharacterName: 'Assistant',
-        getQueuedChatSaveAbortReason,
-        isTemporaryChat: jest.fn(() => false),
-        getChatBackupSaveOptions, uuidv4: randomUUID,
-        getCurrentChatId: () => runtime.characters[runtime.this_chid]?.chat,
-        cloneChatSavePayload: structuredClone,
-        setChatSaveActive: jest.fn(),
-        getQueuedChatIntegrityKey: () => 'key',
-        applyQueuedChatIntegrity: jest.fn(),
-        rememberQueuedChatIntegrity: jest.fn(),
-        compressRequest: async request => request,
-        getRequestHeaders: () => ({}),
-        fetch: jest.fn(async () => ({ ok: true, json: async () => ({ integrity: 'saved' }) })),
-        toastr: { error: jest.fn() },
-        t: strings => strings.join(''),
+afterEach(() => {
+    activeRuntime?.cleanup();
+    activeRuntime = null;
+    jest.restoreAllMocks();
+});
+
+async function createSaveRuntime({ holdFirstFetch = false, isTemporary = false } = {}) {
+    let releaseFirstFetch = null;
+    const isTemporaryChat = jest.fn(() => isTemporary);
+    const fetchMock = jest.fn(async (url, init) => {
+        if (String(url) === '/api/chats/save' && holdFirstFetch && fetchMock.mock.calls.filter(([u]) => u === '/api/chats/save').length === 1) {
+            await new Promise(resolve => { releaseFirstFetch = resolve; });
+        }
+        return {
+            ok: true,
+            status: 200,
+            json: async () => ({ integrity: 'saved' }),
+            text: async () => '',
+        };
     });
-    for (const name of ['saveChat', 'saveChatImmediately']) {
-        const node = ast.body.map(node => node.declaration ?? node).find(node => node.id?.name === name);
-        vm.runInContext(source.slice(node.start, node.end), runtime);
+
+    const loaded = await importScriptModule({
+        fetch: fetchMock,
+        keepReal: ['scripts/chat-save-guard.js', 'scripts/chat-backup-sequence.js'],
+        mocks: {
+            'scripts/sillybunny-temporary-chat-state.js': {
+                getStoredChatName: () => '',
+                isTemporaryChat,
+                isTemporaryChatWith: () => false,
+                reassertReservedChatName: jest.fn(),
+            },
+        },
+    });
+    activeRuntime = loaded;
+
+    const { script } = loaded;
+    script.characters.push({ name: 'Bunny', avatar: 'bunny.png', chat: 'original-chat' });
+    script.setCharacterId(0);
+    script.setCharacterName('Bunny');
+    script.chat.push({ mes: 'queued message', extra: { value: 'queued' } });
+    script.updateChatMetadata({ integrity: 'original' }, true);
+
+    let blocker = null;
+    if (holdFirstFetch) {
+        blocker = script.saveChat({ chatName: 'blocker-chat' });
+        for (let i = 0; i < 20 && !releaseFirstFetch; i++) {
+            await Promise.resolve();
+        }
     }
-    return { runtime, releaseQueue };
+
+    const saveCalls = () => fetchMock.mock.calls.filter(([u]) => u === '/api/chats/save');
+
+    return {
+        script,
+        fetchMock,
+        saveCalls,
+        toastr: loaded.toastr,
+        isTemporaryChat,
+        async releaseQueue() {
+            releaseFirstFetch?.();
+            await blocker;
+        },
+    };
 }
 
 describe('real chat save queue', () => {
     test('snapshots legacy positional saves before they wait in the queue', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        const save = runtime.saveChat('copy-chat', { label: 'queued metadata' }, 0, false, true);
-        runtime.chat[0].mes = 'later message';
-        runtime.chat[0].extra.value = 'later';
-        runtime.chat_metadata.label = 'later metadata';
-        releaseQueue();
+        const { script, saveCalls, releaseQueue } = await createSaveRuntime({ holdFirstFetch: true });
+        jest.spyOn(console, 'trace').mockImplementation(() => {});
+        const save = script.saveChat('copy-chat', { label: 'queued metadata' }, 0, false, true);
+        script.chat[0].mes = 'later message';
+        script.chat[0].extra.value = 'later';
+        script.chat_metadata.label = 'later metadata';
+        await releaseQueue();
 
         await expect(save).resolves.toBe(true);
-        const payload = JSON.parse(runtime.fetch.mock.calls[0][1].body);
+        const payload = JSON.parse(saveCalls()[1][1].body);
         expect(payload).toMatchObject({
-            file_name: 'copy-chat', avatar_url: 'bunny.png',
+            file_name: 'copy-chat',
+            avatar_url: 'bunny.png',
             chat: [{ chat_metadata: { label: 'queued metadata' } }, { mes: 'queued message', extra: { value: 'queued' } }],
         });
     });
 
     test('legacy callers can omit the filename and save the active chat', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        const save = runtime.saveChat(undefined, { label: 'legacy' });
-        releaseQueue();
+        const { script, saveCalls, releaseQueue } = await createSaveRuntime({ holdFirstFetch: true });
+        jest.spyOn(console, 'trace').mockImplementation(() => {});
+        const save = script.saveChat(undefined, { label: 'legacy' });
+        await releaseQueue();
+
         await expect(save).resolves.toBe(true);
-        expect(JSON.parse(runtime.fetch.mock.calls[0][1].body).file_name).toBe('original-chat');
+        expect(JSON.parse(saveCalls()[1][1].body).file_name).toBe('original-chat');
     });
 
     test('invalidates legacy positional saves after a swipe or chat reload', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        const save = runtime.saveChat('original-chat', {}, undefined, false, true);
-        runtime.chatGeneration++;
-        releaseQueue();
+        const { script, saveCalls, releaseQueue } = await createSaveRuntime({ holdFirstFetch: true });
+        jest.spyOn(console, 'trace').mockImplementation(() => {});
+        const save = script.saveChat('original-chat', {}, undefined, false, true);
+        await script.clearChat({ clearData: true });
+        await releaseQueue();
+
         await expect(save).resolves.toBe(false);
-        expect(runtime.fetch).not.toHaveBeenCalled();
+        expect(saveCalls()).toHaveLength(1);
     });
 
     test('posts /api/chats/save once for each save of the open chat', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        releaseQueue();
+        const { script, saveCalls } = await createSaveRuntime();
 
-        await expect(runtime.saveChat()).resolves.toBe(true);
-        expect(runtime.fetch).toHaveBeenCalledTimes(1);
-        expect(runtime.fetch.mock.calls[0][0]).toBe('/api/chats/save');
-        await expect(runtime.saveChat()).resolves.toBe(true);
-        expect(runtime.fetch).toHaveBeenCalledTimes(2);
-        expect(JSON.parse(runtime.fetch.mock.calls[1][1].body)).toMatchObject({ file_name: 'original-chat', avatar_url: 'bunny.png' });
+        await expect(script.saveChat()).resolves.toBe(true);
+        expect(saveCalls()).toHaveLength(1);
+        expect(saveCalls()[0][0]).toBe('/api/chats/save');
+        await expect(script.saveChat()).resolves.toBe(true);
+        expect(saveCalls()).toHaveLength(2);
+        expect(JSON.parse(saveCalls()[1][1].body)).toMatchObject({ file_name: 'original-chat', avatar_url: 'bunny.png' });
     });
 
     test('declines to save a chat with no character and no file name, without a request', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        runtime.this_chid = undefined;
-        runtime.name2 = runtime.neutralCharacterName;
-        releaseQueue();
+        const { script, saveCalls } = await createSaveRuntime();
+        script.setCharacterId(undefined);
+        script.setCharacterName('Assistant');
 
-        await expect(runtime.saveChat()).resolves.toBe(false);
-        expect(runtime.fetch).not.toHaveBeenCalled();
+        await expect(script.saveChat()).resolves.toBe(false);
+        expect(saveCalls()).toHaveLength(0);
     });
 
     test('declines to save a character chat that has no file name, without a request', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        runtime.characters[0].chat = '';
-        releaseQueue();
+        const { script, saveCalls } = await createSaveRuntime();
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        script.characters[0].chat = '';
 
-        await expect(runtime.saveChat()).resolves.toBe(false);
-        expect(runtime.fetch).not.toHaveBeenCalled();
-        expect(runtime.console.warn).toHaveBeenCalledWith('saveChat called without chat_name and no chat file found');
+        await expect(script.saveChat()).resolves.toBe(false);
+        expect(saveCalls()).toHaveLength(0);
+        expect(warnSpy).toHaveBeenCalledWith('saveChat called without chat_name and no chat file found');
     });
 
     test('writes nothing for a temporary chat, whatever file name the save names', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        runtime.isTemporaryChat.mockReturnValue(true);
-        releaseQueue();
+        const { script, saveCalls, toastr } = await createSaveRuntime({ isTemporary: true });
 
-        await expect(runtime.saveChat()).resolves.toBe(false);
-        await expect(runtime.saveChat({ chatName: 'copy-chat', withMetadata: {}, throwOnError: true })).resolves.toBe(false);
-        expect(runtime.fetch).not.toHaveBeenCalled();
-        expect(runtime.toastr.error).not.toHaveBeenCalled();
+        await expect(script.saveChat()).resolves.toBe(false);
+        await expect(script.saveChat({ chatName: 'copy-chat', withMetadata: {}, throwOnError: true })).resolves.toBe(false);
+        expect(saveCalls()).toHaveLength(0);
+        expect(toastr.error).not.toHaveBeenCalled();
     });
 
     test('saves again once the chat is no longer temporary', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        runtime.isTemporaryChat.mockReturnValueOnce(true);
-        releaseQueue();
+        const { script, saveCalls, isTemporaryChat } = await createSaveRuntime();
+        isTemporaryChat.mockReturnValueOnce(true);
 
-        await expect(runtime.saveChat()).resolves.toBe(false);
-        await expect(runtime.saveChat()).resolves.toBe(true);
-        expect(runtime.fetch).toHaveBeenCalledTimes(1);
+        await expect(script.saveChat()).resolves.toBe(false);
+        await expect(script.saveChat()).resolves.toBe(true);
+        expect(saveCalls()).toHaveLength(1);
     });
 
     test('invalidates object saves after a character switch without writing a new file', async () => {
-        const { runtime, releaseQueue } = createSaveRuntime();
-        const save = runtime.saveChat();
-        runtime.characters.push({ name: 'Other', avatar: 'other.png', chat: 'other-chat' });
-        runtime.this_chid = 1;
-        releaseQueue();
+        const { script, saveCalls, releaseQueue } = await createSaveRuntime({ holdFirstFetch: true });
+        const save = script.saveChat();
+        script.characters.push({ name: 'Other', avatar: 'other.png', chat: 'other-chat' });
+        script.setCharacterId(1);
+        await releaseQueue();
+
         await expect(save).resolves.toBe(false);
-        expect(runtime.fetch).not.toHaveBeenCalled();
+        expect(saveCalls()).toHaveLength(1);
     });
 });

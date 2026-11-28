@@ -33,6 +33,18 @@ describe('frontend module identity', () => {
         expect(indexHtml).not.toMatch(/(?:src|href)="script\.js\?/);
     });
 
+    test('modulepreload and module script tags in index.html use bare URLs without cache-busting queries', () => {
+        const versionedModulePreloads = [...indexHtml.matchAll(/<link\b[^>]*rel="modulepreload"[^>]*href="([^"]+\?[^"]*)"/g)]
+            .map(match => match[1]);
+        const versionedModuleScripts = [...indexHtml.matchAll(/<script\b[^>]*type="module"[^>]*src="([^"]+\?[^"]*)"/g)]
+            .map(match => match[1]);
+
+        expect(versionedModulePreloads).toEqual([]);
+        expect(versionedModuleScripts).toEqual([]);
+        expect(indexHtml).toContain('<link rel="modulepreload" href="scripts/sillybunny-tabs.js">');
+        expect(indexHtml).toContain('<script type="module" src="scripts/sillybunny-tabs.js"></script>');
+    });
+
     test('cache-busted module tags are never bare-imported elsewhere', () => {
         const versionedModuleSrcs = [...indexHtml.matchAll(/<script type="module" src="([^"]+)\?[^"]*">/g)]
             .map(match => match[1]);

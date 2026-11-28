@@ -1,0 +1,217 @@
+[
+    {
+        "name": "run shorthand",
+        "script": "/:myqr",
+        "expected": { "tree": { "executors": [{ "name": ":", "command": "run", "unnamed": ["myqr"] }] } }
+    },
+    {
+        "name": "run shorthand with named arguments",
+        "script": "/:myqr a=1 b=\"x y\"",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": ":",
+                        "command": "run",
+                        "named": [{ "name": "a", "value": "1" }, { "name": "b", "value": "x y" }],
+                        "unnamed": ["myqr"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "run shorthand with a quoted name",
+        "script": "/:\"my set.qr\" k=v",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": ":",
+                        "command": "run",
+                        "named": [{ "name": "k", "value": "v" }],
+                        "unnamed": ["my set.qr"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "run shorthand followed by a command",
+        "script": "/:myqr | /stp-plain x",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": ":", "command": "run", "unnamed": ["myqr"] },
+                    { "name": "stp-plain", "unnamed": ["x"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "run shorthand with a closure argument",
+        "script": "/:myqr key={: /stp-plain x :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": ":",
+                        "command": "run",
+                        "named": [
+                            {
+                                "name": "key",
+                                "value": {
+                                    "closure": {
+                                        "rawText": " /stp-plain x ",
+                                        "executors": [{ "name": "stp-plain", "unnamed": ["x"] }]
+                                    }
+                                }
+                            }
+                        ],
+                        "unnamed": ["myqr"]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "run shorthand inside a closure",
+        "script": "/stp-plain {: /:inner :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /:inner ",
+                                    "executors": [{ "name": ":", "command": "run", "unnamed": ["inner"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "break",
+        "script": "/break",
+        "expected": { "tree": { "executors": [{ "name": "break", "kind": "break" }] } }
+    },
+    {
+        "name": "break with a value",
+        "script": "/break done",
+        "expected": { "tree": { "executors": [{ "name": "break", "kind": "break", "unnamed": ["done"] }] } }
+    },
+    {
+        "name": "break followed by a pipe",
+        "script": "/break | /stp-plain x",
+        "expected": {
+            "tree": { "executors": [{ "name": "break", "kind": "break" }, { "name": "stp-plain", "unnamed": ["x"] }] }
+        }
+    },
+    {
+        "name": "break glued to a pipe",
+        "script": "/break|/stp-plain x",
+        "expected": {
+            "tree": { "executors": [{ "name": "break", "kind": "break" }, { "name": "stp-plain", "unnamed": ["x"] }] }
+        }
+    },
+    {
+        "name": "break with a value and a pipe",
+        "script": "/break done | /stp-plain x",
+        "expected": {
+            "tree": {
+                "executors": [
+                    { "name": "break", "kind": "break", "unnamed": ["done"] },
+                    { "name": "stp-plain", "unnamed": ["x"] }
+                ]
+            }
+        }
+    },
+    {
+        "name": "break inside a closure",
+        "script": "/stp-plain {: /break stop :}",
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /break stop ",
+                                    "executors": [{ "name": "break", "kind": "break", "unnamed": ["stop"] }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "break needs a word boundary",
+        "script": "/breakfast",
+        "verify": false,
+        "expected": { "tree": { "executors": [{ "name": "breakfast", "command": null }] } }
+    },
+    {
+        "name": "breakpoint is skipped without a debug controller",
+        "script": "/breakpoint | /stp-plain x",
+        "expected": { "tree": { "executors": [{ "name": "stp-plain", "unnamed": ["x"] }] } }
+    },
+    {
+        "name": "breakpoint is kept with a debug controller",
+        "script": "/breakpoint | /stp-plain x",
+        "debug": true,
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "breakpoint", "kind": "breakpoint" }, { "name": "stp-plain", "unnamed": ["x"] }]
+            }
+        }
+    },
+    {
+        "name": "breakpoint inside a closure with a debug controller",
+        "script": "/stp-plain {: /breakpoint | /stp-plain x :}",
+        "debug": true,
+        "expected": {
+            "tree": {
+                "executors": [
+                    {
+                        "name": "stp-plain",
+                        "unnamed": [
+                            {
+                                "closure": {
+                                    "rawText": " /breakpoint | /stp-plain x ",
+                                    "executors": [
+                                        { "name": "breakpoint", "kind": "breakpoint" },
+                                        { "name": "stp-plain", "unnamed": ["x"] }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    {
+        "name": "breakpoint without a pipe is a plain command",
+        "script": "/breakpoint",
+        "debug": true,
+        "expected": { "tree": { "executors": [{ "name": "breakpoint" }] } }
+    },
+    {
+        "name": "breakpoint with spaces before the pipe",
+        "script": "/breakpoint   | /stp-plain x",
+        "debug": true,
+        "expected": {
+            "tree": {
+                "executors": [{ "name": "breakpoint", "kind": "breakpoint" }, { "name": "stp-plain", "unnamed": ["x"] }]
+            }
+        }
+    }
+]

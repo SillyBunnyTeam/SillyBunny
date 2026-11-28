@@ -1,13 +1,20 @@
+/* global globalThis */
 import { afterAll, beforeAll, describe, expect, jest, test } from '@jest/globals';
 import express from 'express';
+import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { setConfigFilePath } from '../src/util.js';
+import { canCreateFileSymlinks } from './util/platform-capabilities.js';
+
+const describeWithFileSymlinks = canCreateFileSymlinks() ? describe : describe.skip;
 
 setConfigFilePath(fileURLToPath(new URL('../default/config.yaml', import.meta.url)));
+
+const pub = relative => fileURLToPath(new URL(`../public/${relative}`, import.meta.url));
 
 const {
     isCanonicalChatBackupName,
@@ -57,21 +64,124 @@ describe('chat backup route hardening', () => {
         expect(isCanonicalChatBackupName(null)).toBe(false);
     });
 
-    test('keeps the backups drawer visible and recoverable while loading', () => {
-        const source = fs.readFileSync(new URL('../public/scripts/chat-backups.js', import.meta.url), 'utf8');
-        const loadingIndex = source.indexOf('replaceChildren(this.renderListMessage(t`Loading chat…`))');
-        const requestIndex = source.indexOf('fetchBackupApi(\'/api/backups/chat/get\'');
+    test('keeps the backups drawer visible and recoverable while loading', async () => {
+        const dom = new JSDOM('<!doctype html><html><body><div id="select_chat_popup"><input id="select_chat_search"><div id="select_chat_div"></div></div></body></html>');
+        const previousGlobals = {
+            window: globalThis.window,
+            document: globalThis.document,
+            HTMLElement: globalThis.HTMLElement,
+            Node: globalThis.Node,
+            Event: globalThis.Event,
+            toastr: globalThis.toastr,
+        };
+        Object.assign(globalThis, {
+            window: dom.window,
+            document: dom.window.document,
+            HTMLElement: dom.window.HTMLElement,
+            Node: dom.window.Node,
+            Event: dom.window.Event,
+            toastr: { info: jest.fn(), success: jest.fn(), warning: jest.fn(), error: jest.fn() },
+        });
+        const refreshCsrfToken = jest.fn(async () => 'fresh-csrf');
+        const fetchSpy = jest.spyOn(globalThis, 'fetch');
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            jest.resetModules();
+            await jest.unstable_mockModule(pub('scripts/i18n.js'), () => ({
+                t: (strings, ...values) => strings.reduce((out, part, idx) => out + part + (values[idx] ?? ''), ''),
+            }));
+            await jest.unstable_mockModule(pub('scripts/popup.js'), () => ({
+                callGenericPopup: jest.fn(async () => null),
+                Popup: { show: { confirm: jest.fn(async () => false) } },
+                POPUP_RESULT: { AFFIRMATIVE: 1, NEGATIVE: 0 },
+                POPUP_TYPE: { TEXT: 1 },
+            }));
+            await jest.unstable_mockModule(pub('scripts/utils.js'), () => ({
+                clamp: (value, min, max) => Math.min(Math.max(value, min), max),
+                escapeHtml: value => String(value ?? ''),
+                getFileExtension: file => String(file?.name ?? '').split('.').pop(),
+                sortMoments: () => 0,
+                timestampToMoment: () => ({ isValid: () => true, valueOf: () => 0, format: () => 'Jan 1, 2026' }),
+            }));
+            await jest.unstable_mockModule(pub('script.js'), () => ({
+                displayPastChats: jest.fn(async () => {}),
+                getRequestHeaders: jest.fn(() => ({ 'Content-Type': 'application/json' })),
+                importCharacterChat: jest.fn(async () => []),
+                refreshCsrfToken,
+            }));
+            await jest.unstable_mockModule(pub('scripts/group-chats.js'), () => ({
+                importGroupChat: jest.fn(async () => []),
+            }));
 
-        expect(source).toContain('import { fetchWithCsrfRetry } from \'./csrf-token-refresh.js\';');
-        expect(source).toContain('refreshCsrfToken');
-        expect(loadingIndex).toBeGreaterThan(-1);
-        expect(requestIndex).toBeGreaterThan(loadingIndex);
-        expect(source).toContain('t`Could not load chat data. Try reloading the page.`');
-        expect(source).toContain('error?.name === \'AbortError\' || signal.aborted');
-        expect(source).toContain('button.type = \'button\';');
-        expect(source).toContain('button.setAttribute(\'aria-expanded\', \'false\');');
-        expect(source).toContain('button.setAttribute(\'aria-controls\', BACKUPS_LIST_ID);');
-        expect(source).toContain('backup.chat_items !== undefined && backup.chat_items !== null');
+            const { addChatBackupsBrowser } = await import('../public/scripts/chat-backups.js');
+            addChatBackupsBrowser();
+
+            const button = document.querySelector('[aria-controls="chat_backups_list"]');
+            const list = document.getElementById('chat_backups_list');
+            expect(button).not.toBeNull();
+            expect(button.type).toBe('button');
+            expect(button.getAttribute('aria-expanded')).toBe('false');
+            expect(button.getAttribute('aria-controls')).toBe('chat_backups_list');
+
+            // 1. Shows loading text before the request settles, retries once on 403 CSRF, and renders items without chat_items.
+            const pendingFetch = Promise.withResolvers();
+            fetchSpy
+                .mockImplementationOnce(() => pendingFetch.promise)
+                .mockResolvedValueOnce(new Response(JSON.stringify([
+                    { file_name: 'chat_a.jsonl', file_size: '1 KB', mtime: 1000 },
+                    { file_name: 'chat_b.jsonl', file_size: '2 KB', mtime: 2000, chat_items: 5 },
+                ]), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+            button.click();
+            expect(button.getAttribute('aria-expanded')).toBe('true');
+            expect(list.textContent).toContain('Loading chat…');
+            await Promise.resolve();
+            expect(fetchSpy).toHaveBeenCalledWith('/api/backups/chat/get', expect.objectContaining({ method: 'POST' }));
+
+            pendingFetch.resolve(new Response('Invalid CSRF token', { status: 403 }));
+            for (let i = 0; i < 20 && !list.querySelector('.chatBackupsListItem'); i++) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+            expect(refreshCsrfToken).toHaveBeenCalledTimes(1);
+            const infos = [...list.querySelectorAll('.chatBackupsListItemInfo')].map(el => el.textContent);
+            expect(infos.some(text => text.includes('1 KB') && !text.includes('undefined') && !text.includes('💬'))).toBe(true);
+            expect(infos.some(text => text.includes('5 💬'))).toBe(true);
+
+            // 2. Closing while loading aborts silently without showing an error message.
+            button.click(); // close
+            const abortableFetch = new Promise((_resolve, reject) => {
+                fetchSpy.mockImplementationOnce((_url, init) => new Promise((_res, rej) => {
+                    init.signal.addEventListener('abort', () => {
+                        const err = new Error('Aborted');
+                        err.name = 'AbortError';
+                        rej(err);
+                        reject(err);
+                    });
+                }));
+            });
+            button.click(); // open
+            await Promise.resolve();
+            button.click(); // close while loading -> triggers abort
+            await abortableFetch.catch(() => {});
+            await new Promise(resolve => setTimeout(resolve, 20));
+            expect(list.textContent).not.toContain('Could not load chat data');
+
+            // 3. A failed fetch shows the recovery message.
+            fetchSpy.mockRejectedValueOnce(new Error('Network down'));
+            button.click();
+            for (let i = 0; i < 20 && !list.textContent.includes('Could not load chat data'); i++) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+            expect(list.textContent).toContain('Could not load chat data. Try reloading the page.');
+        } finally {
+            consoleErrorSpy.mockRestore();
+            fetchSpy.mockRestore();
+            dom.window.close();
+            for (const [key, value] of Object.entries(previousGlobals)) {
+                if (value === undefined) delete globalThis[key];
+                else globalThis[key] = value;
+            }
+        }
     });
 
     test('lists corrupt, empty, large, and unreadable regular backups without reading their contents', async () => {
@@ -83,7 +193,6 @@ describe('chat backup route hardening', () => {
         fs.writeFileSync(path.join(backupDirectory, 'chat_wrong.txt'), 'ignored');
         fs.writeFileSync(path.join(backupDirectory, 'settings.jsonl'), 'ignored');
         fs.mkdirSync(path.join(backupDirectory, 'chat_directory.jsonl'));
-        fs.symlinkSync(path.join(backupDirectory, 'chat_corrupt.jsonl'), path.join(backupDirectory, 'chat_link.jsonl'));
 
         const readStreamSpy = jest.spyOn(fs, 'createReadStream');
         try {
@@ -128,13 +237,12 @@ describe('chat backup route hardening', () => {
         }
     });
 
-    test('download and delete reject aliases, unrelated files, directories, and symlinks', async () => {
+    test('download and delete reject aliases, unrelated files, and directories', async () => {
         const outsidePath = path.join(outsideDirectory, 'chat_outside.jsonl');
         const sanitizedTarget = path.join(backupDirectory, 'chat_bad.jsonl');
         fs.writeFileSync(outsidePath, 'outside');
         fs.writeFileSync(sanitizedTarget, 'inside');
         fs.mkdirSync(path.join(backupDirectory, 'chat_not_file.jsonl'));
-        fs.symlinkSync(outsidePath, path.join(backupDirectory, 'chat_outside_link.jsonl'));
 
         const rejectedNames = [
             '../chat_outside.jsonl',
@@ -142,7 +250,6 @@ describe('chat backup route hardening', () => {
             'chat_bad.txt',
             'settings.jsonl',
             'chat_not_file.jsonl',
-            'chat_outside_link.jsonl',
         ];
 
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -159,6 +266,34 @@ describe('chat backup route hardening', () => {
 
         expect(fs.readFileSync(outsidePath, 'utf8')).toBe('outside');
         expect(fs.readFileSync(sanitizedTarget, 'utf8')).toBe('inside');
+    });
+
+    describeWithFileSymlinks('when file symbolic links can be created', () => {
+        test('omits symlinked backups from listings and rejects them on download and delete', async () => {
+            const outsidePath = path.join(outsideDirectory, 'chat_outside_symlink.jsonl');
+            const insideLink = path.join(backupDirectory, 'chat_link.jsonl');
+            const outsideLink = path.join(backupDirectory, 'chat_outside_link.jsonl');
+            fs.writeFileSync(outsidePath, 'outside');
+            fs.symlinkSync(path.join(backupDirectory, 'chat_corrupt.jsonl'), insideLink);
+            fs.symlinkSync(outsidePath, outsideLink);
+
+            const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                const backups = await listChatBackupModels(backupDirectory);
+                expect(backups.some(backup => backup.file_name === 'chat_link.jsonl')).toBe(false);
+                expect(backups.some(backup => backup.file_name === 'chat_outside_link.jsonl')).toBe(false);
+
+                for (const endpoint of ['download', 'delete']) {
+                    const response = await postBackupRequest(endpoint, 'chat_outside_link.jsonl');
+                    expect(response.status).toBe(400);
+                }
+                expect(fs.readFileSync(outsidePath, 'utf8')).toBe('outside');
+            } finally {
+                warnSpy.mockRestore();
+                fs.rmSync(insideLink, { force: true });
+                fs.rmSync(outsideLink, { force: true });
+            }
+        });
     });
 
     test('download and delete operate on regular scoped backups', async () => {

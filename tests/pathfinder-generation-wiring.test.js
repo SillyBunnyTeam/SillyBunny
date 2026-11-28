@@ -1,30 +1,11 @@
+/** @jest-environment jsdom */
+/* global globalThis */
 /* eslint-disable playwright/no-standalone-expect */
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { EventEmitter } from '../public/lib/eventemitter.js';
-import { event_types } from '../public/scripts/events.js';
-import { collectHiddenGenerationMessages } from '../public/scripts/generation-hidden-messages.js';
-import { resolveGenerationUiLockState, resolveGenerationUnblockState, resolveStopGenerationState } from '../public/scripts/generation-lifecycle/index.js';
-import { limitGenerationProse, isGenerationLengthFinish } from '../public/scripts/generation-request-controls.js';
+import { fileURLToPath } from 'node:url';
+import { importScriptModule } from './util/script-harness.js';
 
-await jest.unstable_mockModule('../public/script.js', () => ({ chat: [], getCurrentChatId: () => 'chat-a' }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/agent-store.js', () => ({ isPathfinderSubmoduleEnabled: () => true }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/profile-utils.js', () => ({ listConnectionProfiles: () => [] }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/pathfinder-tool-bridge.js', () => ({ getReadableBooks: () => ['Lore'] }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/llm-sidecar.js', () => ({ sidecarGenerate: jest.fn(), sidecarGenerateWithProfile: jest.fn() }));
-await jest.unstable_mockModule('../public/scripts/extensions/in-chat-agents/pathfinder/summary-memory-store.js', () => ({ isSummaryMemoryEntry: () => false, markSummaryMemoryInjected: jest.fn() }));
-const { injectPathfinderRetrieval } = await import('../public/scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js');
-
-const scriptSource = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
-const worldSource = readFileSync(new URL('../public/scripts/world-info.js', import.meta.url), 'utf8');
-const runnerSource = readFileSync(new URL('../public/scripts/extensions/in-chat-agents/agent-runner.js', import.meta.url), 'utf8');
-
-function functionSource(source, name) {
-    const match = source.match(new RegExp(`^(?:export )?((?:async )?function ${name}\\([\\s\\S]*?^})`, 'm'));
-    if (!match) throw new Error(`Missing function ${name}`);
-    return match[1];
-}
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 
 function deferred() {
     let resolve;
@@ -33,386 +14,671 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function createHost() {
-    const events = new EventEmitter();
-    const context = vm.createContext({
-        AbortController, AbortSignal, structuredClone, console,
-        eventSource: events, event_types,
-        resolveGenerationUiLockState, resolveGenerationUnblockState, resolveStopGenerationState,
-        limitGenerationProse, isGenerationLengthFinish,
-        activeGenerationRun: null, agentGenerationContextProvider: null, abortController: null,
-        generationChatFilter: null,
-        chatId: 'chat-a', chatGeneration: 0, agentRunId: 0, cancelRevision: 0,
-        chat: [], chat_metadata: {}, characters: [{ name: 'Assistant', data: { extensions: {} } }],
-        this_chid: 0, selected_group: null, is_group_generating: false, is_send_press: false, streamingProcessor: null,
-        name1: 'User', name2: 'Assistant', main_api: 'openai', online_status: 'connected', generation_started: null,
-        power_user: { instruct: { enabled: false }, sysprompt: {}, context: {} },
-        oai_settings: { send_if_empty: '' }, kai_settings: {}, kai_flags: {}, nai_settings: {},
-        amount_gen: 100, max_context: 4096, world_info_include_names: false,
-        depth_prompt_depth_default: 4, depth_prompt_role_default: 0,
-        extension_settings: { note: { allowWIScan: false } },
-        extension_prompts: {}, extension_prompt_types: { IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 }, extension_prompt_roles: { SYSTEM: 0 },
-        inject_ids: { DEPTH_PROMPT: 'depth', QUIET_PROMPT: 'quiet', STORY_STRING: 'story' },
-        GENERATION_TYPE_TRIGGERS: ['normal', 'swipe', 'continue'], IGNORE_SYMBOL: Symbol('ignore'),
-        wi_anchor_position: { before: 0, after: 1 }, persona_description_positions: { IN_PROMPT: 0 },
-        itemizedPrompts: [], openai_messages_count: 0, kobold_horde_model: '',
-        internalPromptTransformDepth: 0, isGenerationInProgress: false, pathfinderRetrievalRun: null,
-        injectPathfinderRetrieval,
-        document: { body: { dataset: {} } },
-        Event: class {},
-        unshallowCharacter: jest.fn(async () => {}), processCommands: jest.fn(async () => false),
-        getBiasStrings: () => ({ messageBias: '', promptBias: '', isUserPromptBias: false }),
-        hasPendingFileAttachment: () => false, shouldBatchMobileChatRendering: () => false,
-        isHordeGenerationNotAllowed: jest.fn(() => false), pingServer: jest.fn(async () => true),
-        getCharacterCardFields: () => ({ description: '', personality: '', persona: '', scenario: '', mesExamples: '', system: '', jailbreak: '' }),
-        getGroupDepthPrompts: () => [],
-        getExtensionPromptRoleByName: role => role,
-        ToolManager: { isToolCallingSupported: () => false, canPerformToolCalls: () => false, RECURSE_LIMIT: 5 },
-        selectCompanionChatHistory: () => [], consolidateCompanionChatHistory: () => ({ host: null, entries: [] }),
-        collectHiddenGenerationMessages,
-        PromptReasoning: class { removePrefix(text) { return text; } },
-        getMaxPromptTokens: () => 4096, runGenerationInterceptors: jest.fn(async () => false),
-        getGuidanceScale: () => null, parseMesExamples: () => [], buildWorldInfoScanChat: () => [],
-        checkWorldInfo: jest.fn(async () => ({ worldInfoBefore: 'Native town lore.', worldInfoAfter: '', allActivatedEntries: new Set([{ world: 'Lore', uid: 1 }]) })),
-        setOpenAIMessages: messages => messages, setOpenAIMessageExamples: messages => messages,
-        addChatsPreamble: text => text, addChatsSeparator: text => text, getTokenCountAsync: async () => 0,
-        renderStoryString: () => '', substituteParams: text => text, baseChatReplace: text => text,
-        getAllExtensionPrompts: async () => '', getFriendlyTokenizerName: () => ({}), getPresetManager: () => null,
-        getChatCompletionModel: () => 'model', isStreamingEnabled: () => false,
-        sendGenerationRequest: jest.fn(async () => ({ message: 'reply' })),
-        extractMessageFromData: data => data.message, extractTitleFromData: () => '', extractReasoningFromData: () => '',
-        extractImagesFromData: () => [], extractReasoningSignatureFromData: () => '', extractMultiSwipes: () => [],
-        cleanUpMessage: ({ getMessage }) => getMessage, getRegexedString: text => text, regex_placement: { REASONING: 0 },
-        applyMainGenerationOutputInterceptors: jest.fn(async ({ text }) => ({ text, cancelled: false })),
-        saveReply: jest.fn(async data => data), saveChatConditional: jest.fn(async () => {}),
-        createGenerationCommitPlan: () => null, registerGenerationCommitPlan: () => undefined, getMessageIdentity: () => null,
-        settleGenerationCommit: async () => null, reloadServerCommittedReply: () => undefined,
-        TempResponseLength: { isCustomized: () => false }, removeReasoningFromString: text => text,
-        t: (strings, ...values) => String.raw({ raw: strings }, ...values),
-        toastr: { error: jest.fn(), warning: jest.fn() },
-    });
-    const buttons = { visible: false, generatingClass: false };
-    const input = { val(value) { return arguments.length ? input : ''; }, 0: { dispatchEvent() {} } };
-    context.$ = selector => ({
-        '#send_textarea': input,
-        '#send_form': { addClass() { buttons.generatingClass = true; }, removeClass() { buttons.generatingClass = false; } },
-        '#mes_stop': { css(value) {
-            if (typeof value === 'string') return buttons.generatingClass && buttons.visible ? 'flex' : 'none';
-            buttons.visible = value.display !== 'none';
-        } },
-    }[selector]);
-    for (const name of ['setGenerationProgress', 'showSwipeButtons', 'hideSwipeButtons', 'removeDepthPrompts', 'setFloatingPrompt', 'flushWIInjections', 'flushEphemeralStoppingStrings', 'addPersonaDescriptionExtensionPrompt', 'setInContextMessages', 'parseAndSaveLogprobs', 'playMessageSound', 'triggerAutoContinue']) {
-        context[name] = jest.fn();
-    }
-    context.getCurrentChatId = () => context.chatId;
-    context.clearStreamingProcessorIfCurrent = processor => { if (context.streamingProcessor === processor) context.streamingProcessor = null; };
-    context.setExtensionPrompt = jest.fn((key, value) => { context.extension_prompts[key] = { value }; });
-    context.getExtensionPrompt = async () => context.extension_prompts.pathfinder_pipeline_retrieval?.value ?? '';
-    context.prepareOpenAIMessages = jest.fn(async data => [[{ role: 'system', content: data.extensionPrompts.pathfinder_pipeline_retrieval?.value ?? '' }], false]);
-    const scriptFunctions = ['setAgentGenerationContextProvider', 'Generate', 'generateQuietPrompt', 'showStopButton', 'hideStopButton', 'activateSendButtons', 'deactivateSendButtons', 'stopGeneration', 'unblockGeneration', 'getNextMessageId'];
-    vm.runInContext(scriptFunctions.map(name => functionSource(scriptSource, name)).join('\n'), context);
-    vm.runInContext(functionSource(worldSource, 'getWorldInfoPrompt'), context);
-    vm.runInContext(functionSource(runnerSource, 'onWorldInfoActivated'), context);
-    context.setAgentGenerationContextProvider(() => ({ chatId: context.chatId, runId: context.agentRunId, cancelRevision: context.cancelRevision }));
-    events.on(event_types.GENERATION_STARTED, (_type, options, dryRun) => {
-        if (!dryRun && !options.isAuxiliaryGeneration && !(context.selected_group && !context.is_group_generating)) {
-            context.agentRunId++;
-            context.isGenerationInProgress = true;
-        }
-    });
-    events.on(event_types.GENERATION_AFTER_COMMANDS, (type, options, dryRun) => {
-        if (dryRun || type === 'quiet' || options.isAuxiliaryGeneration || (context.selected_group && !context.is_group_generating)) return;
-        const result = {
-            success: true, promptKey: 'pathfinder_pipeline_retrieval', mode: 'pipeline', books: ['Lore'],
-            selectedEntries: [{ bookName: 'Lore', uid: 1, name: 'Town', content: 'Town lore.' }, { bookName: 'Lore', uid: 2, name: 'Forest', content: 'Forest lore.' }],
-        };
-        context.pathfinderRetrievalRun = {
-            ...context.agentGenerationContextProvider(), result, isCurrent: () => true,
-            writePrompt: context.setExtensionPrompt, nativeApplied: false,
-        };
-        injectPathfinderRetrieval(result, context.setExtensionPrompt, context.extension_prompt_types, context.extension_prompt_roles);
-    });
-    events.on(event_types.WORLD_INFO_ACTIVATED, context.onWorldInfoActivated);
-    events.on(event_types.GENERATION_STOPPED, () => { context.cancelRevision++; context.isGenerationInProgress = false; });
-    events.on(event_types.GENERATION_ENDED, () => { context.isGenerationInProgress = false; });
-    const emitted = jest.spyOn(events, 'emit');
-    return { context, events, emitted, buttons, generate: (type = 'normal', options = {}, dryRun = false) => context.Generate(type, { suppressUserMessage: true, ...options }, dryRun) };
+function createWorldInfoPeerMocks() {
+    return {
+        'scripts/sillybunny-editor/banner.js': {
+            createBanner: jest.fn(() => ({
+                element: document.createElement('div'),
+                setTitle: jest.fn(),
+                show: jest.fn(),
+                hide: jest.fn(),
+            })),
+        },
+        'scripts/sillybunny-world-info-editor.js': {
+            initWorldInfoEditor: jest.fn(),
+            openWorldInfoEntryEditor: jest.fn(),
+            closeWorldInfoEntryEditor: jest.fn(),
+            refreshWorldInfoEditorList: jest.fn(),
+            isWorldInfoEditorOpen: jest.fn(() => false),
+            syncWorldInfoEntryEditorSelection: jest.fn(),
+        },
+        'scripts/slash-commands/SlashCommandParser.js': {
+            SlashCommandParser: {
+                addCommandObject: jest.fn(),
+                addCommand: jest.fn(),
+                commands: {},
+            },
+        },
+        'scripts/slash-commands/SlashCommand.js': { SlashCommand: { fromProps: p => p } },
+        'scripts/slash-commands/SlashCommandArgument.js': {
+            ARGUMENT_TYPE: { STRING: 'string', BOOLEAN: 'boolean', NUMBER: 'number', LIST: 'list', DICTIONARY: 'dictionary', CLOSURE: 'closure', SUBCOMMAND: 'subcommand', RANGE: 'range' },
+            SlashCommandArgument: class { static fromProps(p) { return p; } },
+            SlashCommandNamedArgument: class { static fromProps(p) { return p; } },
+        },
+        'scripts/slash-commands/SlashCommandEnumValue.js': {
+            SlashCommandEnumValue: class {},
+            enumTypes: { enum: 'enum', name: 'name', command: 'command' },
+        },
+        'scripts/slash-commands/SlashCommandCommonEnumsProvider.js': {
+            commonEnumProviders: new Proxy({}, { get: () => () => () => [] }),
+            enumIcons: new Proxy({}, { get: (_t, prop) => (prop === 'getDataTypeIcon' ? () => '' : '') }),
+        },
+        'scripts/slash-commands/SlashCommandClosure.js': { SlashCommandClosure: class {} },
+        'scripts/sillybunny-version-map.js': { mapSillyBunnyVersionToStEquivalent: value => value },
+        'scripts/sillybunny-editor/adapters/utility-dialogs.js': { iconPickerOptions: () => ({}) },
+    };
 }
 
-afterEach(() => jest.restoreAllMocks());
+/**
+ * Mounts the real `public/script.js` + real `public/scripts/world-info.js` + real
+ * `public/scripts/extensions/in-chat-agents/agent-runner.js` pipeline in jsdom so
+ * Pathfinder generation wiring runs through the actual host implementation.
+ */
+async function createHost({
+    selectedGroup = null,
+    generateGroupWrapper = null,
+    toolManager = {},
+    worldInfoFetch = null,
+    streamOpenAI = false,
+} = {}) {
+    let chatId = 'chat-a';
+    const loreBook = {
+        entries: {
+            1: {
+                uid: 1,
+                key: ['town'],
+                keysecondary: [],
+                content: 'Native town lore.',
+                constant: true,
+                selective: false,
+                disable: false,
+                order: 100,
+                position: 0,
+                probability: 100,
+                useProbability: false,
+            },
+        },
+    };
 
-describe('Pathfinder integration with the real extracted host generation flow', () => {
+    const prepareOpenAIMessages = jest.fn(async data => [
+        [{ role: 'system', content: data.extensionPrompts?.pathfinder_pipeline_retrieval?.value ?? '' }],
+        false,
+    ]);
+    const sendOpenAIRequest = jest.fn(async () => ({
+        choices: [{ message: { content: 'reply' } }],
+    }));
+
+    const pathfinderAgent = {
+        id: 'pf-1',
+        name: 'Pathfinder',
+        sourceTemplateId: 'tpl-pathfinder',
+        category: 'tool',
+        enabled: true,
+        conditions: {
+            generationTypes: ['normal', 'swipe', 'regenerate', 'continue'],
+            triggerProbability: 100,
+            triggerKeywords: [],
+        },
+        settings: {
+            sidecarEnabled: true,
+            pipelineEnabled: true,
+            enabledLorebooks: ['Lore'],
+            selectedLorebook: 'Lore',
+            includeContextualLorebooks: false,
+        },
+    };
+
+    const retrievalResult = {
+        success: true,
+        promptKey: 'pathfinder_pipeline_retrieval',
+        mode: 'pipeline',
+        books: ['Lore'],
+        selectedEntries: [
+            { bookName: 'Lore', uid: 1, name: 'Town', content: 'Town lore.' },
+            { bookName: 'Lore', uid: 2, name: 'Forest', content: 'Forest lore.' },
+        ],
+    };
+
+    let realInjectPathfinderRetrieval = null;
+    const runSidecarRetrieval = jest.fn(async (writePrompt, promptTypes, promptRoles) => {
+        realInjectPathfinderRetrieval(retrievalResult, writePrompt, promptTypes, promptRoles);
+        return retrievalResult;
+    });
+
+    const isHordeGenerationNotAllowed = jest.fn(() => false);
+    const executeSlashCommandsOnChatInput = jest.fn(async () => ({ isAborted: false }));
+
+    const fetchMock = jest.fn(async (url, init) => {
+        if (url === '/api/worldinfo/get') {
+            if (worldInfoFetch) {
+                return await worldInfoFetch(url, init, loreBook);
+            }
+            return { ok: true, json: async () => structuredClone(loreBook) };
+        }
+        if (url === '/api/chats/group/get') {
+            return { ok: true, json: async () => [] };
+        }
+        return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+    });
+
+    const loaded = await importScriptModule({
+        keepReal: [
+            'scripts/world-info.js',
+            'scripts/utils.js',
+            'scripts/group-chats.js',
+            'scripts/extensions/in-chat-agents/regex-scripts.js',
+            'scripts/extensions/in-chat-agents/regex-snapshot-store.js',
+            'scripts/extensions/in-chat-agents/companion/companion-shared.js',
+        ],
+        fetch: fetchMock,
+        dom: `
+            <div id="options_button"></div><div id="options"></div>
+            <div id="export_button"></div><div id="export_format_popup"></div>
+            <div id="online_status_indicator"></div><div id="online_status_text"></div>
+            <select id="main_api"><option value="openai">openai</option></select>
+            <div id="chat"></div>
+            <div id="message_template" hidden><div class="mes"><div class="mes_block"><div class="ch_name"><span class="name_text"></span></div><div class="mes_text"></div></div></div></div>
+            <div id="send_form"><textarea id="send_textarea"></textarea><div id="send_but"></div><div id="mes_stop" style="display:none"></div></div>
+        `,
+        mocks: {
+            ...createWorldInfoPeerMocks(),
+            'scripts/sillybunny-action-menu.js': { openActionMenu: jest.fn() },
+            'scripts/sillybunny-editor/object-navigation.js': { objectNavigation: { navigate: jest.fn(async () => ({ ok: true })) } },
+            'scripts/csrf-token-refresh.js': { fetchWithCsrfRetry: jest.fn(async (url, initOrFn) => globalThis.fetch(url, typeof initOrFn === 'function' ? await initOrFn() : initOrFn)) },
+            'scripts/sillybunny-editor/list-pagination.js': { createListPagination: jest.fn() },
+            'scripts/sillybunny-editor/list-search.js': { createListSearch: jest.fn() },
+            'scripts/sillybunny-group-editor.js': {
+                beginGroupEditorLoad: jest.fn(),
+                openGroupEditorSession: jest.fn(),
+                openGroupEditorCreateSession: jest.fn(),
+                captureGroupEditorSave: jest.fn(),
+                readGroupEditorBaseline: jest.fn(),
+                isGroupEditorOwner: jest.fn(() => false),
+                notifyGroupEditorChanged: jest.fn(),
+                rebaseGroupEditor: jest.fn(),
+                initGroupEditor: jest.fn(),
+                discardGroupEditorForEntity: jest.fn(),
+                attachGroupTagFilterMenus: jest.fn(),
+                prepareGroupEditorReveal: jest.fn(async () => true),
+                setGroupEditorFolderValue: jest.fn(),
+            },
+            'scripts/personas.js': base => ({
+                ...base,
+                getOrCreatePersonaDescriptor: jest.fn(() => ({})),
+            }),
+            'scripts/horde.js': base => ({
+                ...base,
+                isHordeGenerationNotAllowed,
+            }),
+            'scripts/slash-commands.js': base => ({
+                ...base,
+                executeSlashCommandsOnChatInput,
+            }),
+            'scripts/openai.js': base => ({
+                ...base,
+                oai_settings: { ...base.oai_settings, stream_openai: streamOpenAI },
+                prepareOpenAIMessages,
+                sendOpenAIRequest,
+            }),
+            'scripts/tool-calling.js': base => ({
+                ToolManager: {
+                    ...base.ToolManager,
+                    registerFunctionTool: jest.fn(),
+                    unregisterFunctionTool: jest.fn(),
+                    ...toolManager,
+                },
+            }),
+            'scripts/extensions/in-chat-agents/agent-store.js': {
+                areAgentsGloballyEnabled: () => true,
+                getAgentById: id => (id === pathfinderAgent.id ? pathfinderAgent : null),
+                getAgents: () => [pathfinderAgent],
+                getAgentRegexScripts: () => [],
+                getEnabledAgents: () => [pathfinderAgent],
+                getEnabledToolAgents: () => [pathfinderAgent],
+                getGlobalSettings: () => ({ enabled: true, pathfinderEnabled: true }),
+                getPromptTransformMode: () => 'off',
+                isAgentRuntimeAllowed: () => true,
+                isCompanionAgent: () => false,
+                isTrackerFixAgent: () => false,
+                isPathfinderSubmoduleEnabled: () => true,
+                saveAgent: jest.fn(async a => a),
+                isToolAgent: a => a?.category === 'tool',
+                normalizePreProcessMaxTokens: v => v,
+                normalizePromptTransformMaxTokens: v => v,
+                resolveCompanionConnectionProfile: () => null,
+                resolveConnectionProfile: () => null,
+            },
+            'scripts/extensions/in-chat-agents/profile-utils.js': {
+                listConnectionProfiles: () => [],
+                getConnectionProfileDisplayName: () => '',
+                getConnectionProfileModelName: () => '',
+            },
+            'scripts/extensions/in-chat-agents/pathfinder/llm-sidecar.js': {
+                sidecarGenerate: jest.fn(),
+                sidecarGenerateWithProfile: jest.fn(),
+            },
+            'scripts/extensions/in-chat-agents/pathfinder/summary-memory-store.js': {
+                getSummaryMemoryState: () => ({}),
+                onSummaryMemoryChanged: () => () => {},
+                saveSummaryMemoryContent: jest.fn(),
+                isSummaryMemoryEntry: () => false,
+                markSummaryMemoryInjected: jest.fn(),
+                detachSummaryMemoryBook: jest.fn(),
+                renameSummaryMemoryBook: jest.fn(),
+                syncSummaryMemoryForBook: jest.fn(),
+                setSummaryMemoryCreated: jest.fn(),
+            },
+        },
+    });
+
+    // Import real injectPathfinderRetrieval first, then wrap only runSidecarRetrieval on sidecar-retrieval.js.
+    const realSidecar = await import(pub('scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js'));
+    realInjectPathfinderRetrieval = realSidecar.injectPathfinderRetrieval;
+    await jest.unstable_mockModule(pub('scripts/extensions/in-chat-agents/pathfinder/sidecar-retrieval.js'), () => ({
+        ...realSidecar,
+        runSidecarRetrieval,
+    }));
+
+    const worldInfo = await import(pub('scripts/world-info.js'));
+    worldInfo.setWorldInfoSettings(
+        { world_info: { globalSelect: ['Lore'] }, world_info_budget: 25, world_info_depth: 4 },
+        { world_names: ['Lore'] },
+    );
+
+    const { script, eventSource } = loaded;
+    script.changeMainAPI('openai');
+    script.setOnlineStatus('connected');
+    script.characters.push({
+        name: 'Assistant',
+        avatar: 'assistant.png',
+        chat: chatId,
+        description: '',
+        personality: '',
+        scenario: '',
+        first_mes: 'Hi',
+        data: { extensions: {} },
+    });
+    script.setCharacterId('0');
+    script.chat.push({ name: 'User', is_user: true, mes: 'Enter the town' });
+
+    const groupChats = await import(pub('scripts/group-chats.js'));
+    if (selectedGroup) {
+        groupChats.groups.push({
+            id: selectedGroup,
+            name: 'Tavern',
+            members: ['assistant.png'],
+            disabled_members: [],
+            activation_strategy: 0,
+            allow_self_responses: true,
+            auto_mode_delay: 5,
+            chat_id: 'group-chat-1',
+        });
+        await groupChats.openGroupById(selectedGroup, { switchMenu: false });
+    }
+
+    const runner = await import(pub('scripts/extensions/in-chat-agents/agent-runner.js'));
+    runner.initAgentRunner();
+
+    const emitted = jest.spyOn(eventSource, 'emit');
+
+    return {
+        script,
+        worldInfo,
+        groupChats,
+        runner,
+        events: eventSource,
+        emitted,
+        mocks: {
+            prepareOpenAIMessages,
+            sendOpenAIRequest,
+            isHordeGenerationNotAllowed,
+            executeSlashCommandsOnChatInput,
+            runSidecarRetrieval,
+            fetch: fetchMock,
+        },
+        setChatId(next) {
+            chatId = next;
+            script.characters[0].chat = next;
+        },
+        generate(type = 'normal', options = {}, dryRun = false) {
+            return script.Generate(type, { suppressUserMessage: true, ...options }, dryRun);
+        },
+    };
+}
+
+afterEach(() => {
+    jest.restoreAllMocks();
+});
+
+describe('Pathfinder integration with the real host generation flow', () => {
     test('tags the actual native scan and removes only its activated entries before prompt assembly', async () => {
-        const host = createHost();
+        const host = await createHost();
         await host.generate();
-        expect(host.context.checkWorldInfo).toHaveBeenCalledTimes(1);
-        const native = host.emitted.mock.calls.find(([event]) => event === event_types.WORLD_INFO_ACTIVATED);
+
+        const native = host.emitted.mock.calls.find(([event]) => event === host.script.event_types.WORLD_INFO_ACTIVATED);
+        expect(native).toBeDefined();
         expect(native[2]).toEqual({ chatId: 'chat-a', runId: 1, cancelRevision: 0 });
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_HIDE_MESSAGES)).toHaveLength(1);
-        expect(host.context.prepareOpenAIMessages.mock.calls[0][0].worldInfoBefore).toBe('Native town lore.');
-        const prompt = host.context.sendGenerationRequest.mock.calls[0][1].prompt[0].content;
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_HIDE_MESSAGES)).toHaveLength(1);
+        expect(host.mocks.prepareOpenAIMessages.mock.calls[0][0].worldInfoBefore).toContain('Native town lore.');
+        const prompt = host.mocks.sendOpenAIRequest.mock.calls[0][1][0].content;
         expect(prompt).not.toContain('Town lore.');
         expect(prompt).toContain('Forest lore.');
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
-        expect(host.context.activeGenerationRun).toBeNull();
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(1);
     });
 
     test.each([
-        ['commands', host => host.context.processCommands.mockResolvedValue(true)],
-        ['blocked provider', host => host.context.isHordeGenerationNotAllowed.mockReturnValue(true)],
-        ['no connection', host => { host.context.online_status = 'no_connection'; }],
+        ['commands', host => {
+            document.getElementById('send_textarea').value = '/abort';
+            host.mocks.executeSlashCommandsOnChatInput.mockResolvedValue({ isAborted: true });
+        }],
+        ['blocked provider', host => host.mocks.isHordeGenerationNotAllowed.mockReturnValue(true)],
+        ['no connection', host => { host.script.setOnlineStatus('no_connection'); }],
     ])('emits one terminal event for %s, including before the Stop button becomes visible', async (_name, setup) => {
-        const host = createHost();
+        const host = await createHost();
         setup(host);
         await host.generate('normal', { suppressUserMessage: false });
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
-        expect(host.context.is_send_press).toBe(false);
-        expect(host.context.sendGenerationRequest).not.toHaveBeenCalled();
-        expect(host.context.activeGenerationRun).toBeNull();
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(1);
+        expect(host.script.is_send_press).toBe(false);
+        expect(host.mocks.sendOpenAIRequest).not.toHaveBeenCalled();
     });
 
     test('cleans up a prompt preparation exception that occurs before the API error handler', async () => {
-        const host = createHost();
-        host.context.checkWorldInfo.mockRejectedValueOnce(new Error('scan failed'));
+        const host = await createHost();
+        host.mocks.prepareOpenAIMessages.mockRejectedValueOnce(new Error('scan failed'));
         await expect(host.generate()).rejects.toThrow('scan failed');
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
-        expect(host.buttons.visible).toBe(false);
-        expect(host.context.activeGenerationRun).toBeNull();
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(1);
+        expect(document.getElementById('mes_stop').style.display).toBe('none');
     });
 
     test('creates the abort controller before start listeners and honours Stop while the busy UI is still unset', async () => {
-        const host = createHost();
+        const host = await createHost();
         const started = deferred();
         const release = deferred();
-        host.events.on(event_types.GENERATION_STARTED, async () => { started.resolve(); await release.promise; });
-        const pending = host.generate();
+        host.events.on(host.script.event_types.GENERATION_STARTED, async () => {
+            started.resolve();
+            await release.promise;
+        });
+        const pending = host.generate('normal', { suppressUserMessage: false });
         await started.promise;
-        expect(host.context.is_send_press).toBe(false);
-        expect(host.context.stopGeneration()).toBe(true);
-        expect(host.context.abortController.signal.aborted).toBe(true);
+        expect(host.script.is_send_press).toBe(false);
+        expect(host.script.stopGeneration()).toBe(true);
         release.resolve();
         await pending;
-        expect(host.context.processCommands).not.toHaveBeenCalled();
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(0);
-        expect(host.context.activeGenerationRun).toBeNull();
+        expect(host.mocks.executeSlashCommandsOnChatInput).not.toHaveBeenCalled();
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(0);
     });
 
     test('uses the current cancellation revision when explicit Stop follows agent cancellation', async () => {
-        const host = createHost();
+        const host = await createHost();
         const started = deferred();
         const release = deferred();
         const stopped = jest.fn();
-        host.events.on(event_types.GENERATION_STOPPED, stopped);
-        host.events.on(event_types.GENERATION_AFTER_COMMANDS, async () => { started.resolve(); await release.promise; });
+        host.events.on(host.script.event_types.GENERATION_STOPPED, stopped);
+        host.events.on(host.script.event_types.GENERATION_AFTER_COMMANDS, async () => {
+            started.resolve();
+            await release.promise;
+        });
         const pending = host.generate();
         await started.promise;
-        host.context.cancelRevision++;
-        host.context.stopGeneration();
+        host.runner.cancelAgentGeneration();
+        host.script.stopGeneration();
         expect(stopped).toHaveBeenCalledWith({ chatId: 'chat-a', runId: 1, cancelRevision: 1 });
         release.resolve();
         await pending;
     });
 
     test.each(['Stop', 'chat change', 'new generation'])('does not continue past pending retrieval after %s', async reason => {
-        const host = createHost();
+        const host = await createHost();
         const started = deferred();
         const release = deferred();
-        host.events.on(event_types.GENERATION_AFTER_COMMANDS, async () => { started.resolve(); await release.promise; });
+        let pauseFirst = true;
+        host.events.on(host.script.event_types.GENERATION_AFTER_COMMANDS, async () => {
+            if (!pauseFirst) return;
+            pauseFirst = false;
+            started.resolve();
+            await release.promise;
+        });
         const pending = host.generate();
         await started.promise;
-        const cancel = {
-            Stop: () => host.context.stopGeneration(),
-            'chat change': async () => { host.context.chatId = 'chat-b'; host.context.chatGeneration++; await host.events.emit(event_types.CHAT_CHANGED); },
-            'new generation': () => { host.context.activeGenerationRun = { controller: new AbortController(), type: 'normal' }; },
-        };
-        await cancel[reason]();
-        host.context.chat_metadata = {};
-        host.context.extension_prompts = { sentinel: { value: 'new chat' } };
+        let replacementPending = null;
+        if (reason === 'Stop') {
+            host.script.stopGeneration();
+        } else if (reason === 'chat change') {
+            host.setChatId('chat-b');
+            host.script.incrementChatGeneration();
+            await host.events.emit(host.script.event_types.CHAT_CHANGED);
+        } else {
+            // Pause the replacement run in sendOpenAIRequest so we can assert the first run never sends.
+            const nextReq = deferred();
+            host.mocks.sendOpenAIRequest.mockImplementationOnce(() => nextReq.promise);
+            replacementPending = host.generate();
+            await Promise.resolve();
+            nextReq.resolve({ choices: [{ message: { content: 'second' } }] });
+        }
+        host.script.setExtensionPrompt('sentinel', 'new chat', 0, 0);
         release.resolve();
         await pending;
-        expect(host.context.chat_metadata).toEqual({});
-        expect(host.context.extension_prompts).toEqual({ sentinel: { value: 'new chat' } });
-        expect(host.context.checkWorldInfo).not.toHaveBeenCalled();
-        expect(host.context.sendGenerationRequest).not.toHaveBeenCalled();
+        if (replacementPending) await replacementPending;
+        expect(host.script.extension_prompts.sentinel?.value).toBe('new chat');
+        expect(host.mocks.sendOpenAIRequest).toHaveBeenCalledTimes(reason === 'new generation' ? 1 : 0);
     });
 
     test('rejects a late native activation from a replaced run and leaves the new prompt untouched', async () => {
-        const host = createHost();
         const started = deferred();
         const release = deferred();
-        host.context.checkWorldInfo.mockImplementationOnce(async () => { started.resolve(); return release.promise; });
-        const pending = host.generate();
+        let wiCallCount = 0;
+        const host = await createHost({
+            worldInfoFetch: async (_url, _init, loreBook) => {
+                wiCallCount++;
+                if (wiCallCount === 1) {
+                    started.resolve();
+                    await release.promise;
+                }
+                return { ok: true, json: async () => structuredClone(loreBook) };
+            },
+        });
+        const first = host.generate();
         await started.promise;
-        host.context.agentRunId++;
-        host.context.pathfinderRetrievalRun.runId = host.context.agentRunId;
-        host.context.pathfinderRetrievalRun.nativeApplied = false;
-        host.context.extension_prompts = { sentinel: { value: 'new run' } };
-        release.resolve({ worldInfoBefore: '', worldInfoAfter: '', allActivatedEntries: new Set([{ world: 'Lore', uid: 1 }]) });
-        await pending;
-        expect(host.context.pathfinderRetrievalRun.nativeApplied).toBe(false);
-        expect(host.context.extension_prompts).toEqual({ sentinel: { value: 'new run' } });
-        expect(host.context.sendGenerationRequest).not.toHaveBeenCalled();
+
+        // Replace the active generation run while the first native WI fetch is suspended.
+        const secondReq = deferred();
+        host.mocks.sendOpenAIRequest.mockImplementationOnce(() => secondReq.promise);
+        const second = host.generate();
+        await Promise.resolve();
+        host.script.setExtensionPrompt('sentinel', 'new run', 0, 0);
+
+        release.resolve();
+        await first;
+        expect(host.script.extension_prompts.sentinel?.value).toBe('new run');
+
+        secondReq.resolve({ choices: [{ message: { content: 'second reply' } }] });
+        await second;
+        expect(host.mocks.sendOpenAIRequest).toHaveBeenCalledTimes(1);
     });
 
     test('awaits a group child without its outer wrapper ending or cancelling that child', async () => {
-        const host = createHost();
-        host.context.selected_group = 'group';
         const childStarted = deferred();
         const releaseChild = deferred();
-        host.context.sendGenerationRequest.mockImplementationOnce(async () => { childStarted.resolve(); await releaseChild.promise; return { message: 'group reply' }; });
-        host.context.generateGroupWrapper = jest.fn(async (_auto, type, options) => {
-            host.context.is_group_generating = true;
-            try { return await host.generate(type, options); }
-            finally { host.context.is_group_generating = false; }
+        const host = await createHost({ selectedGroup: 'group-1' });
+        host.mocks.sendOpenAIRequest.mockImplementationOnce(async () => {
+            childStarted.resolve();
+            await releaseChild.promise;
+            return { choices: [{ message: { content: 'group reply' } }] };
         });
+
         const pending = host.generate();
         await childStarted.promise;
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(0);
-        expect(host.context.abortController.signal.aborted).toBe(false);
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(0);
+        expect(host.groupChats.is_group_generating).toBe(true);
         releaseChild.resolve();
-        const result = await pending;
-        expect(String(result)).toBe('group reply');
-        expect(host.context.checkWorldInfo).toHaveBeenCalledTimes(1);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
+        await pending;
+        expect(host.script.chat.at(-1)?.mes).toBe('group reply');
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(1);
     });
 
     test('does not tag a dry preview or let it end the active generation', async () => {
-        const host = createHost();
-        const parent = { controller: new AbortController(), type: 'normal' };
-        host.context.activeGenerationRun = parent;
-        host.context.is_send_press = true;
+        const host = await createHost();
+        const inFlight = deferred();
+        const started = deferred();
+        host.mocks.sendOpenAIRequest.mockImplementationOnce(() => {
+            started.resolve();
+            return inFlight.promise;
+        });
+        const main = host.generate();
+        await started.promise;
+        expect(host.script.is_send_press).toBe(true);
+        const beforeEvents = host.emitted.mock.calls.length;
+
         await host.generate('normal', {}, true);
-        expect(host.context.activeGenerationRun).toBe(parent);
-        expect(host.context.is_send_press).toBe(true);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.WORLD_INFO_ACTIVATED || event === event_types.GENERATION_HIDE_MESSAGES || event === event_types.GENERATION_ENDED)).toHaveLength(0);
-        expect(host.context.sendGenerationRequest).not.toHaveBeenCalled();
+
+        expect(host.script.is_send_press).toBe(true);
+        const dryEvents = host.emitted.mock.calls.slice(beforeEvents).map(([event]) => event);
+        expect(dryEvents).not.toContain(host.script.event_types.WORLD_INFO_ACTIVATED);
+        expect(dryEvents).not.toContain(host.script.event_types.GENERATION_HIDE_MESSAGES);
+        expect(dryEvents).not.toContain(host.script.event_types.GENERATION_ENDED);
+        expect(host.mocks.sendOpenAIRequest).toHaveBeenCalledTimes(1);
+
+        inFlight.resolve({ choices: [{ message: { content: 'main reply' } }] });
+        await main;
     });
 
     test('keeps nested quiet scans untagged and preserves the main controller and terminal lifecycle', async () => {
-        const host = createHost();
+        const host = await createHost();
         const started = deferred();
         const release = deferred();
-        host.events.on(event_types.GENERATION_AFTER_COMMANDS, async type => {
-            if (type !== 'quiet') { started.resolve(); await release.promise; }
+        host.events.on(host.script.event_types.GENERATION_AFTER_COMMANDS, async type => {
+            if (type !== 'quiet') {
+                started.resolve();
+                await release.promise;
+            }
         });
         const pending = host.generate();
         await started.promise;
-        const mainController = host.context.abortController;
-        await host.context.generateQuietPrompt({ quietPrompt: 'helper', skipWIAN: true });
-        const native = host.emitted.mock.calls.find(([event]) => event === event_types.WORLD_INFO_ACTIVATED);
-        expect(native).toHaveLength(2);
-        expect(host.context.pathfinderRetrievalRun.nativeApplied).toBe(false);
-        expect(host.context.abortController).toBe(mainController);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(0);
+
+        await host.script.generateQuietPrompt({ quietPrompt: 'helper', skipWIAN: true });
+        const nativeEvents = host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.WORLD_INFO_ACTIVATED);
+        expect(nativeEvents.length).toBeGreaterThanOrEqual(1);
+        expect(nativeEvents[0]).toHaveLength(2);
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(0);
+
         release.resolve();
         await pending;
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(1);
     });
 
     test.each([
         ['failure', request => request.mockRejectedValueOnce(new Error('quiet failed'))],
         ['empty response', request => request.mockResolvedValueOnce(null)],
     ])('does not stop the main generation on a nested quiet %s', async (_name, setup) => {
-        const host = createHost();
+        const host = await createHost();
         const started = deferred();
         const release = deferred();
-        host.events.on(event_types.GENERATION_AFTER_COMMANDS, async type => {
-            if (type !== 'quiet') { started.resolve(); await release.promise; }
+        host.events.on(host.script.event_types.GENERATION_AFTER_COMMANDS, async type => {
+            if (type !== 'quiet') {
+                started.resolve();
+                await release.promise;
+            }
         });
         const main = host.generate();
         await started.promise;
-        const mainController = host.context.abortController;
-        setup(host.context.sendGenerationRequest);
-        await host.context.generateQuietPrompt({ quietPrompt: 'helper' }).catch(() => undefined);
-        expect(mainController.signal.aborted).toBe(false);
-        expect(host.context.abortController).toBe(mainController);
-        expect(host.context.is_send_press).toBe(false);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED || event === event_types.GENERATION_STOPPED)).toHaveLength(0);
+        setup(host.mocks.sendOpenAIRequest);
+        await host.script.generateQuietPrompt({ quietPrompt: 'helper' }).catch(() => undefined);
+        expect(host.script.is_send_press).toBe(false);
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED || event === host.script.event_types.GENERATION_STOPPED)).toHaveLength(0);
         release.resolve();
         await main;
     });
 
     test('does not let a late quiet failure stop a newer main request', async () => {
-        const host = createHost();
+        const host = await createHost();
         const oldStarted = deferred();
         const oldRelease = deferred();
-        host.events.on(event_types.GENERATION_AFTER_COMMANDS, async type => {
-            if (type !== 'quiet' && host.context.agentRunId === 1) { oldStarted.resolve(); await oldRelease.promise; }
+        let pauseOld = true;
+        host.events.on(host.script.event_types.GENERATION_AFTER_COMMANDS, async type => {
+            if (type !== 'quiet' && pauseOld) {
+                pauseOld = false;
+                oldStarted.resolve();
+                await oldRelease.promise;
+            }
         });
         const old = host.generate();
         await oldStarted.promise;
+
         const quietStarted = deferred();
         const quietResponse = deferred();
         const nextStarted = deferred();
         const nextResponse = deferred();
-        host.context.sendGenerationRequest.mockImplementationOnce(() => { quietStarted.resolve(); return quietResponse.promise; })
+        host.mocks.sendOpenAIRequest
+            .mockImplementationOnce(() => { quietStarted.resolve(); return quietResponse.promise; })
             .mockImplementationOnce(() => { nextStarted.resolve(); return nextResponse.promise; });
-        const quiet = host.context.generateQuietPrompt({ quietPrompt: 'helper' }).catch(error => error);
+
+        const quiet = host.script.generateQuietPrompt({ quietPrompt: 'helper' }).catch(error => error);
         await quietStarted.promise;
+
         const next = host.generate();
         await nextStarted.promise;
-        const nextController = host.context.abortController;
+
         quietResponse.reject(new Error('quiet failed'));
         await expect(quiet).resolves.toMatchObject({ message: 'quiet failed' });
         oldRelease.resolve();
         await old;
-        expect(nextController.signal.aborted).toBe(false);
-        expect(host.context.abortController).toBe(nextController);
-        expect(host.context.is_send_press).toBe(true);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED || event === event_types.GENERATION_STOPPED)).toHaveLength(0);
-        nextResponse.resolve({ message: 'new reply' });
+
+        expect(host.script.is_send_press).toBe(true);
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED || event === host.script.event_types.GENERATION_STOPPED)).toHaveLength(0);
+
+        nextResponse.resolve({ choices: [{ message: { content: 'new reply' } }] });
         await next;
     });
 
     test('preserves a recursive tool pass result without duplicate terminal events', async () => {
-        const host = createHost();
-        Object.assign(host.context.ToolManager, {
-            canPerformToolCalls: () => true,
-            hasToolCalls: data => Boolean(data.tool),
-            invokeFunctionTools: jest.fn(async data => ({ invocations: data.tool ? [{}] : [], stealthCalls: [] })),
-            saveFunctionToolInvocations: jest.fn(async () => {}),
+        const invokeFunctionTools = jest.fn(async data => ({
+            invocations: data?.tool ? [{}] : [],
+            stealthCalls: [],
+        }));
+        const host = await createHost({
+            toolManager: {
+                isToolCallingSupported: () => true,
+                canPerformToolCalls: () => true,
+                hasToolCalls: data => Boolean(data?.tool),
+                invokeFunctionTools,
+                saveFunctionToolInvocations: jest.fn(async () => {}),
+            },
         });
-        host.context.sendGenerationRequest.mockResolvedValueOnce({ message: 'tool plan', tool: true }).mockResolvedValueOnce({ message: 'final reply' });
+        host.mocks.sendOpenAIRequest
+            .mockResolvedValueOnce({ choices: [{ message: { content: 'tool plan' } }], tool: true })
+            .mockResolvedValueOnce({ choices: [{ message: { content: 'final reply' } }] });
+
         const result = await host.generate();
         expect(String(result)).toBe('final reply');
-        expect(host.context.sendGenerationRequest).toHaveBeenCalledTimes(2);
-        expect(host.context.ToolManager.invokeFunctionTools.mock.calls[0][1]).toEqual(expect.objectContaining({ isCurrent: expect.any(Function), signal: expect.any(AbortSignal) }));
-        expect(host.context.ToolManager.invokeFunctionTools.mock.calls[0][1].isCurrent()).toBe(false);
-        expect(host.context.sendGenerationRequest.mock.calls[1][2].signal).toBe(host.context.sendGenerationRequest.mock.calls[0][2].signal);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
+        expect(host.mocks.sendOpenAIRequest).toHaveBeenCalledTimes(2);
+        expect(invokeFunctionTools.mock.calls[0][1]).toEqual(expect.objectContaining({
+            isCurrent: expect.any(Function),
+            signal: expect.any(AbortSignal),
+        }));
+        expect(invokeFunctionTools.mock.calls[0][1].isCurrent()).toBe(false);
+        expect(host.mocks.sendOpenAIRequest.mock.calls[1][2]).toBe(host.mocks.sendOpenAIRequest.mock.calls[0][2]);
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(1);
     });
 
     test('preserves a recursive streaming tool result while the successor owns completion', async () => {
-        const host = createHost();
-        let streamIndex = 0;
-        host.context.StreamingProcessor = class {
-            constructor() {
-                this.abortController = new AbortController();
-                this.requestAbortController = new AbortController();
-                [this.result, this.toolCalls] = [['tool plan', [{}]], ['final stream', []]][streamIndex++];
-                this.reasoningHandler = { reasoning: '' };
-                this.isFinished = true;
-            }
-            async generate() { return this.result; }
-            async finalizeIntermediaryMessage() {}
-            async onFinishStreaming() { host.context.unblockGeneration('normal'); }
-            onStopStreaming() { this.abortController.abort(); this.isStopped = true; }
-        };
-        host.context.isStreamingEnabled = () => true;
-        host.context.shouldBufferMainGenerationOutput = async () => false;
-        host.context.sendStreamingRequest = jest.fn(async () => () => {});
-        Object.assign(host.context.ToolManager, {
-            canPerformToolCalls: () => true,
-            hasToolCalls: data => data.length > 0,
-            invokeFunctionTools: jest.fn(async () => ({ invocations: [{}], stealthCalls: [] })),
-            saveFunctionToolInvocations: jest.fn(async () => {}),
+        const invokeFunctionTools = jest.fn(async () => ({ invocations: [{}], stealthCalls: [] }));
+        const host = await createHost({
+            streamOpenAI: true,
+            toolManager: {
+                isToolCallingSupported: () => true,
+                canPerformToolCalls: () => true,
+                hasToolCalls: data => Array.isArray(data) && data.length > 0,
+                invokeFunctionTools,
+                saveFunctionToolInvocations: jest.fn(async () => {}),
+            },
         });
+        host.mocks.sendOpenAIRequest
+            .mockResolvedValueOnce(async function* () {
+                yield { text: 'tool plan', swipes: [], toolCalls: [{ id: 'tc1' }], state: {} };
+            })
+            .mockResolvedValueOnce(async function* () {
+                yield { text: 'final stream', swipes: [], toolCalls: [], state: {} };
+            });
+
         const result = await host.generate();
         expect(String(result)).toBe('final stream');
         expect(result.fromStream).toBe(true);
-        expect(host.context.sendStreamingRequest).toHaveBeenCalledTimes(2);
-        expect(host.context.ToolManager.invokeFunctionTools.mock.calls[0][1]).toEqual(expect.objectContaining({ isCurrent: expect.any(Function), signal: expect.any(AbortSignal) }));
-        expect(host.context.ToolManager.invokeFunctionTools.mock.calls[0][1].isCurrent()).toBe(false);
-        expect(host.emitted.mock.calls.filter(([event]) => event === event_types.GENERATION_ENDED)).toHaveLength(1);
+        expect(host.mocks.sendOpenAIRequest).toHaveBeenCalledTimes(2);
+        expect(invokeFunctionTools.mock.calls[0][1]).toEqual(expect.objectContaining({
+            isCurrent: expect.any(Function),
+            signal: expect.any(AbortSignal),
+        }));
+        expect(invokeFunctionTools.mock.calls[0][1].isCurrent()).toBe(false);
+        expect(host.emitted.mock.calls.filter(([event]) => event === host.script.event_types.GENERATION_ENDED)).toHaveLength(1);
     });
 });

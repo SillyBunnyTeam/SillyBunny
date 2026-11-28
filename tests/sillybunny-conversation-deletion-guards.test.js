@@ -1,15 +1,19 @@
-import { readFileSync } from 'node:fs';
+/* global globalThis */
 import { describe, expect, jest, test } from '@jest/globals';
+import { fileURLToPath } from 'node:url';
 
 import {
     createGenerationTargets,
     createTargetCheck,
     dropQueuedReplies,
+    generationTargets,
     installPageLeaveEffects,
     installRemovalEffects,
     isTargetOfRemoval,
     removeQueueItems,
 } from '../public/scripts/sillybunny-conversation/deletion-guards.js';
+
+const pub = rel => fileURLToPath(new URL(`../public/${rel}`, import.meta.url));
 
 const item = (conversationKey, chatId, extra = {}) => ({ conversationKey, chatId, avatar: 'Nova.png', messageIds: [], ...extra });
 
@@ -215,7 +219,86 @@ describe('a page that is closing', () => {
         expect(running.signal.aborted).toBe(false);
     });
 
-    test('is wired when the mode starts', () => {
-        expect(readFileSync(new URL('../public/scripts/sillybunny-conversation/init.js', import.meta.url), 'utf8')).toContain('installPageLeaveEffects({ target: window, targets: generationTargets });');
+    test('is wired when the mode starts', async () => {
+        const fakeWindow = new EventTarget();
+        const prevWindow = globalThis.window;
+        const prevCustomEvent = globalThis.CustomEvent;
+        globalThis.window = fakeWindow;
+        globalThis.CustomEvent = Event;
+
+        const state = { initialized: false, conversationWorkspaceOpen: false, autoWorkerStarted: false };
+        await jest.unstable_mockModule(pub('scripts/events.js'), () => ({
+            event_types: {
+                APP_READY: 'app_ready',
+                SETTINGS_LOADED: 'settings_loaded',
+                CHARACTER_DELETED: 'character_deleted',
+                CHARACTER_RENAMED: 'character_renamed',
+                PERSONA_DELETED: 'persona_deleted',
+                USER_MESSAGE_RENDERED: 'user_message_rendered',
+                CHARACTER_MESSAGE_RENDERED: 'character_message_rendered',
+                GENERATION_STARTED: 'generation_started',
+                GENERATION_ENDED: 'generation_ended',
+                GENERATION_STOPPED: 'generation_stopped',
+                ONLINE_STATUS_CHANGED: 'online_status_changed',
+                CHAT_CHANGED: 'chat_changed',
+                CHAT_LOADED: 'chat_loaded',
+                PERSONA_CHANGED: 'persona_changed',
+            },
+            eventSource: { on: jest.fn() },
+        }));
+        await jest.unstable_mockModule(pub('scripts/extensions.js'), () => ({ extension_settings: {} }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/context.js'), () => ({
+            getConversationGroupById: jest.fn(() => null),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/conversation-data-browser.js'), () => ({
+            conversationData: {
+                onRemoval: jest.fn(() => () => {}),
+                subscribe: jest.fn(() => () => {}),
+                whenReady: jest.fn(() => new Promise(() => {})),
+            },
+            installConversationDataHooks: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/legacy-import.js'), () => ({
+            importLegacyLocalStorage: jest.fn(async () => {}),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/lazy-parts.js'), () => ({
+            bindWorkspacePrefetch: jest.fn(),
+            disableConversationModeForCurrentCharacter: jest.fn(),
+            handleRoleplayCharacterMessage: jest.fn(),
+            handleRoleplayUserMessage: jest.fn(),
+            installConversationReplyStream: jest.fn(),
+            openConversationWorkspaceFromRequest: jest.fn(),
+            selectConversation: jest.fn(),
+            startConversationWorker: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/notifications.js'), () => ({
+            getActiveConversationKey: jest.fn(() => ''),
+            updateConversationNotificationIndicators: jest.fn(),
+            updateModeToggleUnread: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/render-scheduler.js'), () => ({
+            scheduleConversationListRender: jest.fn(),
+            scheduleInterfaceRefresh: jest.fn(),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/settings-store.js'), () => ({
+            hasAnyConversationModeUsage: jest.fn(() => false),
+        }));
+        await jest.unstable_mockModule(pub('scripts/sillybunny-conversation/state.js'), () => ({
+            conversationState: state,
+            sendQueue: [],
+            setExternalConversationGenerationActive: jest.fn(),
+        }));
+
+        try {
+            const { init } = await import(pub('scripts/sillybunny-conversation/init.js'));
+            init();
+            const running = generationTargets.begin({ conversationId: 'conv_init', chatId: 'main' });
+            fakeWindow.dispatchEvent(Object.assign(new Event('pagehide'), { persisted: false }));
+            expect(running.signal.aborted).toBe(true);
+            running.end();
+        } finally {
+            globalThis.window = prevWindow;
+            globalThis.CustomEvent = prevCustomEvent;
+        }
     });
 });

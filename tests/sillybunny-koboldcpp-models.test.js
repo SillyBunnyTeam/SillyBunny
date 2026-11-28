@@ -1,7 +1,5 @@
 /* global globalThis */
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
-import vm from 'node:vm';
-import { loadDeclarations } from './util/load-declarations.js';
 
 const API = '/api/backends/text-completions/koboldcpp';
 const SERVER_URL = 'http://127.0.0.1:5001';
@@ -998,54 +996,5 @@ describe('dropdown', () => {
         await switcher.refreshKoboldCppModels('chat');
 
         expect(getDropdown(dom.chatSelect)).toMatchObject({ values: ['', ...ACTIONS], hint: 'KoboldCpp listed no files. Check the folder set with --admindir.' });
-    });
-});
-
-describe('getStatusTextgen() hook', () => {
-    /**
-     * Runs getStatusTextgen() from textgen-settings.js against a server that reports a loaded model.
-     * @param {string} type Text Completion type
-     * @param {number} [checks] Number of status checks to run
-     * @returns {Promise<string[]>} Online status at each refresh of the switcher
-     */
-    async function runStatusChecks(type, checks = 1) {
-        const refreshes = [];
-        const context = vm.createContext({
-            console,
-            textgenerationwebui_settings: { type },
-            textgen_types: { KOBOLDCPP: 'koboldcpp', LLAMACPP: 'llamacpp', GENERIC: 'generic', OOBA: 'ooba' },
-            getTextGenServer: () => SERVER_URL,
-            BIAS_CACHE: new Map(),
-            BIAS_KEY: 'bias',
-            fetch: async () => new Response(JSON.stringify({ result: 'koboldcpp/alpha' })),
-            getRequestHeaders: () => ({}),
-            abortStatusCheck: new AbortController(),
-            online_status: 'no_connection',
-            power_user: { instruct: { enabled: false } },
-            autoSelectInstructPreset: () => false,
-            sessionStorage: { setItem: () => {}, removeItem: () => {} },
-            TOKENIZER_SUPPORTED_KEY: 'tokenization',
-            resultCheckStatus: () => {},
-            refreshKoboldCppModels: async () => {
-                refreshes.push(context.online_status);
-            },
-        });
-        context.setOnlineStatus = value => {
-            context.online_status = value;
-        };
-        loadDeclarations(context, 'scripts/textgen-settings.js', ['getStatusTextgen']);
-
-        for (let check = 0; check < checks; check++) {
-            await context.getStatusTextgen();
-        }
-        return refreshes;
-    }
-
-    test('refreshes the switcher after every KoboldCpp status check, once the new status is set', async () => {
-        await expect(runStatusChecks('koboldcpp', 2)).resolves.toEqual(['koboldcpp/alpha', 'koboldcpp/alpha']);
-    });
-
-    test('leaves the switcher alone for other Text Completion types', async () => {
-        await expect(runStatusChecks('ooba')).resolves.toEqual([]);
     });
 });

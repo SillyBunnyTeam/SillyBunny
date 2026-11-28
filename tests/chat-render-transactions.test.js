@@ -1,179 +1,237 @@
-/* eslint-disable playwright/no-standalone-expect */
-import { describe, expect, jest, test } from '@jest/globals';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { renderMessagesInBatches } from '../public/scripts/chat-render-lifecycle/render-batch.js';
+/** @jest-environment jsdom */
+/* global globalThis */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
+import { importScriptModule } from './util/script-harness.js';
 
-const source = readFileSync(new URL('../public/script.js', import.meta.url), 'utf8');
+let activeRuntime = null;
 
-function runtime() {
-    let elements = [];
+afterEach(() => {
+    activeRuntime?.cleanup();
+    activeRuntime = null;
+    document.body.innerHTML = '';
+    jest.restoreAllMocks();
+});
+
+const RENDER_TX_DOM = `
+    <div id="chat"></div>
+    <div id="message_template" hidden>
+        <div class="mes">
+            <div class="mes_block">
+                <div class="ch_name"><span class="name_text"></span></div>
+                <div class="mes_text"></div>
+            </div>
+        </div>
+    </div>
+`;
+
+async function createTransactionRuntime() {
     let elapsed = 0;
     const frames = [];
-    class Element {
-        constructor(messageId, message) { this.messageId = messageId; this.message = message; }
-        classList = { add() {} };
-    }
-    class Collection {
-        constructor(items, previous = null) {
-            this.items = items;
-            this.previous = previous;
-            Object.assign(this, items);
-            this.length = items.length;
-        }
-        removeClass() { return this; }
-        addClass() { return this; }
-        filter(selector) { return new Collection(this.items.filter(element => element.messageId === Number(selector.match(/mesid="(\d+)"/)[1]))); }
-        nextAll() { return new Collection(this.items.length ? elements.slice(elements.indexOf(this.items[0]) + 1) : [], this); }
-        addBack() { return new Collection([...this.previous.items, ...this.items]); }
-        remove() { elements = elements.filter(element => !this.items.includes(element)); return this; }
-        first() { return new Collection(this.items.slice(0, 1)); }
-        last() { return new Collection(this.items.slice(-1)); }
-        each(callback) { this.items.forEach((element, index) => callback(index, element)); return this; }
-        attr(name, value) {
-            if (value === undefined) return this.items[0]?.messageId;
-            this.items.forEach(element => { element.messageId = value; });
-            return this;
-        }
-        find() { return new Collection([]); }
-        text() { return this; }
-    }
-    const select = selector => {
-        if (selector === '.mes') return new Collection(elements);
-        const match = selector.match(/mesid="(\d+)"/);
-        return new Collection(match ? elements.filter(element => element.messageId === Number(match[1])) : []);
-    };
-    const context = vm.createContext({
-        console: { info() {}, debug() {} },
-        chat: ['A', 'B', 'C'].map(mes => ({ mes, extra: {} })), chatGeneration: 1, chatRenderVersion: 0,
-        chat_metadata: {}, this_edit_mes_id: undefined, isLoadingMoreMessages: false,
-        power_user: { chat_truncation: 100 }, CHAT_HISTORY_OLDER_BUTTON_ID: 'older', CHAT_HISTORY_NEWER_BUTTON_ID: 'newer',
-        HTMLElement: Element,
-        $: element => typeof element === 'string' ? select(element) : new Collection([element]),
-        chatElement: {
-            0: { appendChild(fragment) { elements.push(...fragment.children); }, get firstChild() { return elements[0]; } },
-            find: select, children: select,
-        },
-        document: { createDocumentFragment: () => ({ children: [], appendChild(element) { this.children.push(element); } }) },
-        performance: { now: () => elapsed },
-        renderMessagesInBatches: options => renderMessagesInBatches({ ...options, documentRef: context.document, now: () => elapsed }),
-        updateMessageElement: (message, { messageId }) => { elapsed += 9; return [new Element(messageId, message)]; },
-        getMobileChatRenderBatchSize: () => 100,
-        getChatRenderWindowSize: () => 100,
-        getRenderedChatMessageWindow: () => ({ renderedMessageCount: elements.length, firstMessageId: elements[0]?.messageId, lastMessageId: elements.at(-1)?.messageId }),
-        getRenderedChatMessageElements: () => elements,
-        getFirstDisplayedMessageId: () => Math.min(...elements.map(element => element.messageId)),
-        getPagedChatRenderWindowSize: () => 100, getChatHistoryPageSize: () => 100,
-        clamp: value => Math.max(0, value),
-        insertShowMoreFragment: (reference, fragment) => {
-            const index = elements.indexOf(reference);
-            elements.splice(index < 0 ? 0 : index, 0, ...fragment.children);
-        },
-        captureVisibleChatMessageAnchor: () => null,
-        waitForNextFrame: () => new Promise(resolve => frames.push(resolve)),
-        isChatRenderLifecycleRolloutEnabled: () => true,
-        CHAT_RENDER_LIFECYCLE_ROUTE: { REDISPLAY_BATCH: 'redisplay', SHOW_MORE_BATCH: 'history' },
-        eventSource: { emit: jest.fn(async () => {}) }, event_types: { MESSAGE_DELETED: 'deleted', MORE_MESSAGES_LOADED: 'loaded' },
+    const origRaf = window.requestAnimationFrame;
+    const origCaf = window.cancelAnimationFrame;
+
+    // Advance performance.now by more than 8ms on each call so renderMessagesInBatches yields after one message.
+    const nowSpy = jest.spyOn(performance, 'now').mockImplementation(() => {
+        elapsed += 9;
+        return elapsed;
     });
-    for (const name of ['unobserveChatMessageResize', 'applyCharacterTagsToMessageDivs', 'syncChatHistoryWindowControls', 'syncRenderedChatLastMessageClass', 'refreshSwipeButtons', 'applyStylePins', 'updateEditArrowClasses', 'deleteItemizedPromptForMessage', 'saveChatDebounced', 'pruneRenderedChatMessagesToWindow']) {
-        context[name] = jest.fn();
-    }
-    for (const name of ['createChatRenderTransaction', 'renderRedisplayChatMessagesThroughLifecycle', 'renderRedisplayChatMessages', 'redisplayChat', 'getMessageDeletionStartId', 'deleteMessage', 'updateViewMessageIds', 'renderShowMoreMessagesThroughLifecycle', 'renderShowMoreMessages', 'showMoreMessages', 'showNewerMessages']) {
-        const declaration = source.match(new RegExp(`^(?:export )?((?:async )?function ${name}\\([\\s\\S]*?^}\\r?$)`, 'm'))[1];
-        vm.runInContext(declaration, context);
-    }
-    const waitForFrame = async () => {
-        for (let turn = 0; frames.length === 0 && turn < 100; turn++) await Promise.resolve();
-        if (frames.length === 0) throw new Error('Render did not schedule a frame');
+
+    const raf = jest.fn((callback) => {
+        frames.push(callback);
+        return frames.length;
+    });
+    const caf = jest.fn();
+    window.requestAnimationFrame = raf;
+    window.cancelAnimationFrame = caf;
+    globalThis.requestAnimationFrame = raf;
+    globalThis.cancelAnimationFrame = caf;
+
+    const loaded = await importScriptModule({
+        dom: RENDER_TX_DOM,
+        power_user: {
+            chat_truncation: 100,
+        },
+    });
+    activeRuntime = {
+        cleanup() {
+            nowSpy.mockRestore();
+            window.requestAnimationFrame = origRaf;
+            window.cancelAnimationFrame = origCaf;
+            globalThis.requestAnimationFrame = origRaf;
+            globalThis.cancelAnimationFrame = origCaf;
+            loaded.cleanup();
+        },
     };
-    const finish = async pending => {
-        let done = false;
-        const completion = Promise.all(pending).finally(() => { done = true; });
-        for (let turn = 0; !done && turn < 100; turn++) {
-            frames.shift()?.();
+
+    const { script, eventSource } = loaded;
+    script.characters.push({ name: 'Bunny', avatar: 'bunny.png', chat: 'tx-chat' });
+    script.setCharacterId(0);
+    script.setCharacterName('Bunny');
+    script.chat.push(
+        { name: 'User', is_user: true, is_system: false, mes: 'A', extra: {} },
+        { name: 'Bunny', is_user: false, is_system: false, mes: 'B', extra: {} },
+        { name: 'User', is_user: true, is_system: false, mes: 'C', extra: {} },
+    );
+
+    const emittedEvents = [];
+    for (const type of [script.event_types.MESSAGE_DELETED, script.event_types.MORE_MESSAGES_LOADED]) {
+        eventSource.on(type, () => emittedEvents.push(type));
+    }
+
+    const waitForFrame = async () => {
+        for (let turn = 0; frames.length === 0 && turn < 100; turn++) {
             await Promise.resolve();
         }
-        if (!done) throw new Error('Render did not complete');
+        if (frames.length === 0) {
+            throw new Error('Render did not schedule a frame');
+        }
+    };
+
+    const finish = async (pending) => {
+        let done = false;
+        const completion = Promise.all(pending).finally(() => { done = true; });
+        for (let turn = 0; !done && turn < 200; turn++) {
+            const cb = frames.shift();
+            if (cb) {
+                cb(elapsed);
+            }
+            await Promise.resolve();
+        }
+        if (!done) {
+            throw new Error('Render did not complete');
+        }
         await completion;
     };
+
+    const rows = () => Array.from(document.querySelectorAll('#chat > .mes')).map((el) => {
+        const mesId = el.getAttribute('mesid');
+        const text = el.querySelector('.mes_text')?.textContent?.trim() ?? '';
+        return `${text}@${mesId}`;
+    });
+
+    const insertMessageDom = (messageId) => {
+        const el = script.updateMessageElement(script.chat[messageId], { messageId })[0];
+        document.getElementById('chat').appendChild(el);
+        return el;
+    };
+
+    const decorateAll = () => {
+        document.querySelectorAll('#chat > .mes').forEach((el) => {
+            el.dataset.decorated = 'true';
+        });
+    };
+
+    const decorations = () => Array.from(document.querySelectorAll('#chat > .mes'))
+        .map((el) => el.dataset.decorated === 'true');
+
     return {
-        context, frames, waitForFrame, finish,
-        rows: () => elements.map(element => `${element.message.mes}@${element.messageId}`),
-        insert: (message, id) => elements.push(new Element(id, message)),
-        decorate: () => elements.forEach(element => { element.decorated = true; }),
-        decorations: () => elements.map(element => Boolean(element.decorated)),
+        script,
+        eventSource,
+        mocks: loaded.mocks,
+        frames,
+        emittedEvents,
+        waitForFrame,
+        finish,
+        rows,
+        insertMessageDom,
+        decorateAll,
+        decorations,
     };
 }
 
 describe('yielded chat render transactions', () => {
     test('restarts from current indices when a visible message is deleted during redisplay', async () => {
-        const host = runtime();
-        const pending = host.context.redisplayChat();
+        const host = await createTransactionRuntime();
+        const pending = host.script.redisplayChat();
         await host.waitForFrame();
         expect(host.rows()).toEqual(['A@0']);
-        await host.context.deleteMessage(0, undefined, false, false);
+
+        await host.script.deleteMessage(0, undefined, false, false);
         await host.finish([pending]);
         expect(host.rows()).toEqual(['B@0', 'C@1']);
     });
 
     test('restarts history insertion when deletion changes its selected indices', async () => {
-        const host = runtime();
-        host.insert(host.context.chat[2], 2);
-        const pending = host.context.showMoreMessages();
+        const host = await createTransactionRuntime();
+        host.insertMessageDom(2);
+        const pending = host.script.showMoreMessages();
         await host.waitForFrame();
         expect(host.rows()).toEqual(['A@0', 'C@2']);
-        await host.context.deleteMessage(0, undefined, false, false);
+
+        await host.script.deleteMessage(0, undefined, false, false);
         await host.finish([pending]);
         expect(host.rows()).toEqual(['B@0', 'C@1']);
-        expect(host.context.eventSource.emit.mock.calls.map(call => call[0])).toEqual(['deleted', 'loaded']);
+        expect(host.emittedEvents).toEqual([
+            host.script.event_types.MESSAGE_DELETED,
+            host.script.event_types.MORE_MESSAGES_LOADED,
+        ]);
     });
 
-    test.each(['older', 'newer'])('reapplies extension decorations after %s history recovery completes', async direction => {
-        const host = runtime();
-        host.context.eventSource.emit.mockImplementation(async () => host.decorate());
+    test.each(['older', 'newer'])('reapplies extension decorations after %s history recovery completes', async (direction) => {
+        const host = await createTransactionRuntime();
+        host.eventSource.on(host.script.event_types.MORE_MESSAGES_LOADED, () => host.decorateAll());
         const initialId = direction === 'older' ? 2 : 0;
-        host.insert(host.context.chat[initialId], initialId);
-        const pending = direction === 'older' ? host.context.showMoreMessages() : host.context.showNewerMessages();
+        host.insertMessageDom(initialId);
+
+        const pending = direction === 'older'
+            ? host.script.showMoreMessages()
+            : host.script.showNewerMessages();
         await host.waitForFrame();
-        await host.context.deleteMessage(0, undefined, false, false);
+        await host.script.deleteMessage(0, undefined, false, false);
         await host.finish([pending]);
+
         expect(host.rows()).toEqual(['B@0', 'C@1']);
         expect(host.decorations()).toEqual([true, true]);
-        expect(host.context.eventSource.emit.mock.calls.map(call => call[0])).toEqual(['deleted', 'loaded']);
+        expect(host.emittedEvents).toEqual([
+            host.script.event_types.MESSAGE_DELETED,
+            host.script.event_types.MORE_MESSAGES_LOADED,
+        ]);
     });
 
-    test.each(['replacement render', 'chat switch'])('does not emit a stale history event when recovery is superseded by %s', async supersession => {
-        const host = runtime();
-        host.insert(host.context.chat[2], 2);
-        const pending = host.context.showMoreMessages();
+    test.each(['replacement render', 'chat switch'])('does not emit a stale history event when recovery is superseded by %s', async (supersession) => {
+        const host = await createTransactionRuntime();
+        host.insertMessageDom(2);
+        const pending = host.script.showMoreMessages();
         await host.waitForFrame();
-        await host.context.deleteMessage(0, undefined, false, false);
-        host.frames.shift()();
+        await host.script.deleteMessage(0, undefined, false, false);
+        host.frames.shift()?.(0);
         await host.waitForFrame();
-        const replacement = supersession === 'replacement render' ? host.context.redisplayChat() : Promise.resolve();
-        if (supersession === 'chat switch') host.context.chatGeneration++;
+
+        const replacement = supersession === 'replacement render'
+            ? host.script.redisplayChat()
+            : Promise.resolve();
+        if (supersession === 'chat switch') {
+            host.script.incrementChatGeneration();
+        }
         await host.finish([pending, replacement]);
-        expect(host.context.eventSource.emit.mock.calls.map(call => call[0])).toEqual(['deleted']);
+        expect(host.emittedEvents).toEqual([host.script.event_types.MESSAGE_DELETED]);
     });
 
-    test.each(['older first', 'newer first'])('only the replacement render finishes when frames resume %s', async order => {
-        const host = runtime();
-        const first = host.context.redisplayChat();
+    test.each(['older first', 'newer first'])('only the replacement render finishes when frames resume %s', async (order) => {
+        const host = await createTransactionRuntime();
+        const applyTagsMock = host.mocks['scripts/tags.js'].applyCharacterTagsToMessageDivs;
+        applyTagsMock.mockClear();
+
+        const first = host.script.redisplayChat();
         await host.waitForFrame();
-        const second = host.context.redisplayChat();
-        for (let turn = 0; host.frames.length < 2 && turn < 100; turn++) await Promise.resolve();
+        const second = host.script.redisplayChat();
+        for (let turn = 0; host.frames.length < 2 && turn < 100; turn++) {
+            await Promise.resolve();
+        }
         expect(host.frames).toHaveLength(2);
-        if (order === 'newer first') host.frames.reverse();
+        if (order === 'newer first') {
+            host.frames.reverse();
+        }
         await host.finish([first, second]);
         expect(host.rows()).toEqual(['A@0', 'B@1', 'C@2']);
-        expect(host.context.applyCharacterTagsToMessageDivs).toHaveBeenCalledTimes(1);
+        expect(applyTagsMock).toHaveBeenCalledTimes(1);
     });
 
     test('detects same-length reordering rather than only changes to chat length', async () => {
-        const host = runtime();
-        const pending = host.context.redisplayChat();
+        const host = await createTransactionRuntime();
+        const pending = host.script.redisplayChat();
         await host.waitForFrame();
-        [host.context.chat[1], host.context.chat[2]] = [host.context.chat[2], host.context.chat[1]];
+        [host.script.chat[1], host.script.chat[2]] = [host.script.chat[2], host.script.chat[1]];
         await host.finish([pending]);
         expect(host.rows()).toEqual(['A@0', 'C@1', 'B@2']);
     });

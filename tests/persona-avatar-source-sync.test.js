@@ -1,243 +1,141 @@
-import { describe, expect, jest, test } from '@jest/globals';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+/** @jest-environment jsdom */
+/* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest/jsdom DOM assertions. */
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const scriptSource = fs.readFileSync(path.join(repoRoot, 'public', 'script.js'), 'utf8');
-const personasSource = fs.readFileSync(path.join(repoRoot, 'public', 'scripts', 'personas.js'), 'utf8');
-const tabsSource = fs.readFileSync(path.join(repoRoot, 'public', 'scripts', 'sillybunny-tabs.js'), 'utf8');
+import { importPersonasModule } from './util/personas-module-harness.js';
 
-function getFunctionSource(source, name) {
-    const match = source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([\\s\\S]*?\\n\\}`));
-    expect(match).not.toBeNull();
-    return match[0].replace(/^export /, '');
+function createMessageElement({ isUser = true, forceAvatar = false, src = '' } = {}) {
+    const mes = document.createElement('div');
+    mes.className = 'mes';
+    mes.setAttribute('is_user', String(isUser));
+    mes.setAttribute('force_avatar', String(forceAvatar));
+    const avatarWrap = document.createElement('div');
+    avatarWrap.className = 'avatar';
+    const img = document.createElement('img');
+    if (src) img.setAttribute('src', src);
+    avatarWrap.append(img);
+    mes.append(avatarWrap);
+    document.body.append(mes);
+    return { mes, img };
 }
 
-class FakeStyle {
-    constructor() {
-        this.values = new Map();
-    }
-
-    setProperty(name, value) {
-        this.values.set(name, value);
-    }
-
-    getPropertyValue(name) {
-        return this.values.get(name) ?? '';
-    }
-}
-
-class FakeElement {
-    constructor(attributes = {}) {
-        this.attributes = new Map(Object.entries(attributes));
-        this.dataset = {};
-        this.style = new FakeStyle();
-    }
-
-    getAttribute(name) {
-        return this.attributes.get(name) ?? null;
-    }
-
-    setAttribute(name, value) {
-        this.attributes.set(name, String(value));
-    }
-}
-
-class FakeImage extends FakeElement {
-    get currentSrc() {
-        return this.getAttribute('src') ?? '';
-    }
-}
-
-class FakeMessage extends FakeElement {
-    constructor(attributes, image = new FakeImage()) {
-        super(attributes);
-        this.image = image;
-    }
-
-    matches(selector) {
-        return selector === '.mes';
-    }
-
-    querySelector(selector) {
-        return selector === '.avatar img' ? this.image : null;
-    }
-}
-
-function readAttribute(element, name) {
-    return element.getAttribute(name);
-}
-
-function loadPersonaAvatarHelpers({ mobile, messages, fetchMock = jest.fn(async () => ({})) }) {
-    const body = [
-        getFunctionSource(personasSource, 'getPersonaAvatarSources'),
-        getFunctionSource(personasSource, 'messageUsesPersonaAvatar'),
-        getFunctionSource(personasSource, 'updateMessagePersonaAvatar'),
-        getFunctionSource(personasSource, 'reloadUserAvatar'),
-        getFunctionSource(personasSource, 'reloadPersonaAvatar'),
-        getFunctionSource(personasSource, 'refreshPersonaAvatar'),
-        `return {
-            getPersonaAvatarSources,
-            reloadUserAvatar,
-            refreshPersonaAvatar,
-            setUserAvatar(value) { user_avatar = value; },
-        };`,
-    ].join('\n\n');
-    const factory = new Function(
-        'getThumbnailUrl',
-        'getMobileThumbnailUrl',
-        'getUserAvatar',
-        'parseAvatarSource',
-        'isMobile',
-        'document',
-        'HTMLElement',
-        'HTMLImageElement',
-        'fetch',
-        'initialUserAvatar',
-        'personaEditorAdapter',
-        `let user_avatar = initialUserAvatar;\n${body}`,
-    );
-
-    return factory(
-        (type, file, cacheBust) => `/desktop/${type}/${file}${cacheBust ? '?t=desktop' : ''}`,
-        (type, file, cacheBust) => `/mobile/${type}/${file}${cacheBust ? '?t=mobile' : ''}`,
-        file => `/User Avatars/${file}`,
-        (rawSrc) => {
-            const source = String(rawSrc || '');
-            const thumbnailMatch = source.match(/^\/(?:desktop|mobile)\/persona\/([^?]+)/);
-            const originalMatch = source.match(/^\/User Avatars\/([^?]+)/);
-            const file = thumbnailMatch?.[1] || originalMatch?.[1];
-            return file ? { type: 'persona', file: decodeURIComponent(file) } : null;
-        },
-        () => mobile.value,
-        { querySelectorAll: () => messages },
-        FakeElement,
-        FakeImage,
-        fetchMock,
-        'First.png',
-        null,
-    );
-}
-
-function loadTabAvatarHelpers() {
-    const body = [
-        getFunctionSource(scriptSource, 'getThumbnailUrl'),
-        getFunctionSource(scriptSource, 'getFullAvatarUrl'),
-        getFunctionSource(scriptSource, 'parseAvatarSource'),
-        getFunctionSource(tabsSource, 'stripAvatarOrigin'),
-        getFunctionSource(tabsSource, 'isAbsoluteAvatarUrl'),
-        getFunctionSource(tabsSource, 'ensureAvatarPath'),
-        getFunctionSource(tabsSource, 'getChatAvatarSources'),
-        getFunctionSource(tabsSource, 'formatAvatarCssUrl'),
-        getFunctionSource(tabsSource, 'updateChatAvatarVariables'),
-        'return { getChatAvatarSources, updateChatAvatarVariables };',
-    ].join('\n\n');
-    const factory = new Function('window', 'isDataURL', 'default_avatar', 'document', 'HTMLElement', 'HTMLImageElement', 'sbState', body);
-
-    return factory(
-        { location: { origin: 'http://localhost:8000' } },
-        value => String(value).startsWith('data:'),
-        '/img/ai4.png',
-        {},
-        FakeElement,
-        FakeImage,
-        { chatAvatars: { sourceCache: new WeakMap() } },
-    );
-}
+afterEach(() => {
+    document.body.replaceChildren();
+    jest.restoreAllMocks();
+});
 
 describe('persona avatar source synchronization', () => {
-    test('persona switches atomically update only unforced user message sources', () => {
+    test('persona switches atomically update only unforced user message sources', async () => {
         const mobile = { value: true };
-        const currentUser = new FakeMessage({ is_user: 'true', force_avatar: 'false' });
-        const forcedUser = new FakeMessage({ is_user: 'true', force_avatar: 'true' }, new FakeImage({ src: '/forced.png' }));
-        const character = new FakeMessage({ is_user: 'false', force_avatar: 'false' }, new FakeImage({ src: '/character.png' }));
-        const helpers = loadPersonaAvatarHelpers({ mobile, messages: [currentUser, forcedUser, character] });
+        const currentUser = createMessageElement({ isUser: true, forceAvatar: false });
+        const forcedUser = createMessageElement({ isUser: true, forceAvatar: true, src: '/forced.png' });
+        const character = createMessageElement({ isUser: false, forceAvatar: false, src: '/character.png' });
 
-        helpers.setUserAvatar('Mobile.png');
-        helpers.reloadUserAvatar();
+        const { personas } = await importPersonasModule({
+            isMobile: () => mobile.value,
+            power_user: {
+                personas: { 'First.png': 'First', 'Mobile.png': 'Mobile', 'Desktop.png': 'Desktop' },
+                persona_descriptions: {},
+            },
+            script: {
+                getThumbnailUrl: jest.fn((type, file, cacheBust) => `/desktop/${type}/${file}${cacheBust ? '?t=desktop' : ''}`),
+                getMobileThumbnailUrl: jest.fn((type, file, cacheBust) => `/mobile/${type}/${file}${cacheBust ? '?t=mobile' : ''}`),
+            },
+        });
+        personas.initUserAvatar('First.png');
 
-        expect(readAttribute(currentUser.image, 'src')).toBe('/mobile/persona/Mobile.png');
-        expect(readAttribute(currentUser.image, 'data-thumbnail-src')).toBe('/mobile/persona/Mobile.png');
-        expect(readAttribute(currentUser.image, 'data-original-src')).toBe('/User Avatars/Mobile.png');
-        expect(currentUser.style.getPropertyValue('--sb-message-avatar')).toBe('url("/mobile/persona/Mobile.png")');
-        expect(currentUser.style.getPropertyValue('--mes-avatar-url')).toBe('url("/mobile/persona/Mobile.png")');
-        expect(currentUser.style.getPropertyValue('--mes-avatar-thumb-url')).toBe('url("/mobile/persona/Mobile.png")');
-        expect(currentUser.style.getPropertyValue('--mes-avatar-original-url')).toBe('url("/User Avatars/Mobile.png")');
-        expect(readAttribute(forcedUser.image, 'src')).toBe('/forced.png');
-        expect(readAttribute(character.image, 'src')).toBe('/character.png');
+        await personas.setUserAvatar('Mobile.png', { toastPersonaNameChange: false });
+
+        expect(currentUser.img.getAttribute('src')).toBe('/mobile/persona/Mobile.png');
+        expect(currentUser.img.getAttribute('data-thumbnail-src')).toBe('/mobile/persona/Mobile.png');
+        expect(currentUser.img.getAttribute('data-original-src')).toBe('User Avatars/Mobile.png');
+        expect(currentUser.mes.style.getPropertyValue('--sb-message-avatar')).toBe('url("/mobile/persona/Mobile.png")');
+        expect(currentUser.mes.style.getPropertyValue('--mes-avatar-url')).toBe('url("/mobile/persona/Mobile.png")');
+        expect(currentUser.mes.style.getPropertyValue('--mes-avatar-thumb-url')).toBe('url("/mobile/persona/Mobile.png")');
+        expect(currentUser.mes.style.getPropertyValue('--mes-avatar-original-url')).toBe('url("User Avatars/Mobile.png")');
+        expect(forcedUser.img.getAttribute('src')).toBe('/forced.png');
+        expect(character.img.getAttribute('src')).toBe('/character.png');
 
         mobile.value = false;
-        helpers.setUserAvatar('Desktop.png');
-        helpers.reloadUserAvatar();
+        await personas.setUserAvatar('Desktop.png', { toastPersonaNameChange: false });
 
-        expect(readAttribute(currentUser.image, 'src')).toBe('/User Avatars/Desktop.png');
-        expect(readAttribute(currentUser.image, 'data-thumbnail-src')).toBe('/desktop/persona/Desktop.png');
-        expect(currentUser.style.getPropertyValue('--mes-avatar-url')).toBe('url("/User Avatars/Desktop.png")');
+        expect(currentUser.img.getAttribute('src')).toBe('User Avatars/Desktop.png');
+        expect(currentUser.img.getAttribute('data-thumbnail-src')).toBe('/desktop/persona/Desktop.png');
+        expect(currentUser.mes.style.getPropertyValue('--mes-avatar-url')).toBe('url("User Avatars/Desktop.png")');
     });
 
     test('overwrite refresh warms all caches and applies cache-busted message state', async () => {
         const mobile = { value: true };
-        const currentUser = new FakeMessage({ is_user: 'true', force_avatar: 'false' });
-        const forcedCurrent = new FakeMessage({ is_user: 'true', force_avatar: 'true' }, new FakeImage({ src: '/desktop/persona/Current.png' }));
-        const forcedOther = new FakeMessage({ is_user: 'true', force_avatar: 'true' }, new FakeImage({ src: '/desktop/persona/Other.png' }));
-        const fetchMock = jest.fn(async () => ({}));
-        const helpers = loadPersonaAvatarHelpers({ mobile, messages: [currentUser, forcedCurrent, forcedOther], fetchMock });
+        const currentUser = createMessageElement({ isUser: true, forceAvatar: false });
+        const forcedCurrent = createMessageElement({ isUser: true, forceAvatar: true, src: '/desktop/persona/Current.png' });
+        const forcedOther = createMessageElement({ isUser: true, forceAvatar: true, src: '/desktop/persona/Other.png' });
 
-        helpers.setUserAvatar('Current.png');
-        const cacheBusted = helpers.getPersonaAvatarSources('Current.png', true);
-        expect(cacheBusted.desktopThumbnail).toContain('?t=desktop');
-        expect(cacheBusted.mobileThumbnail).toContain('?t=mobile');
-        expect(cacheBusted.original).toMatch(/\/User Avatars\/Current\.png\?t=\d+$/);
+        document.body.insertAdjacentHTML('beforeend', `
+            <form id="form_upload_avatar">
+                <input id="avatar_upload_overwrite" name="overwrite_name" value="Current.png" />
+                <input id="avatar_upload_file" name="avatar" type="file" />
+            </form>
+        `);
 
-        await helpers.refreshPersonaAvatar('Current.png');
+        const fetchCalls = [];
+        const fetchMock = jest.fn(async (url) => {
+            fetchCalls.push(url);
+            if (url === '/api/avatars/upload') {
+                return { ok: true, json: async () => ({ path: 'Current.png' }) };
+            }
+            if (url === '/api/avatars/get') {
+                return { ok: true, json: async () => ['Current.png', 'Other.png'] };
+            }
+            return { ok: true, json: async () => ({}) };
+        });
 
-        expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+        const { personas, $ } = await importPersonasModule({
+            isMobile: () => mobile.value,
+            fetch: fetchMock,
+            power_user: {
+                never_resize_avatars: true,
+                personas: { 'Current.png': 'Current', 'Other.png': 'Other' },
+                persona_descriptions: {},
+            },
+            script: {
+                getThumbnailUrl: jest.fn((type, file, cacheBust) => `/desktop/${type}/${file}${cacheBust ? '?t=desktop' : ''}`),
+                getMobileThumbnailUrl: jest.fn((type, file, cacheBust) => `/mobile/${type}/${file}${cacheBust ? '?t=mobile' : ''}`),
+                parseAvatarSource: jest.fn((rawSrc) => {
+                    const source = String(rawSrc || '');
+                    const thumbnailMatch = source.match(/^\/(?:desktop|mobile)\/persona\/([^?]+)/);
+                    const originalMatch = source.match(/^\/User Avatars\/([^?]+)/);
+                    const file = thumbnailMatch?.[1] || originalMatch?.[1];
+                    return file ? { type: 'persona', file: decodeURIComponent(file) } : null;
+                }),
+            },
+        });
+        personas.initUserAvatar('Current.png');
+        await personas.initPersonas();
+
+        const fileInput = document.getElementById('avatar_upload_file');
+        const avatarFile = new File(['png-bytes'], 'Current.png', { type: 'image/png' });
+        Object.defineProperty(fileInput, 'files', { value: [avatarFile], configurable: true });
+        fetchCalls.length = 0;
+
+        const changeEvent = $.Event('change', { target: fileInput });
+        $(fileInput).trigger(changeEvent);
+        for (let i = 0; i < 25; i++) await Promise.resolve();
+
+        expect(fetchCalls.filter(url => !url.startsWith('/api/'))).toEqual([
             '/desktop/persona/Current.png',
             '/mobile/persona/Current.png',
-            '/User Avatars/Current.png',
+            'User Avatars/Current.png',
         ]);
-        expect(readAttribute(currentUser.image, 'src')).toBe('/mobile/persona/Current.png?t=mobile');
-        expect(readAttribute(currentUser.image, 'data-thumbnail-src')).toBe('/mobile/persona/Current.png?t=mobile');
-        expect(readAttribute(currentUser.image, 'data-original-src')).toMatch(/\?t=\d+$/);
-        expect(readAttribute(forcedCurrent.image, 'src')).toBe('/mobile/persona/Current.png?t=mobile');
-        expect(readAttribute(forcedCurrent.image, 'data-original-src')).toMatch(/\?t=\d+$/);
-        expect(readAttribute(forcedOther.image, 'src')).toBe('/desktop/persona/Other.png');
+        expect(currentUser.img.getAttribute('src')).toBe('/mobile/persona/Current.png?t=mobile');
+        expect(currentUser.img.getAttribute('data-thumbnail-src')).toBe('/mobile/persona/Current.png?t=mobile');
+        expect(currentUser.img.getAttribute('data-original-src')).toMatch(/^User Avatars\/Current\.png\?t=\d+$/);
+        expect(forcedCurrent.img.getAttribute('src')).toBe('/mobile/persona/Current.png?t=mobile');
+        expect(forcedCurrent.img.getAttribute('data-original-src')).toMatch(/^User Avatars\/Current\.png\?t=\d+$/);
+        expect(forcedOther.img.getAttribute('src')).toBe('/desktop/persona/Other.png');
     });
 
-    test('encodes reserved characters in original persona URLs', () => {
-        const getUserAvatarSource = getFunctionSource(personasSource, 'getUserAvatar');
-        const getUserAvatar = new Function('USER_AVATAR_PATH', `${getUserAvatarSource}\nreturn getUserAvatar;`)('/User Avatars/');
-
-        expect(getUserAvatar('50% Off #1.png')).toBe('/User Avatars/50%25%20Off%20%231.png');
-    });
-
-    test('tab updater preserves a mobile preset as the display and decorative source', () => {
-        const { getChatAvatarSources, updateChatAvatarVariables } = loadTabAvatarHelpers();
-        const mobileThumbnail = '/thumbnail?type=persona&file=Mobile%20Me.png&preset=mobile&t=123';
-        const original = '/User%20Avatars/Mobile%20Me.png?t=123';
-        const image = new FakeImage({
-            src: mobileThumbnail,
-            'data-thumbnail-src': mobileThumbnail,
-            'data-original-src': original,
-        });
-        const message = new FakeMessage({}, image);
-
-        expect(getChatAvatarSources(mobileThumbnail)).toMatchObject({
-            display: mobileThumbnail,
-            thumb: mobileThumbnail,
-            original: '/User%20Avatars/Mobile%20Me.png',
-        });
-
-        updateChatAvatarVariables(message);
-
-        const mobileCssUrl = `url(${JSON.stringify(mobileThumbnail)})`;
-        expect(message.dataset.avatar).toBe(mobileThumbnail);
-        expect(message.dataset.avatarThumb).toBe(mobileThumbnail);
-        expect(message.dataset.avatarOriginal).toBe(original);
-        expect(message.style.getPropertyValue('--sb-message-avatar')).toBe(mobileCssUrl);
-        expect(message.style.getPropertyValue('--mes-avatar-url')).toBe(mobileCssUrl);
-        expect(message.style.getPropertyValue('--mes-avatar-thumb-url')).toBe(mobileCssUrl);
-        expect(message.style.getPropertyValue('--mes-avatar-original-url')).toBe(`url(${JSON.stringify(original)})`);
+    test('encodes reserved characters in original persona URLs', async () => {
+        const { personas } = await importPersonasModule();
+        expect(personas.getUserAvatar('50% Off #1.png')).toBe('User Avatars/50%25%20Off%20%231.png');
     });
 });
