@@ -1,5 +1,5 @@
 import { getParsedUA, isMobile } from './RossAscends-mods.js';
-import { shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
+import { createMobileDocumentPanTouchStart, shouldBlockMobileDocumentPan } from './mobile-shell-lifecycle/index.js';
 import { isIOSWebKitPlatform, isLegacyIOSWebKitPlatform } from './mobile-send-button.js';
 
 const isFirefox = () => /firefox/i.test(navigator.userAgent);
@@ -266,17 +266,7 @@ function applyBrowserFixes() {
         };
 
         const captureDocumentPanStart = (event) => {
-            if (event.touches?.length !== 1) {
-                documentPanTouchStart = null;
-                return;
-            }
-
-            const touch = event.touches[0];
-            documentPanTouchStart = {
-                identifier: touch.identifier,
-                clientX: touch.clientX,
-                clientY: touch.clientY,
-            };
+            documentPanTouchStart = createMobileDocumentPanTouchStart(event);
         };
 
         const clearDocumentPanStart = () => {

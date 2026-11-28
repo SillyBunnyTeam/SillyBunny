@@ -285,8 +285,8 @@ export function bindKeyboardInset(host, { onInsetChange = null } = {}) {
     const schedule = () => {
         if (!frame) frame = requestAnimationFrame(sync);
     };
-    viewport?.addEventListener('resize', schedule);
-    viewport?.addEventListener('scroll', schedule);
+    viewport?.addEventListener('resize', schedule, { passive: true });
+    viewport?.addEventListener('scroll', schedule, { passive: true });
     host.addEventListener('focusin', schedule);
     sync();
     return () => {

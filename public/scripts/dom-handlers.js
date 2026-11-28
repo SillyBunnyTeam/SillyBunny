@@ -46,21 +46,54 @@ function handleInputWheel() {
     }
 
     const updateValueThrottled = throttle(updateValue, minInterval);
+    // SillyBunny: scope non-passive wheel handling to focused step number inputs via focusin/focusout so document scroll stays compositor-driven.
+    /** @type {(() => void) | null} */
+    let unbindActiveWheel = null;
 
-    document.addEventListener('wheel', (e) => {
-        // Try to carefully narrow down if we even need to fire this handler
-        const input = document.activeElement instanceof HTMLInputElement ? document.activeElement : null;
-        if (input && input.type === 'number' && input.hasAttribute('step')) {
-            const parent = input.closest('.range-block-range-and-counter') ?? input.closest('div') ?? input.parentElement;
-            const slider = /** @type {HTMLInputElement} */ (parent?.querySelector('input[type="range"]'));
+    const detachActiveWheel = () => {
+        if (unbindActiveWheel) {
+            unbindActiveWheel();
+            unbindActiveWheel = null;
+        }
+    };
 
-            // Stop propagation for either target
+    document.addEventListener('focusin', (event) => {
+        detachActiveWheel();
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || !target.matches('input[type="number"][step]')) {
+            return;
+        }
+
+        const input = target;
+        const parent = input.closest('.range-block-range-and-counter') ?? input.closest('div') ?? input.parentElement;
+        const slider = /** @type {HTMLInputElement|null} */ (parent?.querySelector('input[type="range"]') ?? null);
+        const onWheel = (/** @type {WheelEvent} */ e) => {
+            if (document.activeElement !== input) {
+                detachActiveWheel();
+                return;
+            }
+
             if (e.target === input || (slider && e.target === slider)) {
                 e.stopPropagation();
                 e.preventDefault();
-
                 updateValueThrottled(input, slider, e.deltaY);
             }
+        };
+
+        input.addEventListener('wheel', onWheel, { passive: false });
+        if (slider && slider !== input) {
+            slider.addEventListener('wheel', onWheel, { passive: false });
         }
-    }, { passive: false });
+
+        unbindActiveWheel = () => {
+            input.removeEventListener('wheel', onWheel);
+            if (slider && slider !== input) {
+                slider.removeEventListener('wheel', onWheel);
+            }
+        };
+    });
+
+    document.addEventListener('focusout', () => {
+        detachActiveWheel();
+    });
 }

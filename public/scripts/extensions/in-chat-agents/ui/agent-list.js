@@ -22,6 +22,9 @@ import { mountCompanionsPage } from './companions-page.js';
 import { mountAgentGroups } from './groups-page.js';
 import { mountAgentDetail } from './agent-editor.js';
 
+// SillyBunny: the rows are shared entity rows. Their sheet is a panel sheet, which the idle activation skips and which only a panel that needs it loads.
+const ENTITY_LIST_STYLESHEET = { href: 'css/sillybunny-entity-list.css?v=20261118zza', id: 'deferred-entity-list-css' };
+
 let adapter = null;
 const mounts = new WeakMap();
 const controllers = new Set();
@@ -747,7 +750,11 @@ export function mountAgentsPanel(column) {
         },
         async connect() {
             if (!adapter || destroyed) return;
-            await loadListEditorStyles();
+            await Promise.all([
+                loadListEditorStyles(),
+                globalThis.SillyBunnyAssets?.loadStylesheetAsync?.(ENTITY_LIST_STYLESHEET.href, { id: ENTITY_LIST_STYLESHEET.id })
+                    .catch(error => console.warn('Failed to load the entity list stylesheet:', error)),
+            ]);
             // The sheets share selectors of equal specificity, so they must sit in this order; a sheet that another
             // surface already loaded earlier is moved after its predecessor.
             let previous = null;

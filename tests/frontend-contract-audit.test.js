@@ -32,12 +32,14 @@ describe('frontend contract audit', () => {
     test('finds local HTML assets without treating external URLs as local files', () => {
         const references = extractHtmlAssetReferences(`
             <link rel="stylesheet" href="css/app.css?v=1">
+            <link data-sb-deferred-style data-sb-href="css/deferred.css?v=2">
             <script src="scripts/app.js"></script>
             <link rel="stylesheet" href="https://example.test/app.css">
         `);
 
         expect(references).toEqual([
             expect.objectContaining({ attribute: 'href', value: 'css/app.css?v=1' }),
+            expect.objectContaining({ attribute: 'data-sb-href', value: 'css/deferred.css?v=2' }),
             expect.objectContaining({ attribute: 'src', value: 'scripts/app.js' }),
         ]);
     });
@@ -110,11 +112,11 @@ describe('frontend contract audit', () => {
     });
 
     test('resolves nested, absolute and encoded assets and rejects missing files, directories and escapes', () => {
-        const root = fixture('<script src="css/missing.js"></script><script src="%2e%2e/private.js"></script><link href="%zz"><link href="css/">');
+        const root = fixture('<script src="css/missing.js"></script><script src="%2e%2e/private.js"></script><link href="%zz"><link href="css/"><link data-sb-deferred-style data-sb-href="css/missing-deferred.css">');
         const findings = auditFrontendContracts({ repoRoot: root });
-        expect(findings.map(item => item.code)).toEqual(['missing-asset', 'asset-path-escape', 'invalid-asset-url', 'missing-asset']);
+        expect(findings.map(item => item.code)).toEqual(['missing-asset', 'asset-path-escape', 'invalid-asset-url', 'missing-asset', 'missing-asset']);
         fs.mkdirSync(path.join(root, 'public/nested'));
-        fs.writeFileSync(path.join(root, 'public/nested/page.html'), '<link href="../css/sillybunny-theme.css"><link href="/css/sillybunny-tabs.css">');
+        fs.writeFileSync(path.join(root, 'public/nested/page.html'), '<link href="../css/sillybunny-theme.css"><link href="/css/sillybunny-tabs.css"><link data-sb-deferred-style data-sb-href="../css/sillybunny-mobile-shell.css">');
         expect(auditFrontendContracts({ repoRoot: root, targets: { html: ['public/nested/page.html'] } })).toEqual([]);
     });
 

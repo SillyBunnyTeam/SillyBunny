@@ -38,12 +38,13 @@
     <link rel="preload" as="font" type="font/woff2" href="webfonts/fa-solid-900.woff2" crossorigin>
     <link rel="manifest" crossorigin="use-credentials" href="manifest.json">
     <link href="webfonts/AdwaitaSans/stylesheet.css?v=20261001a" rel="stylesheet">
-    <link href="webfonts/NotoSans/stylesheet.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
-    <link href="webfonts/AdwaitaMono/stylesheet.css?v=20261030a" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
-    <link href="webfonts/NotoSansMono/stylesheet.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
+    <!-- SillyBunny: defer non-critical font and brand icon sheets until post-APP_READY idle without preload socket contention. -->
+    <link data-sb-deferred-style data-sb-href="webfonts/NotoSans/stylesheet.css" data-sb-media="all">
+    <link data-sb-deferred-style data-sb-href="webfonts/AdwaitaMono/stylesheet.css?v=20261030a" data-sb-media="all">
+    <link data-sb-deferred-style data-sb-href="webfonts/NotoSansMono/stylesheet.css" data-sb-media="all">
     <link href="css/fontawesome.min.css" rel="stylesheet">
     <link href="css/solid.min.css" rel="stylesheet">
-    <link href="css/brands.min.css" rel="preload" as="style" data-sb-deferred-style data-sb-media="all">
+    <link data-sb-deferred-style data-sb-href="css/brands.min.css" data-sb-media="all">
     <link href="css/jquery-ui.min.css" rel="stylesheet">
     <link href="css/toastr.min.css" rel="stylesheet">
     <link href="css/select2.min.css" rel="stylesheet">
@@ -71,16 +72,17 @@
     <!-- SillyBunny: keep the Characters shell cache key aligned with its fork-owned stylesheet edits. -->
     <link rel="stylesheet" type="text/css" href="css/sillybunny-tabs.css?v=20261126a">
     <!-- SillyBunny: entity lists and tag filters load after startup; the group editor activates them on open. -->
-    <link rel="preload" as="style" href="css/sillybunny-entity-list.css?v=20261118zza" data-sb-deferred-style data-sb-media="all">
+    <link data-sb-deferred-style data-sb-panel-style data-sb-href="css/sillybunny-entity-list.css?v=20261118zza" data-sb-media="all">
     <!-- SillyBunny: the Characters/Groups list activates this deferred stylesheet on first mount. Keep this version aligned with the runtime loader URLs. -->
-    <link rel="preload" as="style" href="css/sillybunny-character-list.css?v=20261122g" data-sb-deferred-style data-sb-media="all">
+    <link data-sb-deferred-style data-sb-panel-style data-sb-href="css/sillybunny-character-list.css?v=20261122g" data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-shell.css?v=20261118zv" media="(max-width: 768px)">
-    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261118zo">
+    <!-- SillyBunny: gate mobile bottom-bar navigation styles to BOTTOM_BAR_COMPACT_QUERY so desktop skips blocking download while landscape phones stay styled. -->
+    <link rel="stylesheet" type="text/css" href="css/sillybunny-mobile-navigation.css?v=20261118zo" media="(max-width: 768px), (pointer: coarse) and (max-height: 450px)">
     <link rel="stylesheet" type="text/css" href="css/sillybunny-message-actions.css?v=20261126b">
     <!-- SillyBunny: the editor chrome sheet is deferred, so it stays out of the blocking-CSS budget. The editors, the lists and the windows that use it load it through loadListEditorStyles() and wait for it before they show; the character and group editors are held hidden until it applies (holdEditorsUntilStyled() in sillybunny-editor/list-shell.js). Keep this version aligned with the runtime loader URLs. -->
-    <link rel="preload" as="style" href="css/sillybunny-character-editor.css?v=20261123a" data-sb-deferred-style data-sb-media="all">
+    <link data-sb-deferred-style data-sb-panel-style data-sb-href="css/sillybunny-character-editor.css?v=20261123a" data-sb-media="all">
     <!-- SillyBunny: colour menus render outside clipped preference groups. -->
-    <link rel="preload" as="style" href="css/sillybunny-color-picker.css?v=20261126a" data-sb-deferred-style data-sb-media="all">
+    <link data-sb-deferred-style data-sb-panel-style data-sb-href="css/sillybunny-color-picker.css?v=20261126a" data-sb-media="all">
     <link rel="stylesheet" type="text/css" href="css/user.css">
     <!-- Scripts are loaded at the end of the body to improve page load speed -->
 </head>
@@ -9457,15 +9459,32 @@
     <script type="module" src="script.js"></script>
     <script type="module" src="scripts/sillybunny-tabs.js"></script>
     <script type="module" src="scripts/sillybunny-conversation.js"></script>
+    <!-- SillyBunny: coalesce --doc-height resize updates into a single rAF. -->
     <script>
-        window.addEventListener('load', (event) => {
-            const documentHeight = () => {
-                const doc = document.documentElement;
-                doc.style.setProperty('--doc-height', `${window.innerHeight}px`);
+        (() => {
+            let frameId = 0;
+            let lastHeight = -1;
+            const syncDocumentHeight = () => {
+                frameId = 0;
+                const nextHeight = window.innerHeight;
+                if (nextHeight === lastHeight) {
+                    return;
+                }
+                lastHeight = nextHeight;
+                document.documentElement.style.setProperty('--doc-height', `${nextHeight}px`);
+            };
+            const scheduleDocumentHeight = () => {
+                if (frameId === 0) {
+                    frameId = window.requestAnimationFrame(syncDocumentHeight);
+                }
+            };
+            window.addEventListener('resize', scheduleDocumentHeight, { passive: true });
+            if (document.readyState === 'complete') {
+                syncDocumentHeight();
+            } else {
+                window.addEventListener('load', syncDocumentHeight, { once: true, passive: true });
             }
-            window.addEventListener('resize', documentHeight);
-            documentHeight();
-        });
+        })();
     </script>
 </body>
 

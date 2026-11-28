@@ -32,7 +32,7 @@ describe('legacy persona layout retirement', () => {
     test('keeps the shared entity-row stylesheet deferred and includes it in the Persona preload gate', () => {
         const personaStyles = tabsJs.split('\'characters:persona\': [')[1].split('],')[0];
         expect(personaStyles).toContain('{ href: \'css/sillybunny-entity-list.css?v=20261118zza\', id: \'deferred-entity-list-css\' }');
-        expect(indexHtml).toMatch(/<link rel="preload" as="style" href="css\/sillybunny-entity-list\.css\?v=20261118zza" data-sb-deferred-style/);
+        expect(indexHtml).toMatch(/<link\b[^>]*data-sb-deferred-style[^>]*data-sb-href="css\/sillybunny-entity-list\.css\?v=20261118zza"/);
         expect(indexHtml).not.toMatch(/<link rel="stylesheet"[^>]*href="css\/sillybunny-entity-list\.css/);
     });
 

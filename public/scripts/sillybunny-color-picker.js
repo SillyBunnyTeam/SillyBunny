@@ -8,9 +8,12 @@ const PICKER_SELECTOR = 'toolcool-color-picker';
 /** Sent on the picker element when its menu has closed, whoever closed it. */
 export const COLOR_PICKER_CLOSED_EVENT = 'sb-color-picker-closed';
 const MENU_ID = 'sb-color-picker-menu';
+const COLOR_PICKER_STYLESHEET = Object.freeze({
+    href: 'css/sillybunny-color-picker.css?v=20261126a',
+    id: 'deferred-color-picker-css',
+});
 const MARGIN = 12;
 const GAP = 8;
-const bindings = new WeakMap();
 let initialization;
 let active = null;
 
@@ -323,18 +326,51 @@ function firstControl(state) {
     return window.matchMedia('(pointer: coarse)').matches ? state.saturation : state.inputs.hex;
 }
 
+let stylesheetPromise = null;
+let stylesheetLoaded = false;
+
+function ensureColorPickerStylesheet() {
+    const loader = globalThis.SillyBunnyAssets?.loadStylesheetAsync;
+    if (typeof loader !== 'function') {
+        stylesheetLoaded = true;
+        return Promise.resolve();
+    }
+    stylesheetPromise ??= Promise.resolve(loader(COLOR_PICKER_STYLESHEET.href, { id: COLOR_PICKER_STYLESHEET.id }))
+        .then(() => {
+            stylesheetLoaded = true;
+        })
+        .catch(() => {
+            stylesheetPromise = null;
+        });
+    return stylesheetPromise;
+}
+
 function openColorMenu(picker, button) {
     if (active?.picker === picker) {
         closeColorMenu();
         return;
     }
+    const stylesheetReady = ensureColorPickerStylesheet();
     closeColorMenu({ restoreFocus: false });
     picker.opened = false;
     const state = buildMenu(picker, button);
+    const onPickerChange = () => {
+        if (active !== state || state.writing) return;
+        if (!state.hexPending) {
+            state.inputs.hex.value = picker.hex;
+            state.hexAlpha = picker.color.toRgb().a;
+        }
+        state.hsv = picker.color.toHsv();
+        render(state);
+    };
+    picker.addEventListener('change', onPickerChange);
+    state.unbindPickerChange = () => picker.removeEventListener('change', onPickerChange);
     active = state;
+    state.stopWatchingRemoval = watchPickerRemoval(state);
     bindControls(state);
     render(state);
     button.setAttribute('aria-expanded', 'true');
+    let presentPopover = null;
     if (window.matchMedia(MENU_SHEET_QUERY).matches) {
         const header = state.menu.querySelector('.sb-color-picker-header');
         const closeButton = state.menu.querySelector('.sb-color-picker-close');
@@ -359,6 +395,11 @@ function openColorMenu(picker, button) {
         dialog.closed.then(() => {
             if (active === state) closeColorMenu({ commitPending: false, restoreFocus: false });
         });
+        if (!stylesheetLoaded) {
+            void stylesheetReady.then(() => {
+                if (active === state) syncPlacement();
+            });
+        }
     } else {
         // Popover's top layer escapes clipped cards. WebKit 16.4 falls back inside any open modal.
         hostOverlayLayer(state.menu);
@@ -366,8 +407,13 @@ function openColorMenu(picker, button) {
             state.menu.setAttribute('popover', 'manual');
             state.menu.showPopover();
         }
-        syncPlacement();
-        animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
+        presentPopover = () => {
+            if (active !== state) return;
+            state.menu.style.visibility = '';
+            syncPlacement();
+            animateIn(state.menu, [{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_FAST });
+            firstControl(state).focus({ preventScroll: true });
+        };
     }
     const surface = state.dialog?.root ?? state.menu;
     surface.addEventListener('sb-overlay-host-closing', () => {
@@ -378,7 +424,14 @@ function openColorMenu(picker, button) {
     state.unlink = linkChildLayer(surface, picker, () => {
         if (active === state) closeColorMenu({ restoreFocus: false });
     });
-    if (!state.dialog) firstControl(state).focus({ preventScroll: true });
+    if (presentPopover) {
+        if (stylesheetLoaded) {
+            presentPopover();
+        } else {
+            state.menu.style.visibility = 'hidden';
+            void stylesheetReady.then(presentPopover);
+        }
+    }
 }
 
 function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
@@ -387,6 +440,8 @@ function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
     if (commitPending) state.finalizeHex();
     active = null;
     state.unlink?.();
+    state.unbindPickerChange?.();
+    state.stopWatchingRemoval?.();
     state.button.setAttribute('aria-expanded', 'false');
     if (state.dialog) state.dialog.close('close');
     else state.menu.remove();
@@ -398,8 +453,9 @@ function closeColorMenu({ restoreFocus = true, commitPending = true } = {}) {
 }
 
 function enhancePicker(picker) {
-    const button = picker.shadowRoot?.querySelector('.button');
-    if (!button) return;
+    if (!(picker instanceof Element) || picker.closest('#chat')) return null;
+    const button = picker.shadowRoot?.querySelector('.button') ?? null;
+    if (!button) return null;
     if (active?.picker === picker && active.button !== button) {
         active.button = button;
         active.hsv = picker.color.toHsv();
@@ -427,57 +483,86 @@ function enhancePicker(picker) {
         `;
         picker.shadowRoot.append(style);
     }
-    if (bindings.has(picker)) return;
-    const activate = event => {
-        if (!event.composedPath().some(element => element instanceof Element && element.matches('.button'))) return;
-        if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        openColorMenu(picker, picker.shadowRoot.querySelector('.button'));
-    };
-    picker.addEventListener('click', activate, true);
-    picker.addEventListener('keydown', activate, true);
-    picker.addEventListener('change', () => {
-        if (active?.picker !== picker || active.writing) return;
-        if (!active.hexPending) {
-            active.inputs.hex.value = picker.hex;
-            active.hexAlpha = picker.color.toRgb().a;
-        }
-        active.hsv = picker.color.toHsv();
-        render(active);
-    });
-    bindings.set(picker, true);
+    return button;
 }
 
-function enhanceWithin(root) {
-    if (!(root instanceof Element)) return;
-    if (root.matches(PICKER_SELECTOR)) enhancePicker(root);
-    for (const picker of root.querySelectorAll(PICKER_SELECTOR)) enhancePicker(picker);
+function findEligiblePicker(target) {
+    if (!(target instanceof Element)) return null;
+    const picker = target.closest(PICKER_SELECTOR);
+    if (!picker || picker.closest('#chat')) return null;
+    return picker;
+}
+
+/**
+ * The vendor element builds its shadow DOM in connectedCallback and assigns its colour there, which dispatches a
+ * non-bubbling `change` on the picker. A capture listener on the document sees that event for every picker that
+ * connects, wherever it is added, so no observer has to watch the page. The shadow DOM is complete once the
+ * callback has returned, which is why the work waits for a microtask. A moved picker connects again and gets a
+ * new shadow DOM, so it is enhanced again.
+ */
+function handlePickerConnected(event) {
+    const picker = event.target;
+    if (!(picker instanceof Element) || !picker.matches(PICKER_SELECTOR)) return;
+    queueMicrotask(() => {
+        if (picker.isConnected && !picker.shadowRoot?.querySelector('[data-sb-color-picker-style]')) enhancePicker(picker);
+    });
+}
+
+/**
+ * The vendor element has no disconnect signal. An owner that rebuilds its list replaces the picker under an open menu,
+ * so the menu closes when the picker or one of its ancestors leaves the document. Only the ancestors are observed, and
+ * only while the menu is open.
+ */
+function watchPickerRemoval(state) {
+    const observer = new MutationObserver(() => {
+        if (active === state && !state.picker.isConnected) closeColorMenu({ restoreFocus: false, commitPending: false });
+    });
+    for (let ancestor = state.picker.parentNode; ancestor; ancestor = ancestor.parentNode) {
+        observer.observe(ancestor, { childList: true });
+    }
+    return () => observer.disconnect();
+}
+
+function handleDelegatedPickerActivation(event) {
+    const picker = findEligiblePicker(event.target);
+    if (!picker) return;
+    if (!event.composedPath().some(element => element instanceof Element && element.matches('.button'))) return;
+    if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const button = enhancePicker(picker);
+    if (button) openColorMenu(picker, button);
+}
+
+function handleDelegatedPickerPrepare(event) {
+    const picker = findEligiblePicker(event.target);
+    if (!picker) return;
+    enhancePicker(picker);
+    void ensureColorPickerStylesheet();
 }
 
 export function initializeColorPickers() {
     initialization ??= customElements.whenDefined(PICKER_SELECTOR).then(() => {
-        enhanceWithin(document.body);
-        const observer = new MutationObserver(mutations => {
-            for (const mutation of mutations) {
-                // A streamed reply writes nodes into #chat on every token, and no picker lives in a message.
-                if (mutation.target instanceof Element && mutation.target.closest('#chat')) continue;
-                for (const node of mutation.addedNodes) enhanceWithin(node);
-            }
-            if (active && !active.picker.isConnected) closeColorMenu({ restoreFocus: false, commitPending: false });
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
+        document.addEventListener('change', handlePickerConnected, { capture: true, passive: true });
+        for (const picker of document.querySelectorAll(PICKER_SELECTOR)) {
+            enhancePicker(picker);
+        }
+        document.addEventListener('click', handleDelegatedPickerActivation, true);
+        document.addEventListener('keydown', handleDelegatedPickerActivation, true);
+        document.addEventListener('focusin', handleDelegatedPickerPrepare, { capture: true, passive: true });
+        document.addEventListener('pointerover', handleDelegatedPickerPrepare, { capture: true, passive: true });
         document.addEventListener('pointerdown', event => {
+            handleDelegatedPickerPrepare(event);
             if (!active || active.dialog) return;
             const path = event.composedPath();
             if (!path.includes(active.menu) && !path.includes(active.picker)) closeColorMenu({ restoreFocus: false });
-        }, true);
+        }, { capture: true, passive: true });
         document.addEventListener('scroll', event => {
             if (active && !active.dialog && !active.menu.contains(event.target)) closeColorMenu({ restoreFocus: false });
-        }, true);
-        window.addEventListener('resize', syncPlacement);
-        window.visualViewport?.addEventListener('resize', syncPlacement);
-        window.visualViewport?.addEventListener('scroll', syncPlacement);
+        }, { capture: true, passive: true });
+        window.addEventListener('resize', syncPlacement, { passive: true });
+        window.visualViewport?.addEventListener('resize', syncPlacement, { passive: true });
+        window.visualViewport?.addEventListener('scroll', syncPlacement, { passive: true });
     });
     return initialization;
 }

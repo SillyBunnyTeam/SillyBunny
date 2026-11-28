@@ -3141,6 +3141,91 @@ export function createTimeout(ms, errorMessage = '') {
     });
 }
 
+// SillyBunny: share one delegated passive touch listener set across addLongPressEvent callers and drop the dead setTimeout preventDefault.
+/** @type {{ selector: string, callback: Function, delay: number }[]} */
+const longPressRegistrations = [];
+/** @type {{ timer: ReturnType<typeof setTimeout>, identifier: number|null }[]} */
+const longPressActivePresses = [];
+/** @type {Element|null} */
+let longPressFiredTarget = null;
+let longPressListenersBound = false;
+
+/**
+ * Ends the pending presses of the touches that moved, ended or were cancelled. A touch that is somewhere else keeps its
+ * own press, as it did when every registration had its own listeners.
+ * @param {TouchEvent|undefined} [event] An event without `changedTouches` ends every pending press.
+ */
+function cancelLongPresses(event) {
+    const changed = event?.changedTouches ? Array.from(event.changedTouches, touch => touch.identifier) : null;
+    for (let index = longPressActivePresses.length - 1; index >= 0; index--) {
+        const press = longPressActivePresses[index];
+        if (changed && !changed.includes(press.identifier)) {
+            continue;
+        }
+        clearTimeout(press.timer);
+        longPressActivePresses.splice(index, 1);
+    }
+}
+
+function ensureLongPressDelegatedListeners() {
+    if (longPressListenersBound) {
+        return;
+    }
+
+    longPressListenersBound = true;
+
+    document.addEventListener('touchstart', function (event) {
+        // With no other finger down this starts a new gesture, so a click that a fired press left to suppress is not coming.
+        if (!event.touches || event.touches.length <= 1) {
+            longPressFiredTarget = null;
+        }
+
+        const touches = event.changedTouches?.length ? Array.from(event.changedTouches) : [event];
+        for (const touch of touches) {
+            const rawTarget = touch.target;
+            const targetElement = rawTarget && typeof rawTarget.closest === 'function'
+                ? rawTarget
+                : rawTarget?.parentElement;
+            if (!targetElement || typeof targetElement.closest !== 'function') {
+                continue;
+            }
+
+            for (const registration of longPressRegistrations) {
+                const el = targetElement.closest(registration.selector);
+                if (!el) {
+                    continue;
+                }
+
+                const press = {
+                    identifier: touch.identifier ?? null,
+                    timer: setTimeout(() => {
+                        const index = longPressActivePresses.indexOf(press);
+                        if (index >= 0) longPressActivePresses.splice(index, 1);
+                        longPressFiredTarget = el;
+                        registration.callback.call(el, event);
+                    }, registration.delay),
+                };
+                longPressActivePresses.push(press);
+            }
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchend', cancelLongPresses, { passive: true });
+    document.addEventListener('touchmove', cancelLongPresses, { passive: true });
+    document.addEventListener('touchcancel', cancelLongPresses, { passive: true });
+
+    document.addEventListener('click', function (event) {
+        if (longPressFiredTarget) {
+            const suppressedTarget = longPressFiredTarget;
+            longPressFiredTarget = null;
+            if (suppressedTarget.contains(event.target)) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+        }
+    }, true);
+}
+
 /**
  * Registers a long-press (touch hold) event as an alternative to modifier+click.
  * Supports event delegation for dynamically created elements.
@@ -3149,37 +3234,6 @@ export function createTimeout(ms, errorMessage = '') {
  * @param {number} [delay=500] Long-press duration in ms
  */
 export function addLongPressEvent(selector, callback, delay = 500) {
-    let timer = null;
-    let fired = false;
-    let target = null;
-
-    document.addEventListener('touchstart', function (event) {
-        const el = event.target.closest(selector);
-        if (!el) return;
-        target = el;
-        fired = false;
-        timer = setTimeout(() => {
-            fired = true;
-            event.preventDefault();
-            callback.call(el, event);
-        }, delay);
-    }, { passive: false });
-
-    document.addEventListener('touchend', cancelTimer);
-    document.addEventListener('touchmove', cancelTimer);
-    document.addEventListener('touchcancel', cancelTimer);
-
-    document.addEventListener('click', function (event) {
-        if (fired && target && target.contains(event.target)) {
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            fired = false;
-            target = null;
-        }
-    }, true);
-
-    function cancelTimer() {
-        clearTimeout(timer);
-        timer = null;
-    }
+    ensureLongPressDelegatedListeners();
+    longPressRegistrations.push({ selector, callback, delay });
 }
