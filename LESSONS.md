@@ -580,11 +580,7 @@ This is the largest class by a wide margin.
 ### CI and workflows
 
 - **Breaks:** a workflow change merged to `staging` has no effect on pull requests, or the `staging` and `release` copies of a workflow drift apart.
-<<<<<<< HEAD
-- **Files:** `.github/workflows/pr-auto-manager.yml`, `.github/pr-auto-comments.yml`, `.github/pr-auto-labels-by-branch.yml`, `.github/workflows/pr-metadata.yml`, `.github/workflows/pr-checks.yml`, `.github/workflows/nightly.yml`, `.github/workflows/design-reference.yml`, `.github/workflows/docker-publish.yml`, `.github/workflows/docker-smoke.yml`, `scripts/docker-smoke.js`.
-=======
-- **Files:** `.github/workflows/pr-auto-manager.yml`, `.github/pr-auto-comments.yml`, `.github/pr-auto-labels-by-branch.yml`, `.github/workflows/pr-metadata.yml`, `.github/workflows/pr-checks.yml`, `.github/workflows/bootstrap-smoke.yml`, `.github/workflows/nightly.yml`, `.github/workflows/design-reference.yml`.
->>>>>>> 057ee1ceb (docs(lessons): record launcher path legs and regression guard for #672)
+- **Files:** `.github/workflows/pr-auto-manager.yml`, `.github/pr-auto-comments.yml`, `.github/pr-auto-labels-by-branch.yml`, `.github/workflows/pr-metadata.yml`, `.github/workflows/pr-checks.yml`, `.github/workflows/bootstrap-smoke.yml`, `.github/workflows/nightly.yml`, `.github/workflows/design-reference.yml`, `.github/workflows/docker-publish.yml`, `.github/workflows/docker-smoke.yml`, `scripts/docker-smoke.js`.
 - **Guards:**
   - `pull_request_target` workflows (`pr-auto-manager.yml`, which reads `pr-auto-comments.yml` and `pr-auto-labels-by-branch.yml`) and scheduled workflows (`nightly.yml`) run from `release`, the default branch. Their changes also need an `actions/*` PR into `release`; `pr-metadata.yml` limits those branches to `.github/`, `tests/`, `scripts/bump-version.js` and `scripts/update-changelog-merged-prs.js`.
   - `pull_request` workflows (`pr-checks.yml`, `pr-metadata.yml`, `docker-smoke.yml`) run from the PR's merge ref, so a PR into `release` uses the `release` copy unless the PR changes it.
