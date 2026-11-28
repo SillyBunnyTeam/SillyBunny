@@ -54,6 +54,39 @@ async function storeFirstStartState(browser, baseURL) {
     }
 }
 
+/**
+ * Waits until the page has stopped changing: no deferred sheet is waiting for its activation, and nothing in the
+ * document has been mutated for `quietMs`. The app starts work after it is ready, and opening a page starts more: the
+ * activation of the deferred sheets (a timer that fires late when the machine is busy), the fit of the Home cards once
+ * the fonts arrive, the first build of the page. On a slow machine that work runs for seconds and an idle count that
+ * starts after a fixed wait measures it. A page that never becomes quiet is what the idle guard is for, so this fails
+ * with its own message instead of measuring.
+ * @param {import('@playwright/test').Page} page
+ */
+async function waitForPageQuiet(page, { quietMs = 600, timeout = 20_000 } = {}) {
+    await page.evaluate(({ quiet, limit }) => new Promise((resolve, reject) => {
+        const browserGlobal = globalThis;
+        const started = browserGlobal.performance.now();
+        let lastMutation = started;
+        const observer = new browserGlobal.MutationObserver(() => { lastMutation = browserGlobal.performance.now(); });
+        observer.observe(browserGlobal.document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
+        const check = () => {
+            const now = browserGlobal.performance.now();
+            const waiting = browserGlobal.document.querySelectorAll('link[data-sb-deferred-style]:not([data-sb-panel-style]):not([data-sb-style-activated])').length;
+            if (waiting === 0 && now - lastMutation >= quiet) {
+                observer.disconnect();
+                resolve();
+            } else if (now - started > limit) {
+                observer.disconnect();
+                reject(new Error(`the page behind Settings did not become quiet in ${limit} ms (${waiting} deferred sheets waiting, last change ${Math.round(now - lastMutation)} ms ago)`));
+            } else {
+                browserGlobal.setTimeout(check, 50);
+            }
+        };
+        check();
+    }), { quiet: quietMs, limit: timeout });
+}
+
 async function waitForResourceStability(page) {
     let previousCount = -1;
     let stableSamples = 0;
@@ -171,10 +204,8 @@ test.describe('frontend performance smoke', () => {
                     { message: 'the Home hero art never started to move', timeout: 30_000 },
                 ).toBe(true);
 
-                await page.evaluate(async () => {
-                    await globalThis.SillyBunnyShell.openTab('right', 'appearance');
-                    await new Promise(resolve => globalThis.setTimeout(resolve, 600));
-                });
+                await page.evaluate(() => globalThis.SillyBunnyShell.openTab('right', 'appearance'));
+                await waitForPageQuiet(page);
 
                 const idle = await measureIdleActivity(page, { cdpSession, durationMs: 1500 });
                 const label = 'idle behind Settings';
