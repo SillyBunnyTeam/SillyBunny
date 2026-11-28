@@ -296,6 +296,70 @@ test.describe('issue 167 chat scroll regressions', () => {
     });
 });
 
+test.describe('chat under the settings page', () => {
+    test.beforeEach(async ({ page }) => {
+        await openReadyChat(page);
+        await installSyntheticLongChat(page, { messageCount: 48 });
+    });
+
+    async function openSettingsPage(page) {
+        await page.evaluate(() => window.SillyBunnyShell.openTab('left', 'connections'));
+        await expect(page.locator('#sb-settings-page')).toBeVisible();
+        await expect.poll(() => page.evaluate(() => document.getElementById('sb-settings-page').getAnimations().length)).toBe(0);
+    }
+
+    async function closeSettingsPage(page) {
+        await page.locator('#sb-settings-close').click();
+        await expect(page.locator('#sb-settings-page')).toBeHidden();
+    }
+
+    test('a message added while the page is open shows in the chat after the page closes', async ({ page }) => {
+        await openSettingsPage(page);
+        await page.evaluate(() => {
+            const context = window.SillyTavern.getContext();
+            context.chat.push({
+                name: 'Seraphina',
+                is_user: false,
+                is_system: false,
+                send_date: new Date().toISOString(),
+                mes: `message added under the settings page ${context.chat.length}`,
+                extra: {},
+            });
+            context.addOneMessage(context.chat.at(-1), { scroll: false });
+        });
+        await waitForAnimationFrames(page, 6);
+        await closeSettingsPage(page);
+        await page.evaluate(() => window.SillyTavern.getContext().scrollChatToBottom({ force: true }));
+        await waitForAnimationFrames(page, 6);
+
+        // A column whose rendering stays skipped keeps the closed page's last frame on screen and takes no clicks.
+        expect(await page.evaluate(() => getComputedStyle(document.getElementById('sheld')).contentVisibility)).toBe('visible');
+        expect(await page.evaluate(() => {
+            const last = [...document.querySelectorAll('#chat .mes[mesid]')].at(-1);
+            const rect = last.getBoundingClientRect();
+            return document.elementFromPoint(rect.left + rect.width / 2, rect.top + Math.min(rect.height / 2, 30))?.closest('.mes') === last;
+        })).toBe(true);
+    });
+
+    test('the chat keeps its scroll position across opening and closing the page', async ({ page }) => {
+        await page.evaluate(() => {
+            const chat = document.querySelector('#chat');
+            chat.scrollTop = Math.max(0, chat.scrollTop - 700);
+            chat.dispatchEvent(new Event('scroll', { bubbles: true }));
+        });
+        await waitForAnimationFrames(page, 4);
+        const before = await getChatScrollSnapshot(page);
+
+        await openSettingsPage(page);
+        await closeSettingsPage(page);
+        await waitForAnimationFrames(page, 4);
+        const after = await getChatScrollSnapshot(page);
+
+        expect(after.firstVisibleMesId).toBe(before.firstVisibleMesId);
+        expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(12);
+    });
+});
+
 test.describe('issue 167 mobile chat scroll regressions', () => {
     test.use({
         viewport: { width: 390, height: 844 },

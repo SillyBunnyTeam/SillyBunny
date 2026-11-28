@@ -172,8 +172,6 @@
     color: var(--sb-osd-ink);
     opacity: 0;
     cursor: pointer;
-    -webkit-backdrop-filter: blur(4px);
-    backdrop-filter: blur(4px);
     transition: opacity var(--sb-transition-fast);
 }
 

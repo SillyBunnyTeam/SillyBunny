@@ -455,8 +455,8 @@ test('Sampling uses the shared full-width rows at desktop and mobile widths', as
             && !card.hidden && getComputedStyle(card).display !== 'none');
         return visibleCards.flatMap((card, index) => {
             const style = getComputedStyle(card);
-            const expectedBottom = index === visibleCards.length - 1 ? 0 : 1;
-            return parseFloat(style.borderTopWidth) === 0 && parseFloat(style.borderBottomWidth) === expectedBottom
+            const expectedTop = index === 0 ? 0 : 1;
+            return parseFloat(style.borderTopWidth) === expectedTop && parseFloat(style.borderBottomWidth) === 0
                 ? [] : [card.dataset.sbSamplingControl];
         });
     }))).toEqual([]);

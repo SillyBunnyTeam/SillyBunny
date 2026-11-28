@@ -12,11 +12,7 @@ const publicRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
  * prompt editor's column. The entries below measured as free. Each watches an element that sits in another
  * subtree than its target, so only a script-set marker could replace it, or the rule is upstream's.
  */
-const DOCUMENT_WIDE_HAS_ALLOWED = Object.freeze([
-    { file: 'style.css', selector: 'body:has(.drawer-content.maximized) #top-settings-holder:has(.drawer-content.openDrawer:not(.fillLeft):not(.fillRight))' },
-    { file: 'style.css', selector: 'body:has(.drawer-content.open) #top-settings-holder:has(.drawer-content.openDrawer:not(.fillLeft):not(.fillRight))' },
-    { file: 'css/sillybunny-mobile-shell.css', selector: 'body:has([data-slide-toggle="shown"]) #send_form' },
-]);
+const DOCUMENT_WIDE_HAS_ALLOWED = Object.freeze([]);
 
 const DOCUMENT_ROOT_HAS = /(^|[\s>+~(])(?:html|body|:root)(?:\.[\w-]+|\[[^\]]*\]|:not\([^)]*\))*:has\(/;
 

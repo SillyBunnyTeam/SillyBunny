@@ -50,4 +50,25 @@ describe('stylesheet cache keys', () => {
         // A sheet under two keys loads twice, or a browser keeps the copy cached under the older key (LESSONS.md, Stylesheet keys).
         expect(split).toEqual([]);
     });
+
+    test('a sheet changed after its shipped key has a new key at every call site', () => {
+        // The service worker caches /css/ by the full URL, so a changed sheet that keeps its key is served from the old copy.
+        // `null` is a sheet that was imported without any key.
+        const shippedKeys = {
+            'css/sillybunny-tabs.css': '20261126a',
+            'css/sillybunny-world-info-editor.css': '20261122g',
+            'css/sillybunny-background-gallery.css': '20261118zo',
+            'css/streaming-display.css': null,
+        };
+        const references = stylesheetReferences();
+        const unchanged = [];
+        for (const [sheet, shippedKey] of Object.entries(shippedKeys)) {
+            const uses = references.get(sheet) ?? [];
+            if (!uses.length) unchanged.push(`${sheet}: no keyed reference`);
+            for (const use of uses) {
+                if (use.key === shippedKey) unchanged.push(`${sheet}: ${use.key} in ${use.file}`);
+            }
+        }
+        expect(unchanged).toEqual([]);
+    });
 });

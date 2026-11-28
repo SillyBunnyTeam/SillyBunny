@@ -172,6 +172,7 @@ describe('Text Completion template list', () => {
         const type = value => {
             input.value = value;
             input.dispatchEvent(new Event('input', { bubbles: true }));
+            jest.advanceTimersByTime(150);
         };
         type('story');
         expect([...column.querySelectorAll('.sb-prompt-section')].filter(section => !section.hidden).map(section => section.querySelector('h3').textContent)).toEqual(['Context']);

@@ -424,6 +424,9 @@ async function boot(page, viewport, { motion = false } = {}) {
     await page.setViewportSize(viewport);
     await openQuietChatForSmoke(page);
     await page.route('**/api/characters/chats', route => route.fulfill({ json: RECENT_CHAT_FIXTURES }));
+    // The shell keeps the chat list it has read until an event says that the chats changed, and a character that has a
+    // chat on the server (another spec of the same run may have saved one) lets the page read it before this mock is in place.
+    await page.evaluate(() => window.dispatchEvent(new Event('sb:chat-list-mutated')));
     await page.evaluate(() => document.documentElement.style.setProperty('--sheldWidth', '55vw'));
 }
 

@@ -60,8 +60,10 @@ export function pickerNoneLabel(select, t) {
     return SELECT2_PLACEHOLDERS.find(([selector]) => select.matches(selector))?.[1](t) ?? '';
 }
 
+// A node with data-for names the field it belongs to and keeps its place below that field's row. Scripts show or hide it
+// (the KoboldCpp model hint), so the panel must not read the node as row help just because it is visible when the panel is built.
 function isHelp(node) {
-    return !node.matches(`${TITLES}, ${GATES}, button, .menu_button, .right_menu_button, .select2-container, .neutral_warning[data-for], .ds-row, .inline-drawer, .online_status, .sb-connections-status-row`)
+    return !node.matches(`${TITLES}, ${GATES}, button, .menu_button, .right_menu_button, .select2-container, [data-for], .ds-row, .inline-drawer, .online_status, .sb-connections-status-row`)
         && !node.querySelector('input, select, button, .menu_button, .inline-drawer')
         && Boolean(node.textContent.trim() || node.querySelector('a'));
 }

@@ -825,6 +825,9 @@ describe('limitTagChips', () => {
                 const released = strip(['A', 'B', 'C', 'D'], 130, [50, 40, 60]);
                 limitTagChips(container);
                 limitTagChips(released);
+                // Registering strips schedules one detached-strip sweep; both are connected, so it keeps them.
+                frames.splice(0).forEach(callback => callback());
+                frame.mockClear();
                 resize();
                 expect(container.querySelectorAll('.tag:not([hidden], .sb-tag-overflow)')).toHaveLength(2);
 

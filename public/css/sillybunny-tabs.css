@@ -216,7 +216,9 @@
     }
 }
 
-#top-bar * {
+/* The bar itself passes clicks through; its direct children opt back in and their subtrees inherit it.
+   A child-only selector keeps this out of every descendant's style match. */
+#top-bar > * {
     pointer-events: auto;
 }
 
@@ -835,10 +837,9 @@ body:not(.movingUI) .drawer-content.maximized {
     z-index: var(--sb-z-shell-panel);
 }
 
+/* Descendants inherit `auto` from these roots, so no universal descendant rule is needed. */
 #top-settings-holder .drawer-content,
-#top-settings-holder .drawer-content *,
-#top-settings-holder .popup,
-#top-settings-holder .popup * {
+#top-settings-holder .popup {
     pointer-events: auto;
 }
 
@@ -1400,6 +1401,10 @@ body:not(.movingUI) .drawer-content.maximized {
     background: var(--sb-layer-view);
 }
 
+.sb-shell-panel:not(.sb-shell-panel-active) {
+    contain: content;
+}
+
 .sb-shell-panel-active {
     display: block;
 }
@@ -1658,9 +1663,15 @@ body:not(.movingUI) .drawer-content.maximized {
     display: none;
 }
 
-/* Rows that hide leave the last visible row without a separator, which `:last-child` cannot see. */
-.sb-data-security-group > .ds-pref-group > .ds-row:not(:has(~ .ds-row:not([hidden]))) {
+/* Forward-sibling separators keep visible rows divided without an O(N^2) :has(~ ...) check. */
+#sb-settings-page .sb-settings-mounted-shell .sb-data-security-group > .ds-pref-group > .ds-row,
+.sb-data-security-group > .ds-pref-group > .ds-row {
     border-bottom: 0;
+}
+
+#sb-settings-page .sb-settings-mounted-shell .sb-data-security-group > .ds-pref-group > .ds-row:not([hidden]) ~ .ds-row:not([hidden]),
+.sb-data-security-group > .ds-pref-group > .ds-row:not([hidden]) ~ .ds-row:not([hidden]) {
+    border-top: 1px solid var(--sb-shell-border);
 }
 
 .sb-data-security-group .ds-row.ds-button-row:disabled {
@@ -3261,8 +3272,7 @@ html:not([data-sb-mobile-ui-mode='mobile']) #form_sheld {
         #left-nav-panel .sb-shell-nav,
         #left-nav-panel .sb-shell-main,
         #left-nav-panel .sb-shell-panel-scroller,
-        #left-nav-panel .sb-shell-panel,
-        #left-nav-panel .sb-shell-panel * {
+        #left-nav-panel .sb-shell-panel {
             pointer-events: auto !important;
         }
     }
@@ -3990,6 +4000,7 @@ body.reduced-motion .sb-search-entry {
     box-shadow: var(--sb-shadow-card);
     overflow: hidden;
     margin-bottom: 0;
+    contain: layout style;
 }
 
 /* The group heading is the Title role (Body at 700), the description the Caption role (400), and the
@@ -5074,13 +5085,13 @@ body.reduced-motion .ds-row-expander__toggle::after {
     margin: 0;
     padding: 0;
     border: 0;
-    border-bottom: 1px solid var(--sb-shell-border);
     border-radius: 0;
     background: transparent;
 }
 
-#sb-settings-page .sb-sampling-panel .sb-sampling-group > .ds-pref-group > .sb-sampling-control-card:not([hidden]):not(:has(~ .sb-sampling-control-card:not([hidden]))) {
-    border-bottom: 0;
+#sb-settings-page .sb-settings-mounted-shell .sb-sampling-panel .sb-sampling-group > .ds-pref-group > .sb-sampling-control-card:not([hidden]) ~ .sb-sampling-control-card:not([hidden]),
+#sb-settings-page .sb-sampling-panel .sb-sampling-group > .ds-pref-group > .sb-sampling-control-card:not([hidden]) ~ .sb-sampling-control-card:not([hidden]) {
+    border-top: 1px solid var(--sb-shell-border);
 }
 
 /* The block that holds a card's rows is a wrapper. */
@@ -5096,17 +5107,23 @@ body.reduced-motion .ds-row-expander__toggle::after {
     border: 0;
 }
 
-/* The last row of a card leaves the separator to the card, and a title row stays with the list under it. */
-#sb-settings-page .sb-sampling-panel .sb-sampling-row :is(.ds-row, .sb-sampling-list):not(:has(~ :is(.ds-row, .sb-sampling-list):not([hidden], [style*='display: none']))),
-#sb-settings-page .sb-sampling-panel .sb-sampling-row .ds-row:has(+ .sb-sampling-list) {
+/* Forward-sibling separators keep card rows divided without :has(~ ...); a title row stays joined to the list under it. */
+#sb-settings-page .sb-sampling-panel .sb-sampling-row :is(.ds-row, .sb-sampling-list) {
     border-bottom: 0;
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-row :is(.ds-row, .sb-sampling-list):not([hidden], [style*='display: none']) ~ :is(.ds-row, .sb-sampling-list):not([hidden], [style*='display: none']) {
+    border-top: 1px solid var(--sb-shell-border);
+}
+
+#sb-settings-page .sb-sampling-panel .sb-sampling-row .ds-row:not([hidden], [style*='display: none']) + .sb-sampling-list:not([hidden], [style*='display: none']) {
+    border-top: 0;
 }
 
 /* A list is data, not a row: it takes the row inset and is scrollable inside it. */
 #sb-settings-page .sb-sampling-panel .sb-sampling-list {
     min-width: 0;
     padding: 0 var(--sb-density-row-padding-inline) var(--sb-density-row-padding-block);
-    border-bottom: 1px solid var(--sb-shell-border);
 }
 
 /* Upstream centres the items; in a column that scrolls, the part that overflows above the start can never be reached. */
@@ -5638,6 +5655,7 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     border-top: 0;
     margin: 0;
     padding: 0;
+    contain: layout style;
 }
 
 /* SillyBunny: flat-section headers use the same compact two-line anatomy as Messages category
@@ -6911,8 +6929,14 @@ body.reduced-motion #sb-settings-page .sb-prompting-panel:not(.sb-editor-panel) 
     display: none;
 }
 
-.sb-subpage-row:not(:has(~ .sb-subpage-row:not([hidden]))) {
+.ds-row.sb-subpage-row,
+.sb-subpage-row {
     border-bottom: 0;
+}
+
+#sb-settings-page .sb-subpage-group > .ds-pref-group > .sb-subpage-row:not([hidden]) ~ .sb-subpage-row:not([hidden]),
+.sb-subpage-row:not([hidden]) ~ .sb-subpage-row:not([hidden]) {
+    border-top: 1px solid var(--sb-shell-border);
 }
 
 /* The leading glyph of a System Extensions row: dimmed, in a fixed-width column so the glyphs line up. */

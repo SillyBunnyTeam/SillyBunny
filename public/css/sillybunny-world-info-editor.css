@@ -378,8 +378,13 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     display: none !important;
 }
 
-.sb-wi-settings .sb-wi-settings-book:not([hidden]):not(:has(~ .sb-wi-settings-book:not([hidden]))) {
+.sb-wi-settings .sb-wi-settings-book {
     border-bottom: 0;
+}
+
+#sb-settings-page .sb-wi-settings .sb-wi-settings-book:not([hidden]) ~ .sb-wi-settings-book:not([hidden]),
+.sb-wi-settings .sb-wi-settings-book:not([hidden]) ~ .sb-wi-settings-book:not([hidden]) {
+    border-top: 1px solid var(--sb-shell-border);
 }
 
 @media (pointer: coarse) {
@@ -556,12 +561,8 @@ body.reduced-motion #WorldInfo .sb-wi-editor .menu_button:not(.sb-header-icon-bu
     font-size: var(--sb-type-body);
 }
 
-.sb-dialog.sb-world-info-properties-dialog .sb-wi-property {
-    border-bottom: 1px solid var(--SmartThemeBorderColor);
-}
-
-.sb-dialog.sb-world-info-properties-dialog .sb-wi-property:not([hidden]):not(:has(~ .sb-wi-property:not([hidden]))) {
-    border-bottom: 0;
+.sb-dialog.sb-world-info-properties-dialog .sb-wi-property:not([hidden]) ~ .sb-wi-property:not([hidden]) {
+    border-top: 1px solid var(--SmartThemeBorderColor);
 }
 
 .sb-wi-property-popover {

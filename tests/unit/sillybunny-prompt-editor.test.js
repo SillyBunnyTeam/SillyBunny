@@ -377,6 +377,7 @@ function search(column, query) {
     const input = column.querySelector('.sb-prompt-search');
     input.value = query;
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    jest.advanceTimersByTime(150);
 }
 
 describe('Prompt list', () => {

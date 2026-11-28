@@ -679,6 +679,8 @@ test.describe('Prompt Manager characterization', () => {
 
         await page.getByRole('button', { name: 'Search Prompts', exact: true }).click();
         await page.getByRole('searchbox', { name: 'Search Prompts', exact: true }).fill('Fixture');
+        // The list filters a moment after the last key, so the menu opens on the filtered list only once a row that does not match is gone.
+        await expect(ui.row('main')).toHaveCount(0);
         await ui.row('sbFixtureRelative').locator('.sb-prompt-row-menu').click();
         await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toBeVisible();
         await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);

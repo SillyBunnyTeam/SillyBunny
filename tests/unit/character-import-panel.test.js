@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 /* global globalThis */
 /* eslint-disable playwright/no-standalone-expect, playwright/prefer-web-first-assertions -- Jest DOM assertions. */
-import { jest, describe, test, expect, beforeEach } from '@jest/globals';
+import { jest, describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 
 const runCharacterImport = jest.fn();
 const selectCharacterById = jest.fn();
@@ -200,5 +200,82 @@ describe('Import tab', () => {
         await expect(loadCharacterImportStyles([{ href: 'import.css', id: 'import-css' }])).rejects.toThrow('CSS offline');
         expect(document.getElementById('import-css')).toBeNull();
         delete globalThis.SillyBunnyAssets;
+    });
+
+    describe('code face', () => {
+        const sheets = [{ href: 'import.css', id: 'import-css' }];
+        let load;
+        let loader;
+        beforeEach(() => {
+            loader = jest.fn(async () => undefined);
+            globalThis.SillyBunnyAssets = { loadStylesheetAsync: loader };
+            document.documentElement.style.setProperty('--monoFontFamily', '\'Adwaita Mono\', monospace');
+            load = jest.fn();
+            Object.defineProperty(document, 'fonts', { configurable: true, value: { load } });
+        });
+        afterEach(() => {
+            jest.useRealTimers();
+            delete globalThis.SillyBunnyAssets;
+            delete document.fonts;
+            document.documentElement.style.removeProperty('--monoFontFamily');
+        });
+
+        test('the sheets resolve only after the code face the page prints file names in has loaded', async () => {
+            let finish;
+            load.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+            let settled = false;
+            const loading = loadCharacterImportStyles(sheets).then(() => { settled = true; });
+            await tick();
+            expect(load).toHaveBeenCalledWith('1em \'Adwaita Mono\', monospace');
+            expect(settled).toBe(false);
+            finish([]);
+            await loading;
+            expect(settled).toBe(true);
+        });
+
+        test('the font sheets are activated before the face is requested, because a deferred sheet has no face until it is active', async () => {
+            load.mockResolvedValueOnce([]);
+            await loadCharacterImportStyles(sheets);
+            const hrefs = loader.mock.calls.map(([href]) => href);
+            expect(hrefs).toEqual(expect.arrayContaining(['webfonts/AdwaitaMono/stylesheet.css?v=20261030a', 'webfonts/NotoSansMono/stylesheet.css']));
+            const lastFontSheet = Math.max(...loader.mock.calls.flatMap(([href], index) => (href.startsWith('webfonts/') ? [loader.mock.invocationCallOrder[index]] : [])));
+            expect(load.mock.invocationCallOrder[0]).toBeGreaterThan(lastFontSheet);
+        });
+
+        test('a font sheet that fails to load does not fail the page and is removed so that the next opening retries it', async () => {
+            loader.mockImplementation((href, { id }) => {
+                if (!href.startsWith('webfonts/')) return Promise.resolve();
+                const link = document.createElement('link');
+                link.id = id;
+                document.head.append(link);
+                return Promise.reject(new Error('font sheet offline'));
+            });
+            load.mockResolvedValue([]);
+            await expect(loadCharacterImportStyles(sheets)).resolves.toBeUndefined();
+            expect(document.getElementById('deferred-adwaita-mono-css')).toBeNull();
+            expect(document.getElementById('deferred-noto-sans-mono-css')).toBeNull();
+        });
+
+        test('a face that fails to load does not fail the page', async () => {
+            load.mockRejectedValueOnce(new SyntaxError('bad family'));
+            await expect(loadCharacterImportStyles(sheets)).resolves.toBeUndefined();
+        });
+
+        test('a face that stays pending cannot hold the page for longer than the bound', async () => {
+            jest.useFakeTimers();
+            load.mockReturnValueOnce(new Promise(() => {}));
+            let settled = false;
+            const loading = loadCharacterImportStyles(sheets).then(() => { settled = true; });
+            await jest.advanceTimersByTimeAsync(1400);
+            expect(settled).toBe(false);
+            await jest.advanceTimersByTimeAsync(200);
+            await loading;
+            expect(settled).toBe(true);
+        });
+
+        test('a page without the font loading API is not held', async () => {
+            delete document.fonts;
+            await expect(loadCharacterImportStyles(sheets)).resolves.toBeUndefined();
+        });
     });
 });

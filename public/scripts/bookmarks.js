@@ -246,6 +246,11 @@ export async function createBranch(mesId, { swipeId = null } = {}) {
         return null;
     }
 
+    // SillyBunny: invalidate the shared chat-list cache when a branch file is written without switching chats.
+    if (typeof globalThis.window?.dispatchEvent === 'function' && typeof globalThis.CustomEvent === 'function') {
+        globalThis.window.dispatchEvent(new globalThis.CustomEvent('sb:chat-list-mutated', { detail: { reason: 'branch', name } }));
+    }
+
     // append to branches list if it exists
     // otherwise create it
     if (typeof lastMes.extra !== 'object') {
@@ -301,6 +306,11 @@ export async function createNewBookmark(mesId, { forceName = null } = {}) {
 
     if (!didSaveBookmark) {
         return null;
+    }
+
+    // SillyBunny: invalidate the shared chat-list cache when a checkpoint file is written without switching chats.
+    if (typeof globalThis.window?.dispatchEvent === 'function' && typeof globalThis.CustomEvent === 'function') {
+        globalThis.window.dispatchEvent(new globalThis.CustomEvent('sb:chat-list-mutated', { detail: { reason: 'checkpoint', name } }));
     }
 
     await saveItemizedPrompts(name);
