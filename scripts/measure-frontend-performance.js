@@ -40,6 +40,10 @@ export const LONG_CHAT_RENDER_FILLER_REPEAT = 36;
 export const STREAM_RENDER_STEP_COUNT = 32;
 export const STREAM_RENDER_FILLER_REPEAT = 48;
 export const STREAM_RENDER_CODE_REPEAT = 12;
+export const STREAM_REASONING_STEP_COUNT = 24;
+export const STREAM_REASONING_REPEAT = 320;
+export const STREAM_REASONING_RESPONSE_REPEAT = 24;
+export const IDLE_SAMPLE_DURATION_MS = 1500;
 const LONG_CHAT_SCROLL_SETTLE_MS = 2500;
 
 export const PERFORMANCE_PROFILES = Object.freeze({
@@ -217,6 +221,333 @@ export function createLongChatRenderFixture({
         visibleCount,
         fillerRepeat,
         messages,
+    };
+}
+
+export function createStreamingReasoningFixture({
+    stepCount = STREAM_REASONING_STEP_COUNT,
+    reasoningRepeat = STREAM_REASONING_REPEAT,
+    responseRepeat = STREAM_REASONING_RESPONSE_REPEAT,
+} = {}) {
+    const reasoningText = `${'chain of thought reasoning segment '.repeat(reasoningRepeat)}`.trim();
+    const fullResponse = [
+        'Streaming response after completed reasoning.',
+        `${'assistant narrative token stream '.repeat(responseRepeat)}`.trim(),
+    ].join('\n\n');
+    const steps = [];
+
+    for (let index = 1; index <= stepCount; index++) {
+        const end = Math.ceil((fullResponse.length * index) / stepCount);
+        steps.push(fullResponse.slice(0, end));
+    }
+
+    return {
+        stepCount,
+        reasoningRepeat,
+        responseRepeat,
+        reasoningText,
+        fullResponse,
+        steps,
+    };
+}
+
+export async function readCdpPerfMetrics(cdpSession) {
+    if (!cdpSession || typeof cdpSession.send !== 'function') {
+        return null;
+    }
+
+    try {
+        await cdpSession.send('Performance.enable');
+        const response = await cdpSession.send('Performance.getMetrics');
+        const map = Object.fromEntries((response?.metrics ?? []).map(metric => [metric.name, metric.value]));
+        // A metric that the browser did not report stays undefined. A default of zero would pass every upper bound.
+        return {
+            RecalcStyleCount: map.RecalcStyleCount,
+            RecalcStyleDuration: map.RecalcStyleDuration,
+            LayoutCount: map.LayoutCount,
+            LayoutDuration: map.LayoutDuration,
+            ScriptDuration: map.ScriptDuration,
+        };
+    } catch {
+        return null;
+    }
+}
+
+/** The non-negative change of a counter, or null when either reading is not a finite number. */
+function counterDelta(before, after, scale = 1, digits = null) {
+    if (!Number.isFinite(before) || !Number.isFinite(after)) {
+        return null;
+    }
+    const delta = Math.max(0, (after - before) * scale);
+    return digits === null ? delta : +delta.toFixed(digits);
+}
+
+export function diffCdpPerfMetrics(before, after) {
+    if (!before || !after) {
+        return null;
+    }
+
+    return {
+        recalcStyleCount: counterDelta(before.RecalcStyleCount, after.RecalcStyleCount),
+        recalcStyleMs: counterDelta(before.RecalcStyleDuration, after.RecalcStyleDuration, 1000, 2),
+        layoutCount: counterDelta(before.LayoutCount, after.LayoutCount),
+        layoutMs: counterDelta(before.LayoutDuration, after.LayoutDuration, 1000, 2),
+        scriptMs: counterDelta(before.ScriptDuration, after.ScriptDuration, 1000, 2),
+    };
+}
+
+export async function measureIdleActivity(page, { cdpSession = null, durationMs = IDLE_SAMPLE_DURATION_MS } = {}) {
+    const before = await readCdpPerfMetrics(cdpSession);
+    const sample = await page.evaluate(async (sampleMs) => {
+        const browserGlobal = globalThis;
+        const root = browserGlobal.document?.documentElement;
+        if (!root || typeof browserGlobal.MutationObserver !== 'function') {
+            return { available: false, reason: 'dom-unavailable' };
+        }
+
+        let mutationRecords = 0;
+        let mutationCallbacks = 0;
+        const observer = new browserGlobal.MutationObserver((records) => {
+            mutationCallbacks++;
+            mutationRecords += records.length;
+        });
+        observer.observe(root, { childList: true, subtree: true, attributes: true, characterData: true });
+
+        try {
+            await new Promise(resolve => browserGlobal.setTimeout(resolve, sampleMs));
+            const pending = observer.takeRecords();
+            if (pending.length > 0) {
+                mutationCallbacks++;
+                mutationRecords += pending.length;
+            }
+        } finally {
+            observer.disconnect();
+        }
+
+        const animations = typeof browserGlobal.document.getAnimations === 'function'
+            ? browserGlobal.document.getAnimations().filter(anim => anim.playState === 'running')
+            : [];
+
+        return {
+            available: true,
+            durationMs: sampleMs,
+            mutationRecords,
+            mutationCallbacks,
+            runningAnimations: animations.length,
+        };
+    }, durationMs);
+    const after = await readCdpPerfMetrics(cdpSession);
+
+    return {
+        ...sample,
+        cdp: diffCdpPerfMetrics(before, after),
+    };
+}
+
+export async function measureStreamingWithReasoning(page, fixture = createStreamingReasoningFixture(), { cdpSession = null } = {}) {
+    const before = await readCdpPerfMetrics(cdpSession);
+    const result = await page.evaluate(async ({ steps, reasoningText, stepCount }) => {
+        const browserGlobal = globalThis;
+        const context = browserGlobal.SillyTavern?.getContext?.();
+        const chatElement = browserGlobal.document?.querySelector('#chat');
+
+        if (!context || !chatElement || !Array.isArray(context.chat) || typeof context.messageFormatting !== 'function') {
+            return { available: false, reason: 'chat-formatting-unavailable' };
+        }
+
+        // `updateReasoningUI` is an ES module export and is not a window global. The app context exposes the same
+        // function. A missing function must stop the measurement: a loop that skips it would record the counters of
+        // a run that never touched the reasoning UI, and those would pass any budget.
+        const { updateReasoningUI } = context;
+        if (typeof updateReasoningUI !== 'function') {
+            throw new Error('The app context does not expose updateReasoningUI, so the reasoning UI cannot be driven.');
+        }
+
+        // The message element comes from the app's own template so that the markup the reasoning UI reads and writes
+        // is the markup of a real message.
+        const template = browserGlobal.document.querySelector('#message_template .mes');
+        if (!template) {
+            throw new Error('The #message_template .mes element is missing, so no message element can be built.');
+        }
+        const host = template.cloneNode(true);
+        const target = host.querySelector('.mes_text');
+        const reasoningContent = host.querySelector('.mes_reasoning');
+        for (const selector of ['.mes_text', '.mes_reasoning_details', '.mes_reasoning', '.mes_reasoning_header_title', '.mes_edit_add_reasoning']) {
+            if (!host.querySelector(selector)) {
+                throw new Error(`The message template has no ${selector} element, which the reasoning UI needs.`);
+            }
+        }
+
+        const previousChat = context.chat.slice();
+        const messageId = 1;
+        const message = {
+            name: 'Seraphina',
+            is_user: false,
+            is_system: false,
+            mes: '',
+            gen_started: new Date().toISOString(),
+            extra: { reasoning: reasoningText, reasoning_duration: 1200 },
+        };
+
+        host.setAttribute('mesid', String(messageId));
+
+        let reasoningUpdateCount = 0;
+        let getBoundingClientRectCount = 0;
+        let querySelectorAllCount = 0;
+        const originalGbcr = browserGlobal.Element?.prototype?.getBoundingClientRect;
+        const originalDocQsa = browserGlobal.Document?.prototype?.querySelectorAll;
+        const originalElQsa = browserGlobal.Element?.prototype?.querySelectorAll;
+
+        if (typeof originalGbcr === 'function') {
+            browserGlobal.Element.prototype.getBoundingClientRect = function () {
+                getBoundingClientRectCount++;
+                return originalGbcr.apply(this, arguments);
+            };
+        }
+        if (typeof originalDocQsa === 'function') {
+            browserGlobal.Document.prototype.querySelectorAll = function () {
+                querySelectorAllCount++;
+                return originalDocQsa.apply(this, arguments);
+            };
+        }
+        if (typeof originalElQsa === 'function') {
+            browserGlobal.Element.prototype.querySelectorAll = function () {
+                querySelectorAllCount++;
+                return originalElQsa.apply(this, arguments);
+            };
+        }
+
+        try {
+            context.chat.length = 0;
+            context.chat.push({
+                name: 'Scroll Tester',
+                is_user: true,
+                is_system: false,
+                mes: 'seed prompt',
+                extra: {},
+            }, message);
+            chatElement.appendChild(host);
+
+            let maxStepMs = 0;
+            const start = browserGlobal.performance.now();
+            for (const step of steps) {
+                const stepStart = browserGlobal.performance.now();
+                message.mes = step;
+                target.innerHTML = context.messageFormatting(step, message.name, message.is_system, message.is_user, messageId, {}, false);
+                updateReasoningUI(messageId);
+                reasoningUpdateCount++;
+                chatElement.scrollTop = chatElement.scrollHeight;
+                await new Promise(resolve => browserGlobal.requestAnimationFrame(resolve));
+                maxStepMs = Math.max(maxStepMs, browserGlobal.performance.now() - stepStart);
+            }
+            const totalMs = browserGlobal.performance.now() - start;
+
+            return {
+                available: true,
+                stepCount,
+                reasoningBytes: new TextEncoder().encode(reasoningText).length,
+                reasoningUpdateCount,
+                reasoningRenderedChars: reasoningContent.textContent.length,
+                totalMs: +totalMs.toFixed(2),
+                averageStepMs: +(totalMs / Math.max(1, steps.length)).toFixed(2),
+                maxStepMs: +maxStepMs.toFixed(2),
+                getBoundingClientRectCount,
+                querySelectorAllCount,
+            };
+        } finally {
+            if (typeof originalGbcr === 'function') {
+                browserGlobal.Element.prototype.getBoundingClientRect = originalGbcr;
+            }
+            if (typeof originalDocQsa === 'function') {
+                browserGlobal.Document.prototype.querySelectorAll = originalDocQsa;
+            }
+            if (typeof originalElQsa === 'function') {
+                browserGlobal.Element.prototype.querySelectorAll = originalElQsa;
+            }
+            host.remove();
+            context.chat.splice(0, context.chat.length, ...previousChat);
+        }
+    }, fixture);
+    const after = await readCdpPerfMetrics(cdpSession);
+
+    return {
+        ...result,
+        cdp: diffCdpPerfMetrics(before, after),
+    };
+}
+
+export async function measureSettingsInteractions(page, { cdpSession = null, idleDurationMs = 1000 } = {}) {
+    const before = await readCdpPerfMetrics(cdpSession);
+    const interaction = await page.evaluate(async () => {
+        const browserGlobal = globalThis;
+        const shell = browserGlobal.SillyBunnyShell;
+        if (!shell || typeof shell.openTab !== 'function') {
+            return { available: false, reason: 'settings-shell-unavailable' };
+        }
+
+        let mutationRecords = 0;
+        const observer = new browserGlobal.MutationObserver((records) => {
+            mutationRecords += records.length;
+        });
+        observer.observe(browserGlobal.document.documentElement, { childList: true, subtree: true, attributes: true });
+
+        const tabsVisited = [];
+        const openStart = browserGlobal.performance.now();
+        try {
+            await shell.openTab('right', 'extensions');
+            tabsVisited.push('extensions');
+            await new Promise(resolve => browserGlobal.requestAnimationFrame(() => browserGlobal.requestAnimationFrame(resolve)));
+            const openMs = +(browserGlobal.performance.now() - openStart).toFixed(2);
+
+            await shell.openTab('left', 'editor');
+            tabsVisited.push('editor');
+            await new Promise(resolve => browserGlobal.requestAnimationFrame(() => browserGlobal.requestAnimationFrame(resolve)));
+
+            await shell.openTab('right', 'appearance');
+            tabsVisited.push('appearance');
+            await new Promise(resolve => browserGlobal.setTimeout(resolve, 400));
+
+            const searchInput = browserGlobal.document.getElementById('sb-settings-search-input');
+            let searchResults = 0;
+            if (searchInput instanceof browserGlobal.HTMLInputElement) {
+                searchInput.value = 'avatar';
+                searchInput.dispatchEvent(new browserGlobal.Event('input', { bubbles: true }));
+                await new Promise(resolve => browserGlobal.setTimeout(resolve, 150));
+                searchResults = browserGlobal.document.querySelectorAll('#sb-settings-search-results .sb-search-entry, .sb-search-entry').length;
+                searchInput.value = '';
+                searchInput.dispatchEvent(new browserGlobal.Event('input', { bubbles: true }));
+                await new Promise(resolve => browserGlobal.setTimeout(resolve, 250));
+            }
+
+            return {
+                available: true,
+                openMs,
+                tabsVisited,
+                searchResults,
+                mutationRecords,
+            };
+        } finally {
+            observer.disconnect();
+        }
+    });
+
+    if (!interaction?.available) {
+        return { ...interaction, idleBehindSettings: null, cdp: null };
+    }
+
+    const idleBehindSettings = await measureIdleActivity(page, { cdpSession, durationMs: idleDurationMs });
+    await page.evaluate(() => {
+        const homeToggle = globalThis.document.getElementById('sb-home-toggle');
+        if (homeToggle instanceof globalThis.HTMLElement) {
+            homeToggle.click();
+        }
+    }).catch(() => {});
+    const after = await readCdpPerfMetrics(cdpSession);
+
+    return {
+        ...interaction,
+        idleBehindSettings,
+        cdp: diffCdpPerfMetrics(before, after),
     };
 }
 
@@ -524,7 +855,7 @@ export async function readBootMarksFromPage(page) {
     }), BOOT_MARK_NAMES).catch(() => []);
 }
 
-async function measurePage(page) {
+async function measurePage(page, cdpSession = null) {
     const bootMarks = await readBootMarksFromPage(page);
     const metrics = await page.evaluate(() => {
         const browserGlobal = globalThis;
@@ -552,13 +883,18 @@ async function measurePage(page) {
     });
     const instrumentationAtReady = await captureInstrumentationSnapshot(page);
 
+    const idle = await measureIdleActivity(page, { cdpSession });
     const streaming = await measureStreamingRender(page);
+    await settlePage(page);
+    const streamingReasoning = await measureStreamingWithReasoning(page, createStreamingReasoningFixture(), { cdpSession });
     await settlePage(page);
     const longChat = await measureLongChatRender(page);
     await settlePage(page, LONG_CHAT_SCROLL_SETTLE_MS);
     const scrollFps = await measureScrollFps(page);
     await settlePage(page);
-    const chatRender = { streaming, longChat };
+    const settingsInteractions = await measureSettingsInteractions(page, { cdpSession });
+    await settlePage(page);
+    const chatRender = { streaming, streamingReasoning, longChat };
     const instrumentationAfterSynthetic = await captureInstrumentationSnapshot(page);
     const longTasksAfterSynthetic = await page.evaluate(() => globalThis.__sillyBunnyLongTaskMetrics.snapshot());
 
@@ -570,8 +906,10 @@ async function measurePage(page) {
             ready: instrumentationAtReady,
             afterSynthetic: instrumentationAfterSynthetic,
         },
+        idle,
         scrollFps,
         chatRender,
+        settingsInteractions,
     };
 }
 
@@ -757,12 +1095,12 @@ async function collectResourceTimings(page) {
     });
 }
 
-async function measureNavigation(page, action) {
+async function measureNavigation(page, action, cdpSession = null) {
     await page.evaluate(() => globalThis.performance.clearResourceTimings()).catch(() => {});
     await action();
     await waitForAppReady(page);
     const resources = await collectResourceTimings(page);
-    const metrics = await measurePage(page);
+    const metrics = await measurePage(page, cdpSession);
     const documentRequest = metrics.navigation ? [{
         url: page.url(),
         bytes: metrics.navigation.transferSize || 0,
@@ -805,8 +1143,8 @@ export async function measureProfile(browser, profile, { url, serviceWorkers, in
         cdpSession = await context.newCDPSession(page);
         await cdpSession.send('Emulation.setCPUThrottlingRate', { rate: appliedCpuThrottleRate });
 
-        const cold = await measureNavigation(page, () => page.goto(url, { waitUntil: 'networkidle' }));
-        const warm = await measureNavigation(page, () => page.reload({ waitUntil: 'networkidle' }));
+        const cold = await measureNavigation(page, () => page.goto(url, { waitUntil: 'networkidle' }), cdpSession);
+        const warm = await measureNavigation(page, () => page.reload({ waitUntil: 'networkidle' }), cdpSession);
 
         return {
             name: profile.name,

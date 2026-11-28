@@ -1,5 +1,14 @@
 /* global globalThis */
 import { expect, test } from '@playwright/test';
+import { waitForAppReady } from './helpers/app-ready.js';
+import { requireMetric } from './helpers/require-metric.js';
+import { IDLE_BEHIND_SETTINGS, runtimeBudgetsFor, STREAMING_REASONING } from './helpers/runtime-budget.js';
+import {
+    createStreamingReasoningFixture,
+    measureIdleActivity,
+    measureSettingsInteractions,
+    measureStreamingWithReasoning,
+} from '../scripts/measure-frontend-performance.js';
 
 const coreAssetPaths = [
     '/script.js',
@@ -12,6 +21,12 @@ const coreAssetPaths = [
 // only when a change adds a request on purpose.
 const STARTUP_RESOURCE_LIMIT = 854;
 const STARTUP_JS_BYTE_LIMIT = 13 * 1024 * 1024;
+
+// The limits of the idle, streaming and Settings tests are read from `scripts/frontend-perf-budget.json`, the file that
+// `perf:frontend` uses, so that each of them has one number. The start-up resource count above is not read from there:
+// the measure script counts resources with a different wait and viewport, so its `resourceCount` is another
+// measurement. The measure script's `mobile` profile is the 390 px wide viewport of the idle and streaming tests, and
+// its `desktop` profile is the 1366 px wide viewport of the Settings test.
 
 // The first start of a day for an admin account asks the server for the install type and then saves the notice stamp
 // to the account settings (`sillybunny-install-notice.js`), so a start that runs before any other start of that
@@ -37,6 +52,39 @@ async function storeFirstStartState(browser, baseURL) {
     } finally {
         await context.close();
     }
+}
+
+/**
+ * Waits until the page has stopped changing: no deferred sheet is waiting for its activation, and nothing in the
+ * document has been mutated for `quietMs`. The app starts work after it is ready, and opening a page starts more: the
+ * activation of the deferred sheets (a timer that fires late when the machine is busy), the fit of the Home cards once
+ * the fonts arrive, the first build of the page. On a slow machine that work runs for seconds and an idle count that
+ * starts after a fixed wait measures it. A page that never becomes quiet is what the idle guard is for, so this fails
+ * with its own message instead of measuring.
+ * @param {import('@playwright/test').Page} page
+ */
+async function waitForPageQuiet(page, { quietMs = 600, timeout = 20_000 } = {}) {
+    await page.evaluate(({ quiet, limit }) => new Promise((resolve, reject) => {
+        const browserGlobal = globalThis;
+        const started = browserGlobal.performance.now();
+        let lastMutation = started;
+        const observer = new browserGlobal.MutationObserver(() => { lastMutation = browserGlobal.performance.now(); });
+        observer.observe(browserGlobal.document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
+        const check = () => {
+            const now = browserGlobal.performance.now();
+            const waiting = browserGlobal.document.querySelectorAll('link[data-sb-deferred-style]:not([data-sb-panel-style]):not([data-sb-style-activated])').length;
+            if (waiting === 0 && now - lastMutation >= quiet) {
+                observer.disconnect();
+                resolve();
+            } else if (now - started > limit) {
+                observer.disconnect();
+                reject(new Error(`the page behind Settings did not become quiet in ${limit} ms (${waiting} deferred sheets waiting, last change ${Math.round(now - lastMutation)} ms ago)`));
+            } else {
+                browserGlobal.setTimeout(check, 50);
+            }
+        };
+        check();
+    }), { quiet: quietMs, limit: timeout });
 }
 
 async function waitForResourceStability(page) {
@@ -119,6 +167,133 @@ test.describe('frontend performance smoke', () => {
         expect(snapshot.fontRequests).toBeLessThan(18);
         for (const assetPath of coreAssetPaths) {
             expect(snapshot.coreAssetBytes[assetPath]).toBeGreaterThan(0);
+        }
+    });
+
+    test.describe('on a phone', () => {
+        // The Home hero art runs its motion on a phone, and that motion keeps running behind the Settings page unless
+        // the app pauses it. A desktop browser of the same width does not start the motion, so only a phone context
+        // can show whether the page behind Settings is quiet.
+        test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 });
+
+        test('keeps idle recalc and DOM mutations quiet behind open Settings', async ({ page, context }) => {
+            test.setTimeout(90_000);
+            const pageErrors = [];
+            page.on('pageerror', error => pageErrors.push(error.message));
+
+            await page.goto('/', { waitUntil: 'domcontentloaded' });
+            await waitForAppReady(page, { timeout: 60000 });
+            await page.waitForFunction(() => (
+                globalThis.document.readyState === 'complete'
+                && globalThis.document.getElementById('preloader') === null
+                && Boolean(globalThis.SillyBunnyShell?.openTab)
+            ), null, { timeout: 60000 });
+
+            let cdpSession = null;
+            try {
+                cdpSession = await context.newCDPSession(page);
+            } catch {
+                cdpSession = null;
+            }
+
+            try {
+                // Without moving art there is nothing behind Settings that could keep running, and the counters
+                // below would pass for a page that never had the problem.
+                await expect.poll(
+                    () => page.evaluate(() => globalThis.document.querySelector('[data-sb-art-motion="playing"]') !== null),
+                    { message: 'the Home hero art never started to move', timeout: 30_000 },
+                ).toBe(true);
+
+                await page.evaluate(() => globalThis.SillyBunnyShell.openTab('right', 'appearance'));
+                await waitForPageQuiet(page);
+
+                const idle = await measureIdleActivity(page, { cdpSession, durationMs: 1500 });
+                const label = 'idle behind Settings';
+                expect(idle.available).toBe(true);
+                for (const { metric, limit } of runtimeBudgetsFor('mobile', IDLE_BEHIND_SETTINGS)) {
+                    expect(requireMetric(idle, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+                }
+                expect(pageErrors).toEqual([]);
+            } finally {
+                await cdpSession?.detach().catch(() => {});
+            }
+        });
+    });
+
+    test('bounds layout reads and style recalc during streaming after a large reasoning block', async ({ page, context }) => {
+        test.setTimeout(90_000);
+        const pageErrors = [];
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await waitForAppReady(page, { timeout: 60000 });
+        await page.waitForFunction(() => (
+            globalThis.document.readyState === 'complete'
+            && globalThis.document.getElementById('preloader') === null
+            && typeof globalThis.SillyTavern?.getContext === 'function'
+        ), null, { timeout: 60000 });
+
+        let cdpSession = null;
+        try {
+            cdpSession = await context.newCDPSession(page);
+        } catch {
+            cdpSession = null;
+        }
+
+        try {
+            const fixture = createStreamingReasoningFixture({ stepCount: 20, reasoningRepeat: 320, responseRepeat: 24 });
+            const stream = await measureStreamingWithReasoning(page, fixture, { cdpSession });
+            const label = 'streaming after reasoning';
+            expect(stream.available, `streaming measurement unavailable: ${stream.reason}`).toBe(true);
+            expect(requireMetric(stream, 'reasoningBytes', label)).toBeGreaterThan(8000);
+            // The reasoning UI must have run on every step and rendered the reasoning, or the counters below measure
+            // a loop that never reached the code under guard.
+            expect(requireMetric(stream, 'reasoningUpdateCount', label)).toBe(fixture.stepCount);
+            expect(requireMetric(stream, 'reasoningRenderedChars', label)).toBeGreaterThan(8000);
+            for (const { metric, limit } of runtimeBudgetsFor('mobile', STREAMING_REASONING)) {
+                expect(requireMetric(stream, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+            }
+            expect(pageErrors).toEqual([]);
+        } finally {
+            await cdpSession?.detach().catch(() => {});
+        }
+    });
+
+    test('keeps Settings, Extensions, and search interactions bounded without page errors', async ({ page, context }) => {
+        test.setTimeout(90_000);
+        const pageErrors = [];
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.setViewportSize({ width: 1366, height: 900 });
+        await page.goto('/', { waitUntil: 'domcontentloaded' });
+        await waitForAppReady(page, { timeout: 60000 });
+        await page.waitForFunction(() => (
+            globalThis.document.readyState === 'complete'
+            && globalThis.document.getElementById('preloader') === null
+            && Boolean(globalThis.SillyBunnyShell?.openTab)
+        ), null, { timeout: 60000 });
+
+        let cdpSession = null;
+        try {
+            cdpSession = await context.newCDPSession(page);
+        } catch {
+            cdpSession = null;
+        }
+
+        try {
+            const interaction = await measureSettingsInteractions(page, { cdpSession, idleDurationMs: 1000 });
+            expect(interaction.available).toBe(true);
+            expect(interaction.tabsVisited).toEqual(expect.arrayContaining(['extensions', 'editor', 'appearance']));
+            expect(interaction.idleBehindSettings?.available).toBe(true);
+            const idle = interaction.idleBehindSettings;
+            const label = 'idle after Settings interactions';
+            for (const { metric, limit } of runtimeBudgetsFor('desktop', IDLE_BEHIND_SETTINGS)) {
+                expect(requireMetric(idle, metric, label), `${label}: ${metric}`).toBeLessThanOrEqual(limit);
+            }
+            expect(pageErrors).toEqual([]);
+        } finally {
+            await cdpSession?.detach().catch(() => {});
         }
     });
 });
