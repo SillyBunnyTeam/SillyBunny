@@ -6258,7 +6258,17 @@ function revealDeferredCharacterPanel(host, content, mount, panelId) {
     return state.reveal;
 }
 
+// SillyBunny: the list's sheets start with its module and not after the module's imports have arrived, which takes one
+// request round trip out of the first open. loadCharacterListStyles() joins the same links later, reports a failure and
+// keeps the retry cleanup, so a failure here is left to it.
+function startCharacterListStyles(stylesheets = SB_PANEL_STYLESHEETS['characters:characters']) {
+    for (const stylesheet of stylesheets) {
+        window.SillyBunnyAssets?.loadStylesheetAsync?.(stylesheet.href, { id: stylesheet.id })?.catch(() => {});
+    }
+}
+
 async function mountCharacterListController() {
+    if (!characterListMountPromise) startCharacterListStyles();
     characterListMountPromise ??= import('./sillybunny-character-list.js')
         .then(module => module.mountCharacterList(undefined, { render: false, getNavigationGeneration: getCharacterListNavigationGeneration }))
         .catch(error => {
@@ -6995,6 +7005,7 @@ function preloadPanelStylesheets(shellKey, tabId = null) {
     }
 
     if (normalizedKey === 'characters:characters' || normalizedKey === 'characters:groups') {
+        startCharacterListStyles(stylesheets);
         return import('./sillybunny-character-list.js')
             .then(module => module.loadCharacterListStyles(stylesheets))
             .catch(error => console.warn('Failed to load panel stylesheet:', normalizedKey, error));
