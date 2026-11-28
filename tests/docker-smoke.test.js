@@ -437,6 +437,76 @@ describe('runDockerSmoke orchestration', () => {
         expect(port).toBeGreaterThan(0);
         expect(port).toBeLessThanOrEqual(65535);
     });
+
+    test('default sleep keeps top-level await alive across readiness retries and stabilization', async () => {
+        let indexCalls = 0;
+        const runDocker = async (args) => {
+            if (args[0] === 'inspect') {
+                return { status: 0, stdout: 'true|running|0|false|0\n', stderr: '', error: null };
+            }
+            if (args[0] === 'logs') {
+                return { status: 0, stdout: HEALTHY_STARTUP_LOGS, stderr: '', error: null };
+            }
+            return { status: 0, stdout: 'ok\n', stderr: '', error: null };
+        };
+        const fetchFn = async (url) => {
+            if (url.endsWith('/')) {
+                indexCalls++;
+                if (indexCalls === 1) {
+                    throw new Error('connect ECONNREFUSED');
+                }
+                return makeResponse(200, '<html></html>');
+            }
+            return makeResponse(200, JSON.stringify({ token: 'tok' }));
+        };
+
+        const inProcess = await runDockerSmoke('sillybunny:smoke', {
+            containerName: 'sb-default-sleep',
+            startupTimeoutMs: 5_000,
+            pollIntervalMs: 10,
+            stabilizeMs: 10,
+            runDocker,
+            fetchFn,
+            log: () => {},
+        });
+        expect(inProcess.containerName).toBe('sb-default-sleep');
+        expect(indexCalls).toBe(2);
+
+        // Run through a fresh ESM process with top-level await; unref'd sleep/port handles would exit 13.
+        const moduleUrl = new URL('../scripts/docker-smoke.js', import.meta.url).href;
+        const childScript = `
+            import { runDockerSmoke } from ${JSON.stringify(moduleUrl)};
+            let tries = 0;
+            const runDocker = async (args) => {
+                if (args[0] === 'inspect') return { status: 0, stdout: 'true|running|0|false|0\\n', stderr: '', error: null };
+                if (args[0] === 'logs') return { status: 0, stdout: 'SillyBunny is listening', stderr: '', error: null };
+                return { status: 0, stdout: 'ok\\n', stderr: '', error: null };
+            };
+            const fetchFn = async (url) => {
+                if (url.endsWith('/')) {
+                    tries++;
+                    if (tries === 1) throw new Error('ECONNREFUSED');
+                    return { status: 200, text: async () => '<html></html>' };
+                }
+                return { status: 200, text: async () => JSON.stringify({ token: 'ok' }) };
+            };
+            const res = await runDockerSmoke('sillybunny:smoke', {
+                containerName: 'sb-tla-check',
+                startupTimeoutMs: 5000,
+                pollIntervalMs: 20,
+                stabilizeMs: 20,
+                runDocker,
+                fetchFn,
+                log: () => {},
+            });
+            console.log(JSON.stringify({ containerName: res.containerName, tries }));
+        `;
+        const output = execFileSync(process.execPath, ['--input-type=module', '-e', childScript], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        expect(JSON.parse(output.trim())).toEqual({ containerName: 'sb-tla-check', tries: 2 });
+    });
 });
 
 describe('Dockerfile command inventory alignment', () => {

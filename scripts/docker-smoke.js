@@ -348,7 +348,6 @@ export function defaultRunDocker(args, { timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS 
 export function findFreePort(host = '127.0.0.1') {
     return new Promise((resolve, reject) => {
         const server = net.createServer();
-        server.unref();
         server.once('error', reject);
         server.listen(0, host, () => {
             const address = server.address();
@@ -470,9 +469,9 @@ function formatLogsAppendix(logs) {
 }
 
 function defaultSleep(ms) {
+    // Keep the timer ref'd so top-level `await main(...)` does not exit with code 13 while polling or stabilizing.
     return new Promise(resolve => {
-        const timer = setTimeout(resolve, ms);
-        timer.unref?.();
+        setTimeout(resolve, ms);
     });
 }
 
