@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
+// Loopback Express contract requests across all image providers can approach Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
+
 import {
     SAMPLE_PNG_BUFFER,
     STANDARD_UPSTREAM_ERRORS,

@@ -3,6 +3,9 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 
+// Chat updates write backups, recovery copies, and SQLite index entries, which can approach Jest's 5 s default under parallel Windows runs.
+jest.setTimeout(30_000);
+
 import { chat, createSandboxUser, line, listBackups, PERSONA } from './util/conversation-store-sandbox.js';
 
 const { createConversation, loadChat, saveChat } = await import('../src/conversation-store.js');

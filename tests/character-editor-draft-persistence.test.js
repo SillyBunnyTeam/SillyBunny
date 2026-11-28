@@ -306,6 +306,27 @@ describe('editor session dirty tracking and draft backup', () => {
         expect(session.isDirty()).toBe(false);
         session.close();
     });
+
+    test('opening a session removes a stored draft that already matches the saved baseline without offering recovery', () => {
+        const state = { name: 'Saved' };
+        const removed = [];
+        let offeredCount = 0;
+        const session = createEditorSession({
+            captureSnapshot: () => ({ ...state }),
+            restoreSnapshot: () => {},
+            persist: async () => {},
+            drafts: {
+                read: () => ({ v: 1, ts: 1, snapshot: { name: 'Saved' } }),
+                write: () => {},
+                remove: (id) => removed.push(id),
+            },
+            offerDraft: () => { offeredCount++; },
+        });
+        session.open({ mode: 'edit', entityId: 'alice.png' });
+        expect(removed).toEqual(['alice.png']);
+        expect(offeredCount).toBe(0);
+        session.close();
+    });
 });
 
 describe('character-editor draft key contract', () => {
